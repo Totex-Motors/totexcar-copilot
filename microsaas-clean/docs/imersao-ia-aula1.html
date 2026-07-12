@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Imersão IA na Prática - Aula 1</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #2c3e50;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header .subtitle {
+            font-size: 1.2em;
+            opacity: 0.95;
+            margin-top: 10px;
+        }
+
+        .header .facilitator {
+            margin-top: 20px;
+            font-size: 1.1em;
+            font-weight: 500;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 50px 40px;
+        }
+
+        .section {
+            margin-bottom: 50px;
+        }
+
+        .section-title {
+            font-size: 1.8em;
+            color: #667eea;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+            font-weight: 600;
+        }
+
+        .section-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 40px;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+
+        .subsection {
+            margin: 25px 0;
+        }
+
+        .subsection-title {
+            font-size: 1.3em;
+            color: #764ba2;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .highlight-box {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 25px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border-left: 5px solid #667eea;
+        }
+
+        .highlight-box strong {
+            color: #667eea;
+            font-size: 1.1em;
+        }
+
+        .quote {
+            background: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-style: italic;
+            font-size: 1.1em;
+        }
+
+        .levels-grid {
+            display: grid;
+            gap: 20px;
+            margin: 25px 0;
+        }
+
+        .level-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .level-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .level-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .level-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .level-description {
+            color: #555;
+            line-height: 1.5;
+        }
+
+        .tools-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .tools-table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tools-table th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .tools-table td {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .tools-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .tools-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .tool-name {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .case-study {
+            background: linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%);
+            padding: 30px;
+            border-radius: 12px;
+            margin: 25px 0;
+            border-left: 5px solid #00acc1;
+        }
+
+        .case-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #00838f;
+            margin-bottom: 15px;
+        }
+
+        .case-content {
+            color: #004d40;
+        }
+
+        .case-content ul {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+
+        .case-content li {
+            margin-bottom: 8px;
+        }
+
+        ul, ol {
+            margin-left: 25px;
+            margin-top: 10px;
+        }
+
+        li {
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        strong {
+            color: #2c3e50;
+        }
+
+        .footer {
+            background: #2c3e50;
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+        }
+
+        .footer-title {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .footer-content {
+            line-height: 1.8;
+            opacity: 0.9;
+        }
+
+        .emoji {
+            font-size: 1.2em;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Imersão IA na Prática</h1>
+            <div class="subtitle">Aula 1: Fundamentos, Agentes e Vibe Coding</div>
+            <div class="facilitator">Facilitador: Frank Costa</div>
+        </div>
+
+        <div class="content">
+            <!-- Seção 1 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">1</span>
+                    Introdução e Mindset: A Nova Era dos Negócios
+                </h2>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">A Realidade da IA</h3>
+                    <p>A inteligência artificial não é uma "histeria coletiva" passageira (como foram os NFTs ou o Metaverso em certos momentos), mas sim a maior revolução da história moderna.</p>
+                </div>
+
+                <div class="quote">
+                    <strong>A Tese Principal:</strong> A IA por si só não vai te substituir. O que vai te substituir é alguém usando a IA.
+                </div>
+
+                <div class="highlight-box">
+                    <p><strong>IA é Meio, não Fim:</strong> Não existe "Mercado de IA", assim como não existe "Mercado de Marketing Digital". A IA é o meio para otimizar processos, reduzir custos e aumentar receitas.</p>
+                </div>
+
+                <div class="highlight-box">
+                    <p><strong>O Futuro dos Negócios:</strong> Daqui a 2 anos, existirão apenas dois tipos de empresas: as que usam IA massivamente e as que foram engolidas por aquelas que usam.</p>
+                </div>
+            </div>
+
+            <!-- Seção 2 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">2</span>
+                    Os 5 Níveis de Maturidade em IA
+                </h2>
+
+                <p style="margin-bottom: 20px;">Para aplicar IA, você precisa identificar onde você está hoje:</p>
+
+                <div class="levels-grid">
+                    <div class="level-card">
+                        <div class="level-number">Nível 1</div>
+                        <div class="level-title">O Cético/Negacionista</div>
+                        <div class="level-description">Faz tudo manual, acha que IA é modinha, tem medo de roubo de dados. <em>(Faz trabalho de robô)</em>.</div>
+                    </div>
+
+                    <div class="level-card">
+                        <div class="level-number">Nível 2</div>
+                        <div class="level-title">O Turista</div>
+                        <div class="level-description">Usa o ChatGPT como um "Google Turbinado". Faz pesquisas pontuais, pede para reescrever um e-mail, mas não tem processo. <em>(80% das pessoas estão aqui)</em>.</div>
+                    </div>
+
+                    <div class="level-card">
+                        <div class="level-number">Nível 3</div>
+                        <div class="level-title">O Copiloto</div>
+                        <div class="level-description">Usa a IA no dia a dia de trabalho. Analisa planilhas, resume reuniões, pede diagnósticos. A IA é uma assistente passiva (depende do humano dar o input).</div>
+                    </div>
+
+                    <div class="level-card">
+                        <div class="level-number">Nível 4</div>
+                        <div class="level-title">O Agente Integrado</div>
+                        <div class="level-description">A IA começa a ter autonomia e execução. Ela atende o lead, qualifica, faz a cobrança e interage com sistemas.</div>
+                    </div>
+
+                    <div class="level-card">
+                        <div class="level-number">Nível 5</div>
+                        <div class="level-title">O Arquiteto</div>
+                        <div class="level-description">O nível máximo. Constrói ecossistemas próprios. Orquestra múltiplos agentes (CEO IA, Marketing, Vendas) que conversam entre si e tomam decisões baseadas em dados.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seção 3 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">3</span>
+                    O Ecossistema de LLMs (Modelos de Linguagem)
+                </h2>
+
+                <p style="margin-bottom: 20px;"><strong>Não se apegue à ferramenta, mas entenda o "cérebro" por trás.</strong></p>
+
+                <ul>
+                    <li><strong>Claude (Anthropic):</strong> O melhor para criatividade, copy, roteiros e programação (interface humana).</li>
+                    <li><strong>ChatGPT (OpenAI):</strong> O generalista. Bom para raciocínio lógico e uso geral.</li>
+                    <li><strong>Gemini (Google):</strong> Forte integração com o ecossistema Google. O modelo Nano/Pro para análise de imagens é superior (AGI visual).</li>
+                    <li><strong>Grok (xAI):</strong> Acesso a dados em tempo real do X (Twitter). Ótimo para notícias e tendências.</li>
+                </ul>
+
+                <div class="highlight-box">
+                    <p><strong>Dica de Ferramenta:</strong> Para quem está nos níveis 2 e 3, hubs como <strong>Abacus.ai</strong> ou <strong>Adapta</strong> valem a pena para acessar vários modelos com uma única assinatura. Para Arquitetos (nível 5), use as APIs diretas.</p>
+                </div>
+            </div>
+
+            <!-- Seção 4 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">4</span>
+                    Agentes de IA: Como Construir e Treinar
+                </h2>
+
+                <div class="quote">
+                    A regra de ouro para criar agentes que funcionam é: <strong>Trate a IA como se fosse um ser humano.</strong>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">A Estrutura de Treinamento</h3>
+                    <p>Ao configurar um agente, você deve fornecer:</p>
+                    <ul>
+                        <li><strong>Instruções:</strong> O que ele deve fazer (seu "Job Description").</li>
+                        <li><strong>Personalidade:</strong> Como ele deve falar (Ex: "Fale como um amigo no WhatsApp, use gírias leves, sem emojis excessivos, letras minúsculas").</li>
+                        <li><strong>Base de Conhecimento:</strong> Os manuais, PDFs e dados que ele precisa saber.</li>
+                        <li><strong>Ferramentas:</strong> Acesso ao calendário, e-mail, CRM, etc.</li>
+                    </ul>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">Engenharia de Prompt (O Framework)</h3>
+                    <p>Não precisa ser "Engenheiro de Prompt", basta seguir a lógica:</p>
+                    <ol>
+                        <li><strong>Contexto:</strong> Quem é você, o que é a empresa.</li>
+                        <li><strong>Instrução:</strong> O que deve ser feito.</li>
+                        <li><strong>Exemplos:</strong> "Isso é um bom output" vs "Isso é um mau output".</li>
+                        <li><strong>Formato:</strong> Como você quer a resposta (Tabela, Texto, JSON).</li>
+                        <li><strong>Restrições:</strong> O que ele NÃO deve fazer (Ex: "Nunca invente dados", "Nunca use 'Prezado'").</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Seção 5 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">5</span>
+                    Vibe Coding: Construindo Soluções Reais
+                </h2>
+
+                <p style="margin-bottom: 20px;">O conceito de <strong>Vibe Coding</strong> é programar sem saber código, usando linguagem natural para comandar IAs que constroem software.</p>
+
+                <div class="subsection">
+                    <h3 class="subsection-title"><span class="emoji">🏗️</span> O Stack do Arquiteto (Ferramentas Recomendadas)</h3>
+                    <p>Para criar SAAS, Dashboards ou Ferramentas internas:</p>
+
+                    <table class="tools-table">
+                        <thead>
+                            <tr>
+                                <th>Categoria</th>
+                                <th>Ferramenta</th>
+                                <th>Função</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>O Construtor</strong></td>
+                                <td class="tool-name">Lovable</td>
+                                <td>A melhor interface visual atualmente. Cria o front-end e a lógica.</td>
+                            </tr>
+                            <tr>
+                                <td></td>
+                                <td class="tool-name">Windsurf</td>
+                                <td>Editor de código com IA para refinar o código gerado.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>A Integração</strong></td>
+                                <td class="tool-name">Scrapt.io</td>
+                                <td>Ferramenta poderosa e barata para "raspar" dados da web (Instagram, TikTok, Google Maps).</td>
+                            </tr>
+                            <tr>
+                                <td><strong>O Banco de Dados</strong></td>
+                                <td class="tool-name">Supabase</td>
+                                <td>Onde as informações ficam salvas. Essencial para criar sistemas robustos.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>A Hospedagem</strong></td>
+                                <td class="tool-name">Netlify / Vercel</td>
+                                <td>Para colocar seu sistema no ar.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title"><span class="emoji">🔌</span> Automação & "Raspagem" de Dados</h3>
+                    <table class="tools-table">
+                        <thead>
+                            <tr>
+                                <th>Ferramenta</th>
+                                <th>Função</th>
+                                <th>Descrição</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="tool-name">Scrap Creators</td>
+                                <td>Scraper (Extrator)</td>
+                                <td>Essencial. "Raspa" dados do Instagram, YouTube e Maps para alimentar sua IA.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">UChat</td>
+                                <td>Chatbot & Fluxo</td>
+                                <td>A base do sistema "Automatize". Cria fluxos de conversa para WhatsApp e Instagram.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">n8n</td>
+                                <td>Integração</td>
+                                <td>Ferramenta de automação poderosa (alternativa ao Make).</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Make</td>
+                                <td>Integração</td>
+                                <td>O antigo Integromat. Bom para conectar ferramentas simples.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Apify</td>
+                                <td>Scraper (API)</td>
+                                <td>Alternativa ao Scrap Creators para buscar dados complexos da web.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">RapidAPI</td>
+                                <td>Hub de APIs</td>
+                                <td>Lugar para encontrar APIs prontas (ex: dados de voos, finanças).</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title"><span class="emoji">🎥</span> Mídia & Conteúdo</h3>
+                    <table class="tools-table">
+                        <thead>
+                            <tr>
+                                <th>Ferramenta</th>
+                                <th>Função</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="tool-name">HeyGen</td>
+                                <td>Avatar Falante. Cria vídeos seus falando qualquer texto.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">ElevenLabs</td>
+                                <td>Voz & Clonagem. A melhor IA de áudio do mundo. Clona sua voz.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Sora</td>
+                                <td>Geração de Vídeo. O modelo da OpenAI para criar cenas cinematográficas.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Kling AI</td>
+                                <td>Geração de Vídeo. Alternativa poderosa para criar vídeos realistas.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Gamma</td>
+                                <td>Apresentações. Cria slides, documentos e sites inteiros em segundos.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Beautiful.ai</td>
+                                <td>Slides. Foca em design de apresentações corporativas automáticas.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title"><span class="emoji">💼</span> Produtividade & Gestão</h3>
+                    <table class="tools-table">
+                        <thead>
+                            <tr>
+                                <th>Ferramenta</th>
+                                <th>Função</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="tool-name">GPT Atlas</td>
+                                <td>Navegador Autônomo. O "Agent Mode" da OpenAI que navega na web para você.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Plaud Note</td>
+                                <td>Gravador Físico. Um "cartão" que grava e resume reuniões presenciais.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Fireflies.ai</td>
+                                <td>Notetaker. Robô que entra no Zoom/Meet para gravar, transcrever e resumir.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Otter.ai</td>
+                                <td>Transcrição. Excelente opção para transformar áudio de reuniões em texto.</td>
+                            </tr>
+                            <tr>
+                                <td class="tool-name">Abacus.ai</td>
+                                <td>Hub Corporativo. Plataforma para empresas darem acesso a várias IAs.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Seção 6 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">6</span>
+                    Cases Práticos da Aula
+                </h2>
+
+                <div class="case-study">
+                    <div class="case-title">Case 1: A Máquina de Conteúdo (Content Machine)</div>
+                    <div class="case-content">
+                        <p><strong>Problema:</strong> Falta de criatividade e tempo para criar posts.</p>
+                        <p><strong>Solução:</strong> Um app criado no Lovable integrado com Scrapt.io.</p>
+                        <p><strong>Processo:</strong></p>
+                        <ul>
+                            <li>O usuário insere o @ do Instagram de uma referência (ex: concorrente viral).</li>
+                            <li>O Scrapt.io extrai os 10 reels mais virais.</li>
+                            <li>A IA transcreve os vídeos e analisa os padrões (Gancho, Retenção, CTA).</li>
+                            <li>A IA gera 10 novas ideias de conteúdo baseadas nesses padrões, adaptadas para o seu nicho.</li>
+                            <li>Gera o roteiro, a imagem (via Gemini/DALL-E) e até o vídeo com avatar.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="case-study">
+                    <div class="case-title">Case 2: O Agente de RH</div>
+                    <div class="case-content">
+                        <p><strong>Função:</strong> Cria a descrição da vaga técnica, recebe os currículos, faz o match com a vaga e sugere perguntas para a entrevista.</p>
+                        <p><strong>Diferencial:</strong> Analisa o "Fit Cultural" e não apenas as habilidades técnicas.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seção 7 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">7</span>
+                    Conceitos Técnicos Importantes
+                </h2>
+
+                <div class="highlight-box">
+                    <p><strong>PRD (Product Requirements Document):</strong> O documento que você pede para a IA gerar antes de começar a criar um app. É o "plano de voo" que garante que o Lovable não erre.</p>
+                </div>
+
+                <div class="highlight-box">
+                    <p><strong>Webhook:</strong> O "carteiro" digital. É o link que permite que um sistema avise o outro que algo aconteceu (ex: "Venda aprovada" → Webhook → "Libera acesso").</p>
+                </div>
+
+                <div class="highlight-box">
+                    <p><strong>Vibe Coding:</strong> Programar sem saber sintaxe, usando linguagem natural e focando na lógica de negócio, enquanto a IA escreve o código.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <div class="footer-title">O Próximo Passo: Programa de Aceleração (PAIN)</div>
+            <div class="footer-content">
+                <p>A imersão é apenas a ponta do iceberg. O <strong>Programa de Aceleração de Negócios (PEN)</strong> é a mentoria de 6 meses para implementar isso lado a lado.</p>
+                <p style="margin-top: 15px;"><strong>O que inclui:</strong> Advisor dedicado (CS), Mentorias diárias, Soluções Plug & Play (Agentes prontos de Vendas, RH, Conteúdo), Encontro Presencial.</p>
+                <p style="margin-top: 15px;"><strong>Diferencial:</strong> Não é curso, é implementação. "Comemos da nossa própria comida".</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

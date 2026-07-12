@@ -1,0 +1,297 @@
+From 53fdf80543dec5e8c400abf9a98bc84f5ac889c8 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sat, 20 Jun 2026 17:22:56 -0300
+Subject: [PATCH] =?UTF-8?q?feat(referral):=20integra=C3=A7=C3=A3o=20Indiqu?=
+ =?UTF-8?q?e=20e=20Ganhe=20(TCF)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- captura ?ref na página do carro e persiste (frontend/src/lib/ref.ts)
+- grava ref no metadata dos leads (interesse e clique no WhatsApp)
+- ao marcar veículo como SOLD com ref, reporta a venda ao TCF (report_referral)
+- env: TCF_INTEGRATION_URL, TCF_INTEGRATION_KEY, REFERRAL_COMMISSION
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ REFERRAL-INTEGRATION.md                       | 35 +++++++++++++
+ .../modules/leads/dto/vehicle-interest.dto.ts | 11 +++-
+ .../modules/leads/dto/whatsapp-click.dto.ts   |  7 +++
+ backend/src/modules/leads/leads.service.ts    |  2 +
+ .../src/modules/vehicles/vehicles.service.ts  | 52 ++++++++++++++++++-
+ frontend/src/app/pages/DetalheVeiculo.tsx     |  2 +
+ frontend/src/components/WhatsAppButton.tsx    |  2 +
+ frontend/src/lib/api.ts                       |  4 +-
+ frontend/src/lib/ref.ts                       | 17 ++++++
+ 9 files changed, 127 insertions(+), 5 deletions(-)
+ create mode 100644 REFERRAL-INTEGRATION.md
+ create mode 100644 frontend/src/lib/ref.ts
+
+diff --git a/REFERRAL-INTEGRATION.md b/REFERRAL-INTEGRATION.md
+new file mode 100644
+index 0000000..690964a
+--- /dev/null
++++ b/REFERRAL-INTEGRATION.md
+@@ -0,0 +1,35 @@
++# Integração "Indique e Ganhe" (TCF) — lado Marketplace
++
++Mudanças desta branch (`feat/referral-tracking`) para o programa de indicação do Totex_CAR_FINANCE.
++
++## O que faz
++1. A página do carro recebe `?ref=CODIGO` (link gerado no app do dono). O código é capturado e persistido.
++2. Quando o visitante manda mensagem (interesse) ou clica no WhatsApp, o `ref` é gravado no `metadata` do Lead.
++3. Quando o veículo é marcado como **VENDIDO** (`status = SOLD`) e existe um lead com `ref`, o backend chama o
++   TCF (`report_referral`) para creditar a comissão do indicador (que recebe via PIX).
++
++## Arquivos alterados
++- `frontend/src/lib/ref.ts` (novo) — captura/persiste o `?ref`.
++- `frontend/src/lib/api.ts` — `vehicleInterest`/`whatsappClick` aceitam `ref?`.
++- `frontend/src/app/pages/DetalheVeiculo.tsx` — envia `ref: getRef()` no interesse.
++- `frontend/src/components/WhatsAppButton.tsx` — envia `ref: getRef()` no clique.
++- `backend/.../leads/dto/vehicle-interest.dto.ts` e `whatsapp-click.dto.ts` — campo `ref?` opcional.
++- `backend/.../leads/leads.service.ts` — grava `ref` no `metadata` dos leads.
++- `backend/.../vehicles/vehicles.service.ts` — no `update`, ao virar `SOLD`, chama o TCF.
++
++## Variáveis de ambiente (backend) — necessárias para o report da venda
++```
++TCF_INTEGRATION_URL=https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/integration
++TCF_INTEGRATION_KEY=<a mesma chave x-api-key do TCF>
++REFERRAL_COMMISSION=150        # valor (R$) da comissão por venda indicada (ajuste à vontade)
++```
++Sem `TCF_INTEGRATION_URL`/`KEY`, o report é silenciosamente ignorado (não quebra a venda).
++
++## Como testar
++1. Abra um carro com `?ref=ABC123` → mande interesse ou clique no WhatsApp.
++2. Confirme no banco que o `Lead.metadata.ref = "ABC123"`.
++3. Marque o veículo como `SOLD` no admin → o backend chama o TCF `report_referral`
++   (aparece como "a receber" no `/indique` do dono dono do código).
++
++> Observação: a comissão é única (env `REFERRAL_COMMISSION`). Se quiser comissão por loja,
++> dá pra ler de `Dealership` no futuro.
+diff --git a/backend/src/modules/leads/dto/vehicle-interest.dto.ts b/backend/src/modules/leads/dto/vehicle-interest.dto.ts
+index cc9e245..fd99131 100644
+--- a/backend/src/modules/leads/dto/vehicle-interest.dto.ts
++++ b/backend/src/modules/leads/dto/vehicle-interest.dto.ts
+@@ -1,5 +1,5 @@
+-import { ApiProperty } from '@nestjs/swagger';
+-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
++import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
++import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+ 
+ export class VehicleInterestDto {
+   @ApiProperty({ example: 'Ana Costa' })
+@@ -29,4 +29,11 @@ export class VehicleInterestDto {
+   @IsString()
+   @MaxLength(36, { message: 'ID de veículo inválido' })
+   vehicleId: string;
++
++  // Código de indicação (Indique e Ganhe / TCF). Opcional, vem do ?ref da URL.
++  @ApiPropertyOptional({ example: 'A1B2C3D4' })
++  @IsOptional()
++  @IsString()
++  @MaxLength(40)
++  ref?: string;
+ }
+diff --git a/backend/src/modules/leads/dto/whatsapp-click.dto.ts b/backend/src/modules/leads/dto/whatsapp-click.dto.ts
+index da12704..23e5ff4 100644
+--- a/backend/src/modules/leads/dto/whatsapp-click.dto.ts
++++ b/backend/src/modules/leads/dto/whatsapp-click.dto.ts
+@@ -28,4 +28,11 @@ export class WhatsappClickDto {
+   @IsString()
+   @MaxLength(20)
+   visitorPhone?: string;
++
++  // Código de indicação (Indique e Ganhe / TCF). Opcional, vem do ?ref da URL.
++  @ApiPropertyOptional({ example: 'A1B2C3D4' })
++  @IsOptional()
++  @IsString()
++  @MaxLength(40)
++  ref?: string;
+ }
+diff --git a/backend/src/modules/leads/leads.service.ts b/backend/src/modules/leads/leads.service.ts
+index 63774c1..4574c03 100644
+--- a/backend/src/modules/leads/leads.service.ts
++++ b/backend/src/modules/leads/leads.service.ts
+@@ -203,6 +203,7 @@ export class LeadsService {
+           vehicleVersion: vehicle.version,
+           vehicleYear: vehicle.year,
+           vehiclePrice: vehicle.price,
++          ref: dto.ref ?? null,
+         },
+         status: 'NEW',
+       },
+@@ -385,6 +386,7 @@ export class LeadsService {
+         metadata: {
+           vehicleModel: vehicle.model,
+           source: 'WHATSAPP_BUTTON',
++          ref: dto.ref ?? null,
+         },
+         status: 'NEW',
+       },
+diff --git a/backend/src/modules/vehicles/vehicles.service.ts b/backend/src/modules/vehicles/vehicles.service.ts
+index afb1d0b..011c7dc 100644
+--- a/backend/src/modules/vehicles/vehicles.service.ts
++++ b/backend/src/modules/vehicles/vehicles.service.ts
+@@ -1,4 +1,4 @@
+-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
++import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+ import { Prisma } from '@prisma/client';
+ import { PrismaService } from '../../prisma/prisma.service';
+ import { CreateVehicleDto } from './dto/create-vehicle.dto';
+@@ -20,11 +20,54 @@ const SEARCHABLE_VEHICLE_FIELDS = [
+ 
+ @Injectable()
+ export class VehiclesService {
++  private readonly logger = new Logger(VehiclesService.name);
++
+   constructor(
+     private readonly prisma: PrismaService,
+     private readonly fipeService: FipeService,
+   ) {}
+ 
++  /**
++   * Indique e Ganhe (TCF): quando um veículo é marcado como VENDIDO e houve um
++   * lead com código de indicação (?ref), reporta a venda ao TCF para creditar a
++   * comissão do indicador. Não bloqueia/derruba o update (best-effort).
++   * Configurar no backend: TCF_INTEGRATION_URL, TCF_INTEGRATION_KEY, REFERRAL_COMMISSION.
++   */
++  private async reportReferralOnSale(vehicleId: string): Promise<void> {
++    const url = process.env.TCF_INTEGRATION_URL;
++    const key = process.env.TCF_INTEGRATION_KEY;
++    if (!url || !key) return; // integração não configurada — ignora
++
++    const leads = await this.prisma.lead.findMany({
++      where: { vehicleId },
++      orderBy: { createdAt: 'desc' },
++      take: 50,
++    });
++    const refLead = leads.find(
++      (l) => l.metadata && typeof l.metadata === 'object' && (l.metadata as any).ref,
++    );
++    if (!refLead) return; // venda sem indicação
++
++    const ref = (refLead.metadata as any).ref as string;
++    const vehicle = await this.prisma.vehicle.findUnique({ where: { id: vehicleId } });
++    const commission = Number(process.env.REFERRAL_COMMISSION || 0);
++
++    const res = await fetch(url, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json', 'x-api-key': key },
++      body: JSON.stringify({
++        action: 'report_referral',
++        owner_code: ref,
++        type: 'sale',
++        value: commission,
++        car_external_id: vehicleId,
++        car_title: vehicle ? `${vehicle.brand} ${vehicle.model} ${vehicle.year}` : undefined,
++      }),
++    });
++    if (!res.ok) throw new Error(`TCF report_referral ${res.status}`);
++    this.logger.log(`Indicação reportada ao TCF: veículo ${vehicleId} (ref ${ref})`);
++  }
++
+   /**
+    * Busca os IDs dos veículos que casam com o termo, ignorando acentuação e
+    * maiúsculas/minúsculas (via extensão unaccent do PostgreSQL).
+@@ -336,6 +379,13 @@ export class VehiclesService {
+       }
+     }
+ 
++    // Indique e Ganhe: venda confirmada (status -> SOLD) com indicação → reporta ao TCF.
++    if (vehicleData.status === 'SOLD' && existing.status !== 'SOLD') {
++      this.reportReferralOnSale(id).catch((e) =>
++        this.logger.error(`Falha ao reportar indicação (veículo ${id}): ${e?.message || e}`),
++      );
++    }
++
+     return this.findOne(id);
+   }
+ 
+diff --git a/frontend/src/app/pages/DetalheVeiculo.tsx b/frontend/src/app/pages/DetalheVeiculo.tsx
+index cf96432..a7db7e4 100644
+--- a/frontend/src/app/pages/DetalheVeiculo.tsx
++++ b/frontend/src/app/pages/DetalheVeiculo.tsx
+@@ -3,6 +3,7 @@
+ import { useState, useEffect } from "react";
+ import Link from "next/link";
+ import { leadsApi, vehiclesApi, fuelLabel, transmissionLabel, primaryImage, resolveUrl } from "../../lib/api";
++import { getRef } from "../../lib/ref";
+ import { COMPANY } from "../../lib/company";
+ import { formatPhone, formatCPF, isValidPhone, isValidCPF, isValidEmail, isValidName } from "../../utils/formatters";
+ import { WhatsAppButton } from "../../components/WhatsAppButton";
+@@ -161,6 +162,7 @@ export function DetalheVeiculo({ params }: { params: { id: string } }) {
+       await leadsApi.vehicleInterest({
+         ...formContato,
+         vehicleId: String(veiculo.id),
++        ref: getRef(),
+       });
+       setEnviado(true);
+       setTimeout(() => setEnviado(false), 4000);
+diff --git a/frontend/src/components/WhatsAppButton.tsx b/frontend/src/components/WhatsAppButton.tsx
+index 05021a2..2674fc1 100644
+--- a/frontend/src/components/WhatsAppButton.tsx
++++ b/frontend/src/components/WhatsAppButton.tsx
+@@ -2,6 +2,7 @@
+ 
+ import { MessageCircle } from 'lucide-react';
+ import { leadsApi } from '../lib/api';
++import { getRef } from '../lib/ref';
+ import { useState } from 'react';
+ 
+ interface WhatsAppButtonProps {
+@@ -51,6 +52,7 @@ export function WhatsAppButton({
+       await leadsApi.whatsappClick({
+         vehicleModel,
+         vehicleId,
++        ref: getRef(),
+       });
+ 
+       window.open(whatsappUrl, '_blank');
+diff --git a/frontend/src/lib/api.ts b/frontend/src/lib/api.ts
+index 48fc4d8..e6bfa83 100644
+--- a/frontend/src/lib/api.ts
++++ b/frontend/src/lib/api.ts
+@@ -201,7 +201,7 @@ export const leadsApi = {
+ 
+   vehicleInterest: (body: {
+     nome: string; email: string; telefone: string;
+-    mensagem: string; vehicleId: string;
++    mensagem: string; vehicleId: string; ref?: string;
+   }) => request<{ success: boolean; message: string }>(
+     '/leads/vehicle-interest', { method: 'POST', body: JSON.stringify(body) }
+   ),
+@@ -215,7 +215,7 @@ export const leadsApi = {
+ 
+   whatsappClick: (body: {
+     vehicleModel: string; vehicleId: string;
+-    visitorName?: string; visitorEmail?: string; visitorPhone?: string;
++    visitorName?: string; visitorEmail?: string; visitorPhone?: string; ref?: string;
+   }) => request<{ success: boolean; message: string }>(
+     '/leads/whatsapp-click', { method: 'POST', body: JSON.stringify(body) }
+   ),
+diff --git a/frontend/src/lib/ref.ts b/frontend/src/lib/ref.ts
+new file mode 100644
+index 0000000..5b04438
+--- /dev/null
++++ b/frontend/src/lib/ref.ts
+@@ -0,0 +1,17 @@
++// Código de indicação (Indique e Ganhe / TCF).
++// Lê o ?ref da URL (página /veiculo/[id]?ref=CODIGO), persiste e devolve.
++const KEY = 'totex_ref';
++
++export function getRef(): string | undefined {
++  if (typeof window === 'undefined') return undefined;
++  try {
++    const fromUrl = new URL(window.location.href).searchParams.get('ref');
++    if (fromUrl) {
++      try { localStorage.setItem(KEY, fromUrl); } catch { /* ignore */ }
++      return fromUrl;
++    }
++    return localStorage.getItem(KEY) || undefined;
++  } catch {
++    return undefined;
++  }
++}
+-- 
+2.54.0.windows.1
+

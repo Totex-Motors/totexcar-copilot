@@ -1,0 +1,11 @@
+# sessões/ferramentas locais (não fazem parte do produto)
+.claude/
+.agents/
+
+# credenciais — NUNCA commitar
+.env
+.env.*
+
+# builds e dependências
+node_modules/
+dist/
