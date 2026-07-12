@@ -411,6 +411,9 @@ e consumindo o TCF** (gera cupom por loja + provisiona cliente). Tudo testado e 
 
 ## 3. ONDE ESTÁ O CÓDIGO / COMO RODAR
 
+- **GitHub (privado, desde 2026-07-12):** `https://github.com/Totex-Motors/totexcar-copilot` — raiz do repo =
+  pasta `TOTEXCARFINANCE` (docs + HANDOFF + `microsaas-clean/`). ⚠️ Ao fim de cada sessão de trabalho,
+  **commitar e dar push** (`git add -A && git commit && git push`). `.env` está no .gitignore (NUNCA commitar).
 - Pasta do código TCF: `C:\Users\marco\Downloads\TOTEXCARFINANCE\microsaas-clean`
 - Stack: **Vite + React + TypeScript + shadcn/ui + Tailwind + TanStack Query + Supabase**.
 - Rodar local: `cd microsaas-clean && npm install && npm run dev` → http://localhost:8080
