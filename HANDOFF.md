@@ -414,6 +414,14 @@ e consumindo o TCF** (gera cupom por loja + provisiona cliente). Tudo testado e 
 - **GitHub (privado, desde 2026-07-12):** `https://github.com/Totex-Motors/totexcar-copilot` — raiz do repo =
   pasta `TOTEXCARFINANCE` (docs + HANDOFF + `microsaas-clean/`). ⚠️ Ao fim de cada sessão de trabalho,
   **commitar e dar push** (`git add -A && git commit && git push`). `.env` está no .gitignore (NUNCA commitar).
+- **DEPLOY AUTOMÁTICO (desde 2026-07-12):** o projeto Vercel `totexcarco-pilot` está CONECTADO ao repo
+  (Root Directory = `microsaas-clean`). **Push na `main` = deploy em produção automático** — não precisa
+  mais de `npx vercel --prod` (segue funcionando como fallback). Push em qualquer branch = **Preview Deploy**
+  com URL própria (aparece no PR).
+- **FLUXO DE BRANCHES:** ajuste pequeno/bugfix → commit direto na `main`. Mudança grande/arriscada
+  (feature nova, refactor, mexer em checkout/paywall) → branch `feat/nome-da-coisa` + push + **Pull Request**
+  no GitHub; validar na URL de preview da Vercel; merge na main publica. Edge functions do Supabase NÃO
+  fazem deploy pelo git — continuam via CLI (`supabase functions deploy`), como sempre.
 - Pasta do código TCF: `C:\Users\marco\Downloads\TOTEXCARFINANCE\microsaas-clean`
 - Stack: **Vite + React + TypeScript + shadcn/ui + Tailwind + TanStack Query + Supabase**.
 - Rodar local: `cd microsaas-clean && npm install && npm run dev` → http://localhost:8080
