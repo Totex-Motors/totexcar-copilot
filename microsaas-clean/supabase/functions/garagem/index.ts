@@ -42,6 +42,7 @@ function normVehicle(v: any, refCode?: string | null) {
   const photo = img?.url ? (String(img.url).startsWith("http") ? img.url : `${MARKETPLACE}${img.url}`) : null;
   const dealerId = v.dealershipId || v.dealership?.id || null;
   const dealer = dealerId ? (_dealers || {})[dealerId] : null;
+  const finOn = !!(dealer && dealer.credereEnabled && dealer.cnpj);
   return {
     id: v.id,
     title: [v.brand, v.model, v.version].filter(Boolean).join(" "),
@@ -50,7 +51,8 @@ function normVehicle(v: any, refCode?: string | null) {
     color: v.color || null, fuel: v.fuel || null, transmission: v.transmission || null,
     city: v.city || null, state: v.state || null,
     dealership: v.dealership?.name || null,
-    financing_enabled: !!(dealer && dealer.credereEnabled && dealer.cnpj),
+    financing_enabled: finOn,
+    financing_cnpj: finOn ? String(dealer!.cnpj).replace(/\D/g, "") : null,
     photo,
     url: `${MARKETPLACE}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
   };

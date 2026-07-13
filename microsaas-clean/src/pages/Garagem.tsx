@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Warehouse, Search, Sparkles, RadarIcon, Banknote, Loader2, ExternalLink,
@@ -23,9 +24,66 @@ import {
 const brl = (v: number | null | undefined) =>
   v != null ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v) : "—";
 
+// Popup de simulação de financiamento — embute o widget do Meu Credere (mesmo do marketplace)
+// via iframe direto (montamos a URL com os dados DO carro certo, sem depender do scraping de DOM).
+function CredereDialog({ car, open, onOpenChange }: { car: GaragemCar; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [height, setHeight] = useState(560);
+
+  const src = (() => {
+    const p = new URLSearchParams({
+      pnp: "true",
+      q: car.title,
+      manufacture_year: String(car.year || ""),
+      model_year: String(car.year || ""),
+      value_cents: String(Math.round((car.price || 0) * 100)),
+      viewport: String(typeof window !== "undefined" ? window.innerWidth : 400),
+    });
+    return `https://app.meucredere.com.br/simulador/loja/${car.financing_cnpj}/veiculo/detectar?${p.toString()}`;
+  })();
+
+  useEffect(() => {
+    if (!open) return;
+    const onMsg = (e: MessageEvent) => {
+      const d = e?.data;
+      if (d && d.type === "credere:resize" && typeof d.value === "number") setHeight(Math.max(320, d.value));
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden">
+        <DialogHeader className="p-5 pb-3 border-b text-left space-y-0.5">
+          <DialogTitle className="text-xl">Simular Financiamento</DialogTitle>
+          <DialogDescription>Condições de financiamento dos nossos parceiros</DialogDescription>
+        </DialogHeader>
+        <div className="p-4">
+          <div className="rounded-xl bg-muted/60 p-3 mb-3">
+            <p className="font-bold leading-tight">{car.title}</p>
+            <p className="text-sm text-muted-foreground">{car.year} · {brl(car.price)}</p>
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto">
+            {open && (
+              <iframe
+                title="Simulação de financiamento"
+                src={src}
+                allow="clipboard-write; web-share"
+                className="w-full border-0"
+                style={{ height }}
+              />
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CarCard({ car }: { car: GaragemCar }) {
   const interesse = useInteresse();
   const [sent, setSent] = useState(false);
+  const [finOpen, setFinOpen] = useState(false);
   return (
     <Card className="border-0 shadow-premium-md overflow-hidden flex flex-col">
       <div className="h-40 bg-muted/60 relative">
@@ -58,15 +116,16 @@ function CarCard({ car }: { car: GaragemCar }) {
               <Button size="sm" variant="outline"><ExternalLink className="w-4 h-4" /></Button>
             </a>
           </div>
-          {car.financing_enabled && (
-            <a href={car.url} target="_blank" rel="noreferrer" className="w-full">
-              <Button size="sm" className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white">
-                <Calculator className="w-4 h-4" /> Simular financiamento
-              </Button>
-            </a>
+          {car.financing_enabled && car.financing_cnpj && (
+            <Button size="sm" className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setFinOpen(true)}>
+              <Calculator className="w-4 h-4" /> Simular financiamento
+            </Button>
           )}
         </div>
       </CardContent>
+      {car.financing_enabled && car.financing_cnpj && (
+        <CredereDialog car={car} open={finOpen} onOpenChange={setFinOpen} />
+      )}
     </Card>
   );
 }

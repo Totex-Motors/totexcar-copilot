@@ -9,6 +9,7 @@ export interface GaragemCar {
   color: string | null; fuel: string | null; transmission: string | null;
   city: string | null; state: string | null; dealership: string | null;
   financing_enabled?: boolean;
+  financing_cnpj?: string | null;
   photo: string | null; url: string;
 }
 export interface GaragemFilters {
