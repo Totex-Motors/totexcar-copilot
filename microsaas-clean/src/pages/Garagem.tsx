@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Warehouse, Search, Sparkles, RadarIcon, Banknote, Loader2, ExternalLink,
-  Heart, Car, Trash2, CheckCircle2, Gauge, CalendarDays, ChevronDown, MousePointerClick,
+  Heart, Car, Trash2, CheckCircle2, Gauge, CalendarDays, ChevronDown, MousePointerClick, Calculator,
 } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
@@ -44,18 +44,27 @@ function CarCard({ car }: { car: GaragemCar }) {
           </p>
         </div>
         <p className="text-xl font-extrabold text-primary">{brl(car.price)}</p>
-        <div className="mt-auto flex gap-2 pt-1">
-          <Button size="sm" className="flex-1 gap-1.5" disabled={interesse.isPending || sent}
-            onClick={() => interesse.mutate({ vehicle_id: car.id }, {
-              onSuccess: () => { setSent(true); toast({ title: "Interesse enviado! 🎉", description: "A loja vai entrar em contato com você." }); },
-              onError: (e: any) => toast({ title: "Não foi possível enviar", description: String(e?.message || e), variant: "destructive" }),
-            })}>
-            {sent ? <CheckCircle2 className="w-4 h-4" /> : <Heart className="w-4 h-4" />}
-            {sent ? "Enviado" : "Tenho interesse"}
-          </Button>
-          <a href={car.url} target="_blank" rel="noreferrer">
-            <Button size="sm" variant="outline"><ExternalLink className="w-4 h-4" /></Button>
-          </a>
+        <div className="mt-auto flex flex-col gap-2 pt-1">
+          <div className="flex gap-2">
+            <Button size="sm" className="flex-1 gap-1.5" disabled={interesse.isPending || sent}
+              onClick={() => interesse.mutate({ vehicle_id: car.id }, {
+                onSuccess: () => { setSent(true); toast({ title: "Interesse enviado! 🎉", description: "A loja vai entrar em contato com você." }); },
+                onError: (e: any) => toast({ title: "Não foi possível enviar", description: String(e?.message || e), variant: "destructive" }),
+              })}>
+              {sent ? <CheckCircle2 className="w-4 h-4" /> : <Heart className="w-4 h-4" />}
+              {sent ? "Enviado" : "Tenho interesse"}
+            </Button>
+            <a href={car.url} target="_blank" rel="noreferrer">
+              <Button size="sm" variant="outline"><ExternalLink className="w-4 h-4" /></Button>
+            </a>
+          </div>
+          {car.financing_enabled && (
+            <a href={car.url} target="_blank" rel="noreferrer" className="w-full">
+              <Button size="sm" className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white">
+                <Calculator className="w-4 h-4" /> Simular financiamento
+              </Button>
+            </a>
+          )}
         </div>
       </CardContent>
     </Card>

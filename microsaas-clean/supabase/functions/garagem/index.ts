@@ -17,10 +17,31 @@ const cors = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
+// Mapa de lojas (id → { credereEnabled, cnpj }) p/ liberar o botão "Simular financiamento".
+// O marketplace só mostra a simulação (Meu Credere) quando a loja tem credereEnabled + CNPJ;
+// espelhamos essa mesma regra aqui. Cache de 10 min (a lista /api/vehicles NÃO traz esses campos).
+let _dealers: Record<string, { credereEnabled: boolean; cnpj: string | null }> | null = null;
+let _dealersAt = 0;
+async function loadDealers() {
+  const now = Date.now();
+  if (_dealers && now - _dealersAt < 10 * 60 * 1000) return _dealers;
+  try {
+    const res = await fetch(`${MARKETPLACE}/api/dealerships`, { headers: { Accept: "application/json" } });
+    const d = await res.json().catch(() => []);
+    const arr = Array.isArray(d) ? d : (d?.data || []);
+    const map: Record<string, { credereEnabled: boolean; cnpj: string | null }> = {};
+    for (const x of arr) if (x?.id) map[x.id] = { credereEnabled: !!x.credereEnabled, cnpj: x.cnpj || null };
+    _dealers = map; _dealersAt = now;
+  } catch { if (!_dealers) _dealers = {}; }
+  return _dealers!;
+}
+
 // normaliza um veículo do marketplace pro shape do app (foto principal + link com ?ref do Indique)
 function normVehicle(v: any, refCode?: string | null) {
   const img = (v.images || []).find((i: any) => i.isPrimary) || (v.images || [])[0];
   const photo = img?.url ? (String(img.url).startsWith("http") ? img.url : `${MARKETPLACE}${img.url}`) : null;
+  const dealerId = v.dealershipId || v.dealership?.id || null;
+  const dealer = dealerId ? (_dealers || {})[dealerId] : null;
   return {
     id: v.id,
     title: [v.brand, v.model, v.version].filter(Boolean).join(" "),
@@ -29,6 +50,7 @@ function normVehicle(v: any, refCode?: string | null) {
     color: v.color || null, fuel: v.fuel || null, transmission: v.transmission || null,
     city: v.city || null, state: v.state || null,
     dealership: v.dealership?.name || null,
+    financing_enabled: !!(dealer && dealer.credereEnabled && dealer.cnpj),
     photo,
     url: `${MARKETPLACE}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
   };
@@ -75,6 +97,7 @@ Deno.serve(async (req) => {
     .select("id, name, marca, modelo, ano_modelo, ano_fabricacao, valor_compra, hodometro, placa")
     .eq("user_id", userId).eq("is_active", true).order("created_at", { ascending: true }).limit(1).maybeSingle();
   const refCode = me?.referral_code || null;
+  await loadDealers(); // popula o mapa de lojas (financing_enabled) usado pelo normVehicle
 
   try {
     // ---------- BUSCAR / TROCAR (estoque com filtros) ----------

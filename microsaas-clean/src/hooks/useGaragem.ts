@@ -8,6 +8,7 @@ export interface GaragemCar {
   year: number; km: number; price: number; fipe_price: number | null;
   color: string | null; fuel: string | null; transmission: string | null;
   city: string | null; state: string | null; dealership: string | null;
+  financing_enabled?: boolean;
   photo: string | null; url: string;
 }
 export interface GaragemFilters {
