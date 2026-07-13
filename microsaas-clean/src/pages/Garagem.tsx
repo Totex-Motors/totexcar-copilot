@@ -271,7 +271,14 @@ export default function Garagem() {
               </CardContent>
             </Card>
             {search.data && <p className="text-sm text-muted-foreground">{totalCars} carro(s) no estoque Totexmotors</p>}
-            <CarGrid cars={accumCars} loading={search.isLoading && (applied.page || 1) === 1} empty="Nenhum carro encontrado com esses filtros. Tente ampliar a busca — ou deixe um radar em 'Ofertas para mim'. 😉" />
+            {search.isError && !accumCars.length ? (
+              <div className="text-center py-10 space-y-3">
+                <p className="text-sm text-muted-foreground">O estoque está indisponível no momento (muitas buscas em sequência). Tente de novo em instantes.</p>
+                <Button variant="outline" onClick={() => search.refetch()} className="gap-1.5"><Search className="w-4 h-4" /> Tentar de novo</Button>
+              </div>
+            ) : (
+              <CarGrid cars={accumCars} loading={search.isLoading && (applied.page || 1) === 1} empty="Nenhum carro encontrado com esses filtros. Tente ampliar a busca — ou deixe um radar em 'Ofertas para mim'. 😉" />
+            )}
             {temMais && (
               <div className="flex justify-center pt-2">
                 <Button variant="outline" size="lg" className="gap-2" onClick={carregarMais} disabled={search.isFetching}>

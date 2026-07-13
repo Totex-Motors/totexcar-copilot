@@ -22,18 +22,26 @@ const json = (b: unknown, s = 200) =>
 // espelhamos essa mesma regra aqui. Cache de 10 min (a lista /api/vehicles NÃO traz esses campos).
 let _dealers: Record<string, { credereEnabled: boolean; cnpj: string | null }> | null = null;
 let _dealersAt = 0;
+let _dealersInflight: Promise<Record<string, { credereEnabled: boolean; cnpj: string | null }>> | null = null;
 async function loadDealers() {
   const now = Date.now();
   if (_dealers && now - _dealersAt < 10 * 60 * 1000) return _dealers;
-  try {
-    const res = await fetch(`${MARKETPLACE}/api/dealerships`, { headers: { Accept: "application/json" } });
-    const d = await res.json().catch(() => []);
-    const arr = Array.isArray(d) ? d : (d?.data || []);
-    const map: Record<string, { credereEnabled: boolean; cnpj: string | null }> = {};
-    for (const x of arr) if (x?.id) map[x.id] = { credereEnabled: !!x.credereEnabled, cnpj: x.cnpj || null };
-    _dealers = map; _dealersAt = now;
-  } catch { if (!_dealers) _dealers = {}; }
-  return _dealers!;
+  // dedup: várias ações da mesma página chamam isto ao mesmo tempo — compartilham 1 só fetch
+  if (_dealersInflight) return _dealersInflight;
+  _dealersInflight = (async () => {
+    try {
+      const res = await fetch(`${MARKETPLACE}/api/dealerships`, { headers: { Accept: "application/json" } });
+      const d = await res.json().catch(() => []);
+      const arr = Array.isArray(d) ? d : (d?.data || []);
+      const map: Record<string, { credereEnabled: boolean; cnpj: string | null }> = {};
+      for (const x of arr) if (x?.id) map[x.id] = { credereEnabled: !!x.credereEnabled, cnpj: x.cnpj || null };
+      if (res.ok && arr.length) { _dealers = map; _dealersAt = Date.now(); }
+      else if (!_dealers) _dealers = {}; // 429/erro: não trava a garagem (só fica sem botão de financiamento)
+    } catch { if (!_dealers) _dealers = {}; }
+    finally { _dealersInflight = null; }
+    return _dealers!;
+  })();
+  return _dealersInflight;
 }
 
 // normaliza um veículo do marketplace pro shape do app (foto principal + link com ?ref do Indique)
@@ -58,12 +66,19 @@ function normVehicle(v: any, refCode?: string | null) {
   };
 }
 
-async function fetchVehicles(params: Record<string, string | number | undefined>) {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchVehicles(params: Record<string, string | number | undefined>, attempt = 0): Promise<{ data: any[]; total: number; totalPages: number }> {
   const u = new URL(`${MARKETPLACE}/api/vehicles`);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
   }
   const res = await fetch(u.toString(), { headers: { Accept: "application/json" } });
+  // marketplace faz rate-limit (429) sob rajada; tenta de novo com backoff antes de desistir
+  if ((res.status === 429 || res.status === 503) && attempt < 3) {
+    await sleep(350 * (attempt + 1));
+    return fetchVehicles(params, attempt + 1);
+  }
   const d = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`marketplace_${res.status}`);
   return { data: Array.isArray(d?.data) ? d.data : [], total: d?.total ?? 0, totalPages: d?.totalPages ?? 1 };
@@ -99,11 +114,11 @@ Deno.serve(async (req) => {
     .select("id, name, marca, modelo, ano_modelo, ano_fabricacao, valor_compra, hodometro, placa")
     .eq("user_id", userId).eq("is_active", true).order("created_at", { ascending: true }).limit(1).maybeSingle();
   const refCode = me?.referral_code || null;
-  await loadDealers(); // popula o mapa de lojas (financing_enabled) usado pelo normVehicle
 
   try {
     // ---------- BUSCAR / TROCAR (estoque com filtros) ----------
     if (action === "search") {
+      await loadDealers(); // mapa de lojas p/ financing_enabled (cacheado; só nas ações que renderizam carros)
       const f = b.filters || {};
       const r = await fetchVehicles({
         search: f.search, brand: f.brand, model: f.model,
@@ -124,6 +139,7 @@ Deno.serve(async (req) => {
 
     // ---------- OPORTUNIDADES (com base no carro atual) ----------
     if (action === "opportunities") {
+      await loadDealers();
       let cars: any[] = [];
       let base: any = null;
       if (acct?.valor_compra && Number(acct.valor_compra) > 0) {
@@ -179,6 +195,7 @@ Deno.serve(async (req) => {
 
     // ---------- RADAR / OFERTAS PARA MIM ----------
     if (action === "radar_list") {
+      await loadDealers();
       const { data: radars } = await admin.from("car_radar").select("*")
         .eq("user_id", userId).eq("active", true).order("created_at", { ascending: false });
       // pra cada radar, tenta casar com o estoque AO VIVO
@@ -208,6 +225,7 @@ Deno.serve(async (req) => {
         notes: b.notes || null, active: true,
       };
       if (!row.brand && !row.model && !row.max_price) return json({ error: "informe_marca_modelo_ou_preco" }, 400);
+      await loadDealers();
       const { data: created, error } = await admin.from("car_radar").insert(row).select("id").single();
       if (error) return json({ error: error.message }, 400);
 
