@@ -122,27 +122,36 @@ async function sendText(phone: string, text: string) {
   }
 }
 
-// Botões de ação rápida (WhatsApp permite até 3) exibidos após cada resposta
-const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)"];
+// Página "quero comprar" do marketplace Totexmotors (janela de carros da Garagem Totex)
+const GARAGEM_LABEL = "🚗 Garagem Totex";
+const GARAGEM_URL = "https://totexmotors.com/comprar";
 
-// Envia a mensagem com botões de ação rápida (endpoint /send/menu do Uazapi)
+// Ações rápidas exibidas após cada resposta. WhatsApp só permite 3 BOTÕES, então com 4+ opções
+// usamos uma LISTA (type:"list"). A 4ª opção (Garagem Totex) abre a janela de carros do marketplace.
+const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", GARAGEM_LABEL];
+
+// Envia a resposta com o menu de ações (endpoint /send/menu do Uazapi).
+// Usa LISTA quando há >3 opções; se a lista falhar, cai pros 3 botões (sem a Garagem) + texto.
 async function sendMenu(phone: string, text: string, choices: string[], footerText?: string) {
   const { url, token } = await uazapiCreds();
   if (!url || !token) { console.error("Uazapi não configurado"); return; }
+  const post = (body: unknown) => fetch(`${url}/send/menu`, {
+    method: "POST", headers: { "Content-Type": "application/json", "token": token }, body: JSON.stringify(body),
+  });
+  const asList = choices.length > 3;
   try {
-    const res = await fetch(`${url}/send/menu`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "token": token },
-      body: JSON.stringify({ number: phone, type: "button", text, choices, footerText: footerText || "" }),
-    });
-    if (!res.ok) {
-      console.error("Uazapi /send/menu falhou:", res.status, await res.text());
-      await sendText(phone, text); // fallback: ao menos a resposta em texto
-    }
+    const res = await post({ number: phone, type: asList ? "list" : "button", text, choices, footerText: footerText || "" });
+    if (res.ok) return;
+    console.error("Uazapi /send/menu falhou:", res.status, await res.text());
   } catch (e) {
     console.error("Erro ao enviar menu Uazapi:", e);
-    await sendText(phone, text);
   }
+  // fallback: 3 botões (garantido) + a Garagem vira link no texto, pra não perder a opção
+  try {
+    const extra = choices.length > 3 ? `\n\n${GARAGEM_LABEL}: ${GARAGEM_URL}` : "";
+    const res2 = await post({ number: phone, type: "button", text: text + extra, choices: choices.slice(0, 3), footerText: footerText || "" });
+    if (!res2.ok) await sendText(phone, text + extra);
+  } catch { await sendText(phone, text); }
 }
 
 async function fetchImageBase64(url: string): Promise<{ data: string; media_type: string } | null> {
@@ -490,6 +499,11 @@ function isLocationQuery(t: string): boolean {
   if (/(localiza[cç][aã]o|rastrea\w*|\bgps\b)/.test(s)) return true;
   if (/(\bonde\b|\bcad[êe]\b)/.test(s) && /(carro|ve[ií]culo|\bele\b|moto)/.test(s)) return true;
   return false;
+}
+
+// Opção "Garagem Totex" do menu (ou pedido direto): manda o link da janela de carros do marketplace
+function isGaragemQuery(t: string): boolean {
+  return /garagem\s*totex/i.test(t || "");
 }
 
 async function getCarLocation(vehicle: any): Promise<{ address: string | null; lat: number; lng: number; speed: number; online: any; last_update: any; odometer: number | null } | null> {
@@ -1377,6 +1391,15 @@ ${JSON.stringify(snapshot)}`;
           return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
         }
       } catch (e) { console.error("getCarLocation (atalho) falhou:", e); }
+    }
+
+    // Atalho: opção "Garagem Totex" do menu (ou pedido direto) → abre a janela de carros do marketplace
+    if (msg.kind !== "image" && isGaragemQuery(inputText)) {
+      await sendMenu(msg.phone,
+        `${GARAGEM_LABEL} — seu próximo carro te espera! 🔑\n\nVeja os carros disponíveis no marketplace Totexmotors:\n${GARAGEM_URL}\n\nAchou um que curtiu? Me chama que eu simulo o financiamento e ainda avalio seu carro atual na troca. 😉`,
+        QUICK_ACTIONS, "Toque numa ação ou mande um gasto 🚗");
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "garagem" }, user_id: user.id }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     parts.push({ kind: "text", text: inputText || "(sem conteúdo)" });
