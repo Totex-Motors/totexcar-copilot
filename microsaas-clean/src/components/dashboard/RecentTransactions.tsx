@@ -97,11 +97,11 @@ export function RecentTransactions() {
         {transactions.map((transaction) => (
           <div
             key={transaction.id}
-            className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors group"
+            className="flex items-center justify-between gap-3 p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors group"
           >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className={cn(
-                "p-2 rounded-lg flex items-center justify-center",
+                "p-2 rounded-lg flex items-center justify-center shrink-0",
                 transaction.type === "income" ? "bg-success/10" : "bg-destructive/10"
               )}>
                 {transaction.type === "income" ? (
@@ -110,34 +110,34 @@ export function RecentTransactions() {
                   <ArrowDownLeft className="h-4 w-4 text-destructive" />
                 )}
               </div>
-              
-              <div className="space-y-1">
-                <p className="font-medium text-foreground group-hover:text-primary transition-colors">
+
+              <div className="space-y-1 min-w-0">
+                <p className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
                   {transaction.description || 'Transação sem descrição'}
                 </p>
-                <div className="flex items-center gap-2">
-                  <Badge 
-                    variant="secondary" 
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Badge
+                    variant="secondary"
                     className="text-xs text-white"
                     style={getCategoryColor(transaction.categories)}
                   >
                     {transaction.categories?.name || 'Sem categoria'}
                   </Badge>
                   {transaction.accounts && (
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
                       {transaction.accounts.name}
                     </span>
                   )}
-                  <span className="text-sm text-muted-foreground">
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">
                     {formatDate(transaction.transaction_date || transaction.created_at)}
                   </span>
                 </div>
               </div>
             </div>
-            
-            <div className="text-right">
+
+            <div className="text-right shrink-0">
               <p className={cn(
-                "font-semibold",
+                "font-semibold whitespace-nowrap",
                 transaction.type === "income" ? "text-success" : "text-foreground"
               )}>
                 {transaction.type === "income" ? "+" : "-"}

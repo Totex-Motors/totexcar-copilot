@@ -184,11 +184,11 @@ const Transactions = () => {
               filteredTransactions.map((transaction) => (
                 <div
                   key={transaction.id}
-                  className="flex items-center justify-between p-6 hover:bg-muted/50 transition-colors group"
+                  className="flex items-center justify-between gap-3 p-6 hover:bg-muted/50 transition-colors group"
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 min-w-0 flex-1">
                     <div className={cn(
-                      "p-3 rounded-xl flex items-center justify-center",
+                      "p-3 rounded-xl flex items-center justify-center shrink-0",
                       transaction.type === "income" ? "bg-success/10" : "bg-destructive/10"
                     )}>
                       {transaction.type === "income" ? (
@@ -197,41 +197,41 @@ const Transactions = () => {
                         <ArrowDownLeft className="h-5 w-5 text-destructive" />
                       )}
                     </div>
-                    
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
+
+                    <div className="space-y-1 min-w-0">
+                      <p className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">
                         {transaction.description || 'Sem descrição'}
                       </p>
-                      <div className="flex items-center gap-3">
-                        <Badge 
-                          variant="secondary" 
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <Badge
+                          variant="secondary"
                           className="text-xs text-white"
                           style={{ backgroundColor: getCategoryColor(transaction.category_id!) }}
                         >
                           {getCategoryName(transaction.category_id!)}
                         </Badge>
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">
                           {getAccountName(transaction.account_id!)}
                         </span>
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">
                           {formatDate(transaction.transaction_date!)}
                         </span>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-4">
+
+                  <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                     <div className="text-right">
                       <p className={cn(
-                        "font-bold text-lg",
+                        "font-bold text-lg whitespace-nowrap",
                         transaction.type === "income" ? "text-success" : "text-foreground"
                       )}>
                         {transaction.type === "income" ? "+" : "-"}
                         {formatCurrency(transaction.amount)}
                       </p>
                     </div>
-                    
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                    <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <Button 
                         variant="ghost" 
                         size="icon" 
