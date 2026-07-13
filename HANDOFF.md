@@ -211,8 +211,8 @@ Aprovado pelo dono: preços ok · PRO incluso p/ membro · nome **TotexCar Co-pi
 - **Agente v20 — CONCIERGE:** tools `buscar_carros`, `oportunidades_carros`, `criar_radar` (WhatsApp) +
   persona concierge no prompt (especialista em carros; cruza perfil/uso real com estoque; recomenda 2–3 com
   porquê + link; sem estoque → radar). 
-- ⚠️ **PENDENTE: rodar a migração `car_radar` no SQL Editor** (MCP read-only de novo; SQL na conversa de
-  2026-07-13). Sem ela: radar não persiste (busca/oportunidades/leads funcionam).
+- ✅ Migração `car_radar` APLICADA (2026-07-13, após o dono reiniciar o Supabase — o restart destravou o
+  MCP que estava read-only). Tabela + 4 policies RLS confirmadas. Módulo 100% funcional.
 - Fase 2 (não feito): cron de match do radar → WhatsApp quando carro chegar; filtro por loja específica.
 
 ### 🚗 CARRO CONECTADO (TotexCar Link) — SmartGPS DESCARTADO, novo caminho (2026-07-02)
