@@ -2,6 +2,7 @@
 // Roda diariamente (pg_cron). Para cada usuário/veículo, avisa sobre vencimentos
 // de licenciamento, IPVA, seguro e CNH em marcos (30/15/7/1/0 dias) e quando vencido.
 // v4: + parcelas de financiamento (5/1/0) e PRAZO DE RECURSO de multas (5/3/1/0).
+// v8: + RADAR da Garagem Totex — avisa quando um carro do desejo aparece no estoque do marketplace.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -9,6 +10,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const UAZAPI_URL = (Deno.env.get("UAZAPI_URL") || "").replace(/\/+$/, "");
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
+const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
@@ -224,6 +226,63 @@ async function maybeNotifyMulta(userId: string, phone: string, m: any, appUrl: s
   return true;
 }
 
+// ---- RADAR da Garagem Totex ----
+// Cruza cada desejo salvo (car_radar) com o estoque AO VIVO do marketplace e avisa no WhatsApp
+// quando um carro NOVO (ainda não avisado) casa com o filtro. Dedup por (radar, veículo) no
+// notification_log usando a data de criação do radar como âncora estável → avisa 1x por carro.
+async function fetchRadarMatches(r: any) {
+  const u = new URL(`${MARKETPLACE}/api/vehicles`);
+  const params: Record<string, unknown> = {
+    brand: r.brand || undefined, search: r.model || undefined,
+    maxPrice: r.max_price || undefined, minYear: r.min_year || undefined,
+    maxMileage: r.max_km || undefined, limit: 6,
+  };
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
+  }
+  const res = await fetch(u.toString(), { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`marketplace_${res.status}`);
+  const d = await res.json().catch(() => ({}));
+  return Array.isArray(d?.data) ? d.data : [];
+}
+
+function carLine(v: any, refCode?: string | null) {
+  const title = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+  const km = Number(v.mileage) > 0 ? `${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
+  const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "";
+  const url = `${MARKETPLACE}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+  const info = [v.year, km, preco].filter(Boolean).join(" · ");
+  return `*${title} ${v.year || ""}*\n${info}\n🔗 ${url}`;
+}
+
+async function maybeNotifyRadar(userId: string, phone: string, r: any, refCode?: string | null) {
+  let matches: any[] = [];
+  try { matches = await fetchRadarMatches(r); } catch { return false; }
+  if (!matches.length) return false;
+
+  const anchor = String(r.created_at || "").split("T")[0] || "2000-01-01"; // data estável p/ dedup
+  const novos: any[] = [];
+  for (const v of matches) {
+    if (!v?.id) continue;
+    const { error } = await supabase.from("notification_log").insert({
+      user_id: userId, kind: `radar:${r.id}:${v.id}`, due_date: anchor, channel: "whatsapp",
+    });
+    if (error) { if ((error as any).code === "23505") continue; console.error("log radar:", error); continue; }
+    novos.push(v);
+  }
+  if (!novos.length) return false;
+
+  const desejo = [r.brand, r.model].filter(Boolean).join(" ") || "seu radar";
+  const corpo = novos.slice(0, 3).map((v) => carLine(v, refCode)).join("\n\n");
+  const extra = novos.length > 3 ? `\n\n…e mais ${novos.length - 3} no estoque.` : "";
+  const message =
+    `🎯 *Radar Totex* — apareceu um carro que combina com o que você procura (${desejo}):\n\n` +
+    corpo + extra +
+    `\n\nGostou? Responda que eu aviso a loja do seu interesse na hora. 😉`;
+  await sendText(phone, message);
+  return true;
+}
+
 Deno.serve(async (req) => {
   _uazapi = null;
   // proteção: aceita secret na query (usado pelo cron) — ou execução manual autenticada
@@ -239,7 +298,7 @@ Deno.serve(async (req) => {
 
     const { data: users } = await supabase
       .from("users")
-      .select("id, phone, cnh_vencimento, driver_mode")
+      .select("id, phone, cnh_vencimento, driver_mode, referral_code")
       .not("phone", "is", null);
 
     for (const u of users || []) {
@@ -292,6 +351,17 @@ Deno.serve(async (req) => {
           if (await maybeNotifyMulta(u.id, phone, m, appUrl)) sent++;
         }
       } catch (e) { console.error("erro multas alerts:", e); }
+
+      // Radar da Garagem Totex (carro do desejo apareceu no estoque)
+      try {
+        const { data: radars } = await supabase
+          .from("car_radar")
+          .select("id, brand, model, max_price, min_year, max_km, created_at")
+          .eq("user_id", u.id).eq("active", true);
+        for (const r of radars || []) {
+          if (await maybeNotifyRadar(u.id, phone, r, (u as any).referral_code)) sent++;
+        }
+      } catch (e) { console.error("erro radar alerts:", e); }
     }
 
     return new Response(JSON.stringify({ ok: true, sent }), { headers: { "Content-Type": "application/json" } });

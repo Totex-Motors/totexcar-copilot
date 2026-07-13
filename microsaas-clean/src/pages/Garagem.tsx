@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Warehouse, Search, Sparkles, RadarIcon, Banknote, Loader2, ExternalLink,
-  Heart, Car, Trash2, CheckCircle2, Gauge, CalendarDays,
+  Heart, Car, Trash2, CheckCircle2, Gauge, CalendarDays, ChevronDown, MousePointerClick,
 } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
@@ -72,11 +72,18 @@ export default function Garagem() {
   const { userId, loading } = useCurrentUser();
   const { vehicle } = useVehicle(userId);
 
-  // busca
+  // busca (com paginação acumulada — "mostrar mais carros")
   const [f, setF] = useState<GaragemFilters>({ limit: 12, page: 1 });
   const [applied, setApplied] = useState<GaragemFilters>({ limit: 12, page: 1 });
   const search = useGaragemSearch(applied, !!userId);
   const { data: brands } = useGaragemBrands(!!userId);
+  const [accumCars, setAccumCars] = useState<GaragemCar[]>([]);
+
+  useEffect(() => {
+    const d = search.data;
+    if (!d) return;
+    setAccumCars((prev) => ((applied.page || 1) > 1 ? [...prev, ...d.cars] : d.cars));
+  }, [search.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // oportunidades / radar / vender
   const oport = useOportunidades(!!userId);
@@ -94,6 +101,9 @@ export default function Garagem() {
   }
 
   const aplicar = () => setApplied({ ...f, page: 1 });
+  const carregarMais = () => setApplied((p) => ({ ...p, page: (p.page || 1) + 1 }));
+  const totalCars = search.data?.total ?? 0;
+  const temMais = accumCars.length > 0 && accumCars.length < totalCars;
 
   const enviarRadar = () => {
     salvarRadar.mutate({
@@ -136,11 +146,27 @@ export default function Garagem() {
         </div>
 
         <Tabs defaultValue="buscar">
-          <TabsList className="flex flex-wrap h-auto">
-            <TabsTrigger value="buscar" className="gap-1.5"><Search className="w-4 h-4" /> Buscar carro</TabsTrigger>
-            <TabsTrigger value="oportunidades" className="gap-1.5"><Sparkles className="w-4 h-4" /> Oportunidades</TabsTrigger>
-            <TabsTrigger value="radar" className="gap-1.5"><RadarIcon className="w-4 h-4" /> Ofertas para mim</TabsTrigger>
-            <TabsTrigger value="vender" className="gap-1.5"><Banknote className="w-4 h-4" /> Vender / Avaliar</TabsTrigger>
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-2">
+            <MousePointerClick className="w-3.5 h-3.5 text-primary" /> Toque em uma opção para começar:
+          </p>
+          <TabsList className="grid grid-cols-2 lg:grid-cols-4 gap-3 h-auto bg-transparent p-0">
+            {[
+              { v: "buscar", icon: Search, label: "Buscar carro", sub: "Todo o estoque Totexmotors" },
+              { v: "oportunidades", icon: Sparkles, label: "Oportunidades", sub: "Selecionadas pro seu perfil" },
+              { v: "radar", icon: RadarIcon, label: "Ofertas para mim", sub: "Deixe seu desejo no radar" },
+              { v: "vender", icon: Banknote, label: "Vender / Avaliar", sub: "Agende vistoria grátis" },
+            ].map((t) => (
+              <TabsTrigger
+                key={t.v}
+                value={t.v}
+                className="flex flex-col items-start justify-start gap-1 h-auto whitespace-normal text-left rounded-xl border bg-card p-4 shadow-premium-sm transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-premium-md data-[state=active]:border-primary data-[state=active]:bg-primary/5 data-[state=active]:shadow-premium-md"
+              >
+                <span className="flex items-center gap-2 font-semibold text-foreground">
+                  <t.icon className="w-4 h-4 text-primary shrink-0" /> {t.label}
+                </span>
+                <span className="text-xs text-muted-foreground font-normal leading-snug">{t.sub}</span>
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           {/* ============ BUSCAR / TROCAR ============ */}
@@ -176,8 +202,17 @@ export default function Garagem() {
                 </div>
               </CardContent>
             </Card>
-            {search.data && <p className="text-sm text-muted-foreground">{search.data.total} carro(s) no estoque Totexmotors</p>}
-            <CarGrid cars={search.data?.cars} loading={search.isLoading} empty="Nenhum carro encontrado com esses filtros. Tente ampliar a busca — ou deixe um radar em 'Ofertas para mim'. 😉" />
+            {search.data && <p className="text-sm text-muted-foreground">{totalCars} carro(s) no estoque Totexmotors</p>}
+            <CarGrid cars={accumCars} loading={search.isLoading && (applied.page || 1) === 1} empty="Nenhum carro encontrado com esses filtros. Tente ampliar a busca — ou deixe um radar em 'Ofertas para mim'. 😉" />
+            {temMais && (
+              <div className="flex justify-center pt-2">
+                <Button variant="outline" size="lg" className="gap-2" onClick={carregarMais} disabled={search.isFetching}>
+                  {search.isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
+                  Mostrar mais carros
+                  <span className="text-muted-foreground">({accumCars.length} de {totalCars})</span>
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* ============ OPORTUNIDADES ============ */}
