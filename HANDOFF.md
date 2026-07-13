@@ -191,6 +191,30 @@ Aprovado pelo dono: preços ok · PRO incluso p/ membro · nome **TotexCar Co-pi
   **cliente de loja que vira motorista MANTÉM R$ 10,99 com PRO incluso** (Bônus Totex — argumento de venda
   pra loja + fecha ciclo troca/recompra). Nunca falar "sem fidelidade".
 
+### 🏠 GARAGEM TOTEX (2026-07-13) — módulo marketplace dentro do Co-pilot (no ar)
+- **O que é:** "Seu carro atual e o caminho para o próximo." — módulo `/garagem` que integra o Co-pilot ao
+  marketplace `totexmotors.com` (repo `Totex-Motors/totexmotors-marketplace`, NestJS; API pública mapeada
+  DIRETO do código-fonte: `GET /api/vehicles` (filtros search/brand/model/min-maxYear/min-maxPrice/maxMileage/
+  fuel/transmission, retorna {data,total,totalPages}), `GET /api/vehicles/featured|brands`,
+  `POST /api/leads/vehicle-interest` {nome,email,telefone,mensagem,vehicleId},
+  `POST /api/leads/sell-vehicle` {nome,email,telefone,marca,modelo,versao,anoFabricacao,quilometragem,
+  localVistoria,dataVistoria,horarioVistoria}, `POST /api/leads/contact` {nome,email,telefone,assunto,mensagem}).
+- **Edge `garagem` (v1, JWT):** search | brands | opportunities (janela 0.9–1.9× do `accounts.valor_compra`,
+  ano ≥ atual; sem valor → featured) | interest (lead c/ perfil+carro atual) | sell (vender|avaliar → lead
+  sell-vehicle c/ vistoria; defaults do veículo/loja) | radar_list/save/delete (tabela `car_radar`; save TAMBÉM
+  manda lead `contact` "RADAR" pra loja + devolve matches ao vivo). Links de carro levam `?ref={referral_code}`
+  → **comissão do Indique e Ganhe** se virar venda.
+- **Página `/garagem`** (`Garagem.tsx` + `useGaragem.ts`, menu "Garagem Totex"): hero conforme copy do dono,
+  4 abas — Buscar carro (filtros+grid, cobre "Quero trocar"), Oportunidades (personalizadas pelo valor_compra),
+  Ofertas para mim (radar: form desejo + matches + badge "Loja avisada"), Vender/Avaliar (agenda vistoria).
+  Cards com "Tenho interesse" (lead) + link c/ ref. Badge "Abaixo da FIPE" quando price<fipePrice.
+- **Agente v20 — CONCIERGE:** tools `buscar_carros`, `oportunidades_carros`, `criar_radar` (WhatsApp) +
+  persona concierge no prompt (especialista em carros; cruza perfil/uso real com estoque; recomenda 2–3 com
+  porquê + link; sem estoque → radar). 
+- ⚠️ **PENDENTE: rodar a migração `car_radar` no SQL Editor** (MCP read-only de novo; SQL na conversa de
+  2026-07-13). Sem ela: radar não persiste (busca/oportunidades/leads funcionam).
+- Fase 2 (não feito): cron de match do radar → WhatsApp quando carro chegar; filtro por loja específica.
+
 ### 🚗 CARRO CONECTADO (TotexCar Link) — SmartGPS DESCARTADO, novo caminho (2026-07-02)
 - Dono desistiu do SmartGPS. Novo plano: **app nativo na TELA do carro** (BYD DiLink/GWM = Android aberto)
   lê telemetria e envia pro nosso backend. Zero hardware (resolve medo de queimar módulo + custo de chip).

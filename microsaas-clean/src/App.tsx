@@ -20,6 +20,7 @@ import Financiamento from "./pages/Financiamento";
 import Rastreador from "./pages/Rastreador";
 import CarroConectado from "./pages/CarroConectado";
 import Multas from "./pages/Multas";
+import Garagem from "./pages/Garagem";
 import Suporte from "./pages/Suporte";
 import NotFound from "./pages/NotFound";
 import { PendingCouponApplier } from "./components/PendingCouponApplier";
@@ -64,6 +65,7 @@ const App = () => (
           <Route path="/rastreador" element={<Rastreador />} />
           <Route path="/conectado" element={<CarroConectado />} />
           <Route path="/multas" element={<Multas />} />
+          <Route path="/garagem" element={<Garagem />} />
           <Route path="/plans" element={<Plans />} />
           {/* LPs de campanha (tráfego pago) — standalone, sem navbar do site */}
           <Route path="/lp" element={<Lp />} />

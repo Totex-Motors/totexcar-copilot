@@ -14,6 +14,7 @@ import {
   Cpu,
   ShieldAlert,
   LifeBuoy,
+  Warehouse,
   LogOut
 } from "lucide-react";
 import { useAuth, useCurrentUser } from "@/hooks/useAuth";
@@ -40,6 +41,7 @@ const navigation = [
   { title: "Relatórios", url: "/reports", icon: FileText },
   { title: "Categorias", url: "/categories", icon: Tag },
   { title: "Meu Veículo", url: "/settings", icon: Car },
+  { title: "Garagem Totex", url: "/garagem", icon: Warehouse },
   { title: "Rastreador", url: "/rastreador", icon: Navigation },
   { title: "Carro Conectado", url: "/conectado", icon: Cpu },
   { title: "Manutenção", url: "/manutencao", icon: Wrench },

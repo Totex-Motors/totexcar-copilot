@@ -517,6 +517,28 @@ async function getCarLocation(vehicle: any): Promise<{ address: string | null; l
   return { address, lat, lng, speed: Number(device.speed) || 0, online: device.online, last_update: device.last_update ?? null, odometer: Number.isFinite(odo) ? odo : null };
 }
 
+// ---------- Garagem Totex (estoque do marketplace totexmotors.com) ----------
+const MARKETPLACE_URL = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
+
+async function mktVehicles(params: Record<string, string | number | undefined>): Promise<any[]> {
+  const u = new URL(`${MARKETPLACE_URL}/api/vehicles`);
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
+  const res = await fetch(u.toString(), { headers: { Accept: "application/json" } });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`marketplace_${res.status}`);
+  return Array.isArray(d?.data) ? d.data : [];
+}
+
+// resumo compacto de um carro pro chat (com link rastreável ?ref do dono → comissão do Indique)
+function mktResumo(v: any, refCode?: string | null) {
+  return {
+    carro: [v.brand, v.model, v.version].filter(Boolean).join(" "),
+    ano: v.year, km: v.mileage, preco: v.price, fipe: v.fipePrice ?? null,
+    cor: v.color || null, cambio: v.transmission || null, loja: v.dealership?.name || null,
+    link: `${MARKETPLACE_URL}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
+  };
+}
+
 // ---------- FERRAMENTAS DA IA (function calling) ----------
 const TOOL_SPECS = [
   {
@@ -602,6 +624,37 @@ const TOOL_SPECS = [
     name: "localizar_carro",
     description: "Localização atual do carro (rastreador PREMIUM, se ativo).",
     parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "buscar_carros",
+    description: "Busca carros no ESTOQUE REAL do marketplace Totexmotors (concierge de compra/troca). Use quando o usuário quiser comprar, trocar ou ver carros disponíveis.",
+    parameters: {
+      type: "object",
+      properties: {
+        busca: { type: "string", description: "Texto livre: modelo, tipo (SUV, sedan), etc." },
+        marca: { type: "string" },
+        preco_max: { type: "number", description: "Preço máximo em reais" },
+        ano_min: { type: "number", description: "Ano mínimo" },
+        km_max: { type: "number", description: "Km máxima" },
+      },
+    },
+  },
+  {
+    name: "oportunidades_carros",
+    description: "Oportunidades de TROCA selecionadas com base no carro atual do usuário (valor pago, ano). Use para 'que carro você me recomenda?', 'quero trocar de carro', 'o que tem pra mim?'.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "criar_radar",
+    description: "Deixa um carro desejado NO RADAR: salva o pedido, avisa a loja (lead) e o usuário será notificado quando o carro aparecer. Use quando o carro que o usuário quer NÃO está no estoque.",
+    parameters: {
+      type: "object",
+      properties: {
+        marca: { type: "string" }, modelo: { type: "string" }, cor: { type: "string" },
+        preco_max: { type: "number" }, ano_min: { type: "number" }, km_max: { type: "number" },
+        obs: { type: "string", description: "Preferências extras (câmbio, teto solar…)" },
+      },
+    },
   },
   {
     name: "registrar_receita",
@@ -822,6 +875,63 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       const loc = await getCarLocation(vehicle);
       if (!loc) return { ok: false, error: "rastreador_indisponivel", message: "O rastreamento por GPS é um recurso opcional e não está ativo nesta conta." };
       return { ok: true, endereco: loc.address, lat: loc.lat, lng: loc.lng, em_movimento: loc.speed > 0, velocidade_kmh: Math.round(loc.speed), mapa: `https://maps.google.com/?q=${loc.lat},${loc.lng}` };
+    }
+
+    if (name === "buscar_carros") {
+      const cars = await mktVehicles({
+        search: args?.busca, brand: args?.marca,
+        maxPrice: Number(args?.preco_max) > 0 ? Number(args.preco_max) : undefined,
+        minYear: Number(args?.ano_min) > 0 ? Number(args.ano_min) : undefined,
+        maxMileage: Number(args?.km_max) > 0 ? Number(args.km_max) : undefined,
+        limit: 6,
+      });
+      if (!cars.length) return { ok: true, total: 0, message: "Nada no estoque com esses critérios. Ofereça criar_radar pro usuário ser avisado quando aparecer." };
+      return { ok: true, total: cars.length, carros: cars.map((v: any) => mktResumo(v, user.referral_code)) };
+    }
+
+    if (name === "oportunidades_carros") {
+      let cars: any[] = [];
+      let criterio = "destaques do estoque";
+      if (vehicle?.valor_compra && Number(vehicle.valor_compra) > 0) {
+        const v = Number(vehicle.valor_compra);
+        criterio = `upgrade a partir do ${vehicle.marca || ""} ${vehicle.modelo || ""} (referência R$ ${v})`;
+        cars = await mktVehicles({ minPrice: Math.round(v * 0.9), maxPrice: Math.round(v * 1.9), minYear: vehicle.ano_modelo || undefined, limit: 6 });
+        if (!cars.length) cars = await mktVehicles({ minPrice: Math.round(v * 0.7), limit: 6 });
+      } else {
+        const res = await fetch(`${MARKETPLACE_URL}/api/vehicles/featured?limit=6`);
+        const d = await res.json().catch(() => []);
+        cars = Array.isArray(d) ? d : (d?.data || []);
+      }
+      const own = `${vehicle?.marca || ""} ${vehicle?.modelo || ""}`.trim().toLowerCase();
+      if (own) cars = cars.filter((c: any) => `${c.brand} ${c.model}`.toLowerCase() !== own || c.year !== vehicle?.ano_modelo);
+      return { ok: true, criterio, carros: cars.slice(0, 6).map((c: any) => mktResumo(c, user.referral_code)) };
+    }
+
+    if (name === "criar_radar") {
+      const row = {
+        user_id: user.id,
+        brand: args?.marca || null, model: args?.modelo || null, color: args?.cor || null,
+        max_price: Number(args?.preco_max) > 0 ? Number(args.preco_max) : null,
+        min_year: Number(args?.ano_min) > 0 ? Number(args.ano_min) : null,
+        max_km: Number(args?.km_max) > 0 ? Number(args.km_max) : null,
+        notes: args?.obs || null, active: true,
+      };
+      if (!row.brand && !row.model && !row.max_price) return { ok: false, error: "criterios_insuficientes", message: "Pergunte ao menos marca, modelo ou faixa de preço." };
+      const { data: created, error } = await supabase.from("car_radar").insert(row).select("id").single();
+      if (error) return { ok: false, error: error.message };
+      const desejo = [row.brand, row.model, row.min_year ? `a partir de ${row.min_year}` : "", row.color, row.max_km ? `até ${row.max_km} km` : "", row.max_price ? `até R$ ${row.max_price}` : ""].filter(Boolean).join(", ");
+      try {
+        const res = await fetch(`${MARKETPLACE_URL}/api/leads/contact`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nome: user.name || "Cliente TotexCar", email: user.email || "", telefone: user.phone || "",
+            assunto: "RADAR TotexCar Co-pilot — carro procurado",
+            mensagem: `Cliente deixou no radar (via WhatsApp): ${desejo}.${row.notes ? ` Obs: ${row.notes}.` : ""} Carro atual: ${vehicle ? `${vehicle.marca || ""} ${vehicle.modelo || ""} ${vehicle.ano_modelo || ""}` : "não informado"}.${user.dealership ? ` Loja de origem: ${user.dealership}.` : ""}`,
+          }),
+        });
+        if (res.ok) await supabase.from("car_radar").update({ lead_sent: true }).eq("id", created.id);
+      } catch { /* lead falhou: radar segue salvo */ }
+      return { ok: true, radar_id: created.id, message: "Radar ativado e loja avisada. O usuário pode acompanhar em Garagem Totex no app." };
     }
 
     if (name === "registrar_receita") {
@@ -1181,6 +1291,8 @@ MULTAS: se a foto for um auto de infração/notificação:
 Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.join(", ")}. Use is_new_category=true só se nenhuma existente servir.
 
 MOTORISTA PRO (TotexCar Co-pilot PRO): MODO PRO do usuário: ${user.driver_mode ? "ATIVO" : "inativo"}. Se ativo, trate o carro como NEGÓCIO: registre ganhos (registrar_receita) além dos gastos, e responda "quanto sobrou?" com lucro_periodo (receita − despesa, lucro por km). Na PRIMEIRA receita registrada, dê boas-vindas ao Modo PRO e explique o resumo semanal. Se alguém sem Modo PRO mandar print de ganhos, registre normalmente (o modo ativa sozinho).
+
+GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do ecossistema Totexmotors — entende profundamente de carros (versões, motores, consumo, confiabilidade, custo de manutenção, revenda) e tem acesso ao ESTOQUE REAL das lojas via ferramentas. Quando o usuário falar em comprar/trocar/procurar carro: (1) entenda a necessidade (uso, família, orçamento) e CRUZE com o que você já sabe dele (carro atual, km rodados, consumo, gastos — use resumo_financeiro/consumo_medio se ajudar); (2) use buscar_carros ou oportunidades_carros; (3) recomende 2–3 opções explicando O PORQUÊ de cada uma pro perfil dele, sempre com o link; (4) se não houver no estoque, ofereça criar_radar ("te aviso quando chegar"). Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista, honesto sobre prós e contras — e, quando fizer sentido, conecte ao estoque. Para vender/avaliar o carro atual, indique a Garagem Totex no app (/garagem) ou a Recompra FIPE.
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".
 
