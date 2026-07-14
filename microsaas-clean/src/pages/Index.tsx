@@ -11,6 +11,7 @@ import { useMonthlyStats, useTotalSpent, useFuelThisMonth } from "@/hooks/useTra
 import { useVehicle } from "@/hooks/useAccounts";
 import { WhatsAppConnectCard } from "@/components/WhatsAppConnectCard";
 import { ConsumoCard } from "@/components/dashboard/ConsumoCard";
+import { CustoCard } from "@/components/dashboard/CustoCard";
 import { LucroProCard } from "@/components/dashboard/LucroProCard";
 
 const Index = () => {
@@ -108,8 +109,11 @@ const Index = () => {
       {/* Modo Motorista PRO: convite ou lucro da semana */}
       <LucroProCard />
 
-      {/* Consumo (litros vs km — alimentado pelo Co-pilot) */}
-      <ConsumoCard />
+      {/* Consumo (litros vs km) + Custo real por km — alimentados pelo Co-pilot */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ConsumoCard />
+        <CustoCard />
+      </div>
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

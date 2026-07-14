@@ -297,6 +297,16 @@ function accessBlocked(u: any): boolean {
   return !ends || ends < Date.now();
 }
 
+// classifica a categoria do gasto num "balde" (pra onde vai o dinheiro) — usado no custo_por_km
+function bucketOf(cat: string): string {
+  const c = (cat || "").toLowerCase();
+  if (/combust|gasolin|etanol|diesel|carga|abastec/.test(c)) return "Combustível";
+  if (/financ|parcela|boleto/.test(c)) return "Financiamento";
+  if (/ipva|seguro|licenc|multa|document|dpvat|estacion|ped[aá]gio/.test(c)) return "Fixos (imposto/seguro)";
+  if (/manuten|pe[çc]a|pneu|[óo]leo|revis|mec|funilar|lavagem|acess/.test(c)) return "Manutenção";
+  return "Outros";
+}
+
 async function buildSnapshot(userId: string, vehicle: any) {
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
@@ -694,6 +704,11 @@ const TOOL_SPECS = [
     },
   },
   {
+    name: "custo_por_km",
+    description: "Custo REAL do carro: quanto custa por KM rodado e por MÊS, e pra onde vai o dinheiro (combustível, manutenção, impostos/seguro, financiamento). Use para 'quanto meu carro me custa?', 'custo por km', 'quanto gasto por mês com o carro?'. Sem datas = tudo que foi registrado.",
+    parameters: { type: "object", properties: { de: { type: "string", description: "AAAA-MM-DD (opcional)" }, ate: { type: "string", description: "AAAA-MM-DD (opcional)" } } },
+  },
+  {
     name: "boleto_parcela",
     description: "Consulta o financiamento do usuário: próxima parcela (número, valor, vencimento) e a LINHA DIGITÁVEL do boleto salvo, se houver. Use quando o usuário pedir o boleto/código de barras da parcela.",
     parameters: { type: "object", properties: {} },
@@ -988,6 +1003,39 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         ok: true, de, ate,
         receita: Number(receita.toFixed(2)), despesa: Number(despesa.toFixed(2)), lucro,
         km_rodados: km, lucro_por_km: km && km > 0 ? Number((lucro / km).toFixed(2)) : null,
+      };
+    }
+
+    if (name === "custo_por_km") {
+      const hasDe = /^\d{4}-\d{2}-\d{2}$/.test(String(args?.de));
+      const hasAte = /^\d{4}-\d{2}-\d{2}$/.test(String(args?.ate));
+      let q = supabase.from("transactions")
+        .select("amount, odometer, transaction_date, created_at, categories(name)")
+        .eq("user_id", user.id).eq("type", "expense");
+      if (hasDe) q = q.gte("transaction_date", args.de);
+      if (hasAte) q = q.lte("transaction_date", args.ate);
+      const { data: tx } = await q;
+      const exp = (tx || []).filter((t: any) => Math.abs(Number(t.amount)) > 0);
+      if (exp.length < 2) return { ok: true, suficiente: false, message: "Ainda não tenho gastos suficientes (com km do hodômetro) pra calcular o custo por km. Peça pra registrar os gastos com a foto do hodômetro." };
+      const total = exp.reduce((s: number, t: any) => s + Math.abs(Number(t.amount)), 0);
+      // km: soma incrementos plausíveis entre leituras (descarta salto/typo de odômetro)
+      const leituras = exp.filter((t: any) => Number(t.odometer) > 0).map((t: any) => Number(t.odometer)).sort((a: number, b: number) => a - b);
+      let km = 0;
+      for (let i = 1; i < leituras.length; i++) { const d = leituras[i] - leituras[i - 1]; if (d > 0 && d <= 15000) km += d; }
+      const datas = exp.map((t: any) => t.transaction_date || t.created_at).filter(Boolean).sort();
+      const dias = datas.length >= 2 ? Math.max(1, (new Date(datas[datas.length - 1]).getTime() - new Date(datas[0]).getTime()) / 86400000) : 30;
+      const meses = Math.max(0.5, dias / 30.44);
+      const byBucket: Record<string, number> = {};
+      exp.forEach((t: any) => { const b = bucketOf(t.categories?.name || ""); byBucket[b] = (byBucket[b] || 0) + Math.abs(Number(t.amount)); });
+      return {
+        ok: true, suficiente: true, desde: datas[0], ate: datas[datas.length - 1],
+        total_gasto: Number(total.toFixed(2)),
+        km_rodados: km,
+        custo_por_km: km > 0 ? Number((total / km).toFixed(2)) : null,
+        custo_mensal: Number((total / meses).toFixed(2)),
+        meses: Number(meses.toFixed(1)),
+        por_categoria: byBucket,
+        obs: "Custo de dinheiro real gasto; ainda não inclui depreciação do carro.",
       };
     }
 
@@ -1312,6 +1360,7 @@ REGRA DE OURO DO REGISTRO: se a mensagem JÁ TEM o valor em R$ (ex.: "500 de die
 
 CONSUMO (regra importante): para medir o consumo eu preciso do km a cada abastecimento. SEMPRE que registrar um COMBUSTÍVEL sem o km (a ferramenta retorna pedir_hodometro=true), PEÇA uma FOTO DO HODÔMETRO (ou o km digitado) e explique que é assim que eu meço o consumo. Faça o mesmo em manutenções/revisões (ex.: troca de óleo).
 APRESENTAÇÃO DO CONSUMO (sempre simples, litros vs km): "Você rodou X km e usou Y litros → Z km/L". Se houver média e custo: acrescente "Média: W km/L · combustível custa R$ V por km rodado". Nada de jargão.
+CUSTO DO CARRO: para "quanto meu carro custa?", "custo por km", "quanto gasto por mês" → use custo_por_km (retorna custo/km, custo/mês e pra onde vai o dinheiro). Pro MOTORISTA DE APP, deixe claro que esse é o custo que come o ganho — cruze com lucro_periodo quando fizer sentido. É custo real gasto; ainda não inclui depreciação.
 CONSUMO OFICIAL (INMETRO/PBE): ${consumoOficialStr ? `dados oficiais do carro do dono: ${consumoOficialStr}. Quando fizer sentido, COMPARE o consumo REAL dele (consumo_medio) com o oficial: se o real estiver bem abaixo do oficial, sugira causas (calibragem dos pneus, filtro de ar, trânsito, ar-condicionado, pé pesado); se estiver em linha ou acima, elogie. Se o carro for FLEX e ele abastecer com etanol, lembre que é normal render menos km/L que a referência de gasolina. Cite que é dado oficial (INMETRO), com naturalidade.` : "ainda não disponível para este carro (buscando)."}
 
 MULTAS: se a foto for um auto de infração/notificação:
