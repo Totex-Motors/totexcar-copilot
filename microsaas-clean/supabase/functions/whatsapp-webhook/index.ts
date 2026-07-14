@@ -1261,6 +1261,18 @@ Deno.serve(async (req) => {
       } catch { /* melhor esforço; o app também gera no cadastro */ }
     }
 
+    // Consumo oficial (INMETRO/PBE via Auto Data): mesmo padrão — usa cache ou gera em background
+    let consumoOficialStr = "";
+    const co = (vehicle as any)?.consumo_oficial;
+    if (co && !co.nao_encontrado) {
+      consumoOficialStr = JSON.stringify(co);
+    } else if (!co && vehicle && (vehicle.marca || vehicle.modelo)) {
+      try {
+        const gen = supabase.functions.invoke("car-consumo", { body: { account_id: vehicle.id } });
+        (globalThis as any).EdgeRuntime?.waitUntil?.(gen) ?? gen.catch(() => {});
+      } catch { /* melhor esforço */ }
+    }
+
     const snapshot = await buildSnapshot(user.id, vehicle);
     const { data: cats } = await supabase.from("categories").select("name, type");
     const despesas = (cats || []).filter((c: any) => c.type === "expense").map((c: any) => c.name);
@@ -1300,6 +1312,7 @@ REGRA DE OURO DO REGISTRO: se a mensagem JÁ TEM o valor em R$ (ex.: "500 de die
 
 CONSUMO (regra importante): para medir o consumo eu preciso do km a cada abastecimento. SEMPRE que registrar um COMBUSTÍVEL sem o km (a ferramenta retorna pedir_hodometro=true), PEÇA uma FOTO DO HODÔMETRO (ou o km digitado) e explique que é assim que eu meço o consumo. Faça o mesmo em manutenções/revisões (ex.: troca de óleo).
 APRESENTAÇÃO DO CONSUMO (sempre simples, litros vs km): "Você rodou X km e usou Y litros → Z km/L". Se houver média e custo: acrescente "Média: W km/L · combustível custa R$ V por km rodado". Nada de jargão.
+CONSUMO OFICIAL (INMETRO/PBE): ${consumoOficialStr ? `dados oficiais do carro do dono: ${consumoOficialStr}. Quando fizer sentido, COMPARE o consumo REAL dele (consumo_medio) com o oficial: se o real estiver bem abaixo do oficial, sugira causas (calibragem dos pneus, filtro de ar, trânsito, ar-condicionado, pé pesado); se estiver em linha ou acima, elogie. Se o carro for FLEX e ele abastecer com etanol, lembre que é normal render menos km/L que a referência de gasolina. Cite que é dado oficial (INMETRO), com naturalidade.` : "ainda não disponível para este carro (buscando)."}
 
 MULTAS: se a foto for um auto de infração/notificação:
 1) EXTRAIA: órgão autuador, nº do auto, data/hora, local, enquadramento (art. do CTB/código), valor, pontos, placa, prazo de defesa/recurso e, se for radar, nº do equipamento e data de aferição.

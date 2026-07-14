@@ -42,8 +42,9 @@ export const useCreateAccount = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      // gera a ficha técnica do carro (IA + web) em background p/ o concierge
+      // gera ficha técnica (IA+web) e consumo oficial (INMETRO) em background p/ o concierge
       supabase.functions.invoke('car-spec', { body: {} }).catch(() => {});
+      supabase.functions.invoke('car-consumo', { body: {} }).catch(() => {});
     },
   });
 };
@@ -58,7 +59,9 @@ export const useUpdateAccount = () => {
     mutationFn: async ({ id, updates }: { id: string; updates: AccountUpdate }) => {
       // se a identidade do carro mudou, zera a ficha p/ o car-spec regenerar
       const identityChanged = FICHA_KEYS.some((k) => k in (updates as any));
-      const payload: any = identityChanged ? { ...updates, ficha_tecnica: null, ficha_at: null, ficha_fonte: null } : updates;
+      const payload: any = identityChanged
+        ? { ...updates, ficha_tecnica: null, ficha_at: null, ficha_fonte: null, consumo_oficial: null, consumo_oficial_at: null }
+        : updates;
       const { data, error } = await supabase
         .from('accounts')
         .update(payload)
@@ -72,6 +75,7 @@ export const useUpdateAccount = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       supabase.functions.invoke('car-spec', { body: {} }).catch(() => {});
+      supabase.functions.invoke('car-consumo', { body: {} }).catch(() => {});
     },
   });
 };
