@@ -42,27 +42,36 @@ export const useCreateAccount = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      // gera a ficha técnica do carro (IA + web) em background p/ o concierge
+      supabase.functions.invoke('car-spec', { body: {} }).catch(() => {});
     },
   });
 };
 
+// campos que, ao mudar, invalidam a ficha técnica (identidade do carro)
+const FICHA_KEYS = ['marca', 'modelo', 'ano_modelo', 'ano_fabricacao', 'combustivel'];
+
 export const useUpdateAccount = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: AccountUpdate }) => {
+      // se a identidade do carro mudou, zera a ficha p/ o car-spec regenerar
+      const identityChanged = FICHA_KEYS.some((k) => k in (updates as any));
+      const payload: any = identityChanged ? { ...updates, ficha_tecnica: null, ficha_at: null, ficha_fonte: null } : updates;
       const { data, error } = await supabase
         .from('accounts')
-        .update(updates)
+        .update(payload)
         .eq('id', id)
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      supabase.functions.invoke('car-spec', { body: {} }).catch(() => {});
     },
   });
 };

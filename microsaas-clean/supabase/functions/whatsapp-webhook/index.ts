@@ -1250,6 +1250,17 @@ Deno.serve(async (req) => {
       .from("accounts").select("*").eq("user_id", user.id).eq("is_active", true).limit(1);
     const vehicle = vehicles && vehicles.length ? vehicles[0] : null;
 
+    // Ficha técnica do carro (concierge): usa se já existe; se não, gera em background p/ a próxima vez
+    let fichaStr = "";
+    if (vehicle?.ficha_tecnica) {
+      fichaStr = JSON.stringify(vehicle.ficha_tecnica);
+    } else if (vehicle && (vehicle.marca || vehicle.modelo)) {
+      try {
+        const gen = supabase.functions.invoke("car-spec", { body: { account_id: vehicle.id } });
+        (globalThis as any).EdgeRuntime?.waitUntil?.(gen) ?? gen.catch(() => {});
+      } catch { /* melhor esforço; o app também gera no cadastro */ }
+    }
+
     const snapshot = await buildSnapshot(user.id, vehicle);
     const { data: cats } = await supabase.from("categories").select("name, type");
     const despesas = (cats || []).filter((c: any) => c.type === "expense").map((c: any) => c.name);
@@ -1305,6 +1316,8 @@ MULTAS: se a foto for um auto de infração/notificação:
 Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.join(", ")}. Use is_new_category=true só se nenhuma existente servir.
 
 MOTORISTA PRO (TotexCar Co-pilot PRO): MODO PRO do usuário: ${user.driver_mode ? "ATIVO" : "inativo"}. Se ativo, trate o carro como NEGÓCIO: registre ganhos (registrar_receita) além dos gastos, e responda "quanto sobrou?" com lucro_periodo (receita − despesa, lucro por km). Na PRIMEIRA receita registrada, dê boas-vindas ao Modo PRO e explique o resumo semanal. Se alguém sem Modo PRO mandar print de ganhos, registre normalmente (o modo ativa sozinho).
+
+SEU CARRO — CONCIERGE TÉCNICO DO DONO: você é o concierge automotivo PESSOAL deste dono e conhece o carro DELE a fundo. ${fichaStr ? `FICHA TÉCNICA do carro (use como FONTE DA VERDADE): ${fichaStr}` : "A ficha técnica deste carro ainda está sendo montada — se perguntarem especificação, dê uma faixa honesta e diga que vai confirmar."} Cruze a ficha com os DADOS REAIS do dono (hodômetro, consumo calculado, gastos, próximas manutenções por km) pra dar dicas ESPECÍFICAS: qual óleo/pneu/vela e quando trocar, intervalo de revisão, o que fazer neste km, economia de combustível, e compare o consumo REAL com o esperado da ficha (ex.: "seu consumo tá abaixo do normal desse motor — pode ser calibragem/filtro"). Para elétrico/híbrido: cuidados de bateria (carga 20–80%), regeneração, autonomia. ⚠️ REGRA DE OURO: NUNCA invente número exato de óleo/pneu/torque/intervalo — use a ficha; se o dado não estiver nela, dê uma FAIXA e mande confirmar no manual do proprietário ou concessionária. Segurança e o bolso do dono em 1º lugar; seja proativo e didático.
 
 GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do ecossistema Totexmotors — entende profundamente de carros (versões, motores, consumo, confiabilidade, custo de manutenção, revenda) e tem acesso ao ESTOQUE REAL das lojas via ferramentas. Quando o usuário falar em comprar/trocar/procurar carro: (1) entenda a necessidade (uso, família, orçamento) e CRUZE com o que você já sabe dele (carro atual, km rodados, consumo, gastos — use resumo_financeiro/consumo_medio se ajudar); (2) use buscar_carros ou oportunidades_carros; (3) recomende 2–3 opções explicando O PORQUÊ de cada uma pro perfil dele, sempre com o link; (4) se não houver no estoque, ofereça criar_radar ("te aviso quando chegar"). Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista, honesto sobre prós e contras — e, quando fizer sentido, conecte ao estoque. Para vender/avaliar o carro atual, indique a Garagem Totex no app (/garagem) ou a Recompra FIPE.
 

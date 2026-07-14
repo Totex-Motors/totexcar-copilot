@@ -10,6 +10,7 @@ import { User, Car, CreditCard, Save, MessageCircle, Search, Loader2 } from "luc
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useUserProfile, useUpdateUserProfile } from "@/hooks/useUserProfile";
 import { useVehicle, useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
+import { FichaTecnicaCard } from "@/components/FichaTecnicaCard";
 import { supabase } from "@/integrations/supabase/client";
 import React, { useState } from "react";
 import { toast } from "@/hooks/use-toast";
@@ -451,6 +452,9 @@ const Settings = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Ficha técnica gerada por IA (mesma base do concierge no WhatsApp) */}
+      {vehicle && <FichaTecnicaCard vehicle={vehicle} />}
 
       {/* Assistente WhatsApp */}
       <Card className="border-0 shadow-premium-md bg-gradient-primary text-white">
