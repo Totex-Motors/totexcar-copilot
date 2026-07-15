@@ -854,6 +854,11 @@ const TOOL_SPECS = [
       required: ["assunto", "resumo", "urgencia"],
     },
   },
+  {
+    name: "link_acesso",
+    description: "Gera e ENVIA ao usuário um link SEGURO de acesso ao PAINEL WEB (login de uso único, sem senha, expira em ~1h). Use quando ele perguntar como acessar/entrar no app/site/painel, quiser 'ver o painel', ou pedir o link/login. NÃO existe app na Play Store/App Store — o acesso é este link (ou o próprio WhatsApp).",
+    parameters: { type: "object", properties: {} },
+  },
 ];
 
 type ToolCtx = { user: any; vehicle: any; today: string; inputText: string };
@@ -1242,6 +1247,25 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       return { ok: true, ticket_id: t.id, message: "Chamado aberto; responsável notificado no WhatsApp." };
     }
 
+    if (name === "link_acesso") {
+      // Link mágico de uso único (sem senha) — a conta da cortesia tem senha aleatória, então o acesso web é por aqui.
+      const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+      const base = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+      const email = user.email || `${String(user.phone || "").replace(/\D/g, "")}@totexcarfinance.app`;
+      try {
+        const { data: gen, error } = await supabase.auth.admin.generateLink({
+          type: "magiclink", email, options: { redirectTo: base },
+        });
+        const link = (gen as any)?.properties?.action_link;
+        if (error || !link) return { ok: false, error: "link_falhou", message: `Não consegui gerar o link agora. Diga ao usuário pra abrir ${base} e, se precisar, você tenta de novo.` };
+        // Envia direto pra garantir o token intacto (o modelo não deve reescrever o link).
+        await sendText(String(user.phone), `🔐 Aqui está seu acesso ao painel do TotexCar Co-pilot — link seguro, de uso único, válido por ~1 hora:\n${link}\n\nÉ só tocar pra entrar (não precisa de senha). Dica: no navegador, use "Adicionar à tela inicial" pra deixar como um atalho de app. 📲`);
+        return { ok: true, enviado: true, message: "Link de acesso enviado ao usuário. Apenas confirme em 1 frase que o link foi enviado e que é de uso único/expira em ~1h. NÃO repita o link." };
+      } catch (e) {
+        return { ok: false, error: "link_falhou", message: `Falha ao gerar o link: ${String((e as any)?.message || e)}. Oriente abrir ${base}.` };
+      }
+    }
+
     return { error: "ferramenta_desconhecida" };
   } catch (e) {
     return { error: String((e as any)?.message || e) };
@@ -1466,6 +1490,8 @@ Deno.serve(async (req) => {
     } catch { /* */ }
 
     const today = new Date().toISOString().split("T")[0];
+    const { data: appCfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+    const appUrl = (appCfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
     const system = `Você é o **TotexCar Co-pilot**, o assistente de IA do carro do usuário (ecossistema Totexmotors). Responda SEMPRE em português do Brasil, curto e amigável, no máximo 1 emoji.
 
 TIPOS DE MENSAGEM (identifique pela foto/texto):
@@ -1514,7 +1540,9 @@ Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e 
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".
 
-Regras: depois de registrar algo, confirme em 1 frase. Se faltar o valor, peça. Não invente dados — use as ferramentas. Localização por GPS é um recurso opcional; se não estiver ativo, explique com naturalidade.
+ACESSO / COMO USAR (ancore-se AQUI — nunca invente): o jeito PRINCIPAL de usar o TotexCar Co-pilot é AQUI no WhatsApp — o dono te manda foto de cupom, áudio ou pergunta, e você resolve. A conta dele JÁ está ativa; ele NÃO precisa criar login nem senha pra usar por aqui. Existe TAMBÉM um painel web em ${appUrl} — abre no NAVEGADOR (celular ou computador) e pode ser "adicionado à tela inicial" pra virar um atalho parecido com app (é um PWA). ⚠️ NÃO EXISTE aplicativo na Play Store nem na App Store, e "Totexmotors" é o MARKETPLACE de carros (site diferente) — NUNCA mande o dono baixar/procurar app em loja de aplicativos, nem procurar "Totexmotors". Se ele perguntar como acessar/entrar no painel/app/site, ou pedir pra logar, chame link_acesso (gera e envia um link SEGURO de uso único que já loga, sem senha). Se tiver dúvida sobre acesso, NÃO invente: mande o link ${appUrl} ou use abrir_chamado.
+
+Regras: depois de registrar algo, confirme em 1 frase. Se faltar o valor, peça. Não invente dados nem funcionalidades — use as ferramentas; se não souber, diga que vai verificar (abrir_chamado) em vez de chutar. Localização por GPS é um recurso opcional; se não estiver ativo, explique com naturalidade.
 
 Hoje é ${today}.
 ${historico ? `CONVERSA RECENTE (para contexto e correções):\n${historico}\n` : ""}
