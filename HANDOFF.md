@@ -66,6 +66,10 @@ o cliente segue com preço de membro R$10,99/mês pelo cupom da loja. Reaproveit
   cortesia (janela sponsored_at+380d) e manda "seu ano cortesia da {loja} acabou; continue por R$10,99/mês" (com cupom).
 - **Front:** `PostSaleTab` — checkbox "Oferecer 1 ano de cortesia (por conta da loja)", KPI/banner "cortesias ativas:
   N (R$X)", badge Cortesia na lista. **Admin** (`SponsorBalanceCard` na aba Lojistas) — saldo por loja + "marcar quitado".
+- **PROVISIONA O VEÍCULO JUNTO** (pedido do dono, "mais prático pro admin"): ao ativar cortesia, o dealer-api também
+  cria o `accounts` do cliente (`provisionVehicle`, idempotente — não duplica se já houver carro ativo). Campos opcionais
+  Placa + Valor de compra no form (só aparecem com cortesia). Se a placa for informada, `lookupPlate` consulta o provedor
+  (mesma lógica do edge `vehicle-lookup`, PuxaPlaca/API Brasil) e autopreenche marca/modelo/ano/cor/combustível/RENAVAM/chassi.
 Ver [[dealer-area]] e [[payments-and-config]].
 
 ---

@@ -145,6 +145,79 @@ async function recipientsFor(adminClient: any, dealership: string | null, audien
   return list;
 }
 
+// Consulta a placa no provedor configurado (mesma lógica do edge vehicle-lookup) para autopreencher o veículo.
+// Best-effort: qualquer falha/ausência de config retorna null (o veículo é criado só com o que houver).
+function flattenPlate(obj: any, out: Record<string, any> = {}): Record<string, any> {
+  if (!obj || typeof obj !== "object") return out;
+  for (const [k, v] of Object.entries(obj)) {
+    if (v && typeof v === "object") flattenPlate(v, out);
+    else { const key = k.toLowerCase().replace(/[^a-z0-9]/g, ""); if (out[key] == null && v != null && v !== "") out[key] = v; }
+  }
+  return out;
+}
+async function lookupPlate(placaRaw: string): Promise<Record<string, any> | null> {
+  const placa = String(placaRaw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (placa.length < 7) return null;
+  const { data: s } = await admin.from("app_settings").select("placa_api_url, placa_api_bearer, placa_api_device").eq("id", 1).single();
+  const bearer = s?.placa_api_bearer || "";
+  if (!bearer) return null;
+  const cfgUrl = s?.placa_api_url || "";
+  const isLegacy = /apibrasil|gateway/i.test(cfgUrl);
+  try {
+    let data: any = {};
+    if (isLegacy) {
+      const url = cfgUrl || "https://gateway.apibrasil.io/api/v2/vehicles/dados";
+      const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` };
+      if (s?.placa_api_device) headers["DeviceToken"] = s.placa_api_device;
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ placa }) });
+      if (!res.ok) return null;
+      data = await res.json().catch(() => ({}));
+    } else {
+      const base = (/puxaplaca/i.test(cfgUrl) ? cfgUrl : "https://api.puxaplaca.app").replace(/\/+$/, "");
+      const res = await fetch(`${base}/v2/consulta/${encodeURIComponent(placa)}`, { headers: { token: bearer, Accept: "application/json" } });
+      if (!res.ok) return null;
+      data = await res.json().catch(() => ({}));
+    }
+    const flat = flattenPlate(data);
+    const pick = (cands: string[]) => { for (const c of cands) { const key = c.toLowerCase().replace(/[^a-z0-9]/g, ""); if (flat[key] != null) return String(flat[key]); } return null; };
+    const toInt = (v: string | null) => { const n = parseInt(String(v ?? "").replace(/\D/g, ""), 10); return Number.isFinite(n) ? n : null; };
+    const tc = (v: string | null) => v ? v.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : v;
+    const veh = {
+      marca: tc(pick(["marca", "fabricante", "marcamodelo"])),
+      modelo: tc(pick(["modelo", "submodelo", "versao", "marcamodelo"])),
+      ano_fabricacao: toInt(pick(["anofabricacao", "ano", "anofab"])),
+      ano_modelo: toInt(pick(["anomodelo", "anomod", "ano"])),
+      cor: tc(pick(["cor", "corveiculo"])),
+      chassi: pick(["chassi", "chassis"]),
+      renavam: pick(["renavam"]),
+      combustivel: tc(pick(["combustivel", "tipocombustivel"])),
+    };
+    return Object.values(veh).some((v) => v != null) ? veh : null;
+  } catch { return null; }
+}
+
+// Cria o veículo (accounts) do cliente provisionado — deixa a conta pronta pra usar (mais prático pra loja/admin).
+// Idempotente: não duplica se o cliente já tiver um veículo ativo. Autopreenche pela placa quando informada.
+async function provisionVehicle(userId: string, opts: { car: string | null; placa: string | null; valor: number | null; dataCompra: string | null }): Promise<boolean> {
+  const { data: existing } = await admin.from("accounts").select("id").eq("user_id", userId).eq("is_active", true).limit(1);
+  if (existing && existing.length) return false; // já tem carro: não mexe
+
+  const placa = opts.placa ? String(opts.placa).toUpperCase().replace(/[^A-Z0-9]/g, "") : null;
+  const enrich = placa ? await lookupPlate(placa) : null;
+  const row: Record<string, unknown> = {
+    user_id: userId,
+    name: opts.car || (enrich ? [enrich.marca, enrich.modelo].filter(Boolean).join(" ") : "") || "Meu carro",
+    type: "carro", is_active: true,
+    placa: placa || null,
+    valor_compra: opts.valor && opts.valor > 0 ? opts.valor : null,
+    data_compra: opts.dataCompra || null,
+    ...(enrich || {}),
+  };
+  const { error } = await admin.from("accounts").insert(row);
+  if (error) { console.error("provisionVehicle:", error.message); return false; }
+  return true;
+}
+
 // Provisiona (ou reaproveita) a conta do cliente como PREMIUM por 1 ano — cortesia patrocinada pela loja.
 // Reaproveita o padrão do edge `integration` (provision_owner): email sintético telefone→@totexcarfinance.app.
 // Idempotente por email: se a conta já existe, só a promove a premium/sponsored. Devolve o user_id.
@@ -342,15 +415,21 @@ Deno.serve(async (req) => {
         const car = String(p.car_desc || "").trim() || null;
         const purchase = /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date)) ? p.purchase_date : new Date().toISOString().split("T")[0];
         const cortesia = p.cortesia === true || p.cortesia === "true";
+        const placa = String(p.placa || "").trim() || null;
+        const valorCompra = Number(p.valor_compra) > 0 ? Number(p.valor_compra) : null;
 
         const { data: cps } = await admin.from("coupons").select("code").eq("dealership", scopeDealership).eq("active", true).limit(1);
         const coupon = cps?.[0]?.code || null;
 
         // Cortesia da loja (assinatura patrocinada): PROVISIONA a conta premium por 1 ano por conta da loja (pós-pago).
         let provisionedUserId: string | null = null;
+        let vehicleCreated = false;
         if (cortesia) {
           try { provisionedUserId = await provisionSponsoredOwner(phone, name, scopeDealership, coupon); }
           catch (e) { return json({ error: "provisionamento_falhou", detail: String((e as any)?.message || e) }, 400); }
+          // Já deixa o veículo cadastrado (autopreenche pela placa quando houver) — mais prático pra loja/admin.
+          try { vehicleCreated = await provisionVehicle(provisionedUserId, { car, placa, valor: valorCompra, dataCompra: purchase }); }
+          catch (e) { console.error("provisionVehicle falhou:", e); }
         }
 
         const { data: created, error } = await admin.from("postsale_journeys").insert({
@@ -373,7 +452,7 @@ Deno.serve(async (req) => {
         let welcome = false;
         try { if (st?.uazapi_url && st?.uazapi_token) welcome = await uazapiSend(st, phone, msg); } catch { /* Uazapi off: cria a jornada mesmo assim */ }
         if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
-        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId });
+        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated });
       }
 
       case "postsale_transfer_save": {

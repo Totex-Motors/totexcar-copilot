@@ -40,7 +40,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
   const create = usePostsaleCreate();
   const saveCfg = usePostsaleConfigSave();
 
-  const [form, setForm] = useState({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "" });
+  const [form, setForm] = useState({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "" });
   const [cortesia, setCortesia] = useState(false);
   const [reviewUrl, setReviewUrl] = useState("");
   const [delay, setDelay] = useState("");
@@ -70,15 +70,17 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
       car_desc: form.car_desc || undefined,
       purchase_date: form.purchase_date || undefined,
       cortesia: cortesia || undefined,
+      placa: cortesia && form.placa ? form.placa : undefined,
+      valor_compra: cortesia && Number(form.valor_compra) > 0 ? Number(form.valor_compra) : undefined,
     }, {
       onSuccess: (r: any) => {
         toast({
           title: "Cliente registrado! 🎉",
           description: r?.sponsored
-            ? "Cortesia de 1 ano ativada — conta premium criada e boas-vindas enviadas."
+            ? `Cortesia de 1 ano ativada — conta premium criada${r?.vehicle_created ? " e veículo cadastrado" : ""}.`
             : r?.welcome_sent ? "Mensagem de boas-vindas enviada no WhatsApp." : "Jornada criada (WhatsApp não enviou — confira as credenciais).",
         });
-        setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "" });
+        setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "" });
         setCortesia(false);
         refresh();
       },
@@ -138,6 +140,15 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                 <span className="text-[12px] text-muted-foreground">A conta premium é criada na hora e o cliente usa grátis por 12 meses. Você não paga agora — vira saldo a acertar (R$ 109,90) e, ao vencer, o cliente continua por R$ 10,99/mês.</span>
               </span>
             </label>
+
+            {/* Com cortesia, já provisionamos o veículo do cliente — placa autopreenche marca/modelo/ano */}
+            {cortesia && (
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-dashed p-3">
+                <div className="col-span-2 text-[12px] text-muted-foreground -mb-1">Dados do veículo (opcional) — deixa a conta do cliente pronta pra usar. A placa autopreenche marca, modelo, ano e mais.</div>
+                <div className="space-y-1"><Label className="text-xs">Placa</Label><Input value={form.placa} onChange={(e) => setForm((p) => ({ ...p, placa: e.target.value.toUpperCase() }))} placeholder="ABC1D23" maxLength={8} /></div>
+                <div className="space-y-1"><Label className="text-xs">Valor de compra (R$)</Label><Input type="number" inputMode="decimal" value={form.valor_compra} onChange={(e) => setForm((p) => ({ ...p, valor_compra: e.target.value }))} placeholder="Ex.: 55000" /></div>
+              </div>
+            )}
 
             <Button onClick={registrar} disabled={create.isPending} className="gap-1.5">
               {create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} {cortesia ? "Registrar e ativar cortesia" : "Registrar e dar boas-vindas"}
