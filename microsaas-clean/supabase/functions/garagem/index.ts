@@ -20,9 +20,12 @@ const json = (b: unknown, s = 200) =>
 // Mapa de lojas (id → { credereEnabled, cnpj }) p/ liberar o botão "Simular financiamento".
 // O marketplace só mostra a simulação (Meu Credere) quando a loja tem credereEnabled + CNPJ;
 // espelhamos essa mesma regra aqui. Cache de 10 min (a lista /api/vehicles NÃO traz esses campos).
-let _dealers: Record<string, { credereEnabled: boolean; cnpj: string | null }> | null = null;
+type Dealer = { name: string | null; credereEnabled: boolean; cnpj: string | null };
+let _dealers: Record<string, Dealer> | null = null;
+let _dealerByName: Record<string, string> = {}; // nome (lower) → id, p/ escopar o cliente pela loja dele
 let _dealersAt = 0;
-let _dealersInflight: Promise<Record<string, { credereEnabled: boolean; cnpj: string | null }>> | null = null;
+let _dealersInflight: Promise<Record<string, Dealer>> | null = null;
+const normName = (s: string) => (s || "").trim().toLowerCase();
 async function loadDealers() {
   const now = Date.now();
   if (_dealers && now - _dealersAt < 10 * 60 * 1000) return _dealers;
@@ -33,15 +36,21 @@ async function loadDealers() {
       const res = await fetch(`${MARKETPLACE}/api/dealerships`, { headers: { Accept: "application/json" } });
       const d = await res.json().catch(() => []);
       const arr = Array.isArray(d) ? d : (d?.data || []);
-      const map: Record<string, { credereEnabled: boolean; cnpj: string | null }> = {};
-      for (const x of arr) if (x?.id) map[x.id] = { credereEnabled: !!x.credereEnabled, cnpj: x.cnpj || null };
-      if (res.ok && arr.length) { _dealers = map; _dealersAt = Date.now(); }
-      else if (!_dealers) _dealers = {}; // 429/erro: não trava a garagem (só fica sem botão de financiamento)
+      const map: Record<string, Dealer> = {};
+      const byName: Record<string, string> = {};
+      for (const x of arr) if (x?.id) { map[x.id] = { name: x.name || null, credereEnabled: !!x.credereEnabled, cnpj: x.cnpj || null }; if (x.name) byName[normName(x.name)] = x.id; }
+      if (res.ok && arr.length) { _dealers = map; _dealerByName = byName; _dealersAt = Date.now(); }
+      else if (!_dealers) _dealers = {}; // 429/erro: não trava a garagem
     } catch { if (!_dealers) _dealers = {}; }
     finally { _dealersInflight = null; }
     return _dealers!;
   })();
   return _dealersInflight;
+}
+// resolve a loja do cliente (nome em users.dealership) → id do marketplace (p/ escopar o estoque)
+function dealershipIdFromName(name?: string | null): string | null {
+  if (!name) return null;
+  return _dealerByName[normName(name)] || null;
 }
 
 // normaliza um veículo do marketplace pro shape do app (foto principal + link com ?ref do Indique)
@@ -118,7 +127,8 @@ Deno.serve(async (req) => {
   try {
     // ---------- BUSCAR / TROCAR (estoque com filtros) ----------
     if (action === "search") {
-      await loadDealers(); // mapa de lojas p/ financing_enabled (cacheado; só nas ações que renderizam carros)
+      await loadDealers(); // mapa de lojas p/ financing_enabled + escopo por loja do cliente
+      const scopeId = dealershipIdFromName(me?.dealership); // cliente de loja → vê SÓ o estoque dela
       const f = b.filters || {};
       const r = await fetchVehicles({
         search: f.search, brand: f.brand, model: f.model,
@@ -126,8 +136,9 @@ Deno.serve(async (req) => {
         minPrice: f.min_price, maxPrice: f.max_price,
         maxMileage: f.max_km, fuel: f.fuel, transmission: f.transmission,
         page: f.page || 1, limit: f.limit || 12, sort: f.sort,
+        dealershipId: scopeId || undefined,
       });
-      return json({ ok: true, total: r.total, total_pages: r.totalPages, cars: r.data.map((v: any) => normVehicle(v, refCode)) });
+      return json({ ok: true, total: r.total, total_pages: r.totalPages, scope: scopeId ? me?.dealership : null, cars: r.data.map((v: any) => normVehicle(v, refCode)) });
     }
 
     // ---------- marcas disponíveis (dropdown do filtro) ----------
@@ -140,6 +151,7 @@ Deno.serve(async (req) => {
     // ---------- OPORTUNIDADES (com base no carro atual) ----------
     if (action === "opportunities") {
       await loadDealers();
+      const scopeId = dealershipIdFromName(me?.dealership); // cliente de loja → só o estoque dela
       let cars: any[] = [];
       let base: any = null;
       if (acct?.valor_compra && Number(acct.valor_compra) > 0) {
@@ -148,10 +160,15 @@ Deno.serve(async (req) => {
         base = { tipo: "valor_compra", valor: v, carro: `${acct.marca || ""} ${acct.modelo || ""}`.trim(), ano: acct.ano_modelo };
         const r = await fetchVehicles({
           minPrice: Math.round(v * 0.9), maxPrice: Math.round(v * 1.9),
-          minYear: acct.ano_modelo || undefined, limit: 12, sort: "year_desc",
+          minYear: acct.ano_modelo || undefined, limit: 12, sort: "year_desc", dealershipId: scopeId || undefined,
         });
         cars = r.data;
-        if (!cars.length) { const r2 = await fetchVehicles({ minPrice: Math.round(v * 0.7), limit: 12 }); cars = r2.data; }
+        if (!cars.length) { const r2 = await fetchVehicles({ minPrice: Math.round(v * 0.7), limit: 12, dealershipId: scopeId || undefined }); cars = r2.data; }
+      } else if (scopeId) {
+        // cliente de loja sem valor de compra: mostra os destaques DA LOJA (não o marketplace todo)
+        base = { tipo: "loja" };
+        const r = await fetchVehicles({ dealershipId: scopeId, limit: 12, sort: "year_desc" });
+        cars = r.data;
       } else {
         base = { tipo: "destaques" };
         const res = await fetch(`${MARKETPLACE}/api/vehicles/featured?limit=12`);
@@ -161,7 +178,7 @@ Deno.serve(async (req) => {
       // não sugerir o próprio modelo/ano do cliente
       const own = `${acct?.marca || ""} ${acct?.modelo || ""}`.trim().toLowerCase();
       if (own) cars = cars.filter((v: any) => `${v.brand} ${v.model}`.toLowerCase() !== own || v.year !== acct?.ano_modelo);
-      return json({ ok: true, base, cars: cars.slice(0, 12).map((v: any) => normVehicle(v, refCode)) });
+      return json({ ok: true, base, scope: scopeId ? me?.dealership : null, cars: cars.slice(0, 12).map((v: any) => normVehicle(v, refCode)) });
     }
 
     // ---------- TENHO INTERESSE (lead vehicle-interest) ----------
@@ -196,6 +213,7 @@ Deno.serve(async (req) => {
     // ---------- RADAR / OFERTAS PARA MIM ----------
     if (action === "radar_list") {
       await loadDealers();
+      const scopeId = dealershipIdFromName(me?.dealership); // matches só da loja do cliente
       const { data: radars } = await admin.from("car_radar").select("*")
         .eq("user_id", userId).eq("active", true).order("created_at", { ascending: false });
       // pra cada radar, tenta casar com o estoque AO VIVO
@@ -206,7 +224,7 @@ Deno.serve(async (req) => {
           const q = await fetchVehicles({
             brand: r.brand || undefined, search: r.model || undefined,
             maxPrice: r.max_price || undefined, minYear: r.min_year || undefined,
-            maxMileage: r.max_km || undefined, limit: 6,
+            maxMileage: r.max_km || undefined, limit: 6, dealershipId: scopeId || undefined,
           });
           matches = q.data.map((v: any) => normVehicle(v, refCode));
         } catch { /* estoque indisponível: radar segue salvo */ }
@@ -226,6 +244,7 @@ Deno.serve(async (req) => {
       };
       if (!row.brand && !row.model && !row.max_price) return json({ error: "informe_marca_modelo_ou_preco" }, 400);
       await loadDealers();
+      const scopeId = dealershipIdFromName(me?.dealership); // matches só da loja do cliente
       const { data: created, error } = await admin.from("car_radar").insert(row).select("id").single();
       if (error) return json({ error: error.message }, 400);
 
@@ -242,7 +261,7 @@ Deno.serve(async (req) => {
       // devolve possíveis matches imediatos
       let matches: any[] = [];
       try {
-        const q = await fetchVehicles({ brand: row.brand || undefined, search: row.model || undefined, maxPrice: row.max_price || undefined, minYear: row.min_year || undefined, maxMileage: row.max_km || undefined, limit: 6 });
+        const q = await fetchVehicles({ brand: row.brand || undefined, search: row.model || undefined, maxPrice: row.max_price || undefined, minYear: row.min_year || undefined, maxMileage: row.max_km || undefined, limit: 6, dealershipId: scopeId || undefined });
         matches = q.data.map((v: any) => normVehicle(v, refCode));
       } catch { /* */ }
       return json({ ok: true, id: created.id, lead_enviado: lead.ok, matches });

@@ -40,7 +40,7 @@ async function call(action: string, extra: Record<string, unknown> = {}) {
 export const useGaragemSearch = (filters: GaragemFilters, enabled: boolean) =>
   useQuery({
     queryKey: ["garagem-search", filters],
-    queryFn: async () => (await call("search", { filters })) as { total: number; total_pages: number; cars: GaragemCar[] },
+    queryFn: async () => (await call("search", { filters })) as { total: number; total_pages: number; cars: GaragemCar[]; scope: string | null },
     enabled,
     staleTime: 60_000,
   });
@@ -56,7 +56,7 @@ export const useGaragemBrands = (enabled: boolean) =>
 export const useOportunidades = (enabled: boolean) =>
   useQuery({
     queryKey: ["garagem-oportunidades"],
-    queryFn: async () => (await call("opportunities")) as { base: any; cars: GaragemCar[] },
+    queryFn: async () => (await call("opportunities")) as { base: any; cars: GaragemCar[]; scope: string | null },
     enabled,
     staleTime: 1000 * 60 * 5,
   });

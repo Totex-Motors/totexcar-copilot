@@ -172,6 +172,7 @@ export default function Garagem() {
   const carregarMais = () => setApplied((p) => ({ ...p, page: (p.page || 1) + 1 }));
   const totalCars = search.data?.total ?? 0;
   const temMais = accumCars.length > 0 && accumCars.length < totalCars;
+  const scope = search.data?.scope || oport.data?.scope || null; // loja do cliente (estoque exclusivo)
 
   const enviarRadar = () => {
     salvarRadar.mutate({
@@ -206,11 +207,18 @@ export default function Garagem() {
           <p className="text-muted-foreground">
             Encontre seu próximo carro, avalie o atual e receba oportunidades selecionadas pelo seu Co-pilot.
           </p>
-          {vehicle && (
-            <Badge variant="outline" className="mt-1 gap-1.5"><Car className="w-3.5 h-3.5" />
-              Seu carro: {[vehicle.marca, vehicle.modelo, vehicle.ano_modelo].filter(Boolean).join(" ")}
-            </Badge>
-          )}
+          <div className="flex flex-wrap gap-2 mt-1">
+            {vehicle && (
+              <Badge variant="outline" className="gap-1.5"><Car className="w-3.5 h-3.5" />
+                Seu carro: {[vehicle.marca, vehicle.modelo, vehicle.ano_modelo].filter(Boolean).join(" ")}
+              </Badge>
+            )}
+            {scope && (
+              <Badge className="gap-1.5 bg-primary/10 text-primary border border-primary/25">
+                <Warehouse className="w-3.5 h-3.5" /> Estoque exclusivo da {scope}
+              </Badge>
+            )}
+          </div>
         </div>
 
         <Tabs defaultValue="buscar">
@@ -270,7 +278,7 @@ export default function Garagem() {
                 </div>
               </CardContent>
             </Card>
-            {search.data && <p className="text-sm text-muted-foreground">{totalCars} carro(s) no estoque Totexmotors</p>}
+            {search.data && <p className="text-sm text-muted-foreground">{totalCars} carro(s) no estoque {search.data.scope ? `da ${search.data.scope}` : "Totexmotors"}</p>}
             {search.isError && !accumCars.length ? (
               <div className="text-center py-10 space-y-3">
                 <p className="text-sm text-muted-foreground">O estoque está indisponível no momento (muitas buscas em sequência). Tente de novo em instantes.</p>
