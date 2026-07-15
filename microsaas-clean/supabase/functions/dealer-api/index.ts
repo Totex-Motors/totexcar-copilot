@@ -285,6 +285,73 @@ Deno.serve(async (req) => {
         return json({ ok: true, total: list.length, sent, failed, results });
       }
 
+      // ===================== SUCESSO DO CLIENTE / PÓS-VENDA (Fase 1) =====================
+      case "postsale_config": {
+        const { data: cfg } = await admin.from("dealership_settings").select("*").eq("dealership", scopeDealership).maybeSingle();
+        const { data: cps } = await admin.from("coupons").select("code").eq("dealership", scopeDealership).eq("active", true).limit(1);
+        return json({ ok: true, config: cfg || { dealership: scopeDealership, google_review_url: null, nps_delay_days: 3 }, coupon: cps?.[0]?.code || null });
+      }
+
+      case "postsale_config_save": {
+        if (!scopeDealership || scopeDealership === "__none__") return json({ error: "sem_loja" }, 400);
+        const { error } = await admin.from("dealership_settings").upsert({
+          dealership: scopeDealership,
+          google_review_url: p.google_review_url ? String(p.google_review_url).trim() : null,
+          nps_delay_days: Number(p.nps_delay_days) > 0 ? Number(p.nps_delay_days) : 3,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "dealership" });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      case "postsale_create": {
+        if (!scopeDealership || scopeDealership === "__none__") return json({ error: "sem_loja" }, 400);
+        const phone = String(p.customer_phone || "").replace(/\D/g, "");
+        if (phone.length < 10) return json({ error: "telefone_invalido" }, 400);
+        const name = String(p.customer_name || "").trim() || null;
+        const car = String(p.car_desc || "").trim() || null;
+        const purchase = /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date)) ? p.purchase_date : new Date().toISOString().split("T")[0];
+
+        const { data: cps } = await admin.from("coupons").select("code").eq("dealership", scopeDealership).eq("active", true).limit(1);
+        const coupon = cps?.[0]?.code || null;
+
+        const { data: created, error } = await admin.from("postsale_journeys").insert({
+          dealership: scopeDealership, customer_name: name, customer_phone: phone, car_desc: car,
+          purchase_date: purchase, coupon_code: coupon, created_by: me.id,
+        }).select("id").single();
+        if (error) return json({ error: error.message }, 400);
+
+        // Boas-vindas + convite pra ativar o Co-pilot com o bônus da loja (semi-automático)
+        const { data: st } = await admin.from("app_settings").select("uazapi_url, uazapi_token, app_url").eq("id", 1).single();
+        const appUrl = (st?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+        const link = `${appUrl}/entrar?tab=register${coupon ? `&coupon=${encodeURIComponent(coupon)}` : ""}`;
+        const msg = `Olá${name ? " " + name.split(" ")[0] : ""}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${scopeDealership}!\n\nComo nosso cliente, você ganhou acesso ao *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial:\n${link}\n\nQualquer dúvida é só chamar por aqui. Boa estrada! 🚗`;
+        let welcome = false;
+        try { if (st?.uazapi_url && st?.uazapi_token) welcome = await uazapiSend(st, phone, msg); } catch { /* Uazapi off: cria a jornada mesmo assim */ }
+        if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
+        return json({ ok: true, id: created.id, welcome_sent: welcome });
+      }
+
+      case "postsale_list": {
+        let q = admin.from("postsale_journeys").select("*").order("created_at", { ascending: false });
+        if (scopeDealership && scopeDealership !== "__none__") q = q.eq("dealership", scopeDealership);
+        const { data } = await q.limit(Number(p.limit) || 300);
+        return json({ ok: true, journeys: data || [] });
+      }
+
+      case "postsale_stats": {
+        let q = admin.from("postsale_journeys").select("nps_score");
+        if (scopeDealership && scopeDealership !== "__none__") q = q.eq("dealership", scopeDealership);
+        const { data } = await q;
+        const rows = data || [];
+        const scored = rows.filter((r: any) => r.nps_score != null);
+        const prom = scored.filter((r: any) => r.nps_score >= 9).length;
+        const det = scored.filter((r: any) => r.nps_score <= 6).length;
+        const pas = scored.length - prom - det;
+        const nps = scored.length ? Math.round(((prom - det) / scored.length) * 100) : null;
+        return json({ ok: true, total: rows.length, respondidos: scored.length, promotores: prom, passivos: pas, detratores: det, nps });
+      }
+
       default:
         return json({ error: "unknown_action" }, 400);
     }

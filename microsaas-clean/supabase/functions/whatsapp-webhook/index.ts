@@ -542,6 +542,47 @@ function isGaragemQuery(t: string): boolean {
   return /garagem\s*totex/i.test(t || "");
 }
 
+// Pós-venda (Sucesso do Cliente): se há um NPS pendente p/ este telefone e a resposta é um número 0–10,
+// registra a nota e roteia (detrator → alerta a loja; promotor/passivo → pede avaliação no Google).
+// Funciona mesmo p/ quem NÃO é usuário do app (o cliente comprou o carro mas pode não ter se cadastrado).
+async function handlePostsaleNps(phone: string, text: string): Promise<boolean> {
+  const { data: js } = await supabase.from("postsale_journeys")
+    .select("*").eq("customer_phone", phone).not("nps_asked_at", "is", null).is("nps_score", null)
+    .order("nps_asked_at", { ascending: false }).limit(1);
+  const j = js?.[0];
+  if (!j) return false;
+  const m = String(text || "").trim().match(/\b(10|[0-9])\b/);
+  if (!m) return false; // tem NPS pendente mas não veio número — deixa o fluxo normal seguir
+  const score = Number(m[1]);
+  const seg = score <= 6 ? "detrator" : score <= 8 ? "passivo" : "promotor";
+  await supabase.from("postsale_journeys")
+    .update({ nps_score: score, nps_at: new Date().toISOString(), status: seg }).eq("id", j.id);
+
+  const { data: dcfg } = await supabase.from("dealership_settings")
+    .select("google_review_url").eq("dealership", j.dealership).maybeSingle();
+  const reviewUrl = dcfg?.google_review_url || null;
+  const nome = j.customer_name ? " " + String(j.customer_name).split(" ")[0] : "";
+
+  if (seg === "detrator") {
+    await sendText(phone, `Poxa${nome}, sentimos muito que não tenha sido uma nota 10. 🙏 O que a gente poderia ter feito melhor? Pode escrever aqui — vai direto pro responsável da ${j.dealership} pra resolver.`);
+    const { data: dealers } = await supabase.from("users")
+      .select("phone").eq("role", "dealer").eq("dealership", j.dealership).not("phone", "is", null);
+    for (const d of dealers || []) {
+      const dp = onlyDigits(d.phone || "");
+      if (dp) await sendText(dp, `⚠️ *Alerta de pós-venda — ${j.dealership}*\nCliente ${j.customer_name || j.customer_phone} deu nota *${score}* no NPS${j.car_desc ? ` (${j.car_desc})` : ""}.\nContato: ${j.customer_phone}\nVale um contato rápido pra recuperar. 📞`);
+    }
+  } else if (seg === "promotor") {
+    const rev = reviewUrl ? `\n\n⭐ Já que curtiu, deixa uma avaliação no Google (leva 30s e ajuda demais a ${j.dealership}):\n${reviewUrl}` : "";
+    await sendText(phone, `Que alegria${nome}! 🎉 Muito obrigado pela nota ${score}!${rev}\n\nE se indicar um amigo que comprar, todo mundo ganha. 😉`);
+    if (reviewUrl) await supabase.from("postsale_journeys").update({ review_link_sent: true }).eq("id", j.id);
+  } else {
+    const rev = reviewUrl ? `\n\nSe puder, deixa uma avaliação rápida — ajuda muito a loja:\n${reviewUrl}` : "";
+    await sendText(phone, `Obrigado pela nota ${score}${nome}! 🙌 Vamos trabalhar pra ser 10 na próxima.${rev}`);
+    if (reviewUrl) await supabase.from("postsale_journeys").update({ review_link_sent: true }).eq("id", j.id);
+  }
+  return true;
+}
+
 async function getCarLocation(vehicle: any): Promise<{ address: string | null; lat: number; lng: number; speed: number; online: any; last_update: any; odometer: number | null } | null> {
   if (!vehicle) return null;
   const ctx = await sgAuthAndDevices();
@@ -1324,6 +1365,15 @@ Deno.serve(async (req) => {
   const eventId = evt?.id;
 
   try {
+    // Pós-venda: resposta de NPS (número 0–10) — antes do cadastro, funciona p/ quem ainda não é usuário
+    if (msg.kind !== "image") {
+      const npsText = msg.text || msg.transcription || "";
+      if (await handlePostsaleNps(msg.phone, npsText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "nps" } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, nps: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+    }
+
     const user = await findUserByPhone(msg.phone);
     if (!user) {
       await sendText(msg.phone, "Olá! 👋 Sou o TotexCar Co-pilot. Não encontrei seu cadastro — cadastre-se no app e use o mesmo número de WhatsApp para cuidar do seu carro por aqui.");

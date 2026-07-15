@@ -311,6 +311,47 @@ async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string) {
   return true;
 }
 
+// ---- Pós-venda / Sucesso do Cliente (Fase 1): NPS no D+atraso e aniversário da compra no D+365 ----
+async function runPostsale(): Promise<number> {
+  let sent = 0;
+  const { data: journeys } = await supabase.from("postsale_journeys")
+    .select("*").neq("status", "encerrado");
+  if (!journeys?.length) return 0;
+
+  // config por loja (atraso do NPS)
+  const { data: cfgs } = await supabase.from("dealership_settings").select("dealership, nps_delay_days");
+  const delayByLoja: Record<string, number> = {};
+  (cfgs || []).forEach((c: any) => { delayByLoja[c.dealership] = Number(c.nps_delay_days) || 3; });
+
+  const daysSince = (d: string) => -daysUntil(d);
+
+  for (const j of journeys) {
+    const phone = onlyDigits(j.customer_phone || "");
+    if (!phone) continue;
+    const nome = j.customer_name ? String(j.customer_name).split(" ")[0] : "";
+    const carro = j.car_desc ? ` seu ${j.car_desc}` : " seu carro";
+
+    // 1) NPS — uma vez, no D+atraso (default 3 dias), se ainda não perguntado
+    const delay = delayByLoja[j.dealership] ?? 3;
+    if (!j.nps_asked_at && j.nps_score == null && daysSince(j.purchase_date) >= delay) {
+      const msg = `Oi${nome ? " " + nome : ""}! Aqui é da ${j.dealership}. 🙂\nDe 0 a 10, o quanto você recomendaria a *${j.dealership}* a um amigo?\nResponda só com o número (0 a 10). Sua resposta ajuda demais! 🙏`;
+      await sendText(phone, msg);
+      await supabase.from("postsale_journeys").update({ nps_asked_at: new Date().toISOString() }).eq("id", j.id);
+      sent++;
+      continue; // não manda 2 coisas no mesmo dia
+    }
+
+    // 2) Aniversário da compra — 1 ano
+    if (!j.anniversary_sent && daysSince(j.purchase_date) >= 365) {
+      const msg = `🎉 Faz 1 ano que você comprou${carro} na ${j.dealership}! Obrigado pela confiança. Precisando de qualquer coisa com o carro, é só chamar. E se pensar em trocar, a gente te ajuda. 🚗`;
+      await sendText(phone, msg);
+      await supabase.from("postsale_journeys").update({ anniversary_sent: true }).eq("id", j.id);
+      sent++;
+    }
+  }
+  return sent;
+}
+
 Deno.serve(async (req) => {
   _uazapi = null;
   // proteção: aceita secret na query (usado pelo cron) — ou execução manual autenticada
@@ -394,6 +435,9 @@ Deno.serve(async (req) => {
         }
       } catch (e) { console.error("erro radar alerts:", e); }
     }
+
+    // Pós-venda / Sucesso do Cliente (NPS + aniversário) — independente dos usuários do app
+    try { sent += await runPostsale(); } catch (e) { console.error("erro postsale:", e); }
 
     return new Response(JSON.stringify({ ok: true, sent }), { headers: { "Content-Type": "application/json" } });
   } catch (e) {

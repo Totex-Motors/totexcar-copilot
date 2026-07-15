@@ -84,6 +84,48 @@ export const useClientJourney = (userId: string | null) =>
     enabled: !!userId,
   });
 
+// ===== Sucesso do Cliente / Pós-venda =====
+export interface PostsaleJourney {
+  id: string; dealership: string; customer_name: string | null; customer_phone: string;
+  car_desc: string | null; purchase_date: string; coupon_code: string | null;
+  status: string; welcome_sent: boolean; nps_asked_at: string | null; nps_score: number | null;
+  nps_at: string | null; review_link_sent: boolean; anniversary_sent: boolean; created_at: string;
+}
+export interface PostsaleStats { total: number; respondidos: number; promotores: number; passivos: number; detratores: number; nps: number | null; }
+export interface PostsaleConfig { dealership: string; google_review_url: string | null; nps_delay_days: number; }
+
+export const usePostsaleList = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["postsale-list", dealership || null],
+    queryFn: async () => ((await callDealer("postsale_list", dealership ? { dealership } : {})).journeys || []) as PostsaleJourney[],
+    enabled,
+  });
+
+export const usePostsaleStats = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["postsale-stats", dealership || null],
+    queryFn: async () => (await callDealer("postsale_stats", dealership ? { dealership } : {})) as PostsaleStats,
+    enabled,
+  });
+
+export const usePostsaleConfig = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["postsale-config", dealership || null],
+    queryFn: async () => (await callDealer("postsale_config", dealership ? { dealership } : {})) as { config: PostsaleConfig; coupon: string | null },
+    enabled,
+  });
+
+export const usePostsaleCreate = () =>
+  useMutation({
+    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string }) =>
+      callDealer("postsale_create", p),
+  });
+
+export const usePostsaleConfigSave = () =>
+  useMutation({
+    mutationFn: async (p: { google_review_url?: string; nps_delay_days?: number }) => callDealer("postsale_config_save", p),
+  });
+
 // ===== Campanhas (WhatsApp) =====
 export type CampaignAudience = "all" | "due_soon" | "single";
 

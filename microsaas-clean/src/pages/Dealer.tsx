@@ -18,8 +18,9 @@ import {
 import {
   Car, Users, LogOut, Search, Store, CalendarClock, Wallet,
   Phone, Mail, Gauge, AlertTriangle, ShieldCheck, BadgeCheck, Fuel,
-  Megaphone, Sparkles, Send, Loader2, MessageCircle, Banknote,
+  Megaphone, Sparkles, Send, Loader2, MessageCircle, Banknote, HeartHandshake,
 } from "lucide-react";
+import { PostSaleTab } from "@/components/dealer/PostSaleTab";
 import { useSearchParams } from "react-router-dom";
 import { useCurrentUser, useAuth } from "@/hooks/useAuth";
 import { AuthPage } from "@/pages/Auth";
@@ -192,6 +193,7 @@ export default function Dealer() {
             <TabsTrigger value="clientes" className="gap-2"><Users className="w-4 h-4" /> Clientes</TabsTrigger>
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="w-4 h-4" /> Campanhas</TabsTrigger>
             <TabsTrigger value="recompras" className="gap-2"><Banknote className="w-4 h-4" /> Recompras</TabsTrigger>
+            <TabsTrigger value="posvenda" className="gap-2"><HeartHandshake className="w-4 h-4" /> Sucesso do Cliente</TabsTrigger>
           </TabsList>
 
           <TabsContent value="clientes" className="mt-6 space-y-6">
@@ -256,6 +258,10 @@ export default function Dealer() {
 
           <TabsContent value="recompras" className="mt-6">
             <BuybackTab dealership={viewStore} />
+          </TabsContent>
+
+          <TabsContent value="posvenda" className="mt-6">
+            <PostSaleTab dealership={viewStore} />
           </TabsContent>
         </Tabs>
       </main>
