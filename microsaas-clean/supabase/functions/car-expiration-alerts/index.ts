@@ -283,6 +283,34 @@ async function maybeNotifyRadar(userId: string, phone: string, r: any, refCode?:
   return true;
 }
 
+// ---- Renovação da assinatura (cobrança AVULSA, sem auto-renovar) ----
+// Lembra o dono antes de vencer (5/3/1 dias) e, no vencimento, RE-BLOQUEIA (plan free + overdue)
+// e avisa pra renovar. Só p/ quem é premium pago (tem plan_expires_at).
+const RENEW_MARKS = [5, 3, 1];
+async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string) {
+  if (u.plan !== "premium" || !u.plan_expires_at) return false;
+  const dueDate = String(u.plan_expires_at).split("T")[0];
+  const days = daysUntil(dueDate);
+
+  if (days <= 0) {
+    // venceu: re-bloqueia no servidor (o app já bloqueia em tempo real) + avisa
+    const { error } = await supabase.from("notification_log")
+      .insert({ user_id: u.id, kind: `sub_expired:${u.id}`, due_date: dueDate, channel: "whatsapp" });
+    if (error) { if ((error as any).code === "23505") return false; console.error("log sub_expired:", error); return false; }
+    await supabase.from("users").update({ plan: "free", subscription_status: "overdue" }).eq("id", u.id);
+    await sendText(phone, `⚠️ Sua assinatura do TotexCar Co-pilot venceu. Pra continuar registrando gastos, consumo e usar o assistente, é só renovar:\n${appUrl}/plans`);
+    return true;
+  }
+
+  if (!RENEW_MARKS.includes(days)) return false;
+  const { error } = await supabase.from("notification_log")
+    .insert({ user_id: u.id, kind: `sub_renew:${u.id}:d${days}`, due_date: dueDate, channel: "whatsapp" });
+  if (error) { if ((error as any).code === "23505") return false; console.error("log sub_renew:", error); return false; }
+  const quando = days === 1 ? "amanhã" : `em ${days} dias`;
+  await sendText(phone, `🔔 Sua assinatura do TotexCar Co-pilot vence ${quando} (${fmt(dueDate)}). Renove pra não perder o acesso:\n${appUrl}/plans`);
+  return true;
+}
+
 Deno.serve(async (req) => {
   _uazapi = null;
   // proteção: aceita secret na query (usado pelo cron) — ou execução manual autenticada
@@ -298,7 +326,7 @@ Deno.serve(async (req) => {
 
     const { data: users } = await supabase
       .from("users")
-      .select("id, phone, cnh_vencimento, driver_mode, referral_code")
+      .select("id, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status")
       .not("phone", "is", null);
 
     for (const u of users || []) {
@@ -351,6 +379,9 @@ Deno.serve(async (req) => {
           if (await maybeNotifyMulta(u.id, phone, m, appUrl)) sent++;
         }
       } catch (e) { console.error("erro multas alerts:", e); }
+
+      // Renovação da assinatura (avulsa): lembra antes e re-bloqueia no vencimento
+      try { if (await maybeNotifyRenovacao(u, phone, appUrl)) sent++; } catch (e) { console.error("erro renovacao:", e); }
 
       // Radar da Garagem Totex (carro do desejo apareceu no estoque)
       try {

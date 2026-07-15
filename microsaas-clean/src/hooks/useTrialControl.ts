@@ -8,6 +8,10 @@ export interface TrialInfo {
   isPremium: boolean;
   isExpired: boolean;
   trialEndsAt: string | null;
+  /** validade da assinatura avulsa (premium) — null se não for premium pago */
+  subscriptionEndsAt: string | null;
+  /** dias até a assinatura premium vencer (null se não aplicável; negativo se já venceu) */
+  subscriptionDaysRemaining: number | null;
   /** true quando o dono não pode usar o app: trial expirou e não assinou, ou assinatura vencida/cancelada. Admin/lojista nunca bloqueiam. */
   isBlocked: boolean;
 }
@@ -21,6 +25,8 @@ export function useTrialControl() {
     isPremium: false,
     isExpired: false,
     trialEndsAt: null,
+    subscriptionEndsAt: null,
+    subscriptionDaysRemaining: null,
     isBlocked: false,
   });
   const [loading, setLoading] = useState(true);
@@ -63,10 +69,15 @@ export function useTrialControl() {
         return;
       }
 
-      const isPremium = userDataResult?.plan === 'premium';
+      // Assinatura AVULSA: premium vale até plan_expires_at. Venceu → deixa de ser premium (bloqueia),
+      // mesmo antes do cron rodar no servidor.
+      const planExpiresAt = (userDataResult as any)?.plan_expires_at || null;
+      const expMs = planExpiresAt ? new Date(planExpiresAt).getTime() : null;
+      const premiumExpired = userDataResult?.plan === 'premium' && expMs != null && expMs < Date.now();
+      const isPremium = userDataResult?.plan === 'premium' && !premiumExpired;
       const daysRemaining = daysData || 0;
       const isActive = isActiveData || isPremium;
-      const isExpired = !isPremium && daysRemaining <= 0;
+      const isExpired = !isPremium && (daysRemaining <= 0 || premiumExpired);
 
       // Bloqueio: só vale para o dono (owner). Admin/lojista nunca bloqueiam.
       const role = userDataResult?.role || 'owner';
@@ -74,14 +85,17 @@ export function useTrialControl() {
       const isBlocked =
         role === 'owner' &&
         !isPremium &&
-        (status === 'overdue' || status === 'canceled' || daysRemaining <= 0);
+        (status === 'overdue' || status === 'canceled' || daysRemaining <= 0 || premiumExpired);
 
+      const subDays = expMs != null ? Math.ceil((expMs - Date.now()) / 86400000) : null;
       setTrialInfo({
         isActive,
         daysRemaining: isPremium ? -1 : daysRemaining,
         isPremium,
         isExpired,
         trialEndsAt: userDataResult?.trial_ends_at || null,
+        subscriptionEndsAt: planExpiresAt,
+        subscriptionDaysRemaining: subDays,
         isBlocked,
       });
 
@@ -102,12 +116,25 @@ export function useTrialControl() {
   };
 
   const getTrialMessage = () => {
-    if (trialInfo.isPremium) return null;
-    
+    // Premium (assinatura avulsa): avisa quando está perto de vencer, pra renovar
+    if (trialInfo.isPremium) {
+      const d = trialInfo.subscriptionDaysRemaining;
+      if (d != null && d >= 0 && d <= 5) {
+        return {
+          type: (d <= 1 ? 'urgent' : 'warning') as 'urgent' | 'warning',
+          message: d === 0 ? 'Sua assinatura vence hoje. Renove para não perder o acesso.'
+            : `Sua assinatura vence em ${d} dia${d > 1 ? 's' : ''}. Renove para continuar sem interrupção.`,
+        };
+      }
+      return null;
+    }
+
     if (trialInfo.isExpired) {
       return {
         type: 'expired' as const,
-        message: 'Seu trial de 7 dias expirou. Faça upgrade para continuar usando todas as funcionalidades.',
+        message: trialInfo.subscriptionEndsAt
+          ? 'Sua assinatura venceu. Renove para continuar usando o TotexCar Co-pilot.'
+          : 'Seu trial de 7 dias expirou. Faça upgrade para continuar usando todas as funcionalidades.',
       };
     }
 

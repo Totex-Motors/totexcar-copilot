@@ -51,10 +51,17 @@ Deno.serve(async (req) => {
     }
 
     if (ACTIVATE.has(event)) {
+      // Cobrança AVULSA (sem auto-renovar): o acesso vale 1 período a partir de agora.
+      // A renovação é puxada pelo paywall + lembretes (car-expiration-alerts).
+      const { data: pre } = await admin.from("users").select("plan_cycle").eq("id", userId).single();
+      const annual = pre?.plan_cycle === "annual";
+      const exp = new Date();
+      if (annual) exp.setFullYear(exp.getFullYear() + 1); else exp.setMonth(exp.getMonth() + 1);
+
       await admin.from("users").update({
         plan: "premium",
         subscription_status: "active",
-        trial_ends_at: new Date(Date.now() + 3650 * 86400000).toISOString(),
+        plan_expires_at: exp.toISOString(),
       }).eq("id", userId);
 
       const { data: u } = await admin.from("users")
