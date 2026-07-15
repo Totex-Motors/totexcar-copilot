@@ -230,12 +230,30 @@ async function maybeNotifyMulta(userId: string, phone: string, m: any, appUrl: s
 // Cruza cada desejo salvo (car_radar) com o estoque AO VIVO do marketplace e avisa no WhatsApp
 // quando um carro NOVO (ainda não avisado) casa com o filtro. Dedup por (radar, veículo) no
 // notification_log usando a data de criação do radar como âncora estável → avisa 1x por carro.
-async function fetchRadarMatches(r: any) {
+// mapa nome-da-loja → dealershipId (p/ escopar o radar do cliente pela loja dele), cacheado no isolate
+let _dealerIds: Record<string, string> | null = null;
+async function dealerIdByName(name?: string | null): Promise<string | null> {
+  if (!name) return null;
+  if (!_dealerIds) {
+    try {
+      const res = await fetch(`${MARKETPLACE}/api/dealerships`, { headers: { Accept: "application/json" } });
+      const d = await res.json().catch(() => []);
+      const arr = Array.isArray(d) ? d : (d?.data || []);
+      const m: Record<string, string> = {};
+      for (const x of arr) if (x?.id && x?.name) m[String(x.name).trim().toLowerCase()] = x.id;
+      _dealerIds = m;
+    } catch { _dealerIds = {}; }
+  }
+  return _dealerIds[String(name).trim().toLowerCase()] || null;
+}
+
+async function fetchRadarMatches(r: any, dealershipId?: string | null) {
   const u = new URL(`${MARKETPLACE}/api/vehicles`);
   const params: Record<string, unknown> = {
     brand: r.brand || undefined, search: r.model || undefined,
     maxPrice: r.max_price || undefined, minYear: r.min_year || undefined,
     maxMileage: r.max_km || undefined, limit: 6,
+    dealershipId: dealershipId || undefined, // cliente de loja → só o estoque dela
   };
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
@@ -255,9 +273,12 @@ function carLine(v: any, refCode?: string | null) {
   return `*${title} ${v.year || ""}*\n${info}\n🔗 ${url}`;
 }
 
-async function maybeNotifyRadar(userId: string, phone: string, r: any, refCode?: string | null) {
+async function maybeNotifyRadar(userId: string, phone: string, r: any, refCode?: string | null, dealership?: string | null) {
   let matches: any[] = [];
-  try { matches = await fetchRadarMatches(r); } catch { return false; }
+  try {
+    const scopeId = await dealerIdByName(dealership); // cliente de loja: só notifica match da loja dele
+    matches = await fetchRadarMatches(r, scopeId);
+  } catch { return false; }
   if (!matches.length) return false;
 
   const anchor = String(r.created_at || "").split("T")[0] || "2000-01-01"; // data estável p/ dedup
@@ -402,7 +423,7 @@ Deno.serve(async (req) => {
 
     const { data: users } = await supabase
       .from("users")
-      .select("id, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status")
+      .select("id, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership")
       .not("phone", "is", null);
 
     for (const u of users || []) {
@@ -466,7 +487,7 @@ Deno.serve(async (req) => {
           .select("id, brand, model, max_price, min_year, max_km, created_at")
           .eq("user_id", u.id).eq("active", true);
         for (const r of radars || []) {
-          if (await maybeNotifyRadar(u.id, phone, r, (u as any).referral_code)) sent++;
+          if (await maybeNotifyRadar(u.id, phone, r, (u as any).referral_code, (u as any).dealership)) sent++;
         }
       } catch (e) { console.error("erro radar alerts:", e); }
     }
