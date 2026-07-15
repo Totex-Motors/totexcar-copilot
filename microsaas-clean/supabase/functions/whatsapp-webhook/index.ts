@@ -583,6 +583,28 @@ async function handlePostsaleNps(phone: string, text: string): Promise<boolean> 
   return true;
 }
 
+// Pós-venda: cliente pergunta sobre a transferência/documentação → responde o checklist da jornada dele.
+async function handlePostsaleTransfer(phone: string, text: string): Promise<boolean> {
+  if (!/transfer[êe]nc|transferir|documenta[çc]|meus? documento/i.test(text || "")) return false;
+  const { data: js } = await supabase.from("postsale_journeys")
+    .select("*").eq("customer_phone", phone).order("created_at", { ascending: false }).limit(1);
+  const j = js?.[0];
+  if (!j) return false;
+  const T = j.transfer || {};
+  const steps: Array<[string, any]> = [
+    ["Vistoria (se exigida)", T.vistoria],
+    ["ATPV-e (autorização) assinada", T.atpv],
+    ["Taxas do DETRAN pagas", T.taxas],
+    ["Débitos quitados (IPVA/multas)", T.debitos],
+    ["Comunicação de venda", T.comunicacao],
+    ["Novo documento (CRLV-e) em seu nome", T.crlv_novo],
+  ];
+  const statusTxt = j.transfer_status === "concluida" ? "✅ CONCLUÍDA" : j.transfer_status === "em_andamento" ? "⏳ em andamento" : "🕒 pendente";
+  const linhas = steps.map(([label, done]) => `${done ? "✅" : "⬜"} ${label}`).join("\n");
+  await sendText(phone, `📄 *Transferência do seu ${j.car_desc || "carro"}* (${j.dealership})\nStatus: ${statusTxt}\n\n${linhas}\n\nDúvida na documentação? É só falar com a ${j.dealership}. 🙌`);
+  return true;
+}
+
 async function getCarLocation(vehicle: any): Promise<{ address: string | null; lat: number; lng: number; speed: number; online: any; last_update: any; odometer: number | null } | null> {
   if (!vehicle) return null;
   const ctx = await sgAuthAndDevices();
@@ -1365,12 +1387,18 @@ Deno.serve(async (req) => {
   const eventId = evt?.id;
 
   try {
-    // Pós-venda: resposta de NPS (número 0–10) — antes do cadastro, funciona p/ quem ainda não é usuário
+    // Pós-venda (antes do cadastro, funciona p/ quem ainda não é usuário):
     if (msg.kind !== "image") {
-      const npsText = msg.text || msg.transcription || "";
-      if (await handlePostsaleNps(msg.phone, npsText)) {
+      const psText = msg.text || msg.transcription || "";
+      // resposta de NPS (número 0–10)
+      if (await handlePostsaleNps(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "nps" } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, nps: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // consulta de transferência/documentação
+      if (await handlePostsaleTransfer(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "transferencia" } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, transfer: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
     }
 

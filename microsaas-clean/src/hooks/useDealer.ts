@@ -90,6 +90,10 @@ export interface PostsaleJourney {
   car_desc: string | null; purchase_date: string; coupon_code: string | null;
   status: string; welcome_sent: boolean; nps_asked_at: string | null; nps_score: number | null;
   nps_at: string | null; review_link_sent: boolean; anniversary_sent: boolean; created_at: string;
+  transfer?: Record<string, boolean> | null;
+  transfer_status?: string;
+  warranty_until?: string | null;
+  revisao_proxima?: string | null;
 }
 export interface PostsaleStats { total: number; respondidos: number; promotores: number; passivos: number; detratores: number; nps: number | null; }
 export interface PostsaleConfig { dealership: string; google_review_url: string | null; nps_delay_days: number; }
@@ -124,6 +128,12 @@ export const usePostsaleCreate = () =>
 export const usePostsaleConfigSave = () =>
   useMutation({
     mutationFn: async (p: { google_review_url?: string; nps_delay_days?: number }) => callDealer("postsale_config_save", p),
+  });
+
+export const usePostsaleTransferSave = () =>
+  useMutation({
+    mutationFn: async (p: { id: string; transfer?: Record<string, boolean>; transfer_status?: string; warranty_until?: string | null; revisao_proxima?: string | null }) =>
+      callDealer("postsale_transfer_save", p),
   });
 
 // ===== Campanhas (WhatsApp) =====

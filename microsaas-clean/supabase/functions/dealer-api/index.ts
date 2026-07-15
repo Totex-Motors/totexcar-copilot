@@ -332,6 +332,37 @@ Deno.serve(async (req) => {
         return json({ ok: true, id: created.id, welcome_sent: welcome });
       }
 
+      case "postsale_transfer_save": {
+        if (!scopeDealership || scopeDealership === "__none__") return json({ error: "sem_loja" }, 400);
+        const id = String(p.id || "");
+        if (!id) return json({ error: "id_obrigatorio" }, 400);
+        const { data: j } = await admin.from("postsale_journeys").select("*").eq("id", id).eq("dealership", scopeDealership).maybeSingle();
+        if (!j) return json({ error: "jornada_nao_encontrada" }, 404);
+
+        const upd: Record<string, unknown> = {};
+        if (p.transfer && typeof p.transfer === "object") upd.transfer = p.transfer;
+        if (p.transfer_status) upd.transfer_status = String(p.transfer_status);
+        if ("warranty_until" in p) upd.warranty_until = /^\d{4}-\d{2}-\d{2}$/.test(String(p.warranty_until)) ? p.warranty_until : null;
+        if ("revisao_proxima" in p) upd.revisao_proxima = /^\d{4}-\d{2}-\d{2}$/.test(String(p.revisao_proxima)) ? p.revisao_proxima : null;
+
+        // ao CONCLUIR a transferência, avisa o cliente (uma vez)
+        const concluindo = upd.transfer_status === "concluida" && j.transfer_status !== "concluida" && !j.transfer_done_notified;
+        const { error } = await admin.from("postsale_journeys").update(upd).eq("id", id);
+        if (error) return json({ error: error.message }, 400);
+
+        if (concluindo) {
+          try {
+            const { data: st } = await admin.from("app_settings").select("uazapi_url, uazapi_token").eq("id", 1).single();
+            if (st?.uazapi_url && st?.uazapi_token) {
+              const nome = j.customer_name ? " " + String(j.customer_name).split(" ")[0] : "";
+              await uazapiSend(st, String(j.customer_phone).replace(/\D/g, ""), `✅ Boa notícia${nome}! A *transferência de propriedade*${j.car_desc ? ` do seu ${j.car_desc}` : ""} foi concluída pela ${scopeDealership}. Documentação em dia! 🎉 Qualquer coisa, é só chamar por aqui.`);
+              await admin.from("postsale_journeys").update({ transfer_done_notified: true }).eq("id", id);
+            }
+          } catch { /* Uazapi off */ }
+        }
+        return json({ ok: true, notificado: concluindo });
+      }
+
       case "postsale_list": {
         let q = admin.from("postsale_journeys").select("*").order("created_at", { ascending: false });
         if (scopeDealership && scopeDealership !== "__none__") q = q.eq("dealership", scopeDealership);

@@ -323,6 +323,11 @@ async function runPostsale(): Promise<number> {
   const delayByLoja: Record<string, number> = {};
   (cfgs || []).forEach((c: any) => { delayByLoja[c.dealership] = Number(c.nps_delay_days) || 3; });
 
+  // telefones dos lojistas por loja (p/ alertas à loja, ex.: transferência pendente)
+  const { data: dealers } = await supabase.from("users").select("phone, dealership").eq("role", "dealer").not("phone", "is", null);
+  const dealerPhones: Record<string, string[]> = {};
+  (dealers || []).forEach((d: any) => { const p = onlyDigits(d.phone || ""); if (p) (dealerPhones[d.dealership] ||= []).push(p); });
+
   const daysSince = (d: string) => -daysUntil(d);
 
   for (const j of journeys) {
@@ -341,7 +346,37 @@ async function runPostsale(): Promise<number> {
       continue; // não manda 2 coisas no mesmo dia
     }
 
-    // 2) Aniversário da compra — 1 ano
+    // 2) Transferência de propriedade pendente há >15 dias → alerta A LOJA (ela é quem processa)
+    if (j.transfer_status !== "concluida" && !j.transfer_reminded && daysSince(j.purchase_date) >= 15) {
+      const alvo = dealerPhones[j.dealership] || [];
+      for (const dp of alvo) {
+        await sendText(dp, `📄 *Pós-venda — ${j.dealership}*\nA transferência de propriedade do cliente ${j.customer_name || j.customer_phone}${j.car_desc ? ` (${j.car_desc})` : ""} está *pendente* há ${daysSince(j.purchase_date)} dias. Vale acompanhar pra não travar. 🙏`);
+      }
+      await supabase.from("postsale_journeys").update({ transfer_reminded: true }).eq("id", j.id);
+      if (alvo.length) { sent++; continue; }
+    }
+
+    // 3) Garantia perto de vencer (≤15 dias) → avisa o CLIENTE
+    if (j.warranty_until && !j.warranty_reminded) {
+      const d = daysUntil(String(j.warranty_until).split("T")[0]);
+      if (d >= 0 && d <= 15) {
+        await sendText(phone, `🛡️ A garantia${carro} (na ${j.dealership}) vence em ${d === 0 ? "HOJE" : d + " dia(s)"} (${fmt(String(j.warranty_until).split("T")[0])}). Aproveite pra fazer uma revisão/checagem antes de vencer.`);
+        await supabase.from("postsale_journeys").update({ warranty_reminded: true }).eq("id", j.id);
+        sent++; continue;
+      }
+    }
+
+    // 4) Próxima revisão agendada (≤7 dias) → avisa o CLIENTE
+    if (j.revisao_proxima && !j.revisao_reminded) {
+      const d = daysUntil(String(j.revisao_proxima).split("T")[0]);
+      if (d >= 0 && d <= 7) {
+        await sendText(phone, `🔧 Sua próxima revisão${carro} está chegando (${fmt(String(j.revisao_proxima).split("T")[0])}). Agende com a ${j.dealership} pra manter tudo em dia. 🚗`);
+        await supabase.from("postsale_journeys").update({ revisao_reminded: true }).eq("id", j.id);
+        sent++; continue;
+      }
+    }
+
+    // 5) Aniversário da compra — 1 ano
     if (!j.anniversary_sent && daysSince(j.purchase_date) >= 365) {
       const msg = `🎉 Faz 1 ano que você comprou${carro} na ${j.dealership}! Obrigado pela confiança. Precisando de qualquer coisa com o carro, é só chamar. E se pensar em trocar, a gente te ajuda. 🚗`;
       await sendText(phone, msg);

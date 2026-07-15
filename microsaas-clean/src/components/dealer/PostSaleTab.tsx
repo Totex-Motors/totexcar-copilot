@@ -6,10 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Star, Settings2, Smile, Meh, Frown, Send } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, UserPlus, Star, Settings2, Smile, Meh, Frown, Send, FileCheck, ShieldCheck } from "lucide-react";
 import {
-  usePostsaleList, usePostsaleStats, usePostsaleConfig, usePostsaleCreate, usePostsaleConfigSave,
+  usePostsaleList, usePostsaleStats, usePostsaleConfig, usePostsaleCreate, usePostsaleConfigSave, usePostsaleTransferSave,
+  type PostsaleJourney,
 } from "@/hooks/useDealer";
+
+const TRANSFER_STEPS: Array<[string, string]> = [
+  ["vistoria", "Vistoria (se exigida)"],
+  ["atpv", "ATPV-e (autorização) assinada"],
+  ["taxas", "Taxas do DETRAN pagas"],
+  ["debitos", "Débitos quitados (IPVA/multas)"],
+  ["comunicacao", "Comunicação de venda"],
+  ["crlv_novo", "Novo CRLV-e em nome do comprador"],
+];
 
 const STATUS: Record<string, { label: string; cls: string; Icon: any }> = {
   ativo: { label: "Aguardando", cls: "bg-muted text-muted-foreground", Icon: Send },
@@ -31,6 +42,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "" });
   const [reviewUrl, setReviewUrl] = useState("");
   const [delay, setDelay] = useState("");
+  const [editing, setEditing] = useState<PostsaleJourney | null>(null);
 
   // sincroniza os campos de config quando carregam
   const cfg = cfgData?.config;
@@ -144,6 +156,10 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                     <div className="flex items-center gap-2 shrink-0">
                       {j.nps_score != null && <span className="text-sm font-bold">{j.nps_score}<span className="text-muted-foreground text-xs">/10</span></span>}
                       <Badge className={`gap-1 ${st.cls}`}><st.Icon className="w-3 h-3" /> {st.label}</Badge>
+                      <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => setEditing(j)}>
+                        <FileCheck className="w-3.5 h-3.5" />
+                        {j.transfer_status === "concluida" ? "Transf. ✅" : "Documentação"}
+                      </Button>
                     </div>
                   </div>
                 );
@@ -152,7 +168,81 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
           )}
         </CardContent>
       </Card>
+
+      {editing && <TransferDialog journey={editing} onClose={() => setEditing(null)} onSaved={refresh} />}
     </div>
+  );
+}
+
+// Editor do checklist de transferência + garantia/revisão (a loja atualiza; o cliente consulta pelo agente)
+function TransferDialog({ journey, onClose, onSaved }: { journey: PostsaleJourney; onClose: () => void; onSaved: () => void }) {
+  const save = usePostsaleTransferSave();
+  const [steps, setSteps] = useState<Record<string, boolean>>({ ...(journey.transfer || {}) });
+  const [status, setStatus] = useState(journey.transfer_status || "pendente");
+  const [warranty, setWarranty] = useState(journey.warranty_until || "");
+  const [revisao, setRevisao] = useState(journey.revisao_proxima || "");
+
+  const done = TRANSFER_STEPS.filter(([k]) => steps[k]).length;
+  const toggle = (k: string) => setSteps((p) => ({ ...p, [k]: !p[k] }));
+
+  const salvar = () => {
+    // se marcou tudo, sugere concluída; se marcou algo, em andamento
+    const autoStatus = done === TRANSFER_STEPS.length ? "concluida" : done > 0 ? "em_andamento" : status;
+    save.mutate(
+      { id: journey.id, transfer: steps, transfer_status: status === "concluida" ? "concluida" : autoStatus, warranty_until: warranty || null, revisao_proxima: revisao || null },
+      {
+        onSuccess: (r: any) => {
+          toast({ title: "Salvo ✅", description: r?.notificado ? "Cliente avisado da conclusão no WhatsApp." : undefined });
+          onSaved(); onClose();
+        },
+        onError: (e: any) => toast({ title: "Erro ao salvar", description: String(e?.message || e), variant: "destructive" }),
+      },
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><FileCheck className="w-5 h-5 text-primary" /> Transferência — {journey.customer_name || journey.customer_phone}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Checklist ({done}/{TRANSFER_STEPS.length})</Label>
+            {TRANSFER_STEPS.map(([k, label]) => (
+              <button key={k} type="button" onClick={() => toggle(k)}
+                className="w-full flex items-center gap-2.5 rounded-lg border p-2.5 text-left text-sm hover:bg-muted/50 transition-colors">
+                <span className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${steps[k] ? "bg-primary text-white" : "border"}`}>{steps[k] ? "✓" : ""}</span>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Status</Label>
+            <div className="flex gap-2">
+              {[["pendente", "Pendente"], ["em_andamento", "Em andamento"], ["concluida", "Concluída"]].map(([v, l]) => (
+                <Button key={v} type="button" size="sm" variant={status === v ? "default" : "outline"} className="flex-1" onClick={() => setStatus(v)}>{l}</Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1"><Label className="text-xs flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> Garantia até</Label><Input type="date" value={warranty} onChange={(e) => setWarranty(e.target.value)} /></div>
+            <div className="space-y-1"><Label className="text-xs">Próxima revisão</Label><Input type="date" value={revisao} onChange={(e) => setRevisao(e.target.value)} /></div>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground">Ao marcar tudo (ou status “Concluída”), o cliente recebe um WhatsApp avisando que a documentação está em dia. Ele também pode consultar o andamento perguntando “como está minha transferência?”.</p>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+            <Button onClick={salvar} disabled={save.isPending} className="gap-1.5">
+              {save.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />} Salvar
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
