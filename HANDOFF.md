@@ -1,13 +1,83 @@
 # HANDOFF — Totex_CAR_FINANCE (TCF) — continuação do projeto
 
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
-> Última atualização: 2026-06-23.
+> Última atualização: 2026-07-15.
 
 ---
 
-## 0. ESTADO ATUAL (2026-06-24) — LER PRIMEIRO
+## 0-A. ESTADO ATUAL (2026-07-14/15) — LER PRIMEIRO (sessão mais recente)
 
-App no ar em **https://microsaas-clean.vercel.app**. Supabase TCF `gkkjhnzkqhpgrwrmofev`.
+App no ar em **https://totexcarco-pilot.vercel.app** (deploy automático via push na `main`). Supabase TCF
+`gkkjhnzkqhpgrwrmofev`. Deploy de edge = Supabase CLI (`C:\Users\marco\Downloads\supabase\supabase.exe
+functions deploy <fn> --project-ref gkkjhnzkqhpgrwrmofev [--no-verify-jwt]`) — ⚠️ AJUSTAR config.toml antes
+(sed `ip_version "ipv6"→"IPv6"` e comentar `email_double_confirm_changes`) e REVERTER depois.
+
+### Feito nesta sessão (tudo no ar, commitado)
+1. **Garagem:** paginação "Mostrar mais carros", tabs viraram cards clicáveis, **radar cron** (Fase 2: avisa no
+   WhatsApp quando carro do desejo aparece — dedup por `radar:{radarId}:{vehId}`).
+2. **Fix layout mobile** das listas de transações (data/valor espremidos).
+3. **Botão "Simular financiamento"** nos cards da Garagem → **popup Meu Credere via iframe** dentro do app
+   (`app.meucredere.com.br/simulador/loja/{cnpj}/veiculo/detectar`), só p/ lojas com `credereEnabled && cnpj`
+   (edge lê `/api/dealerships`). Ver [[garagem-totex]].
+4. **Fix Garagem "nenhum carro":** era rate-limit **429** do marketplace (loadDealers em toda ação). Corrigido:
+   loadDealers só onde renderiza carro + dedup in-flight + retry em 429 no fetchVehicles.
+5. **Concierge por DESEJO, não upgrade:** pergunta o que o dono quer antes de sugerir; `buscar_carros` é o
+   caminho principal, `oportunidades_carros` virou extra.
+6. **Ficha técnica IA+web** (edge `car-spec`, gpt-4o-search-preview) + `FichaTecnicaCard` + persona concierge
+   técnico no agente. `accounts.ficha_tecnica jsonb`.
+7. **Consumo oficial INMETRO** (Auto Data API, creds em `app_settings.autodata_*`): edge `car-consumo` casa
+   carro→consumo oficial (guarda de ano ±3) → `ConsumoCard` compara real vs oficial + concierge. Ver [[autodata-consumo-oficial]].
+8. **CPK (custo real por km)**: `useCusto`+`CustoCard`+tool `custo_por_km` (km robusto por incrementos de odômetro). NÃO inclui depreciação (próximo: FIPE).
+9. **Pontos da CNH**: `src/lib/cnhPoints.ts`+`CnhPointsCard` em /multas+tool `pontos_cnh` (regra CTB 20/30/40).
+10. **Menu WhatsApp** virou LISTA de 4 opções + **🚗 Garagem Totex** (link `totexmotors.com/comprar`).
+11. **SSL totexmotors.com fora do ar:** era **cert Let's Encrypt vencido no VPS `72.60.56.238`** (nginx+Next.js,
+    NÃO é hospedagem compartilhada nem culpa do nosso app). Fix = SSH no VPS + `certbot renew`. RESOLVIDO pelo dono.
+    (VPS srv870361/31.97.168.52 = totexcrm.com.br, é OUTRO servidor.)
+12. **⭐ Fix pagamento (Asaas):** chave era de homologação com sandbox=false → 401; +restrição de IP. Regra NOVA
+    do Asaas: PIX não pode RECURRENT e enviar customerData exige CPF+endereço. Corrigido em `create-checkout`:
+    `chargeTypes:["DETACHED"]` + `["CREDIT_CARD","PIX"]`, SEM customerData (Asaas coleta na tela). Escolha do dono:
+    **avulso, sem auto-renovar**. Token do webhook tinha espaço no início (limpo). Ver [[payments-and-config]].
+13. **⭐ Validade/renovação:** `users.plan_expires_at` gravado no `asaas-webhook` (=hoje+1 período pelo plan_cycle);
+    paywall (`useTrialControl`) bloqueia premium vencido em tempo real; cron `car-expiration-alerts` lembra 5/3/1
+    dias antes e re-bloqueia no vencimento. Quem pagou antes (expires nulo) = premium sem vencer (não bloqueia retroativo).
+14. **⭐ Módulo SUCESSO DO CLIENTE (pós-venda) — Fase 1 e 2 no ar.** Ver [[dealer-area]]. Aba "Sucesso do Cliente"
+    no /lojista. F1: loja registra cliente → boas-vindas WhatsApp c/ link+cupom do Co-pilot → NPS D+atraso +
+    aniversário (cron `runPostsale`) → cliente responde 0-10 (webhook `handlePostsaleNps`, funciona p/ não-usuário)
+    → detrator alerta a loja, promotor recebe link de avaliação Google (sem gating). F2: checklist de
+    transferência/documentação + garantia/revisão (dealer-api `postsale_transfer_save`, agente `handlePostsaleTransfer`).
+    Tabelas `postsale_journeys` + `dealership_settings`. **Fase 3 (agente responde avaliações Google) = pendente
+    aprovação da Google Business Profile API** (checklist passado ao dono; 1 aprovação do app + OAuth por loja).
+15. **Garagem ESTOQUE EXCLUSIVO por loja:** cliente com `users.dealership` vê SÓ os carros da loja dele
+    (search/oportunidades/radar app + radar cron), via `dealershipId`. Cliente sem loja vê tudo. Ver [[garagem-totex]].
+
+### ⏳ EM ANDAMENTO — parar aqui (CORTESIA DA LOJA / assinatura patrocinada)
+Ideia do dono: cliente da loja NÃO paga — a **loja patrocina 1 ano (R$109,90)** como benefício; ao vencer, passa a
+ser cobrado do cliente (que segue com preço de membro R$10,99/mês pelo cupom da loja). **Decisões do dono:**
+(a) **PÓS-PAGO** — loja dá a cortesia sem pagar na hora; sistema acumula "saldo devedor" visível no painel da loja +
+admin; acerto depois. (b) **AUTO-PROVISIONA a conta** (reusar `provision_owner`).
+**Reaproveita a máquina de validade/renovação (item 13):** basta setar premium + `plan_expires_at = hoje+1 ano` +
+marcar sponsored; o cron/paywall já re-bloqueiam e lembram no vencimento (converte a R$10,99/mês com o cupom da loja).
+**O que falta construir:**
+- Migração: em `postsale_journeys` add `sponsored bool`, `sponsored_value numeric default 109.90`, `sponsored_at
+  timestamptz`, `sponsor_settled bool default false`, `user_id uuid` (conta provisionada).
+- `dealer-api postsale_create` ganha param `cortesia:boolean`. Se true → PROVISIONA a conta (createUser +
+  perfil owner) com email sintético (padrão TCF: telefone→email `@totexcarfinance.app`; ver `provision_owner` no
+  edge `integration`: `admin.auth.admin.createUser({email,password,email_confirm:true})` + update users role owner +
+  dealership + coupon_code), setar `plan='premium'`, `plan_expires_at = now+1 ano`, `subscription_status='active'`,
+  sponsored=true, sponsored_value=109.90, user_id no journey. Boas-vindas: "1 ano GRÁTIS cortesia da {loja}!".
+- Saldo devedor por loja = SUM(sponsored_value) WHERE sponsored AND NOT sponsor_settled → mostrar em `postsale_stats`
+  (loja vê o seu) + admin (total por loja + botão "marcar quitado").
+- Front `PostSaleTab`: checkbox "Oferecer 1 ano de cortesia (por conta da loja)" no form de registrar + KPI "cortesias
+  ativas: N (R$X)".
+- Lembrete de renovação para SPONSORED deve dizer "seu ano cortesia da {loja} acabou; continue por R$10,99/mês".
+⚠️ provision_owner usa `admin.auth.admin.createUser` (service role) — o dealer-api já tem admin service role, dá pra
+replicar. Idempotente por email (se já existe, reaproveita). Ver [[dealer-area]] e [[payments-and-config]].
+
+---
+
+## 0. ESTADO ATUAL (2026-06-24) — histórico
+
+App no ar em **https://microsaas-clean.vercel.app** (agora redireciona p/ totexcarco-pilot). Supabase TCF `gkkjhnzkqhpgrwrmofev`.
 
 ### Feito em 2026-06-24 (parte 2) — FASE 1 do "IA Co-piloto": TOOL USE no agente — no ar
 - **`whatsapp-webhook` migrado para function calling (tool use)** — o agente deixou de ser "schema único"
