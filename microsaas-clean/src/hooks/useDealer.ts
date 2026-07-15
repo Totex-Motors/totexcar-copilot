@@ -94,8 +94,13 @@ export interface PostsaleJourney {
   transfer_status?: string;
   warranty_until?: string | null;
   revisao_proxima?: string | null;
+  sponsored?: boolean;
+  sponsored_value?: number;
+  sponsor_settled?: boolean;
+  user_id?: string | null;
 }
-export interface PostsaleStats { total: number; respondidos: number; promotores: number; passivos: number; detratores: number; nps: number | null; }
+export interface PostsaleStats { total: number; respondidos: number; promotores: number; passivos: number; detratores: number; nps: number | null; cortesias_ativas?: number; cortesias_valor?: number; }
+export interface SponsorBalance { lojas: { dealership: string; count: number; total: number }[]; total: number; }
 export interface PostsaleConfig { dealership: string; google_review_url: string | null; nps_delay_days: number; }
 
 export const usePostsaleList = (enabled: boolean, dealership?: string) =>
@@ -121,8 +126,21 @@ export const usePostsaleConfig = (enabled: boolean, dealership?: string) =>
 
 export const usePostsaleCreate = () =>
   useMutation({
-    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string }) =>
+    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean }) =>
       callDealer("postsale_create", p),
+  });
+
+// Admin: saldo devedor de cortesias por loja + quitar
+export const useSponsorBalance = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["postsale-sponsor-balance"],
+    queryFn: async () => (await callDealer("postsale_sponsor_balance")) as SponsorBalance,
+    enabled,
+  });
+
+export const useSponsorSettle = () =>
+  useMutation({
+    mutationFn: async (dealership: string) => callDealer("postsale_sponsor_settle", { dealership }),
   });
 
 export const usePostsaleConfigSave = () =>

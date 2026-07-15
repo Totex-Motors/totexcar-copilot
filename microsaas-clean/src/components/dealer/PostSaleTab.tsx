@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, UserPlus, Star, Settings2, Smile, Meh, Frown, Send, FileCheck, ShieldCheck } from "lucide-react";
+import { Loader2, UserPlus, Star, Settings2, Smile, Meh, Frown, Send, FileCheck, ShieldCheck, Gift } from "lucide-react";
 import {
   usePostsaleList, usePostsaleStats, usePostsaleConfig, usePostsaleCreate, usePostsaleConfigSave, usePostsaleTransferSave,
   type PostsaleJourney,
@@ -40,6 +41,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
   const saveCfg = usePostsaleConfigSave();
 
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "" });
+  const [cortesia, setCortesia] = useState(false);
   const [reviewUrl, setReviewUrl] = useState("");
   const [delay, setDelay] = useState("");
   const [editing, setEditing] = useState<PostsaleJourney | null>(null);
@@ -67,10 +69,17 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
       customer_phone: form.customer_phone,
       car_desc: form.car_desc || undefined,
       purchase_date: form.purchase_date || undefined,
+      cortesia: cortesia || undefined,
     }, {
       onSuccess: (r: any) => {
-        toast({ title: "Cliente registrado! 🎉", description: r?.welcome_sent ? "Mensagem de boas-vindas enviada no WhatsApp." : "Jornada criada (WhatsApp não enviou — confira as credenciais)." });
+        toast({
+          title: "Cliente registrado! 🎉",
+          description: r?.sponsored
+            ? "Cortesia de 1 ano ativada — conta premium criada e boas-vindas enviadas."
+            : r?.welcome_sent ? "Mensagem de boas-vindas enviada no WhatsApp." : "Jornada criada (WhatsApp não enviou — confira as credenciais).",
+        });
         setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "" });
+        setCortesia(false);
         refresh();
       },
       onError: (e: any) => toast({ title: "Não foi possível registrar", description: String(e?.message || e), variant: "destructive" }),
@@ -94,6 +103,20 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
         <Kpi label="Detratores" value={String(stats?.detratores ?? 0)} accent="text-red-600" />
       </div>
 
+      {/* Cortesias patrocinadas pela loja (pós-pago) */}
+      {(stats?.cortesias_ativas ?? 0) > 0 && (
+        <Card className="border-0 shadow-premium-md bg-primary/5">
+          <CardContent className="p-4 flex items-center gap-3">
+            <Gift className="w-5 h-5 text-primary shrink-0" />
+            <p className="text-sm">
+              <strong>{stats?.cortesias_ativas}</strong> cortesia(s) ativa(s) — saldo a acertar:{" "}
+              <strong>{(stats?.cortesias_valor ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+              <span className="text-muted-foreground"> · você oferece 1 ano do Co-pilot e acerta com a Totex depois (pós-pago).</span>
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Registrar cliente */}
         <Card className="border-0 shadow-premium-md">
@@ -106,8 +129,18 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
               <div className="space-y-1"><Label className="text-xs">Carro</Label><Input value={form.car_desc} onChange={(e) => setForm((p) => ({ ...p, car_desc: e.target.value }))} placeholder="Ex.: Onix 2020" /></div>
               <div className="space-y-1"><Label className="text-xs">Data da compra</Label><Input type="date" value={form.purchase_date} onChange={(e) => setForm((p) => ({ ...p, purchase_date: e.target.value }))} /></div>
             </div>
+
+            {/* Cortesia da loja: assinatura patrocinada (pós-pago) */}
+            <label className="flex items-start gap-2.5 rounded-lg border border-primary/30 bg-primary/5 p-3 cursor-pointer">
+              <Checkbox checked={cortesia} onCheckedChange={(v) => setCortesia(v === true)} className="mt-0.5" />
+              <span className="text-sm">
+                <span className="font-medium flex items-center gap-1.5"><Gift className="w-4 h-4 text-primary" /> Oferecer 1 ano de cortesia (por conta da loja)</span>
+                <span className="text-[12px] text-muted-foreground">A conta premium é criada na hora e o cliente usa grátis por 12 meses. Você não paga agora — vira saldo a acertar (R$ 109,90) e, ao vencer, o cliente continua por R$ 10,99/mês.</span>
+              </span>
+            </label>
+
             <Button onClick={registrar} disabled={create.isPending} className="gap-1.5">
-              {create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} Registrar e dar boas-vindas
+              {create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} {cortesia ? "Registrar e ativar cortesia" : "Registrar e dar boas-vindas"}
             </Button>
           </CardContent>
         </Card>
@@ -154,6 +187,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {j.sponsored && <Badge className="gap-1 bg-primary/15 text-primary"><Gift className="w-3 h-3" /> {j.sponsor_settled ? "Cortesia (quitada)" : "Cortesia"}</Badge>}
                       {j.nps_score != null && <span className="text-sm font-bold">{j.nps_score}<span className="text-muted-foreground text-xs">/10</span></span>}
                       <Badge className={`gap-1 ${st.cls}`}><st.Icon className="w-3 h-3" /> {st.label}</Badge>
                       <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => setEditing(j)}>

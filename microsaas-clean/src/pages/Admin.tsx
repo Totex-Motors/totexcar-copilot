@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Switch } from "@/components/ui/switch";
-import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Navigation } from "lucide-react";
+import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Navigation, Gift } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -24,6 +24,8 @@ import {
   useDealers, useCreateDealer, useDeleteDealer, type Dealer,
   useStores,
 } from "@/hooks/useAdmin";
+import { useSponsorBalance, useSponsorSettle } from "@/hooks/useDealer";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Seletor de loja: escolhe da lista oficial do marketplace (evita divergência de nome)
 function StoreField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -361,6 +363,8 @@ function DealersTab() {
         </CardContent>
       </Card>
 
+      <div className="lg:col-span-3"><SponsorBalanceCard /></div>
+
       <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -388,6 +392,72 @@ function DealersTab() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+// Saldo devedor de cortesias (assinaturas patrocinadas pelas lojas, pós-pago) — o admin acerta com cada loja
+function SponsorBalanceCard() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useSponsorBalance(true);
+  const settle = useSponsorSettle();
+  const [toSettle, setToSettle] = useState<{ dealership: string; count: number; total: number } | null>(null);
+  const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  return (
+    <Card className="border-0 shadow-premium-md">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center justify-between">
+          <span className="flex items-center gap-2"><Gift className="w-5 h-5 text-primary" /> Cortesias patrocinadas (saldo a receber das lojas)</span>
+          {data && <span className="text-sm font-normal text-muted-foreground">Total: <strong className="text-foreground">{brl(data.total)}</strong></span>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="p-8 text-center text-muted-foreground">Carregando...</div>
+        ) : data && data.lojas.length ? (
+          <div className="divide-y divide-border">
+            {data.lojas.map((l) => (
+              <div key={l.dealership} className="flex items-center justify-between p-4">
+                <div>
+                  <p className="font-medium flex items-center gap-2"><Store className="w-4 h-4" /> {l.dealership}</p>
+                  <p className="text-sm text-muted-foreground">{l.count} cortesia(s) × R$ 109,90 = <strong>{brl(l.total)}</strong></p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setToSettle(l)}>Marcar quitado</Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-muted-foreground">Nenhuma cortesia em aberto. As lojas que oferecerem 1 ano grátis aparecem aqui pra acerto.</div>
+        )}
+      </CardContent>
+
+      <AlertDialog open={!!toSettle} onOpenChange={(o) => !o && setToSettle(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Marcar cortesias como quitadas</AlertDialogTitle>
+            <AlertDialogDescription>
+              Confirmar que a <strong>{toSettle?.dealership}</strong> acertou {toSettle?.count} cortesia(s) ({toSettle ? brl(toSettle.total) : ""})?
+              Elas saem do saldo devedor. Isso não altera o acesso dos clientes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!toSettle) return;
+                settle.mutate(toSettle.dealership, {
+                  onSuccess: (r: any) => { toast({ title: "Cortesias quitadas", description: `${r?.quitadas ?? 0} lançamento(s) da ${toSettle.dealership}.` }); qc.invalidateQueries({ queryKey: ["postsale-sponsor-balance"] }); },
+                  onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
+                });
+                setToSettle(null);
+              }}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
   );
 }
 

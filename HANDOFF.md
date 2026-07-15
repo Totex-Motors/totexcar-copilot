@@ -50,28 +50,23 @@ functions deploy <fn> --project-ref gkkjhnzkqhpgrwrmofev [--no-verify-jwt]`) —
 15. **Garagem ESTOQUE EXCLUSIVO por loja:** cliente com `users.dealership` vê SÓ os carros da loja dele
     (search/oportunidades/radar app + radar cron), via `dealershipId`. Cliente sem loja vê tudo. Ver [[garagem-totex]].
 
-### ⏳ EM ANDAMENTO — parar aqui (CORTESIA DA LOJA / assinatura patrocinada)
-Ideia do dono: cliente da loja NÃO paga — a **loja patrocina 1 ano (R$109,90)** como benefício; ao vencer, passa a
-ser cobrado do cliente (que segue com preço de membro R$10,99/mês pelo cupom da loja). **Decisões do dono:**
-(a) **PÓS-PAGO** — loja dá a cortesia sem pagar na hora; sistema acumula "saldo devedor" visível no painel da loja +
-admin; acerto depois. (b) **AUTO-PROVISIONA a conta** (reusar `provision_owner`).
-**Reaproveita a máquina de validade/renovação (item 13):** basta setar premium + `plan_expires_at = hoje+1 ano` +
-marcar sponsored; o cron/paywall já re-bloqueiam e lembram no vencimento (converte a R$10,99/mês com o cupom da loja).
-**O que falta construir:**
-- Migração: em `postsale_journeys` add `sponsored bool`, `sponsored_value numeric default 109.90`, `sponsored_at
-  timestamptz`, `sponsor_settled bool default false`, `user_id uuid` (conta provisionada).
-- `dealer-api postsale_create` ganha param `cortesia:boolean`. Se true → PROVISIONA a conta (createUser +
-  perfil owner) com email sintético (padrão TCF: telefone→email `@totexcarfinance.app`; ver `provision_owner` no
-  edge `integration`: `admin.auth.admin.createUser({email,password,email_confirm:true})` + update users role owner +
-  dealership + coupon_code), setar `plan='premium'`, `plan_expires_at = now+1 ano`, `subscription_status='active'`,
-  sponsored=true, sponsored_value=109.90, user_id no journey. Boas-vindas: "1 ano GRÁTIS cortesia da {loja}!".
-- Saldo devedor por loja = SUM(sponsored_value) WHERE sponsored AND NOT sponsor_settled → mostrar em `postsale_stats`
-  (loja vê o seu) + admin (total por loja + botão "marcar quitado").
-- Front `PostSaleTab`: checkbox "Oferecer 1 ano de cortesia (por conta da loja)" no form de registrar + KPI "cortesias
-  ativas: N (R$X)".
-- Lembrete de renovação para SPONSORED deve dizer "seu ano cortesia da {loja} acabou; continue por R$10,99/mês".
-⚠️ provision_owner usa `admin.auth.admin.createUser` (service role) — o dealer-api já tem admin service role, dá pra
-replicar. Idempotente por email (se já existe, reaproveita). Ver [[dealer-area]] e [[payments-and-config]].
+### ✅ FEITO (2026-07-15) — CORTESIA DA LOJA / assinatura patrocinada (no ar)
+Cliente da loja NÃO paga — a **loja patrocina 1 ano (R$109,90)** como benefício (PÓS-PAGO, saldo devedor); ao vencer,
+o cliente segue com preço de membro R$10,99/mês pelo cupom da loja. Reaproveita a máquina de validade/renovação (item 13).
+**Entregue:**
+- Migração `postsale_sponsored` APLICADA: `postsale_journeys` += `sponsored bool`, `sponsored_value numeric(109.90)`,
+  `sponsored_at`, `sponsor_settled bool`, `sponsor_settled_at`, `user_id uuid` (+ índice parcial p/ saldo em aberto).
+- **dealer-api** (deployado): `postsale_create` aceita `cortesia:boolean` → helper `provisionSponsoredOwner`
+  (email sintético `telefone@totexcarfinance.app`, `admin.auth.admin.createUser` + users role owner/dealership/coupon +
+  `plan=premium`, `plan_cycle=annual`, `subscription_status=active`, `plan_expires_at=now+1 ano`; idempotente por email).
+  Grava sponsored no journey + boas-vindas "1 ANO GRÁTIS cortesia da {loja}". `postsale_stats` retorna
+  `cortesias_ativas`/`cortesias_valor` (scopado). Novas actions **admin** `postsale_sponsor_balance` (total por loja) +
+  `postsale_sponsor_settle` (marca quitado por loja).
+- **car-expiration-alerts** (deployado): monta `sponsoredByUser`; `maybeNotifyRenovacao` detecta o vencimento do ano
+  cortesia (janela sponsored_at+380d) e manda "seu ano cortesia da {loja} acabou; continue por R$10,99/mês" (com cupom).
+- **Front:** `PostSaleTab` — checkbox "Oferecer 1 ano de cortesia (por conta da loja)", KPI/banner "cortesias ativas:
+  N (R$X)", badge Cortesia na lista. **Admin** (`SponsorBalanceCard` na aba Lojistas) — saldo por loja + "marcar quitado".
+Ver [[dealer-area]] e [[payments-and-config]].
 
 ---
 

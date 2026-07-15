@@ -308,10 +308,20 @@ async function maybeNotifyRadar(userId: string, phone: string, r: any, refCode?:
 // Lembra o dono antes de vencer (5/3/1 dias) e, no vencimento, RE-BLOQUEIA (plan free + overdue)
 // e avisa pra renovar. Só p/ quem é premium pago (tem plan_expires_at).
 const RENEW_MARKS = [5, 3, 1];
-async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string) {
+async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string, sponsor: { dealership: string | null; sponsored_at: string | null; coupon_code: string | null } | null) {
   if (u.plan !== "premium" || !u.plan_expires_at) return false;
   const dueDate = String(u.plan_expires_at).split("T")[0];
   const days = daysUntil(dueDate);
+
+  // É o vencimento do ANO CORTESIA? (só enquanto o vencimento ainda estiver dentro da janela do 1º ano
+  // patrocinado; depois que o cliente renova, plan_expires_at avança e cai no fluxo normal).
+  let isCortesia = false;
+  if (sponsor?.sponsored_at) {
+    const limite = new Date(sponsor.sponsored_at); limite.setDate(limite.getDate() + 380);
+    isCortesia = new Date(dueDate) <= limite;
+  }
+  const loja = sponsor?.dealership || "sua loja";
+  const planLink = `${appUrl}/plans${sponsor?.coupon_code ? `?coupon=${encodeURIComponent(sponsor.coupon_code)}` : ""}`;
 
   if (days <= 0) {
     // venceu: re-bloqueia no servidor (o app já bloqueia em tempo real) + avisa
@@ -319,7 +329,10 @@ async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string) {
       .insert({ user_id: u.id, kind: `sub_expired:${u.id}`, due_date: dueDate, channel: "whatsapp" });
     if (error) { if ((error as any).code === "23505") return false; console.error("log sub_expired:", error); return false; }
     await supabase.from("users").update({ plan: "free", subscription_status: "overdue" }).eq("id", u.id);
-    await sendText(phone, `⚠️ Sua assinatura do TotexCar Co-pilot venceu. Pra continuar registrando gastos, consumo e usar o assistente, é só renovar:\n${appUrl}/plans`);
+    const msg = isCortesia
+      ? `⚠️ Seu ano de cortesia do *TotexCar Co-pilot* (oferecido pela ${loja}) chegou ao fim. Você pode continuar com tudo — gastos, consumo, revisões e multas — por apenas *R$ 10,99/mês* (preço de membro):\n${planLink}`
+      : `⚠️ Sua assinatura do TotexCar Co-pilot venceu. Pra continuar registrando gastos, consumo e usar o assistente, é só renovar:\n${appUrl}/plans`;
+    await sendText(phone, msg);
     return true;
   }
 
@@ -328,7 +341,10 @@ async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string) {
     .insert({ user_id: u.id, kind: `sub_renew:${u.id}:d${days}`, due_date: dueDate, channel: "whatsapp" });
   if (error) { if ((error as any).code === "23505") return false; console.error("log sub_renew:", error); return false; }
   const quando = days === 1 ? "amanhã" : `em ${days} dias`;
-  await sendText(phone, `🔔 Sua assinatura do TotexCar Co-pilot vence ${quando} (${fmt(dueDate)}). Renove pra não perder o acesso:\n${appUrl}/plans`);
+  const msg = isCortesia
+    ? `🔔 Seu ano de cortesia do *TotexCar Co-pilot* (oferecido pela ${loja}) termina ${quando} (${fmt(dueDate)}). Continue com o preço de membro, *R$ 10,99/mês*, e não perca o acesso:\n${planLink}`
+    : `🔔 Sua assinatura do TotexCar Co-pilot vence ${quando} (${fmt(dueDate)}). Renove pra não perder o acesso:\n${appUrl}/plans`;
+  await sendText(phone, msg);
   return true;
 }
 
@@ -421,6 +437,15 @@ Deno.serve(async (req) => {
     const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
     const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
 
+    // Cortesias patrocinadas: user_id → dados da loja, pra personalizar o lembrete de renovação do 1º ano.
+    const sponsoredByUser: Record<string, { dealership: string | null; sponsored_at: string | null; coupon_code: string | null }> = {};
+    try {
+      const { data: spons } = await supabase.from("postsale_journeys")
+        .select("user_id, dealership, sponsored_at, coupon_code")
+        .eq("sponsored", true).not("user_id", "is", null);
+      (spons || []).forEach((s: any) => { sponsoredByUser[s.user_id] = { dealership: s.dealership, sponsored_at: s.sponsored_at, coupon_code: s.coupon_code }; });
+    } catch (e) { console.error("erro carregando cortesias:", e); }
+
     const { data: users } = await supabase
       .from("users")
       .select("id, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership")
@@ -478,7 +503,7 @@ Deno.serve(async (req) => {
       } catch (e) { console.error("erro multas alerts:", e); }
 
       // Renovação da assinatura (avulsa): lembra antes e re-bloqueia no vencimento
-      try { if (await maybeNotifyRenovacao(u, phone, appUrl)) sent++; } catch (e) { console.error("erro renovacao:", e); }
+      try { if (await maybeNotifyRenovacao(u, phone, appUrl, sponsoredByUser[u.id] || null)) sent++; } catch (e) { console.error("erro renovacao:", e); }
 
       // Radar da Garagem Totex (carro do desejo apareceu no estoque)
       try {

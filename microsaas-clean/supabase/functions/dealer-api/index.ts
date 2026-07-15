@@ -145,6 +145,36 @@ async function recipientsFor(adminClient: any, dealership: string | null, audien
   return list;
 }
 
+// Provisiona (ou reaproveita) a conta do cliente como PREMIUM por 1 ano — cortesia patrocinada pela loja.
+// Reaproveita o padrão do edge `integration` (provision_owner): email sintético telefone→@totexcarfinance.app.
+// Idempotente por email: se a conta já existe, só a promove a premium/sponsored. Devolve o user_id.
+async function provisionSponsoredOwner(phone: string, name: string | null, dealership: string, coupon: string | null): Promise<string> {
+  const email = `${phone}@totexcarfinance.app`;
+  const expires = new Date(); expires.setFullYear(expires.getFullYear() + 1);
+  const premium = {
+    name: name || "Proprietário", phone, email, role: "owner",
+    dealership, coupon_code: coupon,
+    plan: "premium", plan_cycle: "annual", subscription_status: "active",
+    plan_expires_at: expires.toISOString(),
+  };
+
+  const { data: exist } = await admin.from("users").select("id").ilike("email", email).limit(1);
+  if (exist && exist.length) {
+    await admin.from("users").update(premium).eq("id", exist[0].id);
+    return exist[0].id;
+  }
+
+  const password = crypto.randomUUID().slice(0, 12);
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email, password, email_confirm: true,
+    user_metadata: { name: name || "Proprietário", phone, email },
+  });
+  if (error) throw error;
+  const id = created.user!.id;
+  await admin.from("users").update(premium).eq("id", id);
+  return id;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
@@ -311,13 +341,24 @@ Deno.serve(async (req) => {
         const name = String(p.customer_name || "").trim() || null;
         const car = String(p.car_desc || "").trim() || null;
         const purchase = /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date)) ? p.purchase_date : new Date().toISOString().split("T")[0];
+        const cortesia = p.cortesia === true || p.cortesia === "true";
 
         const { data: cps } = await admin.from("coupons").select("code").eq("dealership", scopeDealership).eq("active", true).limit(1);
         const coupon = cps?.[0]?.code || null;
 
+        // Cortesia da loja (assinatura patrocinada): PROVISIONA a conta premium por 1 ano por conta da loja (pós-pago).
+        let provisionedUserId: string | null = null;
+        if (cortesia) {
+          try { provisionedUserId = await provisionSponsoredOwner(phone, name, scopeDealership, coupon); }
+          catch (e) { return json({ error: "provisionamento_falhou", detail: String((e as any)?.message || e) }, 400); }
+        }
+
         const { data: created, error } = await admin.from("postsale_journeys").insert({
           dealership: scopeDealership, customer_name: name, customer_phone: phone, car_desc: car,
           purchase_date: purchase, coupon_code: coupon, created_by: me.id,
+          sponsored: cortesia, sponsored_value: cortesia ? 109.90 : 0,
+          sponsored_at: cortesia ? new Date().toISOString() : null,
+          user_id: provisionedUserId,
         }).select("id").single();
         if (error) return json({ error: error.message }, 400);
 
@@ -325,11 +366,14 @@ Deno.serve(async (req) => {
         const { data: st } = await admin.from("app_settings").select("uazapi_url, uazapi_token, app_url").eq("id", 1).single();
         const appUrl = (st?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
         const link = `${appUrl}/entrar?tab=register${coupon ? `&coupon=${encodeURIComponent(coupon)}` : ""}`;
-        const msg = `Olá${name ? " " + name.split(" ")[0] : ""}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${scopeDealership}!\n\nComo nosso cliente, você ganhou acesso ao *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial:\n${link}\n\nQualquer dúvida é só chamar por aqui. Boa estrada! 🚗`;
+        const primeiro = name ? " " + name.split(" ")[0] : "";
+        const msg = cortesia
+          ? `Olá${primeiro}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${scopeDealership}!\n\nComo presente de boas-vindas, você ganhou *1 ANO GRÁTIS* do *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais). É cortesia da ${scopeDealership}, você não paga nada! 🎁\n\nSua conta já está ativa. Comece agora mesmo por aqui — pode me mandar uma foto de um cupom de combustível ou perguntar qualquer coisa sobre o seu carro. 🚗`
+          : `Olá${primeiro}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${scopeDealership}!\n\nComo nosso cliente, você ganhou acesso ao *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial:\n${link}\n\nQualquer dúvida é só chamar por aqui. Boa estrada! 🚗`;
         let welcome = false;
         try { if (st?.uazapi_url && st?.uazapi_token) welcome = await uazapiSend(st, phone, msg); } catch { /* Uazapi off: cria a jornada mesmo assim */ }
         if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
-        return json({ ok: true, id: created.id, welcome_sent: welcome });
+        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId });
       }
 
       case "postsale_transfer_save": {
@@ -371,7 +415,7 @@ Deno.serve(async (req) => {
       }
 
       case "postsale_stats": {
-        let q = admin.from("postsale_journeys").select("nps_score");
+        let q = admin.from("postsale_journeys").select("nps_score, sponsored, sponsored_value, sponsor_settled");
         if (scopeDealership && scopeDealership !== "__none__") q = q.eq("dealership", scopeDealership);
         const { data } = await q;
         const rows = data || [];
@@ -380,7 +424,45 @@ Deno.serve(async (req) => {
         const det = scored.filter((r: any) => r.nps_score <= 6).length;
         const pas = scored.length - prom - det;
         const nps = scored.length ? Math.round(((prom - det) / scored.length) * 100) : null;
-        return json({ ok: true, total: rows.length, respondidos: scored.length, promotores: prom, passivos: pas, detratores: det, nps });
+        // Cortesias patrocinadas pela loja ainda não quitadas (saldo devedor da loja)
+        const cortesias = rows.filter((r: any) => r.sponsored && !r.sponsor_settled);
+        const cortesias_valor = cortesias.reduce((s: number, r: any) => s + Number(r.sponsored_value || 0), 0);
+        return json({
+          ok: true, total: rows.length, respondidos: scored.length, promotores: prom, passivos: pas, detratores: det, nps,
+          cortesias_ativas: cortesias.length, cortesias_valor: Number(cortesias_valor.toFixed(2)),
+        });
+      }
+
+      // Saldo devedor de cortesias por loja (admin) — patrocínios ainda não quitados
+      case "postsale_sponsor_balance": {
+        if (!isAdmin) return json({ error: "forbidden" }, 403);
+        const { data } = await admin.from("postsale_journeys")
+          .select("dealership, sponsored_value, sponsored_at, customer_name, customer_phone")
+          .eq("sponsored", true).eq("sponsor_settled", false);
+        const byLoja: Record<string, { dealership: string; count: number; total: number }> = {};
+        (data || []).forEach((r: any) => {
+          const k = r.dealership || "—";
+          const cur = byLoja[k] || (byLoja[k] = { dealership: k, count: 0, total: 0 });
+          cur.count++; cur.total += Number(r.sponsored_value || 0);
+        });
+        const lojas = Object.values(byLoja)
+          .map((l) => ({ ...l, total: Number(l.total.toFixed(2)) }))
+          .sort((a, b) => b.total - a.total);
+        const total = lojas.reduce((s, l) => s + l.total, 0);
+        return json({ ok: true, lojas, total: Number(total.toFixed(2)) });
+      }
+
+      // Marca as cortesias de uma loja como quitadas (admin) — a loja acertou o pós-pago
+      case "postsale_sponsor_settle": {
+        if (!isAdmin) return json({ error: "forbidden" }, 403);
+        const loja = String(p.dealership || "").trim();
+        if (!loja) return json({ error: "dealership_obrigatorio" }, 400);
+        const { data, error } = await admin.from("postsale_journeys")
+          .update({ sponsor_settled: true, sponsor_settled_at: new Date().toISOString() })
+          .eq("dealership", loja).eq("sponsored", true).eq("sponsor_settled", false)
+          .select("id");
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true, quitadas: (data || []).length });
       }
 
       default:
