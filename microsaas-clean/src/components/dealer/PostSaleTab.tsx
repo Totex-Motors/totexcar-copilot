@@ -72,6 +72,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
       cortesia: cortesia || undefined,
       placa: cortesia && form.placa ? form.placa : undefined,
       valor_compra: cortesia && Number(form.valor_compra) > 0 ? Number(form.valor_compra) : undefined,
+      dealership: dealership || undefined,
     }, {
       onSuccess: (r: any) => {
         toast({
@@ -89,7 +90,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
   };
 
   const salvarConfig = () => {
-    saveCfg.mutate({ google_review_url: reviewUrl || undefined, nps_delay_days: Number(delay) || 3 }, {
+    saveCfg.mutate({ google_review_url: reviewUrl || undefined, nps_delay_days: Number(delay) || 3, dealership: dealership || undefined }, {
       onSuccess: () => { toast({ title: "Configuração salva ✅" }); qc.invalidateQueries({ queryKey: ["postsale-config"] }); },
       onError: (e: any) => toast({ title: "Erro ao salvar", description: String(e?.message || e), variant: "destructive" }),
     });
@@ -214,13 +215,13 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
         </CardContent>
       </Card>
 
-      {editing && <TransferDialog journey={editing} onClose={() => setEditing(null)} onSaved={refresh} />}
+      {editing && <TransferDialog journey={editing} dealership={dealership} onClose={() => setEditing(null)} onSaved={refresh} />}
     </div>
   );
 }
 
 // Editor do checklist de transferência + garantia/revisão (a loja atualiza; o cliente consulta pelo agente)
-function TransferDialog({ journey, onClose, onSaved }: { journey: PostsaleJourney; onClose: () => void; onSaved: () => void }) {
+function TransferDialog({ journey, dealership, onClose, onSaved }: { journey: PostsaleJourney; dealership?: string; onClose: () => void; onSaved: () => void }) {
   const save = usePostsaleTransferSave();
   const [steps, setSteps] = useState<Record<string, boolean>>({ ...(journey.transfer || {}) });
   const [status, setStatus] = useState(journey.transfer_status || "pendente");
@@ -234,7 +235,7 @@ function TransferDialog({ journey, onClose, onSaved }: { journey: PostsaleJourne
     // se marcou tudo, sugere concluída; se marcou algo, em andamento
     const autoStatus = done === TRANSFER_STEPS.length ? "concluida" : done > 0 ? "em_andamento" : status;
     save.mutate(
-      { id: journey.id, transfer: steps, transfer_status: status === "concluida" ? "concluida" : autoStatus, warranty_until: warranty || null, revisao_proxima: revisao || null },
+      { id: journey.id, transfer: steps, transfer_status: status === "concluida" ? "concluida" : autoStatus, warranty_until: warranty || null, revisao_proxima: revisao || null, dealership: dealership || undefined },
       {
         onSuccess: (r: any) => {
           toast({ title: "Salvo ✅", description: r?.notificado ? "Cliente avisado da conclusão no WhatsApp." : undefined });

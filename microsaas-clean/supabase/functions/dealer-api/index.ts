@@ -271,6 +271,9 @@ Deno.serve(async (req) => {
 
   // Loja efetiva: o lojista é SEMPRE preso à própria loja; o admin pode escolher (ou ver tudo).
   const scopeDealership = isAdmin ? (p.dealership ? String(p.dealership) : null) : (me.dealership || "__none__");
+  // Para AÇÕES DE ESCRITA (criar/config/transferência) o admin sem loja escolhida cai na PRÓPRIA loja
+  // (evita "sem_loja" quando o dono-admin opera o painel da própria loja sem ?dealership=). Leitura não muda.
+  const writeStore = (scopeDealership && scopeDealership !== "__none__") ? scopeDealership : (isAdmin ? (me.dealership || null) : null);
 
   try {
     switch (action) {
@@ -396,9 +399,9 @@ Deno.serve(async (req) => {
       }
 
       case "postsale_config_save": {
-        if (!scopeDealership || scopeDealership === "__none__") return json({ error: "sem_loja" }, 400);
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
         const { error } = await admin.from("dealership_settings").upsert({
-          dealership: scopeDealership,
+          dealership: writeStore,
           google_review_url: p.google_review_url ? String(p.google_review_url).trim() : null,
           nps_delay_days: Number(p.nps_delay_days) > 0 ? Number(p.nps_delay_days) : 3,
           updated_at: new Date().toISOString(),
@@ -408,7 +411,8 @@ Deno.serve(async (req) => {
       }
 
       case "postsale_create": {
-        if (!scopeDealership || scopeDealership === "__none__") return json({ error: "sem_loja" }, 400);
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const loja = writeStore;
         const phone = String(p.customer_phone || "").replace(/\D/g, "");
         if (phone.length < 10) return json({ error: "telefone_invalido" }, 400);
         const name = String(p.customer_name || "").trim() || null;
@@ -418,14 +422,14 @@ Deno.serve(async (req) => {
         const placa = String(p.placa || "").trim() || null;
         const valorCompra = Number(p.valor_compra) > 0 ? Number(p.valor_compra) : null;
 
-        const { data: cps } = await admin.from("coupons").select("code").eq("dealership", scopeDealership).eq("active", true).limit(1);
+        const { data: cps } = await admin.from("coupons").select("code").eq("dealership", loja).eq("active", true).limit(1);
         const coupon = cps?.[0]?.code || null;
 
         // Cortesia da loja (assinatura patrocinada): PROVISIONA a conta premium por 1 ano por conta da loja (pós-pago).
         let provisionedUserId: string | null = null;
         let vehicleCreated = false;
         if (cortesia) {
-          try { provisionedUserId = await provisionSponsoredOwner(phone, name, scopeDealership, coupon); }
+          try { provisionedUserId = await provisionSponsoredOwner(phone, name, loja, coupon); }
           catch (e) { return json({ error: "provisionamento_falhou", detail: String((e as any)?.message || e) }, 400); }
           // Já deixa o veículo cadastrado (autopreenche pela placa quando houver) — mais prático pra loja/admin.
           try { vehicleCreated = await provisionVehicle(provisionedUserId, { car, placa, valor: valorCompra, dataCompra: purchase }); }
@@ -433,7 +437,7 @@ Deno.serve(async (req) => {
         }
 
         const { data: created, error } = await admin.from("postsale_journeys").insert({
-          dealership: scopeDealership, customer_name: name, customer_phone: phone, car_desc: car,
+          dealership: loja, customer_name: name, customer_phone: phone, car_desc: car,
           purchase_date: purchase, coupon_code: coupon, created_by: me.id,
           sponsored: cortesia, sponsored_value: cortesia ? 109.90 : 0,
           sponsored_at: cortesia ? new Date().toISOString() : null,
@@ -447,8 +451,8 @@ Deno.serve(async (req) => {
         const link = `${appUrl}/entrar?tab=register${coupon ? `&coupon=${encodeURIComponent(coupon)}` : ""}`;
         const primeiro = name ? " " + name.split(" ")[0] : "";
         const msg = cortesia
-          ? `Olá${primeiro}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${scopeDealership}!\n\nComo presente de boas-vindas, você ganhou *1 ANO GRÁTIS* do *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais). É cortesia da ${scopeDealership}, você não paga nada! 🎁\n\nSua conta já está ativa. Comece agora mesmo por aqui — pode me mandar uma foto de um cupom de combustível ou perguntar qualquer coisa sobre o seu carro. 🚗`
-          : `Olá${primeiro}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${scopeDealership}!\n\nComo nosso cliente, você ganhou acesso ao *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial:\n${link}\n\nQualquer dúvida é só chamar por aqui. Boa estrada! 🚗`;
+          ? `Olá${primeiro}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${loja}!\n\nComo presente de boas-vindas, você ganhou *1 ANO GRÁTIS* do *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais). É cortesia da ${loja}, você não paga nada! 🎁\n\nSua conta já está ativa. Comece agora mesmo por aqui — pode me mandar uma foto de um cupom de combustível ou perguntar qualquer coisa sobre o seu carro. 🚗`
+          : `Olá${primeiro}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${loja}!\n\nComo nosso cliente, você ganhou acesso ao *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial:\n${link}\n\nQualquer dúvida é só chamar por aqui. Boa estrada! 🚗`;
         let welcome = false;
         try { if (st?.uazapi_url && st?.uazapi_token) welcome = await uazapiSend(st, phone, msg); } catch { /* Uazapi off: cria a jornada mesmo assim */ }
         if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
@@ -456,10 +460,11 @@ Deno.serve(async (req) => {
       }
 
       case "postsale_transfer_save": {
-        if (!scopeDealership || scopeDealership === "__none__") return json({ error: "sem_loja" }, 400);
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const loja = writeStore;
         const id = String(p.id || "");
         if (!id) return json({ error: "id_obrigatorio" }, 400);
-        const { data: j } = await admin.from("postsale_journeys").select("*").eq("id", id).eq("dealership", scopeDealership).maybeSingle();
+        const { data: j } = await admin.from("postsale_journeys").select("*").eq("id", id).eq("dealership", loja).maybeSingle();
         if (!j) return json({ error: "jornada_nao_encontrada" }, 404);
 
         const upd: Record<string, unknown> = {};
@@ -478,7 +483,7 @@ Deno.serve(async (req) => {
             const { data: st } = await admin.from("app_settings").select("uazapi_url, uazapi_token").eq("id", 1).single();
             if (st?.uazapi_url && st?.uazapi_token) {
               const nome = j.customer_name ? " " + String(j.customer_name).split(" ")[0] : "";
-              await uazapiSend(st, String(j.customer_phone).replace(/\D/g, ""), `✅ Boa notícia${nome}! A *transferência de propriedade*${j.car_desc ? ` do seu ${j.car_desc}` : ""} foi concluída pela ${scopeDealership}. Documentação em dia! 🎉 Qualquer coisa, é só chamar por aqui.`);
+              await uazapiSend(st, String(j.customer_phone).replace(/\D/g, ""), `✅ Boa notícia${nome}! A *transferência de propriedade*${j.car_desc ? ` do seu ${j.car_desc}` : ""} foi concluída pela ${loja}. Documentação em dia! 🎉 Qualquer coisa, é só chamar por aqui.`);
               await admin.from("postsale_journeys").update({ transfer_done_notified: true }).eq("id", id);
             }
           } catch { /* Uazapi off */ }

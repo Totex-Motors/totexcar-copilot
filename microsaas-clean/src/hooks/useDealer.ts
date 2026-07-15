@@ -126,7 +126,7 @@ export const usePostsaleConfig = (enabled: boolean, dealership?: string) =>
 
 export const usePostsaleCreate = () =>
   useMutation({
-    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number }) =>
+    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string }) =>
       callDealer("postsale_create", p),
   });
 
@@ -145,12 +145,12 @@ export const useSponsorSettle = () =>
 
 export const usePostsaleConfigSave = () =>
   useMutation({
-    mutationFn: async (p: { google_review_url?: string; nps_delay_days?: number }) => callDealer("postsale_config_save", p),
+    mutationFn: async (p: { google_review_url?: string; nps_delay_days?: number; dealership?: string }) => callDealer("postsale_config_save", p),
   });
 
 export const usePostsaleTransferSave = () =>
   useMutation({
-    mutationFn: async (p: { id: string; transfer?: Record<string, boolean>; transfer_status?: string; warranty_until?: string | null; revisao_proxima?: string | null }) =>
+    mutationFn: async (p: { id: string; transfer?: Record<string, boolean>; transfer_status?: string; warranty_until?: string | null; revisao_proxima?: string | null; dealership?: string }) =>
       callDealer("postsale_transfer_save", p),
   });
 
