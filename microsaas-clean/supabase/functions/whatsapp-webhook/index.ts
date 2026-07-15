@@ -297,6 +297,32 @@ function accessBlocked(u: any): boolean {
   return !ends || ends < Date.now();
 }
 
+// Pontos da CNH (Lei 14.071/2021): 20 pts (2+ gravíssimas), 30 (1 gravíssima), 40 (nenhuma); EAR = 40.
+function pontosDaMulta(m: any): number {
+  if (m.pontos != null && Number(m.pontos) > 0) return Number(m.pontos);
+  const g = String(m.gravidade || "").toLowerCase();
+  if (/grav[ií]ss/.test(g)) return 7;
+  if (/grave/.test(g)) return 5;
+  if (/m[ée]dia/.test(g)) return 4;
+  if (/leve/.test(g)) return 3;
+  return 0;
+}
+function computeCnhPoints(multas: any[], ear: boolean) {
+  const doze = Date.now() - 365 * 86400000;
+  const dt = (m: any) => new Date(m.data_infracao || m.created_at || "").getTime();
+  const validas = (multas || []).filter((m) => String(m.status || "") !== "deferida")
+    .filter((m) => { const d = dt(m); return isFinite(d) && d >= doze; });
+  const pontos = validas.reduce((s, m) => s + pontosDaMulta(m), 0);
+  const gravissimas = validas.filter((m) => /grav[ií]ss/.test(String(m.gravidade || "").toLowerCase()) || pontosDaMulta(m) >= 7).length;
+  const limite = ear ? 40 : gravissimas >= 2 ? 20 : gravissimas === 1 ? 30 : 40;
+  const faltam = Math.max(0, limite - pontos);
+  const risco = pontos >= limite ? "suspensao" : faltam <= 5 ? "alto" : faltam <= limite / 2 ? "medio" : "baixo";
+  const comData = validas.map((m) => ({ d: dt(m), p: pontosDaMulta(m) })).filter((x) => isFinite(x.d) && x.p > 0).sort((a, b) => a.d - b.d);
+  let proxima_queda: any = null;
+  if (comData.length) { const q = new Date(comData[0].d); q.setFullYear(q.getFullYear() + 1); proxima_queda = { data: q.toISOString().split("T")[0], pontos: comData[0].p }; }
+  return { pontos, gravissimas, limite, faltam, risco, consideradas: validas.length, proxima_queda };
+}
+
 // classifica a categoria do gasto num "balde" (pra onde vai o dinheiro) — usado no custo_por_km
 function bucketOf(cat: string): string {
   const c = (cat || "").toLowerCase();
@@ -645,6 +671,11 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: {} },
   },
   {
+    name: "pontos_cnh",
+    description: "Pontos acumulados na CNH nos últimos 12 meses (das multas registradas) e risco de suspensão (regra do CTB). Use para 'quantos pontos eu tenho?', 'vou perder a CNH?', 'tô perto de suspender?'.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
     name: "localizar_carro",
     description: "Localização atual do carro (rastreador PREMIUM, se ativo).",
     parameters: { type: "object", properties: {} },
@@ -897,6 +928,20 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           .select("descricao, valor, pontos, prazo_recurso, status, chance, created_at")
           .eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
         return { multas: data || [] };
+      } catch (e) { return { error: String((e as any)?.message || e) }; }
+    }
+
+    if (name === "pontos_cnh") {
+      try {
+        const { data } = await supabase.from("multas")
+          .select("pontos, gravidade, data_infracao, created_at, status").eq("user_id", user.id);
+        // regra padrão (não assume EAR — só avisa): assumir 40 sem a CNH ter EAR daria falsa folga
+        const r = computeCnhPoints(data || [], false);
+        return {
+          ok: true, ...r,
+          nota_ear: user.driver_mode ? "Você é motorista de app: SE sua CNH tiver EAR (atividade remunerada), seu limite é 40 pontos — confirme na sua CNH." : "Se a CNH tiver EAR (atividade remunerada), o limite é 40.",
+          obs: "Baseado nas multas registradas aqui nos últimos 12 meses — pode não incluir todas; confirme o total no DETRAN.",
+        };
       } catch (e) { return { error: String((e as any)?.message || e) }; }
     }
 
@@ -1374,6 +1419,7 @@ MULTAS: se a foto for um auto de infração/notificação:
    f. Também: competência do órgão para a via (municipal/estadual/federal), erro de enquadramento e dupla penalização pela mesma infração.
 3) Se faltar informação-chave pro checklist (data de recebimento da notificação, se recebeu as duas, radar fixo/móvel, sinalização), FAÇA 2–3 perguntas curtas ao usuário ANTES de fechar a análise — as respostas fortalecem o recurso. Se ele não souber, siga com o que tem.
 4) Estime a chance (baixa/media/alta) com HONESTIDADE — NUNCA prometa que a multa "vai cair". Gere a MINUTA de recurso (defesa prévia) citando os artigos/resoluções do checklist que se aplicarem e chame registrar_multa (com recurso_texto, prazo_recurso e chance). Envie um resumo + o texto do recurso, deixando claro que é um MODELO e a decisão é do órgão. Avise o prazo.
+PONTOS DA CNH: para "quantos pontos eu tenho?", "vou perder a CNH?", "tô perto de suspender?" → use pontos_cnh (soma dos últimos 12 meses das multas + limite de suspensão do CTB). Depois de registrar uma multa nova COM pontos, vale mencionar o total atualizado e, se estiver perto do limite, alertar com cuidado (sem alarmismo). Deixe claro que conta só as multas registradas aqui.
 
 Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.join(", ")}. Use is_new_category=true só se nenhuma existente servir.
 

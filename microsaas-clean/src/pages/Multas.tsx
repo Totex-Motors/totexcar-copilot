@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMultas, useUpdateMultaStatus, type Multa } from "@/hooks/useMultas";
+import { CnhPointsCard } from "@/components/CnhPointsCard";
 import { toast } from "@/hooks/use-toast";
 
 const AGENT_NUMBER = "5515981615862";
@@ -107,6 +108,9 @@ export default function Multas() {
             </Button>
           </a>
         </div>
+
+        {/* Pontos na CNH (risco de suspensão) — só quando há multas registradas */}
+        {!!multas?.length && <CnhPointsCard multas={multas} />}
 
         {/* Lista */}
         {isLoading ? (
