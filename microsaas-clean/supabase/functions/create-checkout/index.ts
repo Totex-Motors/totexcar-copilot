@@ -70,17 +70,15 @@ Deno.serve(async (req) => {
   const cycle = plan === "annual" ? "YEARLY" : "MONTHLY";
   const name = `${planName} ${plan === "annual" ? "Anual" : "Mensal"}`.slice(0, 30);
 
-  const { data: profile } = await admin.from("users").select("name, email, phone").eq("id", user.id).single();
-  const today = new Date().toISOString().split("T")[0];
-
+  // Asaas Checkout (regras atuais): PIX exige cobrança DETACHED (avulsa) — recorrente só aceita cartão.
+  // Escolha do dono: PIX + Cartão AVULSO (o cliente paga cada período; o paywall + lembretes puxam a renovação).
+  // NÃO enviamos customerData: assim o Asaas coleta CPF/endereço na própria tela (o app não tem esses dados).
   const body = {
     billingTypes: ["CREDIT_CARD", "PIX"],
-    chargeTypes: ["RECURRENT"],
+    chargeTypes: ["DETACHED"],
     minutesToExpire: 60,
     callback: { successUrl: `${appUrl}/plans?status=success`, cancelUrl: `${appUrl}/plans?status=cancel` },
-    items: [{ name, description: `Assinatura ${planName}`, quantity: 1, value, imageBase64: PIXEL }],
-    subscription: { cycle, nextDueDate: today },
-    customerData: { name: profile?.name || user.email, email: profile?.email || user.email, phone: profile?.phone || undefined },
+    items: [{ name, description: `Assinatura ${planName} (${plan === "annual" ? "1 ano" : "1 mês"})`, quantity: 1, value, imageBase64: PIXEL }],
     externalReference: user.id,
   };
 
