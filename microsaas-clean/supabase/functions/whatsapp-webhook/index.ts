@@ -125,10 +125,12 @@ async function sendText(phone: string, text: string) {
 // Página "quero comprar" do marketplace Totexmotors (janela de carros da Garagem Totex)
 const GARAGEM_LABEL = "🚗 Garagem Totex";
 const GARAGEM_URL = "https://totexmotors.com/comprar";
+// Opção do menu que gera o link mágico de acesso ao painel web (atalho determinístico)
+const PAINEL_LABEL = "🖥️ Quero o painel";
 
 // Ações rápidas exibidas após cada resposta. WhatsApp só permite 3 BOTÕES, então com 4+ opções
 // usamos uma LISTA (type:"list"). A 4ª opção (Garagem Totex) abre a janela de carros do marketplace.
-const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", GARAGEM_LABEL];
+const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", GARAGEM_LABEL, PAINEL_LABEL];
 
 // Envia a resposta com o menu de ações (endpoint /send/menu do Uazapi).
 // Usa LISTA quando há >3 opções; se a lista falhar, cai pros 3 botões (sem a Garagem) + texto.
@@ -290,7 +292,12 @@ async function findUserByPhone(phone: string) {
 function accessBlocked(u: any): boolean {
   if (!u) return false;
   if (u.role && u.role !== "owner") return false;
-  if (u.plan === "premium") return false;
+  if (u.plan === "premium") {
+    // trava EM TEMPO REAL no vencimento (cortesia/assinatura avulsa): mesmo antes do cron
+    // re-bloquear, premium com plan_expires_at no passado não usa (não "esticamos" o grátis).
+    const exp = u.plan_expires_at ? Date.parse(u.plan_expires_at) : 0;
+    return exp > 0 && exp < Date.now();
+  }
   const status = (u.subscription_status || "").toLowerCase();
   if (status === "overdue" || status === "canceled") return true;
   const ends = u.trial_ends_at ? Date.parse(u.trial_ends_at) : 0;
@@ -1644,6 +1651,17 @@ ${JSON.stringify(snapshot)}`;
         QUICK_ACTIONS, "Toque numa ação ou mande um gasto 🚗");
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "garagem" }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
+    // Atalho: opção "Quero o painel" do menu (ou pedido direto) → link mágico de acesso, SEM IA.
+    // Fica DEPOIS do accessBlocked: premium vencido (fim do ano cortesia) não recebe link, recebe a cobrança.
+    if (msg.kind !== "image" && /quero (o )?painel|link de acesso|acessar o painel|entrar no painel/i.test(inputText)) {
+      const r: any = await dispatchTool("link_acesso", {}, { user, vehicle, today, inputText });
+      if (r?.ok) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "link_acesso", input: inputText, reply: "[link de acesso enviado]" }, user_id: user.id }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // se falhar, deixa cair no fluxo da IA (que explica/tenta pela tool)
     }
 
     parts.push({ kind: "text", text: inputText || "(sem conteúdo)" });
