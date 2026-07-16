@@ -1,14 +1,14 @@
-// TotexCar Co-pilot — Alertas de vencimento via WhatsApp (Uazapi)
+// TotexCar Co-pilot — Alertas de vencimento via WhatsApp (DUAL: Uazapi OU API oficial Meta)
 // Roda diariamente (pg_cron). Para cada usuário/veículo, avisa sobre vencimentos
 // de licenciamento, IPVA, seguro e CNH em marcos (30/15/7/1/0 dias) e quando vencido.
 // v4: + parcelas de financiamento (5/1/0) e PRAZO DE RECURSO de multas (5/3/1/0).
 // v8: + RADAR da Garagem Totex — avisa quando um carro do desejo aparece no estoque do marketplace.
+// v9: TODO alerta é iniciado pelo negócio → na API oficial sai por TEMPLATE aprovado (ver _shared/wa.ts).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { loadWaSettings, waSendTemplate, type WaSettings } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const UAZAPI_URL = (Deno.env.get("UAZAPI_URL") || "").replace(/\/+$/, "");
-const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 
@@ -18,15 +18,15 @@ const MARKS = [30, 15, 7, 1, 0];
 
 const onlyDigits = (s: string) => (s || "").replace(/\D/g, "");
 
-let _uazapi: { url: string; token: string } | null = null;
-async function uazapiCreds() {
-  if (_uazapi) return _uazapi;
-  const { data } = await supabase.from("app_settings").select("uazapi_url, uazapi_token").eq("id", 1).single();
-  _uazapi = {
-    url: (data?.uazapi_url || UAZAPI_URL || "").replace(/\/+$/, ""),
-    token: data?.uazapi_token || UAZAPI_TOKEN || "",
-  };
-  return _uazapi;
+let _wa: WaSettings | null = null;
+async function waS(): Promise<WaSettings> {
+  if (_wa) return _wa;
+  _wa = await loadWaSettings(supabase);
+  return _wa;
+}
+// Envia um alerta (iniciado pelo negócio) pelo template certo; no uazapi vira o texto equivalente.
+async function sendTpl(phone: string, name: string, params: any[]) {
+  await waSendTemplate(await waS(), phone, name, params);
 }
 
 function daysUntil(dateStr: string): number {
@@ -43,19 +43,6 @@ function fmt(dateStr: string) {
   return `${d}/${m}/${y}`;
 }
 
-async function sendText(phone: string, text: string) {
-  const { url, token } = await uazapiCreds();
-  if (!url || !token) { console.error("Uazapi não configurado"); return; }
-  try {
-    const res = await fetch(`${url}/send/text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "token": token },
-      body: JSON.stringify({ number: phone, text }),
-    });
-    if (!res.ok) console.error("Uazapi send falhou:", res.status, await res.text());
-  } catch (e) { console.error("Erro Uazapi:", e); }
-}
-
 const LABELS: Record<string, string> = {
   licenciamento: "licenciamento",
   ipva: "IPVA",
@@ -68,17 +55,16 @@ async function maybeNotify(
 ) {
   const days = daysUntil(dueDate);
   let kind = "";
-  let message = "";
+  let situacao = "";
   const label = LABELS[doc];
   const alvo = doc === "cnh" ? "sua " + label : `o ${label} de ${vehicleName || "seu veículo"}`;
 
   if (days < 0) {
     kind = `${doc}_overdue`;
-    message = `⚠️ Atenção: ${alvo} está VENCIDO desde ${fmt(dueDate)}. Regularize o quanto antes para evitar multas.`;
+    situacao = "está VENCIDO — regularize o quanto antes para evitar multas";
   } else if (MARKS.includes(days)) {
     kind = `${doc}_d${days}`;
-    const quando = days === 0 ? "vence HOJE" : days === 1 ? "vence AMANHÃ" : `vence em ${days} dias`;
-    message = `🔔 Lembrete TotexCar Co-pilot: ${alvo} ${quando} (${fmt(dueDate)}).`;
+    situacao = days === 0 ? "vence HOJE" : days === 1 ? "vence AMANHÃ" : `vence em ${days} dias`;
   } else {
     return false;
   }
@@ -92,7 +78,7 @@ async function maybeNotify(
     console.error("erro notification_log:", error);
     return false;
   }
-  await sendText(phone, message);
+  await sendTpl(phone, "vencimento_documento", [alvo, situacao, fmt(dueDate)]);
   return true;
 }
 
@@ -111,18 +97,17 @@ function addMonthsStr(dateStr: string, months: number): string {
 
 async function maybeNotifyParcela(userId: string, phone: string, f: any, dueDate: string) {
   const days = daysUntil(dueDate);
-  const banco = f.banco ? ` (${f.banco})` : "";
+  const banco = f.banco ? String(f.banco) : "do seu carro";
   const parcelaNum = Number(f.parcelas_pagas) + 1;
   const valor = `R$ ${Number(f.valor_parcela).toFixed(2).replace(".", ",")}`;
   let kind = "";
-  let message = "";
+  let situacao = "";
   if (days < 0) {
     kind = `parcela:${f.id}:overdue`;
-    message = `⚠️ A parcela ${parcelaNum}/${f.num_parcelas} do financiamento${banco} de ${valor} está ATRASADA desde ${fmt(dueDate)}. Evite juros — pague o quanto antes.`;
+    situacao = "está ATRASADA — evite juros e pague o quanto antes";
   } else if (PARCELA_MARKS.includes(days)) {
     kind = `parcela:${f.id}:d${days}`;
-    const quando = days === 0 ? "vence HOJE" : days === 1 ? "vence AMANHÃ" : `vence em ${days} dias`;
-    message = `🔔 Parcela ${parcelaNum}/${f.num_parcelas} do financiamento${banco} de ${valor} ${quando} (${fmt(dueDate)}).`;
+    situacao = days === 0 ? "vence HOJE" : days === 1 ? "vence AMANHÃ" : `vence em ${days} dias`;
   } else {
     return false;
   }
@@ -137,14 +122,12 @@ async function maybeNotifyParcela(userId: string, phone: string, f: any, dueDate
   // linha digitável vai junto (copia e cola). Prioridade: boleto da PARCELA CERTA no carnê salvo
   // (mapa boletos {parcela: linha}); fallback: boleto avulso salvo (pode ser de outra parcela).
   const linhaCarne = (f.boletos || {})[String(parcelaNum)];
-  if (linhaCarne) {
-    message += `\n\n📋 Linha digitável da parcela ${parcelaNum} (copia e cola):\n${linhaCarne}`;
-  } else if (f.boleto_linha) {
-    message += `\n\n📋 Linha digitável (copia e cola):\n${f.boleto_linha}\n\nSe este boleto for de outra parcela, me manda o carnê em PDF ou a foto do boleto atual que eu atualizo. 😉`;
-  } else {
-    message += `\n\n💡 Me manda o carnê em PDF (ou a foto do boleto) que eu te envio a linha digitável junto com o lembrete, todo mês.`;
-  }
-  await sendText(phone, message);
+  const boletoInfo = linhaCarne
+    ? `Linha digitável (copia e cola): ${linhaCarne}`
+    : f.boleto_linha
+    ? `Linha digitável (copia e cola): ${f.boleto_linha} — se este boleto for de outra parcela, me mande o carnê em PDF que eu atualizo.`
+    : `Me mande o carnê em PDF (ou a foto do boleto) que eu envio a linha digitável junto com o lembrete, todo mês.`;
+  await sendTpl(phone, "parcela_financiamento", [`${parcelaNum}/${f.num_parcelas}`, banco, valor, situacao, fmt(dueDate), boletoInfo]);
   return true;
 }
 
@@ -185,16 +168,13 @@ async function maybeWeeklyPro(userId: string, phone: string) {
 
   const lucro = receita - despesa;
   const km = odos.length >= 2 ? Math.round(Math.max(...odos) - Math.min(...odos)) : null;
-  const linhas = [
-    `📊 *Resumo PRO da semana* (${fmt(de)} a ${fmt(ate)})`,
-    ``,
-    `💵 Faturou: ${fmtBRL(receita)}`,
-    `💸 Gastou: ${fmtBRL(despesa)}`,
-    `${lucro >= 0 ? "✅ Sobrou" : "⚠️ Ficou negativo"}: *${fmtBRL(lucro)}*`,
-  ];
-  if (km && km > 0) linhas.push(`🛣️ ${km.toLocaleString("pt-BR")} km rodados · lucro de ${fmtBRL(lucro / km)} por km`);
-  linhas.push(``, `Bora pra mais uma semana! 🚗 (mande os prints de ganhos e os cupons que eu cuido do resto)`);
-  await sendText(phone, linhas.join("\n"));
+  const kmLinha = km && km > 0
+    ? `🛣️ ${km.toLocaleString("pt-BR")} km rodados, lucro de ${fmtBRL(lucro / km)} por km.`
+    : `Bora pra mais uma semana!`;
+  await sendTpl(phone, "resumo_pro_semanal", [
+    `${fmt(de)} a ${fmt(ate)}`, fmtBRL(receita), fmtBRL(despesa),
+    `${lucro >= 0 ? "sobrou" : "ficou negativo"} ${fmtBRL(lucro)}`, kmLinha,
+  ]);
   return true;
 }
 
@@ -208,11 +188,9 @@ async function maybeNotifyMulta(userId: string, phone: string, m: any, appUrl: s
   const desc = m.descricao || "sua multa";
   const valor = m.valor != null ? ` (R$ ${Number(m.valor).toFixed(2).replace(".", ",")})` : "";
   const quando = days === 0 ? "termina HOJE" : days === 1 ? "termina AMANHÃ" : `termina em ${days} dias`;
-  const temRecurso = !!m.recurso_texto;
-  const message = `⚖️ O prazo para recorrer de ${desc}${valor} ${quando} (${fmt(m.prazo_recurso)}).` +
-    (temRecurso
-      ? `\n\nSeu recurso já está PRONTO no app — é só copiar e protocolar no órgão autuador:\n${appUrl}/multas`
-      : `\n\nMe mande a foto da multa que eu preparo o recurso pra você. 📄`);
+  const instrucao = m.recurso_texto
+    ? `Seu recurso já está PRONTO no app, é só copiar e protocolar no órgão autuador: ${appUrl}/multas`
+    : `Me mande a foto da multa que eu preparo o recurso pra você. 📄`;
 
   const { error } = await supabase
     .from("notification_log")
@@ -222,7 +200,7 @@ async function maybeNotifyMulta(userId: string, phone: string, m: any, appUrl: s
     console.error("erro notification_log multa:", error);
     return false;
   }
-  await sendText(phone, message);
+  await sendTpl(phone, "prazo_recurso_multa", [`${desc}${valor}`, quando, fmt(m.prazo_recurso), instrucao]);
   return true;
 }
 
@@ -294,13 +272,14 @@ async function maybeNotifyRadar(userId: string, phone: string, r: any, refCode?:
   if (!novos.length) return false;
 
   const desejo = [r.brand, r.model].filter(Boolean).join(" ") || "seu radar";
-  const corpo = novos.slice(0, 3).map((v) => carLine(v, refCode)).join("\n\n");
-  const extra = novos.length > 3 ? `\n\n…e mais ${novos.length - 3} no estoque.` : "";
-  const message =
-    `🎯 *Radar Totex* — apareceu um carro que combina com o que você procura (${desejo}):\n\n` +
-    corpo + extra +
-    `\n\nGostou? Responda que eu aviso a loja do seu interesse na hora. 😉`;
-  await sendText(phone, message);
+  // API oficial: 1 template por carro (parâmetro não aceita quebra de linha) — máx. 3 por rodada
+  for (const v of novos.slice(0, 3)) {
+    const title = [v.brand, v.model, v.version, v.year].filter(Boolean).join(" ");
+    const km = Number(v.mileage) > 0 ? `, ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
+    const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
+    const url = `${MARKETPLACE}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+    await sendTpl(phone, "radar_match", [desejo, `${title}${km}`, preco, url]);
+  }
   return true;
 }
 
@@ -329,10 +308,8 @@ async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string, spons
       .insert({ user_id: u.id, kind: `sub_expired:${u.id}`, due_date: dueDate, channel: "whatsapp" });
     if (error) { if ((error as any).code === "23505") return false; console.error("log sub_expired:", error); return false; }
     await supabase.from("users").update({ plan: "free", subscription_status: "overdue" }).eq("id", u.id);
-    const msg = isCortesia
-      ? `⚠️ Seu ano de cortesia do *TotexCar Co-pilot* (oferecido pela ${loja}) chegou ao fim. Você pode continuar com tudo — gastos, consumo, revisões e multas — por apenas *R$ 10,99/mês* (preço de membro):\n${planLink}`
-      : `⚠️ Sua assinatura do TotexCar Co-pilot venceu. Pra continuar registrando gastos, consumo e usar o assistente, é só renovar:\n${appUrl}/plans`;
-    await sendText(phone, msg);
+    if (isCortesia) await sendTpl(phone, "cortesia_vencida", [loja, planLink]);
+    else await sendTpl(phone, "assinatura_vencida", [`${appUrl}/plans`]);
     return true;
   }
 
@@ -341,10 +318,8 @@ async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string, spons
     .insert({ user_id: u.id, kind: `sub_renew:${u.id}:d${days}`, due_date: dueDate, channel: "whatsapp" });
   if (error) { if ((error as any).code === "23505") return false; console.error("log sub_renew:", error); return false; }
   const quando = days === 1 ? "amanhã" : `em ${days} dias`;
-  const msg = isCortesia
-    ? `🔔 Seu ano de cortesia do *TotexCar Co-pilot* (oferecido pela ${loja}) termina ${quando} (${fmt(dueDate)}). Continue com o preço de membro, *R$ 10,99/mês*, e não perca o acesso:\n${planLink}`
-    : `🔔 Sua assinatura do TotexCar Co-pilot vence ${quando} (${fmt(dueDate)}). Renove pra não perder o acesso:\n${appUrl}/plans`;
-  await sendText(phone, msg);
+  if (isCortesia) await sendTpl(phone, "cortesia_vencendo", [loja, quando, fmt(dueDate), planLink]);
+  else await sendTpl(phone, "assinatura_vencendo", [quando, fmt(dueDate), `${appUrl}/plans`]);
   return true;
 }
 
@@ -371,13 +346,13 @@ async function runPostsale(): Promise<number> {
     const phone = onlyDigits(j.customer_phone || "");
     if (!phone) continue;
     const nome = j.customer_name ? String(j.customer_name).split(" ")[0] : "";
-    const carro = j.car_desc ? ` seu ${j.car_desc}` : " seu carro";
+
+    const carroTpl = j.car_desc ? String(j.car_desc) : "carro";
 
     // 1) NPS — uma vez, no D+atraso (default 3 dias), se ainda não perguntado
     const delay = delayByLoja[j.dealership] ?? 3;
     if (!j.nps_asked_at && j.nps_score == null && daysSince(j.purchase_date) >= delay) {
-      const msg = `Oi${nome ? " " + nome : ""}! Aqui é da ${j.dealership}. 🙂\nDe 0 a 10, o quanto você recomendaria a *${j.dealership}* a um amigo?\nResponda só com o número (0 a 10). Sua resposta ajuda demais! 🙏`;
-      await sendText(phone, msg);
+      await sendTpl(phone, "nps_pesquisa", [nome || "tudo bem", j.dealership]);
       await supabase.from("postsale_journeys").update({ nps_asked_at: new Date().toISOString() }).eq("id", j.id);
       sent++;
       continue; // não manda 2 coisas no mesmo dia
@@ -387,7 +362,7 @@ async function runPostsale(): Promise<number> {
     if (j.transfer_status !== "concluida" && !j.transfer_reminded && daysSince(j.purchase_date) >= 15) {
       const alvo = dealerPhones[j.dealership] || [];
       for (const dp of alvo) {
-        await sendText(dp, `📄 *Pós-venda — ${j.dealership}*\nA transferência de propriedade do cliente ${j.customer_name || j.customer_phone}${j.car_desc ? ` (${j.car_desc})` : ""} está *pendente* há ${daysSince(j.purchase_date)} dias. Vale acompanhar pra não travar. 🙏`);
+        await sendTpl(dp, "transferencia_pendente_loja", [j.dealership, j.customer_name || j.customer_phone, carroTpl, String(daysSince(j.purchase_date))]);
       }
       await supabase.from("postsale_journeys").update({ transfer_reminded: true }).eq("id", j.id);
       if (alvo.length) { sent++; continue; }
@@ -397,7 +372,7 @@ async function runPostsale(): Promise<number> {
     if (j.warranty_until && !j.warranty_reminded) {
       const d = daysUntil(String(j.warranty_until).split("T")[0]);
       if (d >= 0 && d <= 15) {
-        await sendText(phone, `🛡️ A garantia${carro} (na ${j.dealership}) vence em ${d === 0 ? "HOJE" : d + " dia(s)"} (${fmt(String(j.warranty_until).split("T")[0])}). Aproveite pra fazer uma revisão/checagem antes de vencer.`);
+        await sendTpl(phone, "garantia_vencendo", [carroTpl, j.dealership, d === 0 ? "HOJE" : `em ${d} dia(s)`, fmt(String(j.warranty_until).split("T")[0])]);
         await supabase.from("postsale_journeys").update({ warranty_reminded: true }).eq("id", j.id);
         sent++; continue;
       }
@@ -407,7 +382,7 @@ async function runPostsale(): Promise<number> {
     if (j.revisao_proxima && !j.revisao_reminded) {
       const d = daysUntil(String(j.revisao_proxima).split("T")[0]);
       if (d >= 0 && d <= 7) {
-        await sendText(phone, `🔧 Sua próxima revisão${carro} está chegando (${fmt(String(j.revisao_proxima).split("T")[0])}). Agende com a ${j.dealership} pra manter tudo em dia. 🚗`);
+        await sendTpl(phone, "revisao_proxima", [carroTpl, fmt(String(j.revisao_proxima).split("T")[0]), j.dealership]);
         await supabase.from("postsale_journeys").update({ revisao_reminded: true }).eq("id", j.id);
         sent++; continue;
       }
@@ -415,8 +390,7 @@ async function runPostsale(): Promise<number> {
 
     // 5) Aniversário da compra — 1 ano
     if (!j.anniversary_sent && daysSince(j.purchase_date) >= 365) {
-      const msg = `🎉 Faz 1 ano que você comprou${carro} na ${j.dealership}! Obrigado pela confiança. Precisando de qualquer coisa com o carro, é só chamar. E se pensar em trocar, a gente te ajuda. 🚗`;
-      await sendText(phone, msg);
+      await sendTpl(phone, "aniversario_compra", [carroTpl, j.dealership]);
       await supabase.from("postsale_journeys").update({ anniversary_sent: true }).eq("id", j.id);
       sent++;
     }
@@ -425,7 +399,7 @@ async function runPostsale(): Promise<number> {
 }
 
 Deno.serve(async (req) => {
-  _uazapi = null;
+  _wa = null;
   // proteção: aceita secret na query (usado pelo cron) — ou execução manual autenticada
   const url = new URL(req.url);
   if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {

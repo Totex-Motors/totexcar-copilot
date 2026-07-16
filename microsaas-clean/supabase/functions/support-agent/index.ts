@@ -1,8 +1,9 @@
 // TotexCar Co-pilot — SUPORTE (super agente de atendimento, chat web)
 // Chat stateless (o front manda o histórico). Resolve dúvidas de produto/planos/uso com uma
 // base de conhecimento completa; o que não conseguir resolver vira CHAMADO (support_tickets)
-// e NOTIFICA o dono no WhatsApp (app_settings.support_owner_phone) via Uazapi.
+// e NOTIFICA o dono no WhatsApp (app_settings.support_owner_phone) — provider dual (uazapi|meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { waSendTemplate } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -36,20 +37,13 @@ async function getAIConfig() {
   return { provider, model: s?.ai_model || defaults[provider], key };
 }
 
-async function notifyOwner(text: string) {
+// Notifica o dono (iniciado pelo negócio) → TEMPLATE chamado_suporte na API oficial.
+async function notifyOwner(params: string[]) {
   const s = await getSettings();
-  const url = (s.uazapi_url || "").replace(/\/+$/, "");
-  const token = s.uazapi_token || "";
   const phone = (s.support_owner_phone || "").replace(/\D/g, "");
-  if (!url || !token || !phone) { console.error("escalação: uazapi/telefone não configurado"); return false; }
-  try {
-    const res = await fetch(`${url}/send/text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ number: phone, text }),
-    });
-    return res.ok;
-  } catch (e) { console.error("notifyOwner:", e); return false; }
+  if (!phone) { console.error("escalação: telefone do dono não configurado"); return false; }
+  try { return await waSendTemplate(s, phone, "chamado_suporte", params); }
+  catch (e) { console.error("notifyOwner:", e); return false; }
 }
 
 const TOOLS = [
@@ -88,13 +82,14 @@ async function dispatchTool(name: string, args: any, ctx: Ctx): Promise<any> {
     ctx.escalated.id = t.id;
 
     const urg = String(args?.urgencia || "media").toUpperCase();
-    await notifyOwner(
-      `🆘 SUPORTE TCF — chamado ${urg}\n\n` +
-      `👤 ${ctx.profile?.name || "?"} · ${ctx.profile?.email || "?"} · ${ctx.profile?.phone || "s/ tel"}\n` +
-      `💼 Plano: ${ctx.profile?.plan || "?"} (${ctx.profile?.subscription_status || "?"})${ctx.profile?.dealership ? ` · Loja: ${ctx.profile.dealership}` : ""}\n\n` +
-      `📌 ${args?.assunto}\n${args?.resumo}\n\n` +
-      `Ticket: ${t.id} (canal: painel web)`,
-    );
+    await notifyOwner([
+      urg,
+      `${ctx.profile?.name || "?"} · ${ctx.profile?.email || "?"} · ${ctx.profile?.phone || "s/ tel"}`,
+      `${ctx.profile?.plan || "?"} (${ctx.profile?.subscription_status || "?"})${ctx.profile?.dealership ? ` · Loja: ${ctx.profile.dealership}` : ""}`,
+      String(args?.assunto || ""),
+      String(args?.resumo || ""),
+      `${t.id} (canal: painel web)`,
+    ]);
     return { ok: true, ticket_id: t.id, message: "Chamado aberto e responsável notificado no WhatsApp." };
   } catch (e) {
     return { ok: false, error: String((e as any)?.message || e) };

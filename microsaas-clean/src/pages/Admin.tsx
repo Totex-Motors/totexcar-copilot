@@ -480,6 +480,7 @@ function ConfigTab() {
     referral_buyer_offer: "Transferência grátis",
     smartgps_enabled: false, smartgps_base_url: "https://web.smartgps.com.br", smartgps_email: "", smartgps_password: "",
     support_owner_phone: "",
+    wa_provider: "uazapi", meta_wa_token: "", meta_wa_phone_id: "", meta_wa_verify_token: "", meta_waba_id: "",
   });
 
   useEffect(() => {
@@ -509,6 +510,11 @@ function ConfigTab() {
         smartgps_email: (settings as any).smartgps_email || "",
         smartgps_password: (settings as any).smartgps_password || "",
         support_owner_phone: (settings as any).support_owner_phone || "",
+        wa_provider: (settings as any).wa_provider || "uazapi",
+        meta_wa_token: (settings as any).meta_wa_token || "",
+        meta_wa_phone_id: (settings as any).meta_wa_phone_id || "",
+        meta_wa_verify_token: (settings as any).meta_wa_verify_token || "",
+        meta_waba_id: (settings as any).meta_waba_id || "",
       });
     }
   }, [settings]);
@@ -542,6 +548,11 @@ function ConfigTab() {
         smartgps_email: f.smartgps_email || null,
         smartgps_password: f.smartgps_password || null,
         support_owner_phone: f.support_owner_phone.replace(/\D/g, "") || null,
+        wa_provider: f.wa_provider || "uazapi",
+        meta_wa_token: f.meta_wa_token || null,
+        meta_wa_phone_id: f.meta_wa_phone_id || null,
+        meta_wa_verify_token: f.meta_wa_verify_token || null,
+        meta_waba_id: f.meta_waba_id || null,
       },
       {
         onSuccess: () => toast({ title: "Configurações salvas" }),
@@ -596,6 +607,42 @@ function ConfigTab() {
           <div className="space-y-1 pt-2 border-t">
             <Label className="text-xs">Webhook (cole no Uazapi → mensagens recebidas):</Label>
             <code className="block text-xs bg-muted p-2 rounded break-all">{wppWebhook}</code>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* WhatsApp OFICIAL (Meta / BM) — provider ativo escolhido aqui */}
+      <Card className="border-0 shadow-premium-md lg:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <MessageCircle className="w-5 h-5 text-primary" /> WhatsApp Oficial (Meta / Business Manager)
+            <Badge className={f.wa_provider === "meta" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}>
+              {f.wa_provider === "meta" ? "ATIVO" : "em espera"}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Provedor de WhatsApp ATIVO</Label>
+              <Select value={f.wa_provider} onValueChange={(v) => set("wa_provider", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="uazapi">Uazapi (não-oficial, legado)</SelectItem>
+                  <SelectItem value="meta">Meta Cloud API (oficial)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">A troca vale na hora para TODO o sistema (agente, alertas, campanhas). Só ative "Meta" com os campos abaixo preenchidos e os templates aprovados.</p>
+            </div>
+            <div className="space-y-2"><Label>Token permanente (System User)</Label><Input type="password" value={f.meta_wa_token} onChange={(e) => set("meta_wa_token", e.target.value)} placeholder="EAAG..." /></div>
+            <div className="space-y-2"><Label>Phone Number ID</Label><Input value={f.meta_wa_phone_id} onChange={(e) => set("meta_wa_phone_id", e.target.value)} placeholder="Ex.: 123456789012345 (não é o número do telefone)" /></div>
+            <div className="space-y-2"><Label>WABA ID (conta do WhatsApp Business)</Label><Input value={f.meta_waba_id} onChange={(e) => set("meta_waba_id", e.target.value)} placeholder="ID da WhatsApp Business Account" /></div>
+            <div className="space-y-2"><Label>Verify Token do webhook (você inventa)</Label><Input value={f.meta_wa_verify_token} onChange={(e) => set("meta_wa_verify_token", e.target.value)} placeholder="ex.: tcf-meta-2026-xyz" /></div>
+          </div>
+          <div className="space-y-1 pt-2 border-t">
+            <Label className="text-xs">URL de callback do webhook (cole no app do Meta → WhatsApp → Configuration):</Label>
+            <code className="block text-xs bg-muted p-2 rounded break-all">{wppWebhook}</code>
+            <p className="text-xs text-muted-foreground">Use o Verify Token acima na verificação. Guia completo + templates prontos: TEMPLATES-WHATSAPP-META.md no repositório.</p>
           </div>
         </CardContent>
       </Card>

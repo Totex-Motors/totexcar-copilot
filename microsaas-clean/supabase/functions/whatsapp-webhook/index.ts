@@ -1,9 +1,11 @@
-// TotexCar Co-pilot — Agente de IA do carro via WhatsApp (Uazapi)
+// TotexCar Co-pilot — Agente de IA do carro via WhatsApp (DUAL: Uazapi OU API oficial Meta)
 // Recebe texto/foto/áudio, identifica o usuário pelo telefone e usa a IA (OpenAI/Claude/Gemini)
 // com FERRAMENTAS (function calling): registrar gasto (com litros), medir consumo pela foto do
 // hodômetro, resumo financeiro, manutenção, localização (rastreador opcional) e ANTI-MULTAS
 // (foto do auto de infração → vícios + minuta de recurso).
+// Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { waSendText, waSendMenu, waSendTemplate, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -107,19 +109,10 @@ async function uazapiCreds() {
   return { url, token };
 }
 
+// Texto livre — usar SÓ em RESPOSTA a mensagem do cliente (janela de 24h da API oficial).
 async function sendText(phone: string, text: string) {
-  const { url, token } = await uazapiCreds();
-  if (!url || !token) { console.error("Uazapi não configurado"); return; }
-  try {
-    const res = await fetch(`${url}/send/text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "token": token },
-      body: JSON.stringify({ number: phone, text }),
-    });
-    if (!res.ok) console.error("Uazapi send falhou:", res.status, await res.text());
-  } catch (e) {
-    console.error("Erro ao enviar Uazapi:", e);
-  }
+  const s = await getSettings();
+  await waSendText(s, phone, text);
 }
 
 // Página "quero comprar" do marketplace Totexmotors (janela de carros da Garagem Totex)
@@ -132,28 +125,11 @@ const PAINEL_LABEL = "🖥️ Quero o painel";
 // usamos uma LISTA (type:"list"). A 4ª opção (Garagem Totex) abre a janela de carros do marketplace.
 const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", GARAGEM_LABEL, PAINEL_LABEL];
 
-// Envia a resposta com o menu de ações (endpoint /send/menu do Uazapi).
-// Usa LISTA quando há >3 opções; se a lista falhar, cai pros 3 botões (sem a Garagem) + texto.
+// Envia a resposta com o menu de ações (lista interativa nos dois providers).
+// Usar SÓ em RESPOSTA a mensagem do cliente (janela de 24h da API oficial).
 async function sendMenu(phone: string, text: string, choices: string[], footerText?: string) {
-  const { url, token } = await uazapiCreds();
-  if (!url || !token) { console.error("Uazapi não configurado"); return; }
-  const post = (body: unknown) => fetch(`${url}/send/menu`, {
-    method: "POST", headers: { "Content-Type": "application/json", "token": token }, body: JSON.stringify(body),
-  });
-  const asList = choices.length > 3;
-  try {
-    const res = await post({ number: phone, type: asList ? "list" : "button", text, choices, footerText: footerText || "" });
-    if (res.ok) return;
-    console.error("Uazapi /send/menu falhou:", res.status, await res.text());
-  } catch (e) {
-    console.error("Erro ao enviar menu Uazapi:", e);
-  }
-  // fallback: 3 botões (garantido) + a Garagem vira link no texto, pra não perder a opção
-  try {
-    const extra = choices.length > 3 ? `\n\n${GARAGEM_LABEL}: ${GARAGEM_URL}` : "";
-    const res2 = await post({ number: phone, type: "button", text: text + extra, choices: choices.slice(0, 3), footerText: footerText || "" });
-    if (!res2.ok) await sendText(phone, text + extra);
-  } catch { await sendText(phone, text); }
+  const s = await getSettings();
+  await waSendMenu(s, phone, text, choices, footerText);
 }
 
 async function fetchImageBase64(url: string): Promise<{ data: string; media_type: string } | null> {
@@ -587,9 +563,11 @@ async function handlePostsaleNps(phone: string, text: string): Promise<boolean> 
     await sendText(phone, `Poxa${nome}, sentimos muito que não tenha sido uma nota 10. 🙏 O que a gente poderia ter feito melhor? Pode escrever aqui — vai direto pro responsável da ${j.dealership} pra resolver.`);
     const { data: dealers } = await supabase.from("users")
       .select("phone").eq("role", "dealer").eq("dealership", j.dealership).not("phone", "is", null);
+    const sTpl = await getSettings();
     for (const d of dealers || []) {
       const dp = onlyDigits(d.phone || "");
-      if (dp) await sendText(dp, `⚠️ *Alerta de pós-venda — ${j.dealership}*\nCliente ${j.customer_name || j.customer_phone} deu nota *${score}* no NPS${j.car_desc ? ` (${j.car_desc})` : ""}.\nContato: ${j.customer_phone}\nVale um contato rápido pra recuperar. 📞`);
+      // iniciado pelo negócio (o lojista não mandou msg) → TEMPLATE na API oficial
+      if (dp) await waSendTemplate(sTpl, dp, "alerta_nps_loja", [j.dealership, j.customer_name || j.customer_phone, String(score), j.customer_phone]);
     }
   } else if (seg === "promotor") {
     const rev = reviewUrl ? `\n\n⭐ Já que curtiu, deixa uma avaliação no Google (leva 30s e ajuda demais a ${j.dealership}):\n${reviewUrl}` : "";
@@ -1265,8 +1243,15 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       const ownerPhone = String(s.support_owner_phone || "").replace(/\D/g, "");
       if (ownerPhone) {
         const urg = String(args?.urgencia || "media").toUpperCase();
-        await sendText(ownerPhone,
-          `🆘 SUPORTE TCF — chamado ${urg}\n\n👤 ${user.name || "?"} · ${user.email || "?"} · ${user.phone || "s/ tel"}\n💼 Plano: ${user.plan || "?"} (${user.subscription_status || "?"})${user.dealership ? ` · Loja: ${user.dealership}` : ""}\n\n📌 ${args?.assunto}\n${args?.resumo}\n\nTicket: ${t.id} (canal: WhatsApp)`);
+        // notificação ao dono = iniciada pelo negócio → TEMPLATE na API oficial
+        await waSendTemplate(s, ownerPhone, "chamado_suporte", [
+          urg,
+          `${user.name || "?"} · ${user.email || "?"} · ${user.phone || "s/ tel"}`,
+          `${user.plan || "?"} (${user.subscription_status || "?"})${user.dealership ? ` · Loja: ${user.dealership}` : ""}`,
+          String(args?.assunto || ""),
+          String(args?.resumo || ""),
+          String(t.id),
+        ]);
       }
       return { ok: true, ticket_id: t.id, message: "Chamado aberto; responsável notificado no WhatsApp." };
     }
@@ -1446,6 +1431,15 @@ Deno.serve(async (req) => {
   _settings = null; // recarrega configs a cada requisição
 
   const url = new URL(req.url);
+
+  // API OFICIAL (Meta): ao cadastrar a URL do webhook no BM, o Meta manda um GET com hub.challenge
+  if (req.method === "GET") {
+    const s = await getSettings();
+    const verify = metaVerifyChallenge(url, s);
+    if (verify) return verify;
+    return new Response("ok", { status: 200, headers: cors });
+  }
+
   if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
     return new Response("unauthorized", { status: 401, headers: cors });
   }
@@ -1453,7 +1447,13 @@ Deno.serve(async (req) => {
   let body: any = {};
   try { body = await req.json(); } catch { /* ignore */ }
 
-  const msg = parseInbound(body);
+  // Detecta o formato: Cloud API oficial (object=whatsapp_business_account) ou Uazapi
+  const metaMsg = parseMetaInbound(body);
+  if (metaMsg?.statusOnly) {
+    // eventos de status (sent/delivered/read) da API oficial — só confirmar
+    return new Response(JSON.stringify({ ok: true, status_event: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+  }
+  const msg: any = metaMsg ?? parseInbound(body);
 
   if (msg.fromMe || !msg.phone) {
     return new Response(JSON.stringify({ ok: true, ignored: true }), { headers: { ...cors, "Content-Type": "application/json" } });
@@ -1612,7 +1612,9 @@ ${JSON.stringify(snapshot)}`;
     let inputText = msg.text || msg.transcription || "";
     if (msg.kind === "image") {
       let img: { data: string; media_type: string } | null = null;
-      if (msg.base64) {
+      if (msg.provider === "meta") {
+        img = await metaDownloadMedia(await getSettings(), msg.mediaId);
+      } else if (msg.base64) {
         img = { data: msg.base64, media_type: msg.mimetype || "image/jpeg" };
       } else {
         const creds = await uazapiCreds();
@@ -1629,7 +1631,9 @@ ${JSON.stringify(snapshot)}`;
     }
     if (msg.kind === "audio" && !inputText) {
       let audio: { data: string; media_type: string } | null = null;
-      if (msg.base64) {
+      if (msg.provider === "meta") {
+        audio = await metaDownloadMedia(await getSettings(), msg.mediaId);
+      } else if (msg.base64) {
         audio = { data: msg.base64, media_type: msg.mimetype || "audio/ogg" };
       } else {
         const creds = await uazapiCreds();
@@ -1648,7 +1652,9 @@ ${JSON.stringify(snapshot)}`;
     if (msg.kind === "pdf") {
       // PDF (ex.: carnê digital do banco com todos os boletos) — vai direto pra IA (os 3 provedores aceitam PDF)
       let pdf: { data: string; media_type: string } | null = null;
-      if (msg.base64) {
+      if (msg.provider === "meta") {
+        pdf = await metaDownloadMedia(await getSettings(), msg.mediaId);
+      } else if (msg.base64) {
         pdf = { data: msg.base64, media_type: "application/pdf" };
       } else {
         const creds = await uazapiCreds();

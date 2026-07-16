@@ -2,6 +2,7 @@
 // O dono avalia o carro pela tabela FIPE (API pública parallelum) e pede a recompra à loja
 // (até X% da FIPE). O pedido aparece no painel do lojista e dispara um aviso no WhatsApp da loja.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -33,19 +34,6 @@ async function fipeGet(path: string) {
   return res.json();
 }
 
-async function uazapiSend(settings: any, phone: string, text: string): Promise<boolean> {
-  const url = String(settings?.uazapi_url || "").replace(/\/+$/, "");
-  const token = settings?.uazapi_token || "";
-  if (!url || !token || !phone) return false;
-  try {
-    const res = await fetch(`${url}/send/text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ number: onlyDigits(phone), text }),
-    });
-    return res.ok;
-  } catch { return false; }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -104,7 +92,7 @@ Deno.serve(async (req) => {
         if (!fipeValue) return json({ error: "fipe_value_required" }, 400);
         if (!me.dealership) return json({ error: "owner_without_dealership" }, 400);
         const { data: s } = await admin.from("app_settings")
-          .select("buyback_fipe_pct, uazapi_url, uazapi_token").eq("id", 1).single();
+          .select("buyback_fipe_pct").eq("id", 1).single();
         const pct = Number(p.offer_pct ?? s?.buyback_fipe_pct ?? 90);
         const offerValue = round2(fipeValue * pct / 100);
 
@@ -125,17 +113,19 @@ Deno.serve(async (req) => {
         }).select().single();
         if (error) throw error;
 
-        // avisa o lojista da loja no WhatsApp (best-effort)
+        // avisa o lojista da loja no WhatsApp (best-effort) — iniciado pelo negócio → TEMPLATE na API oficial
         const { data: dealer } = await admin.from("users")
           .select("phone").eq("role", "dealer").eq("dealership", me.dealership).limit(1);
         const dealerPhone = dealer?.[0]?.phone;
         if (dealerPhone) {
-          const txt = `🚗 *Novo pedido de recompra* (${me.dealership})\n`
-            + `Cliente: ${me.name || "—"} (${me.phone || "sem telefone"})\n`
-            + `Veículo: ${[p.brand, p.model, p.year].filter(Boolean).join(" ")}\n`
-            + `FIPE: ${brl(fipeValue)} · Oferta (${pct}%): ${brl(offerValue)}\n`
-            + `Acesse o painel para responder.`;
-          await uazapiSend(s, dealerPhone, txt);
+          const wa = await loadWaSettings(admin);
+          await waSendTemplate(wa, dealerPhone, "pedido_recompra_loja", [
+            me.dealership,
+            me.name || "Cliente",
+            [p.brand, p.model, p.year].filter(Boolean).join(" ") || "veículo",
+            `${brl(offerValue)} (${pct}% da FIPE ${brl(fipeValue)})`,
+            me.phone || "sem telefone",
+          ]);
         }
         return json({ ok: true, request: inserted });
       }

@@ -1,7 +1,29 @@
 # HANDOFF — Totex_CAR_FINANCE (TCF) — continuação do projeto
 
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
-> Última atualização: 2026-07-15.
+> Última atualização: 2026-07-16.
+
+## 0-B. ⭐ MIGRAÇÃO WHATSAPP → API OFICIAL (Meta/BM) — 2026-07-16, código PRONTO e no ar
+Motivo: Uazapi (não-oficial) tomou restrição de 5h; risco de ban. Sistema virou **DUAL-PROVIDER**:
+`app_settings.wa_provider` ("uazapi" default | "meta") trocado no /admin → card "WhatsApp Oficial (Meta)"
+(token permanente, Phone Number ID, WABA ID, Verify Token). Uazapi segue funcionando até virar a chave.
+- **`_shared/wa.ts`** (novo): waSendText/waSendMenu (sessão 24h) + **waSendTemplate** (iniciada pelo
+  negócio; no uazapi renderiza texto equivalente) + metaDownloadMedia + parseMetaInbound +
+  metaVerifyChallenge + **WA_TEMPLATES** (registry = fonte da verdade dos 21 templates).
+- **whatsapp-webhook**: aceita os 2 formatos (GET hub.challenge OK; POST Meta text/image/audio/pdf/
+  interactive; status events ignorados); mídia via Graph; alerta NPS→loja e chamado→dono por template.
+- **car-expiration-alerts**: TODOS os alertas do cron por template (vencimento_documento,
+  parcela_financiamento, prazo_recurso_multa, assinatura/cortesia vencendo/vencida, resumo_pro_semanal,
+  nps_pesquisa, transferencia_pendente_loja, garantia_vencendo, revisao_proxima, aniversario_compra,
+  radar_match — 1 template POR CARRO, sem \n em parâmetro).
+- **dealer-api**: boas_vindas_cortesia (utilidade) / convite_copilot_loja (marketing) /
+  transferencia_concluida / campanhas via campanha_loja. **support-agent**/**buyback**: chamado_suporte /
+  pedido_recompra_loja. Migração `meta_whatsapp_provider` aplicada.
+- **`TEMPLATES-WHATSAPP-META.md`** (raiz): guia BM passo a passo + os 21 templates prontos pra colar
+  (UTILIDADE × MARKETING separados, com exemplos de variável) + checklist da virada.
+- ⏳ PENDENTE (dono): verificação do BM, número novo, token/system user, cadastrar webhook
+  (verify token no /admin), criar/aprovar os templates no WhatsApp Manager e virar a chave no /admin.
+- Smoke test ok: GET 200, hub.challenge 403 sem token (correto), POST status Meta reconhecido.
 
 ---
 

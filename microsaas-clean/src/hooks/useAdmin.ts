@@ -168,6 +168,12 @@ export interface AppSettings {
   smartgps_email: string | null;
   smartgps_password: string | null;
   support_owner_phone: string | null;
+  // WhatsApp oficial (Meta Cloud API / BM) + chave de troca de provider
+  wa_provider: string | null;          // "uazapi" | "meta"
+  meta_wa_token: string | null;
+  meta_wa_phone_id: string | null;
+  meta_wa_verify_token: string | null;
+  meta_waba_id: string | null;
 }
 
 export interface Coupon {

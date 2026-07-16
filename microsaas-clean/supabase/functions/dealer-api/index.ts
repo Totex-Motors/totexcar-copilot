@@ -3,6 +3,7 @@
 // chamador é role='dealer' (ou 'admin') e ESCOPA tudo pela loja (dealership) dele — ele
 // nunca enxerga clientes de outra loja. Reaproveita a lógica da função `integration`.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -53,20 +54,6 @@ function personalize(template: string, c: any): string {
     .replace(/\{tipo_vencimento\}/gi, nd?.tipo || "")
     .replace(/\{dias\}/gi, nd?.days != null ? String(nd.days) : "")
     .replace(/\{loja\}/gi, c.dealership || "");
-}
-
-async function uazapiSend(settings: any, phone: string, text: string): Promise<boolean> {
-  const url = String(settings?.uazapi_url || "").replace(/\/+$/, "");
-  const token = settings?.uazapi_token || "";
-  if (!url || !token) throw new Error("uazapi_not_configured");
-  try {
-    const res = await fetch(`${url}/send/text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ number: onlyDigits(phone), text }),
-    });
-    return res.ok;
-  } catch { return false; }
 }
 
 // Gera um rascunho de mensagem com o provedor de IA configurado (texto puro)
@@ -372,21 +359,22 @@ Deno.serve(async (req) => {
         const message = String(p.message || "").trim();
         if (!message) return json({ error: "message_required" }, 400);
 
-        const { data: settings } = await admin.from("app_settings")
-          .select("uazapi_url, uazapi_token").eq("id", 1).single();
-        if (!settings?.uazapi_url || !settings?.uazapi_token) return json({ error: "uazapi_not_configured" }, 400);
+        const wa = await loadWaSettings(admin);
 
         const list = await recipientsFor(admin, isAdmin ? (p.dealership || null) : me.dealership, audience, p.client_id);
         if (!list.length) return json({ ok: true, total: 0, sent: 0, failed: 0, results: [] });
 
         const results: any[] = [];
         let sent = 0, failed = 0;
+        const lojaCamp = (isAdmin ? (p.dealership || me.dealership) : me.dealership) || "sua loja";
         for (const c of list) {
+          // campanha = MARKETING iniciado pelo negócio → template campanha_loja na API oficial
           const txt = personalize(message, c);
-          const ok = await uazapiSend(settings, c.phone, txt);
+          const primeiro = (c.name || "").split(" ")[0] || "tudo bem";
+          const ok = await waSendTemplate(wa, c.phone, "campanha_loja", [primeiro, lojaCamp, txt]);
           if (ok) sent++; else failed++;
           results.push({ id: c.id, name: c.name, phone: c.phone, ok });
-          await new Promise((r) => setTimeout(r, 350)); // evita flood no Uazapi
+          await new Promise((r) => setTimeout(r, 350)); // pacing entre envios
         }
         return json({ ok: true, total: list.length, sent, failed, results });
       }
@@ -445,16 +433,19 @@ Deno.serve(async (req) => {
         }).select("id").single();
         if (error) return json({ error: error.message }, 400);
 
-        // Boas-vindas + convite pra ativar o Co-pilot com o bônus da loja (semi-automático)
-        const { data: st } = await admin.from("app_settings").select("uazapi_url, uazapi_token, app_url").eq("id", 1).single();
+        // Boas-vindas + convite pra ativar o Co-pilot com o bônus da loja (semi-automático).
+        // Iniciado pelo negócio → TEMPLATE na API oficial (cortesia = utilidade; convite bônus = marketing).
+        const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
         const appUrl = (st?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
         const link = `${appUrl}/entrar?tab=register${coupon ? `&coupon=${encodeURIComponent(coupon)}` : ""}`;
-        const primeiro = name ? " " + name.split(" ")[0] : "";
-        const msg = cortesia
-          ? `Olá${primeiro}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${loja}!\n\nComo presente de boas-vindas, você ganhou *1 ANO GRÁTIS* do *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais). É cortesia da ${loja}, você não paga nada! 🎁\n\nSua conta já está ativa. Comece agora mesmo por aqui — pode me mandar uma foto de um cupom de combustível ou perguntar qualquer coisa sobre o seu carro. 🚗\n\nQuer ver o painel completo (gráficos e histórico) no navegador? É só me pedir aqui *"quero o painel"* que eu te mando um link seguro de acesso. 🔐`
-          : `Olá${primeiro}! 🎉 Muito obrigado por comprar${car ? ` seu ${car}` : ""} na ${loja}!\n\nComo nosso cliente, você ganhou acesso ao *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial:\n${link}\n\nQualquer dúvida é só chamar por aqui. Boa estrada! 🚗`;
+        const primeiro = name ? name.split(" ")[0] : "tudo bem";
+        const wa = await loadWaSettings(admin);
         let welcome = false;
-        try { if (st?.uazapi_url && st?.uazapi_token) welcome = await uazapiSend(st, phone, msg); } catch { /* Uazapi off: cria a jornada mesmo assim */ }
+        try {
+          welcome = cortesia
+            ? await waSendTemplate(wa, phone, "boas_vindas_cortesia", [primeiro, car || "carro", loja])
+            : await waSendTemplate(wa, phone, "convite_copilot_loja", [primeiro, car ? `seu ${car}` : "seu carro", loja, link]);
+        } catch { /* WhatsApp off: cria a jornada mesmo assim */ }
         if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
         return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated });
       }
@@ -480,13 +471,11 @@ Deno.serve(async (req) => {
 
         if (concluindo) {
           try {
-            const { data: st } = await admin.from("app_settings").select("uazapi_url, uazapi_token").eq("id", 1).single();
-            if (st?.uazapi_url && st?.uazapi_token) {
-              const nome = j.customer_name ? " " + String(j.customer_name).split(" ")[0] : "";
-              await uazapiSend(st, String(j.customer_phone).replace(/\D/g, ""), `✅ Boa notícia${nome}! A *transferência de propriedade*${j.car_desc ? ` do seu ${j.car_desc}` : ""} foi concluída pela ${loja}. Documentação em dia! 🎉 Qualquer coisa, é só chamar por aqui.`);
-              await admin.from("postsale_journeys").update({ transfer_done_notified: true }).eq("id", id);
-            }
-          } catch { /* Uazapi off */ }
+            const wa = await loadWaSettings(admin);
+            const nome = j.customer_name ? String(j.customer_name).split(" ")[0] : "tudo bem";
+            const ok = await waSendTemplate(wa, String(j.customer_phone).replace(/\D/g, ""), "transferencia_concluida", [nome, j.car_desc || "carro", loja]);
+            if (ok) await admin.from("postsale_journeys").update({ transfer_done_notified: true }).eq("id", id);
+          } catch { /* WhatsApp off */ }
         }
         return json({ ok: true, notificado: concluindo });
       }
