@@ -1450,7 +1450,13 @@ Deno.serve(async (req) => {
   // Detecta o formato: Cloud API oficial (object=whatsapp_business_account) ou Uazapi
   const metaMsg = parseMetaInbound(body);
   if (metaMsg?.statusOnly) {
-    // eventos de status (sent/delivered/read) da API oficial — só confirmar
+    // eventos de status (sent/delivered/read/FAILED) da API oficial — loga falha de entrega com o motivo
+    try {
+      const st = body?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0];
+      if (st && (st.status === "failed" || st.errors)) {
+        console.error("META DELIVERY FAIL:", JSON.stringify({ to: st.recipient_id, status: st.status, errors: st.errors }));
+      }
+    } catch { /* */ }
     return new Response(JSON.stringify({ ok: true, status_event: true }), { headers: { ...cors, "Content-Type": "application/json" } });
   }
   // Guarda de número: se o evento for de OUTRO número da mesma WABA (ex.: o do CRM TotexGest),
