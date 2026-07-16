@@ -65,6 +65,17 @@ Vale disparar UMA campanha no número antigo avisando o novo número + atualizar
 
 ## 3. TEMPLATES — copiar e colar no WhatsApp Manager
 
+> ⚡ **Atalho: criação AUTOMÁTICA via API.** Em vez de colar um por um, rode
+> (na pasta `microsaas-clean`, com o WABA ID e o token permanente em mãos):
+> ```
+> node scripts/create-wa-templates.mjs <WABA_ID> <TOKEN>
+> ```
+> Cria os 21 de uma vez (pula os que já existem). Para acompanhar a aprovação:
+> ```
+> node scripts/create-wa-templates.mjs <WABA_ID> <TOKEN> --status
+> ```
+> As definições abaixo ficam como referência/conferência manual.
+
 Regras que já apliquei em todos: nome em `snake_case`; idioma **pt_BR**; variáveis `{{n}}` nunca
 no início/fim isoladas de contexto; **sem quebra de linha dentro de variável** (o código já sanitiza).
 Na criação, o Meta pede um **exemplo** para cada variável — está na tabela de cada template.
