@@ -1455,6 +1455,10 @@ Deno.serve(async (req) => {
       const st = body?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0];
       if (st && (st.status === "failed" || st.errors)) {
         console.error("META DELIVERY FAIL:", JSON.stringify({ to: st.recipient_id, status: st.status, errors: st.errors }));
+        await supabase.from("whatsapp_events").insert({
+          from_phone: String(st.recipient_id || ""), kind: "status_fail", raw: st,
+          status: "error", error: JSON.stringify(st.errors || []).slice(0, 900),
+        });
       }
     } catch { /* */ }
     return new Response(JSON.stringify({ ok: true, status_event: true }), { headers: { ...cors, "Content-Type": "application/json" } });

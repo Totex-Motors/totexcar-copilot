@@ -21,9 +21,17 @@ Motivo: Uazapi (não-oficial) tomou restrição de 5h; risco de ban. Sistema vir
   pedido_recompra_loja. Migração `meta_whatsapp_provider` aplicada.
 - **`TEMPLATES-WHATSAPP-META.md`** (raiz): guia BM passo a passo + os 21 templates prontos pra colar
   (UTILIDADE × MARKETING separados, com exemplos de variável) + checklist da virada.
-- ⏳ PENDENTE (dono): verificação do BM, número novo, token/system user, cadastrar webhook
-  (verify token no /admin), criar/aprovar os templates no WhatsApp Manager e virar a chave no /admin.
-- Smoke test ok: GET 200, hub.challenge 403 sem token (correto), POST status Meta reconhecido.
+- ✅ **MIGRAÇÃO CONCLUÍDA E NO AR (2026-07-16 noite):** wa_provider=meta ATIVO. WABA "TotexCar
+  Co-Pilot" 1300328208581382 (na BM TotexMotors já verificada, WABA separada do CRM TotexGest),
+  número **+55 11 96378-6699** (phone_id 1140690362471572) registrado via API (UI bugada; PIN 2
+  etapas **731942**). 21 templates criados pelo script `scripts/create-wa-templates.mjs` e TODOS
+  APROVADOS (8 reformulados: variável não pode encerrar a msg + proporção texto/vars;
+  boas_vindas_cortesia recategorizada MARKETING pelo Meta). Pegadinha resolvida: "accepted" sem
+  entrega = FALTA DE CARTÃO na WABA (billing). Webhook loga falha de entrega (kind status_fail no
+  whatsapp_events). Ciclo completo TESTADO pelo dono: oi→resposta, "Quero painel"→link mágico,
+  menu interativo (lista Meta)→Manutenção km. ⚠️ Número antigo do Uazapi foi DELETADO (sem
+  rollback); wa.me do site atualizados p/ 5511963786699. PENDENTE: campanha de reapresentação
+  pros clientes existentes (a base tem os telefones; ex.: Renata só conhece o número antigo).
 
 ---
 
