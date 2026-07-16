@@ -30,32 +30,32 @@ const TEMPLATES = {
   },
   parcela_financiamento: {
     category: "UTILITY",
-    body: "🔔 Parcela {{1}} do financiamento {{2}}, de {{3}}, {{4}} ({{5}}). {{6}}",
-    example: ["12/48", "Safra", "R$ 1.250,00", "vence HOJE", "20/07/2026", "Linha digitável (copia e cola): 23793381286000782713695000063305999580000125000"],
+    body: "🔔 Lembrete do seu financiamento {{1}}: a parcela {{2}}, no valor de {{3}}, {{4}} ({{5}}). Sobre o boleto: {{6}} Se precisar de ajuda com o financiamento, é só responder esta mensagem. 🚗",
+    example: ["Safra", "12/48", "R$ 1.250,00", "vence HOJE", "20/07/2026", "Linha digitável (copia e cola): 23793381286000782713695000063305999580000125000"],
   },
   prazo_recurso_multa: {
     category: "UTILITY",
-    body: "⚖️ O prazo para recorrer de {{1}} {{2}} ({{3}}). {{4}}",
+    body: "⚖️ Atenção ao prazo da sua multa: o período para recorrer de {{1}} {{2}} ({{3}}). Próximo passo: {{4}} Estou aqui para ajudar com o recurso, é só responder. 📄",
     example: ["excesso de velocidade (R$ 195,23)", "termina em 3 dias", "22/07/2026", "Seu recurso já está PRONTO no app: https://totexcarco-pilot.vercel.app/multas"],
   },
   assinatura_vencendo: {
     category: "UTILITY",
-    body: "🔔 Sua assinatura do TotexCar Co-pilot vence {{1}} ({{2}}). Renove para não perder o acesso: {{3}}",
+    body: "🔔 Sua assinatura do TotexCar Co-pilot vence {{1}} ({{2}}). Renove em {{3}} para não perder o acesso ao seu assistente. 🚗",
     example: ["em 3 dias", "20/07/2026", "https://totexcarco-pilot.vercel.app/plans"],
   },
   assinatura_vencida: {
     category: "UTILITY",
-    body: "⚠️ Sua assinatura do TotexCar Co-pilot venceu. Para continuar registrando gastos, consumo e usando o assistente, renove em: {{1}}",
+    body: "⚠️ Sua assinatura do TotexCar Co-pilot venceu. Para continuar registrando gastos, consumo e usando o assistente, renove em {{1}} e volte a ficar em dia. 🚗",
     example: ["https://totexcarco-pilot.vercel.app/plans"],
   },
   cortesia_vencendo: {
     category: "UTILITY",
-    body: "🔔 Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, termina {{2}} ({{3}}). Continue com o preço de membro de R$ 10,99/mês: {{4}}",
+    body: "🔔 Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, termina {{2}} ({{3}}). Continue com o preço de membro de R$ 10,99/mês renovando em {{4}} e siga com tudo em dia. 🚗",
     example: ["Cardoso Veículos", "amanhã", "15/07/2027", "https://totexcarco-pilot.vercel.app/plans?coupon=CARDOSO90"],
   },
   cortesia_vencida: {
     category: "UTILITY",
-    body: "⚠️ Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, chegou ao fim. Continue com tudo (gastos, consumo, revisões e multas) por R$ 10,99/mês, preço de membro: {{2}}",
+    body: "⚠️ Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, chegou ao fim. Continue com tudo (gastos, consumo, revisões e multas) por R$ 10,99/mês, preço de membro, renovando em {{2}}. Até já! 🚗",
     example: ["Cardoso Veículos", "https://totexcarco-pilot.vercel.app/plans?coupon=CARDOSO90"],
   },
   resumo_pro_semanal: {
@@ -69,7 +69,8 @@ const TEMPLATES = {
     example: ["Renata", "Cardoso Veículos"],
   },
   boas_vindas_cortesia: {
-    category: "UTILITY",
+    // o Meta recategorizou p/ MARKETING na criação (allow_category_change)
+    category: "MARKETING",
     body: "Olá {{1}}! 🎉 Obrigado por comprar seu {{2}} na {{3}}. Sua conta no TotexCar Co-pilot foi ativada com 1 ANO DE CORTESIA da loja: gastos, consumo, revisões, multas e mais, direto neste WhatsApp. Responda esta mensagem para começar. 🚗",
     example: ["Renata", "Nivus", "Cardoso Veículos"],
   },
@@ -100,7 +101,7 @@ const TEMPLATES = {
   },
   chamado_suporte: {
     category: "UTILITY",
-    body: "🆘 Chamado de suporte ({{1}}): {{2}}, plano {{3}}. Assunto: {{4}}. Resumo: {{5}}. Ticket: {{6}}",
+    body: "🆘 Novo chamado de suporte com urgência {{1}} aberto no TotexCar Co-pilot. Cliente: {{2}}, plano {{3}}. Assunto: {{4}}. Resumo do caso: {{5}}. Número do ticket para acompanhamento: {{6}}. Responda o cliente assim que possível.",
     example: ["ALTA", "João · joao@email.com · 11999998888", "premium (active)", "Pagamento não liberado", "Pagou por PIX há 2h e segue bloqueado", "a1b2c3d4"],
   },
   pedido_recompra_loja: {
@@ -111,7 +112,7 @@ const TEMPLATES = {
   // ===================== MARKETING =====================
   convite_copilot_loja: {
     category: "MARKETING",
-    body: "Olá {{1}}! 🎉 Obrigado por comprar {{2}} na {{3}}. Como nosso cliente, você tem acesso ao TotexCar Co-pilot, o assistente do seu carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial. Ative em: {{4}}",
+    body: "Olá {{1}}! 🎉 Obrigado por comprar {{2}} na {{3}}. Como nosso cliente, você tem acesso ao TotexCar Co-pilot, o assistente do seu carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial. Ative em {{4}} e comece a cuidar do seu carro hoje mesmo. 🚗",
     example: ["Renata", "seu Nivus", "Cardoso Veículos", "https://totexcarco-pilot.vercel.app/entrar?tab=register&coupon=CARDOSO90"],
   },
   radar_match: {

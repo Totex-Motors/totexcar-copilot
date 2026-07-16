@@ -94,10 +94,10 @@ Na criação, o Meta pede um **exemplo** para cada variável — está na tabela
 
 **parcela_financiamento**
 ```
-🔔 Parcela {{1}} do financiamento {{2}}, de {{3}}, {{4}} ({{5}}). {{6}}
+🔔 Lembrete do seu financiamento {{1}}: a parcela {{2}}, no valor de {{3}}, {{4}} ({{5}}). Sobre o boleto: {{6}} Se precisar de ajuda com o financiamento, é só responder esta mensagem. 🚗
 ```
-| 1 | nº/total | 12/48 |
-| 2 | banco | Safra |
+| 1 | banco | Safra |
+| 2 | nº/total | 12/48 |
 | 3 | valor | R$ 1.250,00 |
 | 4 | situação | vence HOJE |
 | 5 | data | 20/07/2026 |
@@ -105,7 +105,7 @@ Na criação, o Meta pede um **exemplo** para cada variável — está na tabela
 
 **prazo_recurso_multa**
 ```
-⚖️ O prazo para recorrer de {{1}} {{2}} ({{3}}). {{4}}
+⚖️ Atenção ao prazo da sua multa: o período para recorrer de {{1}} {{2}} ({{3}}). Próximo passo: {{4}} Estou aqui para ajudar com o recurso, é só responder. 📄
 ```
 | 1 | multa + valor | excesso de velocidade (R$ 195,23) |
 | 2 | situação | termina em 3 dias |
@@ -114,7 +114,7 @@ Na criação, o Meta pede um **exemplo** para cada variável — está na tabela
 
 **assinatura_vencendo**
 ```
-🔔 Sua assinatura do TotexCar Co-pilot vence {{1}} ({{2}}). Renove para não perder o acesso: {{3}}
+🔔 Sua assinatura do TotexCar Co-pilot vence {{1}} ({{2}}). Renove em {{3}} para não perder o acesso ao seu assistente. 🚗
 ```
 | 1 | quando | em 3 dias |
 | 2 | data | 20/07/2026 |
@@ -122,13 +122,13 @@ Na criação, o Meta pede um **exemplo** para cada variável — está na tabela
 
 **assinatura_vencida**
 ```
-⚠️ Sua assinatura do TotexCar Co-pilot venceu. Para continuar registrando gastos, consumo e usando o assistente, renove em: {{1}}
+⚠️ Sua assinatura do TotexCar Co-pilot venceu. Para continuar registrando gastos, consumo e usando o assistente, renove em {{1}} e volte a ficar em dia. 🚗
 ```
 | 1 | link | https://totexcarco-pilot.vercel.app/plans |
 
 **cortesia_vencendo**
 ```
-🔔 Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, termina {{2}} ({{3}}). Continue com o preço de membro de R$ 10,99/mês: {{4}}
+🔔 Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, termina {{2}} ({{3}}). Continue com o preço de membro de R$ 10,99/mês renovando em {{4}} e siga com tudo em dia. 🚗
 ```
 | 1 | loja | Cardoso Veículos |
 | 2 | quando | amanhã |
@@ -137,7 +137,7 @@ Na criação, o Meta pede um **exemplo** para cada variável — está na tabela
 
 **cortesia_vencida**
 ```
-⚠️ Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, chegou ao fim. Continue com tudo (gastos, consumo, revisões e multas) por R$ 10,99/mês, preço de membro: {{2}}
+⚠️ Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, chegou ao fim. Continue com tudo (gastos, consumo, revisões e multas) por R$ 10,99/mês, preço de membro, renovando em {{2}}. Até já! 🚗
 ```
 | 1 | loja | Cardoso Veículos |
 | 2 | link | https://totexcarco-pilot.vercel.app/plans?coupon=CARDOSO90 |
@@ -159,7 +159,7 @@ Oi {{1}}! Aqui é da {{2}}. 🙂 De 0 a 10, o quanto você recomendaria a {{2}} 
 | 1 | nome | Renata |
 | 2 | loja | Cardoso Veículos |
 
-**boas_vindas_cortesia**
+**boas_vindas_cortesia** *(⚠️ o Meta recategorizou p/ MARKETING na criação — linguagem de presente)*
 ```
 Olá {{1}}! 🎉 Obrigado por comprar seu {{2}} na {{3}}. Sua conta no TotexCar Co-pilot foi ativada com 1 ANO DE CORTESIA da loja: gastos, consumo, revisões, multas e mais, direto neste WhatsApp. Responda esta mensagem para começar. 🚗
 ```
@@ -215,7 +215,7 @@ Olá {{1}}! 🎉 Obrigado por comprar seu {{2}} na {{3}}. Sua conta no TotexCar 
 
 **chamado_suporte** *(vai pro DONO/Marco)*
 ```
-🆘 Chamado de suporte ({{1}}): {{2}}, plano {{3}}. Assunto: {{4}}. Resumo: {{5}}. Ticket: {{6}}
+🆘 Novo chamado de suporte com urgência {{1}} aberto no TotexCar Co-pilot. Cliente: {{2}}, plano {{3}}. Assunto: {{4}}. Resumo do caso: {{5}}. Número do ticket para acompanhamento: {{6}}. Responda o cliente assim que possível.
 ```
 | 1 | urgência | ALTA |
 | 2 | cliente | João · joao@email.com · 11999998888 |
@@ -238,7 +238,7 @@ Olá {{1}}! 🎉 Obrigado por comprar seu {{2}} na {{3}}. Sua conta no TotexCar 
 
 **convite_copilot_loja** *(boas-vindas SEM cortesia — tem cupom/oferta → marketing)*
 ```
-Olá {{1}}! 🎉 Obrigado por comprar {{2}} na {{3}}. Como nosso cliente, você tem acesso ao TotexCar Co-pilot, o assistente do seu carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial. Ative em: {{4}}
+Olá {{1}}! 🎉 Obrigado por comprar {{2}} na {{3}}. Como nosso cliente, você tem acesso ao TotexCar Co-pilot, o assistente do seu carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial. Ative em {{4}} e comece a cuidar do seu carro hoje mesmo. 🚗
 ```
 | 1 | nome | Renata |
 | 2 | carro | seu Nivus |

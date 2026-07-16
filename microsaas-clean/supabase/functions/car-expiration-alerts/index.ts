@@ -127,7 +127,7 @@ async function maybeNotifyParcela(userId: string, phone: string, f: any, dueDate
     : f.boleto_linha
     ? `Linha digitável (copia e cola): ${f.boleto_linha} — se este boleto for de outra parcela, me mande o carnê em PDF que eu atualizo.`
     : `Me mande o carnê em PDF (ou a foto do boleto) que eu envio a linha digitável junto com o lembrete, todo mês.`;
-  await sendTpl(phone, "parcela_financiamento", [`${parcelaNum}/${f.num_parcelas}`, banco, valor, situacao, fmt(dueDate), boletoInfo]);
+  await sendTpl(phone, "parcela_financiamento", [banco, `${parcelaNum}/${f.num_parcelas}`, valor, situacao, fmt(dueDate), boletoInfo]);
   return true;
 }
 

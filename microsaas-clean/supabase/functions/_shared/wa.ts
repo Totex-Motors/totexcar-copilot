@@ -202,32 +202,32 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
   },
   parcela_financiamento: {
     category: "UTILITY",
-    body: "🔔 Parcela {{1}} do financiamento {{2}}, de {{3}}, {{4}} ({{5}}). {{6}}",
-    render: (p) => `🔔 Parcela ${p[0]} do financiamento ${p[1]}, de ${p[2]}, ${p[3]} (${p[4]}).\n\n${p[5]}`,
+    body: "🔔 Lembrete do seu financiamento {{1}}: a parcela {{2}}, no valor de {{3}}, {{4}} ({{5}}). Sobre o boleto: {{6}} Se precisar de ajuda com o financiamento, é só responder esta mensagem. 🚗",
+    render: (p) => `🔔 Lembrete do seu financiamento ${p[0]}: a parcela ${p[1]}, no valor de ${p[2]}, ${p[3]} (${p[4]}).\n\n${p[5]}`,
   },
   prazo_recurso_multa: {
     category: "UTILITY",
-    body: "⚖️ O prazo para recorrer de {{1}} {{2}} ({{3}}). {{4}}",
+    body: "⚖️ Atenção ao prazo da sua multa: o período para recorrer de {{1}} {{2}} ({{3}}). Próximo passo: {{4}} Estou aqui para ajudar com o recurso, é só responder. 📄",
     render: (p) => `⚖️ O prazo para recorrer de ${p[0]} ${p[1]} (${p[2]}).\n\n${p[3]}`,
   },
   assinatura_vencendo: {
     category: "UTILITY",
-    body: "🔔 Sua assinatura do TotexCar Co-pilot vence {{1}} ({{2}}). Renove para não perder o acesso: {{3}}",
+    body: "🔔 Sua assinatura do TotexCar Co-pilot vence {{1}} ({{2}}). Renove em {{3}} para não perder o acesso ao seu assistente. 🚗",
     render: (p) => `🔔 Sua assinatura do TotexCar Co-pilot vence ${p[0]} (${p[1]}). Renove pra não perder o acesso:\n${p[2]}`,
   },
   assinatura_vencida: {
     category: "UTILITY",
-    body: "⚠️ Sua assinatura do TotexCar Co-pilot venceu. Para continuar registrando gastos, consumo e usando o assistente, renove em: {{1}}",
+    body: "⚠️ Sua assinatura do TotexCar Co-pilot venceu. Para continuar registrando gastos, consumo e usando o assistente, renove em {{1}} e volte a ficar em dia. 🚗",
     render: (p) => `⚠️ Sua assinatura do TotexCar Co-pilot venceu. Pra continuar registrando gastos, consumo e usar o assistente, é só renovar:\n${p[0]}`,
   },
   cortesia_vencendo: {
     category: "UTILITY",
-    body: "🔔 Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, termina {{2}} ({{3}}). Continue com o preço de membro de R$ 10,99/mês: {{4}}",
+    body: "🔔 Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, termina {{2}} ({{3}}). Continue com o preço de membro de R$ 10,99/mês renovando em {{4}} e siga com tudo em dia. 🚗",
     render: (p) => `🔔 Seu ano de cortesia do *TotexCar Co-pilot* (oferecido pela ${p[0]}) termina ${p[1]} (${p[2]}). Continue com o preço de membro, *R$ 10,99/mês*, e não perca o acesso:\n${p[3]}`,
   },
   cortesia_vencida: {
     category: "UTILITY",
-    body: "⚠️ Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, chegou ao fim. Continue com tudo (gastos, consumo, revisões e multas) por R$ 10,99/mês, preço de membro: {{2}}",
+    body: "⚠️ Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, chegou ao fim. Continue com tudo (gastos, consumo, revisões e multas) por R$ 10,99/mês, preço de membro, renovando em {{2}}. Até já! 🚗",
     render: (p) => `⚠️ Seu ano de cortesia do *TotexCar Co-pilot* (oferecido pela ${p[0]}) chegou ao fim. Você pode continuar com tudo — gastos, consumo, revisões e multas — por apenas *R$ 10,99/mês* (preço de membro):\n${p[1]}`,
   },
   resumo_pro_semanal: {
@@ -241,7 +241,8 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
     render: (p) => `Oi ${p[0]}! Aqui é da ${p[1]}. 🙂\nDe 0 a 10, o quanto você recomendaria a *${p[1]}* a um amigo?\nResponda só com o número (0 a 10). Sua resposta ajuda demais! 🙏`,
   },
   boas_vindas_cortesia: {
-    category: "UTILITY",
+    // criada como UTILITY mas o Meta RECATEGORIZOU p/ MARKETING (linguagem de presente/1 ano grátis)
+    category: "MARKETING",
     body: "Olá {{1}}! 🎉 Obrigado por comprar seu {{2}} na {{3}}. Sua conta no TotexCar Co-pilot foi ativada com 1 ANO DE CORTESIA da loja: gastos, consumo, revisões, multas e mais, direto neste WhatsApp. Responda esta mensagem para começar. 🚗",
     render: (p) => `Olá ${p[0]}! 🎉 Muito obrigado por comprar seu ${p[1]} na ${p[2]}!\n\nComo presente de boas-vindas, você ganhou *1 ANO GRÁTIS* do *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais). É cortesia da ${p[2]}, você não paga nada! 🎁\n\nSua conta já está ativa. Responda esta mensagem para começar. 🚗`,
   },
@@ -272,7 +273,7 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
   },
   chamado_suporte: {
     category: "UTILITY",
-    body: "🆘 Chamado de suporte ({{1}}): {{2}}, plano {{3}}. Assunto: {{4}}. Resumo: {{5}}. Ticket: {{6}}",
+    body: "🆘 Novo chamado de suporte com urgência {{1}} aberto no TotexCar Co-pilot. Cliente: {{2}}, plano {{3}}. Assunto: {{4}}. Resumo do caso: {{5}}. Número do ticket para acompanhamento: {{6}}. Responda o cliente assim que possível.",
     render: (p) => `🆘 SUPORTE TCF — chamado ${p[0]}\n\n👤 ${p[1]}\n💼 Plano: ${p[2]}\n\n📌 ${p[3]}\n${p[4]}\n\nTicket: ${p[5]}`,
   },
   pedido_recompra_loja: {
@@ -283,7 +284,7 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
   // ===================== MARKETING =====================
   convite_copilot_loja: {
     category: "MARKETING",
-    body: "Olá {{1}}! 🎉 Obrigado por comprar {{2}} na {{3}}. Como nosso cliente, você tem acesso ao TotexCar Co-pilot, o assistente do seu carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial. Ative em: {{4}}",
+    body: "Olá {{1}}! 🎉 Obrigado por comprar {{2}} na {{3}}. Como nosso cliente, você tem acesso ao TotexCar Co-pilot, o assistente do seu carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial. Ative em {{4}} e comece a cuidar do seu carro hoje mesmo. 🚗",
     render: (p) => `Olá ${p[0]}! 🎉 Muito obrigado por comprar ${p[1]} na ${p[2]}!\n\nComo nosso cliente, você ganhou acesso ao *TotexCar Co-pilot* — seu assistente do carro no WhatsApp (gastos, consumo, revisões, multas e mais), com um bônus especial:\n${p[3]}\n\nQualquer dúvida é só chamar por aqui. Boa estrada! 🚗`,
   },
   radar_match: {
