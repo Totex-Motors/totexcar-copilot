@@ -15,7 +15,7 @@ import { useMultas, useUpdateMultaStatus, type Multa } from "@/hooks/useMultas";
 import { CnhPointsCard } from "@/components/CnhPointsCard";
 import { toast } from "@/hooks/use-toast";
 
-const AGENT_NUMBER = "5515981615862";
+const AGENT_NUMBER = "5511963786699"; // número OFICIAL (Meta Cloud API)
 const WA_LINK = `https://wa.me/${AGENT_NUMBER}?text=${encodeURIComponent("Oi! Recebi uma multa e quero analisar. Vou mandar a foto do auto de infração 📄")}`;
 
 const brl = (v: number | null) =>

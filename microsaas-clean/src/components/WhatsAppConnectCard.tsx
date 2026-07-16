@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { MessageCircle, ExternalLink, X } from "lucide-react";
 
 // Número do agente no WhatsApp (somente dígitos, com DDI 55)
-const AGENT_NUMBER = "5515981615862";
+const AGENT_NUMBER = "5511963786699"; // número OFICIAL (Meta Cloud API)
 const WELCOME_MSG =
   "Oi, TotexCar Co-pilot! Acabei de criar minha conta e quero começar a organizar os gastos do meu carro 🚗";
 const WHATSAPP_LINK = `https://wa.me/${AGENT_NUMBER}?text=${encodeURIComponent(WELCOME_MSG)}`;

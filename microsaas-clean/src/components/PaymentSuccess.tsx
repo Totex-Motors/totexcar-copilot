@@ -15,7 +15,7 @@ import {
 import { Link } from "react-router-dom";
 
 // Número do agente no WhatsApp (somente dígitos, com DDI 55)
-const AGENT_NUMBER = "5515981615862";
+const AGENT_NUMBER = "5511963786699"; // número OFICIAL (Meta Cloud API)
 const AGENT_DISPLAY = "(15) 98161-5862";
 const WELCOME_MSG =
   "Oi, TotexCar Co-pilot! Acabei de assinar o plano para acompanhar e organizar minhas despesas com meu carro 🚗";
