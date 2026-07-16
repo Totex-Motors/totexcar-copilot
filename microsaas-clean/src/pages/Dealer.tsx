@@ -19,6 +19,7 @@ import {
   Car, Users, LogOut, Search, Store, CalendarClock, Wallet,
   Phone, Mail, Gauge, AlertTriangle, ShieldCheck, BadgeCheck, Fuel,
   Megaphone, Sparkles, Send, Loader2, MessageCircle, Banknote, HeartHandshake,
+  ExternalLink, KanbanSquare,
 } from "lucide-react";
 import { PostSaleTab } from "@/components/dealer/PostSaleTab";
 import { useSearchParams } from "react-router-dom";
@@ -159,7 +160,13 @@ export default function Dealer() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden sm:block text-sm text-muted-foreground">{userData?.name}</span>
+            {/* CRM TotexGest (sistema irmão): acesso direto — SSO fica pra fase 2 */}
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href="https://totexcrm.com.br" target="_blank" rel="noreferrer" title="Abrir o CRM TotexGest (seus leads)">
+                <KanbanSquare className="w-4 h-4" /> <span className="hidden sm:inline">CRM TotexGest</span><span className="sm:hidden">CRM</span> <ExternalLink className="w-3 h-3" />
+              </a>
+            </Button>
+            <span className="hidden md:block text-sm text-muted-foreground">{userData?.name}</span>
             <Button variant="ghost" size="icon" onClick={() => signOut()} title="Sair">
               <LogOut className="h-4 w-4" />
             </Button>
