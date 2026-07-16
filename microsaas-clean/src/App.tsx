@@ -22,6 +22,7 @@ import CarroConectado from "./pages/CarroConectado";
 import Multas from "./pages/Multas";
 import Garagem from "./pages/Garagem";
 import Suporte from "./pages/Suporte";
+import AccessLink from "./pages/AccessLink";
 import NotFound from "./pages/NotFound";
 import { PendingCouponApplier } from "./components/PendingCouponApplier";
 import { InstallPrompt } from "./components/InstallPrompt";
@@ -72,6 +73,8 @@ const App = () => (
           <Route path="/lp2" element={<Lp2 />} />
           <Route path="/lp3" element={<Lp3 />} />
           <Route path="/suporte" element={<Suporte />} />
+          {/* Link curto de acesso do WhatsApp (troca o código pelo link mágico) */}
+          <Route path="/a/:code" element={<AccessLink />} />
 
           {/* Site público (marketing) — fundo escuro + navbar + footer */}
           <Route element={<MarketingLayout />}>

@@ -1258,8 +1258,20 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         });
         const link = (gen as any)?.properties?.action_link;
         if (error || !link) return { ok: false, error: "link_falhou", message: `Não consegui gerar o link agora. Diga ao usuário pra abrir ${base} e, se precisar, você tenta de novo.` };
+        // Encurta: código de uso único que a página /a/{code} troca pelo link real (via edge `go`).
+        // Além de curto, protege o token do bot de preview do WhatsApp (que faria GET e consumiria o link mágico).
+        let shortUrl = link;
+        try {
+          const alfa = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+          const code = [...crypto.getRandomValues(new Uint8Array(10))].map((b) => alfa[b % alfa.length]).join("");
+          const { error: insErr } = await supabase.from("access_links").insert({
+            code, action_link: link, user_id: user.id,
+            expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          });
+          if (!insErr) shortUrl = `${base}/a/${code}`;
+        } catch { /* fallback: manda o link longo mesmo */ }
         // Envia direto pra garantir o token intacto (o modelo não deve reescrever o link).
-        await sendText(String(user.phone), `🔐 Aqui está seu acesso ao painel do TotexCar Co-pilot — link seguro, de uso único, válido por ~1 hora:\n${link}\n\nÉ só tocar pra entrar (não precisa de senha). Dica: no navegador, use "Adicionar à tela inicial" pra deixar como um atalho de app. 📲`);
+        await sendText(String(user.phone), `🔐 Aqui está seu acesso ao painel do TotexCar Co-pilot — link seguro, de uso único, válido por ~1 hora:\n${shortUrl}\n\nÉ só tocar pra entrar (não precisa de senha). Dica: no navegador, use "Adicionar à tela inicial" pra deixar como um atalho de app. 📲`);
         return { ok: true, enviado: true, message: "Link de acesso enviado ao usuário. Apenas confirme em 1 frase que o link foi enviado e que é de uso único/expira em ~1h. NÃO repita o link." };
       } catch (e) {
         return { ok: false, error: "link_falhou", message: `Falha ao gerar o link: ${String((e as any)?.message || e)}. Oriente abrir ${base}.` };
