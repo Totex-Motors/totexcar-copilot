@@ -549,13 +549,26 @@ function isGaragemQuery(t: string): boolean {
   return /garagem\s*totex/i.test(t || "");
 }
 
+// Busca jornadas de pós-venda pelo telefone com TOLERÂNCIA de formato (a loja registra "11980292779",
+// o WhatsApp entrega "5511980292779"; há ainda números sem o 9º dígito) — mesmo padrão do findUserByPhone.
+async function findJourneysByPhone(phone: string): Promise<any[]> {
+  const digits = onlyDigits(phone);
+  if (!digits) return [];
+  for (const c of [digits, digits.slice(-11), digits.slice(-10), digits.slice(-8)]) {
+    if (!c) continue;
+    const { data } = await supabase.from("postsale_journeys")
+      .select("*").ilike("customer_phone", `%${c}`)
+      .order("created_at", { ascending: false }).limit(5);
+    if (data && data.length) return data;
+  }
+  return [];
+}
+
 // Pós-venda (Sucesso do Cliente): se há um NPS pendente p/ este telefone e a resposta é um número 0–10,
 // registra a nota e roteia (detrator → alerta a loja; promotor/passivo → pede avaliação no Google).
 // Funciona mesmo p/ quem NÃO é usuário do app (o cliente comprou o carro mas pode não ter se cadastrado).
 async function handlePostsaleNps(phone: string, text: string): Promise<boolean> {
-  const { data: js } = await supabase.from("postsale_journeys")
-    .select("*").eq("customer_phone", phone).not("nps_asked_at", "is", null).is("nps_score", null)
-    .order("nps_asked_at", { ascending: false }).limit(1);
+  const js = (await findJourneysByPhone(phone)).filter((x: any) => x.nps_asked_at && x.nps_score == null);
   const j = js?.[0];
   if (!j) return false;
   const m = String(text || "").trim().match(/\b(10|[0-9])\b/);
@@ -593,8 +606,7 @@ async function handlePostsaleNps(phone: string, text: string): Promise<boolean> 
 // Pós-venda: cliente pergunta sobre a transferência/documentação → responde o checklist da jornada dele.
 async function handlePostsaleTransfer(phone: string, text: string): Promise<boolean> {
   if (!/transfer[êe]nc|transferir|documenta[çc]|meus? documento/i.test(text || "")) return false;
-  const { data: js } = await supabase.from("postsale_journeys")
-    .select("*").eq("customer_phone", phone).order("created_at", { ascending: false }).limit(1);
+  const js = await findJourneysByPhone(phone);
   const j = js?.[0];
   if (!j) return false;
   const T = j.transfer || {};
@@ -864,6 +876,11 @@ const TOOL_SPECS = [
   {
     name: "link_acesso",
     description: "Gera e ENVIA ao usuário um link SEGURO de acesso ao PAINEL WEB (login de uso único, sem senha, expira em ~1h). Use quando ele perguntar como acessar/entrar no app/site/painel, quiser 'ver o painel', ou pedir o link/login. NÃO existe app na Play Store/App Store — o acesso é este link (ou o próprio WhatsApp).",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "status_transferencia",
+    description: "Status REAL da transferência de propriedade / documentação do carro comprado na loja parceira (checklist do pós-venda: vistoria, ATPV-e, taxas DETRAN, débitos, comunicação de venda, novo CRLV-e) + garantia e próxima revisão. Use SEMPRE que perguntarem sobre transferência, documentação, CRLV, 'meu documento', garantia da loja ou revisão agendada — NUNCA responda com passos genéricos de DETRAN sem consultar esta ferramenta primeiro.",
     parameters: { type: "object", properties: {} },
   },
 ];
@@ -1285,6 +1302,26 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       }
     }
 
+    if (name === "status_transferencia") {
+      const js = await findJourneysByPhone(String(user.phone || ""));
+      const j = js?.[0];
+      if (!j) return { ok: false, error: "sem_jornada", message: "Não há jornada de pós-venda registrada pela loja para este cliente. Explique que a transferência é conduzida pela loja onde ele comprou o carro e sugira falar direto com ela." };
+      const T = j.transfer || {};
+      return {
+        ok: true, loja: j.dealership, carro: j.car_desc, status_transferencia: j.transfer_status,
+        checklist: {
+          "Vistoria (se exigida)": !!T.vistoria,
+          "ATPV-e (autorização) assinada": !!T.atpv,
+          "Taxas do DETRAN pagas": !!T.taxas,
+          "Débitos quitados (IPVA/multas)": !!T.debitos,
+          "Comunicação de venda": !!T.comunicacao,
+          "Novo documento (CRLV-e) em nome do comprador": !!T.crlv_novo,
+        },
+        garantia_ate: j.warranty_until || null, proxima_revisao: j.revisao_proxima || null,
+        orientacao: "Apresente como checklist claro (✅ feito / ⬜ pendente) com o status geral. Quem conduz a transferência é a loja; dúvidas específicas → falar com a loja.",
+      };
+    }
+
     return { error: "ferramenta_desconhecida" };
   } catch (e) {
     return { error: String((e as any)?.message || e) };
@@ -1559,6 +1596,8 @@ Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e 
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".
 
+TRANSFERÊNCIA / DOCUMENTAÇÃO DO CARRO: se perguntarem da transferência de propriedade, documentação, CRLV, "meu documento", garantia da loja ou revisão agendada → use status_transferencia (dados REAIS do pós-venda da loja). NUNCA responda com passo a passo genérico de DETRAN sem consultar a ferramenta — a loja é quem conduz o processo do cliente.
+
 ACESSO / COMO USAR (ancore-se AQUI — nunca invente): o jeito PRINCIPAL de usar o TotexCar Co-pilot é AQUI no WhatsApp — o dono te manda foto de cupom, áudio ou pergunta, e você resolve. A conta dele JÁ está ativa; ele NÃO precisa criar login nem senha pra usar por aqui. Existe TAMBÉM um painel web em ${appUrl} — abre no NAVEGADOR (celular ou computador) e pode ser "adicionado à tela inicial" pra virar um atalho parecido com app (é um PWA). ⚠️ NÃO EXISTE aplicativo na Play Store nem na App Store, e "Totexmotors" é o MARKETPLACE de carros (site diferente) — NUNCA mande o dono baixar/procurar app em loja de aplicativos, nem procurar "Totexmotors". Se ele perguntar como acessar/entrar no painel/app/site, ou pedir pra logar, chame link_acesso (gera e envia um link SEGURO de uso único que já loga, sem senha). Se tiver dúvida sobre acesso, NÃO invente: mande o link ${appUrl} ou use abrir_chamado.
 
 Regras: depois de registrar algo, confirme em 1 frase. Se faltar o valor, peça. Não invente dados nem funcionalidades — use as ferramentas; se não souber, diga que vai verificar (abrir_chamado) em vez de chutar. Localização por GPS é um recurso opcional; se não estiver ativo, explique com naturalidade.
@@ -1651,6 +1690,13 @@ ${JSON.stringify(snapshot)}`;
         QUICK_ACTIONS, "Toque numa ação ou mande um gasto 🚗");
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "garagem" }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
+    // Atalho (pós-transcrição): transferência/documentação por ÁUDIO também cai no checklist REAL —
+    // a checagem lá do topo usa msg.text e roda ANTES da transcrição, então áudio passava reto e a IA respondia genérico.
+    if (msg.kind !== "image" && await handlePostsaleTransfer(msg.phone, inputText)) {
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "transferencia", input: inputText }, user_id: user.id }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true, transfer: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     // Atalho: opção "Quero o painel" do menu (ou pedido direto) → link mágico de acesso, SEM IA.
