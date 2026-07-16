@@ -29,14 +29,20 @@ separar bem utilidade × marketing importa: além da regra, é 8x mais barato.
 
 ## 2. Passo a passo do BM (fazer 1 vez)
 
-1. **Business Manager verificado** — business.facebook.com → Configurações do negócio →
-   Central de Segurança → **Verificação do negócio** (CNPJ TotexMotors; pode pedir documento e
-   telefone comercial; leva de horas a poucos dias).
+> ⭐ **Atalho (situação real da Totex):** a BM da TotexMotors JÁ é verificada (o CRM TotexGest já
+> roda um número oficial nela). Então o passo 1 está FEITO — usar a MESMA BM. Regras de ouro:
+> **NÃO reaproveitar o número do TotexGest** (os dois sistemas receberiam as mesmas mensagens e
+> responderiam em dobro; a nota de qualidade é por número e um derrubaria o outro). O certo é
+> **criar uma WABA separada pro Co-pilot dentro da mesma BM + 1 número novo dedicado** — webhook,
+> templates e reputação isolados. O mesmo system user pode ter acesso às duas WABAs.
+> (Defesa extra no código: o webhook ignora eventos de outro phone_number_id.)
+
+1. **Business Manager verificado** — ✅ JÁ FEITO (BM TotexMotors, usada pelo TotexGest).
 2. **Criar o app** — developers.facebook.com → Create App → tipo **Business** → adicionar o
-   produto **WhatsApp**.
-3. **Número de telefone** — no painel WhatsApp do app, adicionar um número.
-   ⚠️ O número NÃO pode estar registrado num WhatsApp comum/Business app ao mesmo tempo.
-   Recomendo um **número NOVO** dedicado (o atual do Uazapi continua no ar durante a transição).
+   produto **WhatsApp** → vincular à BM TotexMotors (criar a WABA nova do Co-pilot).
+3. **Número de telefone** — no painel WhatsApp do app, adicionar um **número NOVO** dedicado ao
+   Co-pilot. ⚠️ O número NÃO pode estar registrado num WhatsApp comum/Business app ao mesmo tempo
+   (o atual do Uazapi continua no ar durante a transição).
 4. **Token permanente** — Configurações do negócio → **Usuários do sistema** → criar system user
    (admin) → gerar token com permissões `whatsapp_business_messaging` + `whatsapp_business_management`
    → guardar (é o **Token permanente** do /admin).

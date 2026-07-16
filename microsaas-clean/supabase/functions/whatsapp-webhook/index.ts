@@ -1453,6 +1453,14 @@ Deno.serve(async (req) => {
     // eventos de status (sent/delivered/read) da API oficial — só confirmar
     return new Response(JSON.stringify({ ok: true, status_event: true }), { headers: { ...cors, "Content-Type": "application/json" } });
   }
+  // Guarda de número: se o evento for de OUTRO número da mesma WABA (ex.: o do CRM TotexGest),
+  // ignora — este webhook só atende o número do Co-pilot (meta_wa_phone_id do /admin).
+  if (metaMsg && metaMsg.phoneNumberId) {
+    const s = await getSettings();
+    if (s.meta_wa_phone_id && metaMsg.phoneNumberId !== String(s.meta_wa_phone_id)) {
+      return new Response(JSON.stringify({ ok: true, ignored: "outro_numero" }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+  }
   const msg: any = metaMsg ?? parseInbound(body);
 
   if (msg.fromMe || !msg.phone) {

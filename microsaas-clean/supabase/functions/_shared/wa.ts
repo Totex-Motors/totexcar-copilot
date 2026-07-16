@@ -146,14 +146,15 @@ export async function metaDownloadMedia(s: WaSettings, mediaId: string): Promise
 export function parseMetaInbound(body: any): {
   provider: "meta"; fromMe: boolean; phone: string; kind: "text" | "image" | "audio" | "pdf" | "other";
   text: string; transcription: string; mediaId: string; mimetype: string; messageid: string;
-  statusOnly: boolean;
+  statusOnly: boolean; phoneNumberId: string;
 } | null {
   if (body?.object !== "whatsapp_business_account") return null;
   const value = body?.entry?.[0]?.changes?.[0]?.value;
+  const phoneNumberId = String(value?.metadata?.phone_number_id || "");
   const m = value?.messages?.[0];
   if (!m) {
     // eventos de status (sent/delivered/read) ou outros — reconhecer e ignorar
-    return { provider: "meta", fromMe: false, phone: "", kind: "other", text: "", transcription: "", mediaId: "", mimetype: "", messageid: "", statusOnly: true };
+    return { provider: "meta", fromMe: false, phone: "", kind: "other", text: "", transcription: "", mediaId: "", mimetype: "", messageid: "", statusOnly: true, phoneNumberId };
   }
   const phone = onlyDigits(m.from || "");
   const type = String(m.type || "");
@@ -171,7 +172,7 @@ export function parseMetaInbound(body: any): {
     kind = "text";
     text = m.interactive?.list_reply?.title || m.interactive?.button_reply?.title || "";
   } else if (type === "button") { kind = "text"; text = m.button?.text || ""; }
-  return { provider: "meta", fromMe: false, phone, kind, text: String(text), transcription: "", mediaId, mimetype, messageid: String(m.id || ""), statusOnly: false };
+  return { provider: "meta", fromMe: false, phone, kind, text: String(text), transcription: "", mediaId, mimetype, messageid: String(m.id || ""), statusOnly: false, phoneNumberId };
 }
 
 // Verificação do webhook (GET do Meta ao cadastrar a URL): responde o hub.challenge.
