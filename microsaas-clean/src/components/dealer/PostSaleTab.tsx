@@ -197,6 +197,9 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                       <p className="text-xs text-muted-foreground truncate">
                         {[j.car_desc, `comprou ${new Date(j.purchase_date + "T00:00").toLocaleDateString("pt-BR")}`, j.customer_phone].filter(Boolean).join(" · ")}
                       </p>
+                      {j.nps_comment && (
+                        <p className="text-xs italic text-muted-foreground truncate" title={j.nps_comment}>“{j.nps_comment}”</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {j.sponsored && <Badge className="gap-1 bg-primary/15 text-primary"><Gift className="w-3 h-3" /> {j.sponsor_settled ? "Cortesia (quitada)" : "Cortesia"}</Badge>}

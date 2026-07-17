@@ -146,7 +146,7 @@ export async function metaDownloadMedia(s: WaSettings, mediaId: string): Promise
 export function parseMetaInbound(body: any): {
   provider: "meta"; fromMe: boolean; phone: string; kind: "text" | "image" | "audio" | "pdf" | "other";
   text: string; transcription: string; mediaId: string; mimetype: string; messageid: string;
-  statusOnly: boolean; phoneNumberId: string;
+  statusOnly: boolean; phoneNumberId: string; flowReply: Record<string, any> | null;
 } | null {
   if (body?.object !== "whatsapp_business_account") return null;
   const value = body?.entry?.[0]?.changes?.[0]?.value;
@@ -154,7 +154,7 @@ export function parseMetaInbound(body: any): {
   const m = value?.messages?.[0];
   if (!m) {
     // eventos de status (sent/delivered/read) ou outros — reconhecer e ignorar
-    return { provider: "meta", fromMe: false, phone: "", kind: "other", text: "", transcription: "", mediaId: "", mimetype: "", messageid: "", statusOnly: true, phoneNumberId };
+    return { provider: "meta", fromMe: false, phone: "", kind: "other", text: "", transcription: "", mediaId: "", mimetype: "", messageid: "", statusOnly: true, phoneNumberId, flowReply: null };
   }
   const phone = onlyDigits(m.from || "");
   const type = String(m.type || "");
@@ -162,6 +162,7 @@ export function parseMetaInbound(body: any): {
   let text = "";
   let mediaId = "";
   let mimetype = "";
+  let flowReply: Record<string, any> | null = null;
   if (type === "text") { kind = "text"; text = m.text?.body || ""; }
   else if (type === "image") { kind = "image"; mediaId = m.image?.id || ""; mimetype = m.image?.mime_type || "image/jpeg"; text = m.image?.caption || ""; }
   else if (type === "audio") { kind = "audio"; mediaId = m.audio?.id || ""; mimetype = m.audio?.mime_type || "audio/ogg"; }
@@ -171,8 +172,12 @@ export function parseMetaInbound(body: any): {
   } else if (type === "interactive") {
     kind = "text";
     text = m.interactive?.list_reply?.title || m.interactive?.button_reply?.title || "";
+    // Resposta de WhatsApp FLOW (formulário nativo): payload JSON em nfm_reply.response_json
+    if (m.interactive?.type === "nfm_reply" && m.interactive?.nfm_reply?.response_json) {
+      try { flowReply = JSON.parse(m.interactive.nfm_reply.response_json); } catch { /* payload inválido: ignora */ }
+    }
   } else if (type === "button") { kind = "text"; text = m.button?.text || ""; }
-  return { provider: "meta", fromMe: false, phone, kind, text: String(text), transcription: "", mediaId, mimetype, messageid: String(m.id || ""), statusOnly: false, phoneNumberId };
+  return { provider: "meta", fromMe: false, phone, kind, text: String(text), transcription: "", mediaId, mimetype, messageid: String(m.id || ""), statusOnly: false, phoneNumberId, flowReply };
 }
 
 // Verificação do webhook (GET do Meta ao cadastrar a URL): responde o hub.challenge.
@@ -238,6 +243,13 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
   nps_pesquisa: {
     category: "UTILITY",
     body: "Oi {{1}}! Aqui é da {{2}}. 🙂 De 0 a 10, o quanto você recomendaria a {{2}} a um amigo? Responda só com o número. Sua resposta ajuda demais! 🙏",
+    render: (p) => `Oi ${p[0]}! Aqui é da ${p[1]}. 🙂\nDe 0 a 10, o quanto você recomendaria a *${p[1]}* a um amigo?\nResponda só com o número (0 a 10). Sua resposta ajuda demais! 🙏`,
+  },
+  // Versão com WhatsApp FLOW (formulário nativo: nota 0-10 + comentário) — preferida no provider meta.
+  // Botão "Avaliar agora" → Flow nps_pesquisa_flow (id na WABA). Resposta chega como nfm_reply no webhook.
+  nps_pesquisa_flow: {
+    category: "UTILITY",
+    body: "Oi {{1}}! Aqui é da {{2}}. 🙂 Sua opinião vale muito pra gente: toque no botão abaixo e avalie sua experiência de compra em segundos. Obrigado! 🙏",
     render: (p) => `Oi ${p[0]}! Aqui é da ${p[1]}. 🙂\nDe 0 a 10, o quanto você recomendaria a *${p[1]}* a um amigo?\nResponda só com o número (0 a 10). Sua resposta ajuda demais! 🙏`,
   },
   boas_vindas_cortesia: {

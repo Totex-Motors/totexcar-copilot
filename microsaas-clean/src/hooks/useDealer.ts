@@ -98,6 +98,7 @@ export interface PostsaleJourney {
   sponsored_value?: number;
   sponsor_settled?: boolean;
   user_id?: string | null;
+  nps_comment?: string | null;
 }
 export interface PostsaleStats { total: number; respondidos: number; promotores: number; passivos: number; detratores: number; nps: number | null; cortesias_ativas?: number; cortesias_valor?: number; }
 export interface SponsorBalance { lojas: { dealership: string; count: number; total: number }[]; total: number; }

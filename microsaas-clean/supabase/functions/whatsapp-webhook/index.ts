@@ -540,19 +540,13 @@ async function findJourneysByPhone(phone: string): Promise<any[]> {
   return [];
 }
 
-// Pós-venda (Sucesso do Cliente): se há um NPS pendente p/ este telefone e a resposta é um número 0–10,
-// registra a nota e roteia (detrator → alerta a loja; promotor/passivo → pede avaliação no Google).
-// Funciona mesmo p/ quem NÃO é usuário do app (o cliente comprou o carro mas pode não ter se cadastrado).
-async function handlePostsaleNps(phone: string, text: string): Promise<boolean> {
-  const js = (await findJourneysByPhone(phone)).filter((x: any) => x.nps_asked_at && x.nps_score == null);
-  const j = js?.[0];
-  if (!j) return false;
-  const m = String(text || "").trim().match(/\b(10|[0-9])\b/);
-  if (!m) return false; // tem NPS pendente mas não veio número — deixa o fluxo normal seguir
-  const score = Number(m[1]);
+// Aplica a nota do NPS numa jornada e roteia (detrator → alerta a loja; promotor/passivo → avaliação
+// no Google). Usado tanto pela resposta em NÚMERO (texto) quanto pelo formulário nativo (WhatsApp Flow).
+async function applyNpsScore(j: any, phone: string, score: number, comentario?: string | null) {
   const seg = score <= 6 ? "detrator" : score <= 8 ? "passivo" : "promotor";
-  await supabase.from("postsale_journeys")
-    .update({ nps_score: score, nps_at: new Date().toISOString(), status: seg }).eq("id", j.id);
+  const upd: Record<string, unknown> = { nps_score: score, nps_at: new Date().toISOString(), status: seg };
+  if (comentario && String(comentario).trim()) upd.nps_comment = String(comentario).trim().slice(0, 1000);
+  await supabase.from("postsale_journeys").update(upd).eq("id", j.id);
 
   const { data: dcfg } = await supabase.from("dealership_settings")
     .select("google_review_url").eq("dealership", j.dealership).maybeSingle();
@@ -564,10 +558,11 @@ async function handlePostsaleNps(phone: string, text: string): Promise<boolean> 
     const { data: dealers } = await supabase.from("users")
       .select("phone").eq("role", "dealer").eq("dealership", j.dealership).not("phone", "is", null);
     const sTpl = await getSettings();
+    const notaLoja = comentario ? `${score} — "${String(comentario).slice(0, 120)}"` : String(score);
     for (const d of dealers || []) {
       const dp = onlyDigits(d.phone || "");
       // iniciado pelo negócio (o lojista não mandou msg) → TEMPLATE na API oficial
-      if (dp) await waSendTemplate(sTpl, dp, "alerta_nps_loja", [j.dealership, j.customer_name || j.customer_phone, String(score), j.customer_phone]);
+      if (dp) await waSendTemplate(sTpl, dp, "alerta_nps_loja", [j.dealership, j.customer_name || j.customer_phone, notaLoja, j.customer_phone]);
     }
   } else if (seg === "promotor") {
     const rev = reviewUrl ? `\n\n⭐ Já que curtiu, deixa uma avaliação no Google (leva 30s e ajuda demais a ${j.dealership}):\n${reviewUrl}` : "";
@@ -578,6 +573,29 @@ async function handlePostsaleNps(phone: string, text: string): Promise<boolean> 
     await sendText(phone, `Obrigado pela nota ${score}${nome}! 🙌 Vamos trabalhar pra ser 10 na próxima.${rev}`);
     if (reviewUrl) await supabase.from("postsale_journeys").update({ review_link_sent: true }).eq("id", j.id);
   }
+}
+
+// Pós-venda (Sucesso do Cliente): se há um NPS pendente p/ este telefone e a resposta é um número 0–10,
+// registra a nota e roteia. Funciona mesmo p/ quem NÃO é usuário do app.
+async function handlePostsaleNps(phone: string, text: string): Promise<boolean> {
+  const js = (await findJourneysByPhone(phone)).filter((x: any) => x.nps_asked_at && x.nps_score == null);
+  const j = js?.[0];
+  if (!j) return false;
+  const m = String(text || "").trim().match(/\b(10|[0-9])\b/);
+  if (!m) return false; // tem NPS pendente mas não veio número — deixa o fluxo normal seguir
+  await applyNpsScore(j, phone, Number(m[1]));
+  return true;
+}
+
+// Resposta do FORMULÁRIO nativo de NPS (WhatsApp Flow): payload {nota, comentario} do nfm_reply.
+async function handleNpsFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
+  const score = Number(flow?.nota);
+  if (!Number.isFinite(score) || score < 0 || score > 10) return false;
+  // preferência: jornada com NPS pendente; fallback: a mais recente sem nota (reenvio manual, etc.)
+  const all = await findJourneysByPhone(phone);
+  const j = all.find((x: any) => x.nps_asked_at && x.nps_score == null) || all.find((x: any) => x.nps_score == null);
+  if (!j) return false;
+  await applyNpsScore(j, phone, score, flow?.comentario);
   return true;
 }
 
@@ -1485,6 +1503,12 @@ Deno.serve(async (req) => {
   const eventId = evt?.id;
 
   try {
+    // Resposta do FORMULÁRIO de NPS (WhatsApp Flow) — antes de tudo, funciona p/ não-usuário
+    if (msg.flowReply && await handleNpsFlowReply(msg.phone, msg.flowReply)) {
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "nps_flow", nota: msg.flowReply.nota } }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true, nps_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
     // Pós-venda (antes do cadastro, funciona p/ quem ainda não é usuário):
     if (msg.kind !== "image") {
       const psText = msg.text || msg.transcription || "";

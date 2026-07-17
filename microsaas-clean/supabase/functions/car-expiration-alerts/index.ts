@@ -5,7 +5,7 @@
 // v8: + RADAR da Garagem Totex — avisa quando um carro do desejo aparece no estoque do marketplace.
 // v9: TODO alerta é iniciado pelo negócio → na API oficial sai por TEMPLATE aprovado (ver _shared/wa.ts).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { loadWaSettings, waSendTemplate, type WaSettings } from "../_shared/wa.ts";
+import { loadWaSettings, waSendTemplate, waProvider, type WaSettings } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -352,7 +352,9 @@ async function runPostsale(): Promise<number> {
     // 1) NPS — uma vez, no D+atraso (default 3 dias), se ainda não perguntado
     const delay = delayByLoja[j.dealership] ?? 3;
     if (!j.nps_asked_at && j.nps_score == null && daysSince(j.purchase_date) >= delay) {
-      await sendTpl(phone, "nps_pesquisa", [nome || "tudo bem", j.dealership]);
+      // API oficial: FORMULÁRIO nativo (WhatsApp Flow) — mais profissional; uazapi: pergunta em texto
+      const npsTpl = waProvider(await waS()) === "meta" ? "nps_pesquisa_flow" : "nps_pesquisa";
+      await sendTpl(phone, npsTpl, [nome || "tudo bem", j.dealership]);
       await supabase.from("postsale_journeys").update({ nps_asked_at: new Date().toISOString() }).eq("id", j.id);
       sent++;
       continue; // não manda 2 coisas no mesmo dia
