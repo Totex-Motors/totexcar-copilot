@@ -146,7 +146,7 @@ export async function metaDownloadMedia(s: WaSettings, mediaId: string): Promise
 export function parseMetaInbound(body: any): {
   provider: "meta"; fromMe: boolean; phone: string; kind: "text" | "image" | "audio" | "pdf" | "other";
   text: string; transcription: string; mediaId: string; mimetype: string; messageid: string;
-  statusOnly: boolean; phoneNumberId: string; flowReply: Record<string, any> | null;
+  statusOnly: boolean; phoneNumberId: string; flowReply: Record<string, any> | null; isMenuReply: boolean;
 } | null {
   if (body?.object !== "whatsapp_business_account") return null;
   const value = body?.entry?.[0]?.changes?.[0]?.value;
@@ -154,7 +154,7 @@ export function parseMetaInbound(body: any): {
   const m = value?.messages?.[0];
   if (!m) {
     // eventos de status (sent/delivered/read) ou outros — reconhecer e ignorar
-    return { provider: "meta", fromMe: false, phone: "", kind: "other", text: "", transcription: "", mediaId: "", mimetype: "", messageid: "", statusOnly: true, phoneNumberId, flowReply: null };
+    return { provider: "meta", fromMe: false, phone: "", kind: "other", text: "", transcription: "", mediaId: "", mimetype: "", messageid: "", statusOnly: true, phoneNumberId, flowReply: null, isMenuReply: false };
   }
   const phone = onlyDigits(m.from || "");
   const type = String(m.type || "");
@@ -177,7 +177,9 @@ export function parseMetaInbound(body: any): {
       try { flowReply = JSON.parse(m.interactive.nfm_reply.response_json); } catch { /* payload inválido: ignora */ }
     }
   } else if (type === "button") { kind = "text"; text = m.button?.text || ""; }
-  return { provider: "meta", fromMe: false, phone, kind, text: String(text), transcription: "", mediaId, mimetype, messageid: String(m.id || ""), statusOnly: false, phoneNumberId, flowReply };
+  // toque em botão/lista/flow = ação intencional (não passa pelo debounce de mensagens picadas)
+  const isMenuReply = type === "interactive" || type === "button";
+  return { provider: "meta", fromMe: false, phone, kind, text: String(text), transcription: "", mediaId, mimetype, messageid: String(m.id || ""), statusOnly: false, phoneNumberId, flowReply, isMenuReply };
 }
 
 // Verificação do webhook (GET do Meta ao cadastrar a URL): responde o hub.challenge.

@@ -1548,14 +1548,58 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, ignored: true }), { headers: { ...cors, "Content-Type": "application/json" } });
   }
 
-  const { data: evt } = await supabase
+  // DEDUP por wamid: o Meta REENVIA o webhook se a resposta demorar — sem isso, a mesma mensagem
+  // era processada 2x e o usuário recebia respostas repetidas.
+  const { data: evt, error: insErr } = await supabase
     .from("whatsapp_events")
-    .insert({ from_phone: msg.phone, kind: msg.kind, raw: body, status: "received" })
-    .select("id")
+    .insert({ from_phone: msg.phone, kind: msg.kind, raw: body, status: "received", wa_message_id: msg.messageid || null })
+    .select("id, created_at")
     .single();
+  if (insErr) {
+    if ((insErr as any).code === "23505") {
+      return new Response(JSON.stringify({ ok: true, duplicate: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+    console.error("insert whatsapp_events:", insErr.message);
+  }
   const eventId = evt?.id;
+  const eventAt = evt?.created_at || new Date().toISOString();
 
+  // Responde 200 JÁ e processa em BACKGROUND (IA leva 5-20s; com o debounce, mais) —
+  // segura o Meta sem timeout/retry. Fora do EdgeRuntime (testes locais), processa inline.
+  const work = processInbound(msg, eventId, eventAt);
+  const wu = (globalThis as any).EdgeRuntime?.waitUntil;
+  if (wu) wu(work.catch((e: any) => console.error("bg:", e)));
+  else await work;
+  return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+});
+
+async function processInbound(msg: any, eventId: any, eventAt: string) {
   try {
+    // DEBOUNCE de mensagens picadas: texto digitado (não botão/menu/flow) espera um instante;
+    // se chegar mensagem mais nova do mesmo número, esta fica guardada e é AGRUPADA na resposta
+    // da última — em vez de responder 2x "Como posso ajudar?" pra frases quebradas em várias linhas.
+    let earlierTexts = "";
+    if (msg.kind === "text" && !msg.flowReply && !msg.isMenuReply && eventId) {
+      await new Promise((r) => setTimeout(r, 8000));
+      const { data: newer } = await supabase.from("whatsapp_events")
+        .select("id").eq("from_phone", msg.phone).gt("created_at", eventAt)
+        .not("kind", "in", "(status_evt,status_fail)").limit(1);
+      if (newer && newer.length) {
+        await supabase.from("whatsapp_events").update({ status: "superseded", parsed: { input: msg.text } }).eq("id", eventId);
+        return; // a mensagem mais nova responde por todas
+      }
+      const { data: prev } = await supabase.from("whatsapp_events")
+        .select("id, parsed").eq("from_phone", msg.phone).eq("status", "superseded")
+        .gte("created_at", new Date(Date.now() - 120000).toISOString())
+        .order("created_at", { ascending: true }).limit(5);
+      const partsPrev = (prev || []).map((p: any) => String(p.parsed?.input || "")).filter(Boolean);
+      if (partsPrev.length) {
+        earlierTexts = partsPrev.join("\n");
+        await supabase.from("whatsapp_events").update({ status: "aggregated" })
+          .in("id", (prev || []).map((p: any) => p.id));
+      }
+    }
+
     // Respostas de FORMULÁRIO (WhatsApp Flows) — antes de tudo, funcionam p/ não-usuário
     if (msg.flowReply) {
       // Recompra FIPE ao vivo (endpoint dinâmico)
@@ -1599,6 +1643,12 @@ Deno.serve(async (req) => {
       if (eventId) await supabase.from("whatsapp_events").update({ status: "blocked", error: "subscription_inactive", user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true, blocked: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
+
+    // "🖥️ Quero o painel" no menu SÓ para conta provisionada pela loja (cortesia/bônus: email
+    // sintético, sem senha própria — o link mágico é o único jeito de entrar). Quem se cadastrou
+    // sozinho tem senha e não vê a opção (pode pedir por texto se quiser).
+    const provisioned = String(user.email || "").toLowerCase().endsWith("@totexcarfinance.app");
+    const quickActions = provisioned ? QUICK_ACTIONS : QUICK_ACTIONS.filter((a) => a !== PAINEL_LABEL);
 
     const { data: vehicles } = await supabase
       .from("accounts").select("*").eq("user_id", user.id).eq("is_active", true).limit(1);
@@ -1652,6 +1702,8 @@ Deno.serve(async (req) => {
     const { data: appCfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
     const appUrl = (appCfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
     const system = `Você é o **TotexCar Co-pilot**, o assistente de IA do carro do usuário (ecossistema Totexmotors). Responda SEMPRE em português do Brasil, curto e amigável, no máximo 1 emoji.
+
+CONTINUIDADE E TOM (regra de ouro do papo): a conversa é CONTÍNUA — olhe a CONVERSA RECENTE antes de responder. NUNCA se reapresente nem repita "Como posso te ajudar hoje?" se já houve troca recente; isso soa robótico. Mensagem curta de continuação ("ok", "valeu", "boa noite", "👍") merece resposta curta e natural no mesmo tom ("Tamo junto! 🚗", "Boa noite! Qualquer coisa é só chamar"), sem relançar ofertas de ajuda. Se vier a MESMA pergunta/botão de novo, não repita a resposta igual: confirme em 1 linha ("Como te falei, está tudo em dia 😉") ou acrescente algo novo. Se a mensagem tiver várias frases picadas, responda TUDO numa resposta só. Fale como um parceiro de verdade: leve, direto, gente como a gente — nunca formal demais, nunca script de telemarketing.
 
 TIPOS DE MENSAGEM (identifique pela foto/texto):
 - GASTO/RECEITA do carro (texto, foto de cupom/nota, áudio) → use registrar_gasto. Em COMBUSTÍVEL, leia e informe os LITROS.
@@ -1713,6 +1765,8 @@ ${JSON.stringify(snapshot)}`;
     // monta as partes normalizadas (texto/imagem)
     const parts: any[] = [];
     let inputText = msg.text || msg.transcription || "";
+    // mensagens picadas agrupadas pelo debounce viram UMA entrada só (uma resposta única e natural)
+    if (earlierTexts) inputText = `${earlierTexts}\n${inputText}`.trim();
     if (msg.kind === "image") {
       let img: { data: string; media_type: string } | null = null;
       if (msg.provider === "meta") {
@@ -1785,7 +1839,7 @@ ${JSON.stringify(snapshot)}`;
           const nome = vehicle?.name || vehicle?.modelo || "carro";
           const onde = loc.address || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
           const estado = loc.speed > 0 ? `🚗 Em movimento (${Math.round(loc.speed)} km/h)` : "🅿️ Parado";
-          await sendMenu(msg.phone, `📍 Seu ${nome} está em:\n${onde}\n\n${estado}\n\nVer no mapa: https://maps.google.com/?q=${loc.lat},${loc.lng}`, QUICK_ACTIONS, "Toque numa ação ou mande um gasto 🚗");
+          await sendMenu(msg.phone, `📍 Seu ${nome} está em:\n${onde}\n\n${estado}\n\nVer no mapa: https://maps.google.com/?q=${loc.lat},${loc.lng}`, quickActions, "Toque numa ação ou mande um gasto 🚗");
           if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "location" }, user_id: user.id }).eq("id", eventId);
           return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
         }
@@ -1796,7 +1850,7 @@ ${JSON.stringify(snapshot)}`;
     if (msg.kind !== "image" && isGaragemQuery(inputText)) {
       await sendMenu(msg.phone,
         `${GARAGEM_LABEL} — seu próximo carro te espera! 🔑\n\nVeja os carros disponíveis no marketplace Totexmotors:\n${GARAGEM_URL}\n\nAchou um que curtiu? Me chama que eu simulo o financiamento e ainda avalio seu carro atual na troca. 😉`,
-        QUICK_ACTIONS, "Toque numa ação ou mande um gasto 🚗");
+        quickActions, "Toque numa ação ou mande um gasto 🚗");
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "garagem" }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
@@ -1830,7 +1884,7 @@ ${JSON.stringify(snapshot)}`;
     }
     if (!replyText) replyText = "Recebi sua mensagem! Pode detalhar um pouco mais pra eu te ajudar? 🙂";
 
-    await sendMenu(msg.phone, replyText, QUICK_ACTIONS, "Toque numa ação ou mande um gasto 🚗");
+    await sendMenu(msg.phone, replyText, quickActions, "Toque numa ação ou mande um gasto 🚗");
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
     if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText }, user_id: user.id }).eq("id", eventId);
 
@@ -1839,6 +1893,5 @@ ${JSON.stringify(snapshot)}`;
     console.error("Erro no processamento:", e);
     if (eventId) await supabase.from("whatsapp_events").update({ status: "error", error: String(e) }).eq("id", eventId);
     try { await sendText(msg.phone, "Ops, tive um problema para processar sua mensagem. Pode tentar de novo? 🙏"); } catch { /* */ }
-    return new Response(JSON.stringify({ ok: false }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
   }
-});
+}
