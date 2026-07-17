@@ -93,12 +93,22 @@ async function mktVehicles(params: Record<string, string | number | undefined>, 
 
 const FAIXAS = [
   { id: "todas", title: "Qualquer preço" },
-  { id: "50", title: "Até R$ 50 mil" },
-  { id: "80", title: "Até R$ 80 mil" },
-  { id: "120", title: "Até R$ 120 mil" },
-  { id: "200", title: "Até R$ 200 mil" },
+  { id: "0-50", title: "Até R$ 50 mil" },
+  { id: "50-100", title: "R$ 50 a 100 mil" },
+  { id: "100-200", title: "R$ 100 a 200 mil" },
+  { id: "200-400", title: "R$ 200 a 400 mil" },
+  { id: "400-", title: "Acima de R$ 400 mil" },
 ];
-const faixaMax = (id: string) => (id === "todas" ? undefined : Number(id) * 1000);
+function faixaRange(id: string): { minPrice?: number; maxPrice?: number } {
+  if (!id || id === "todas") return {};
+  // compat com ids antigos ("50" = até 50 mil)
+  if (!id.includes("-")) return { maxPrice: Number(id) * 1000 || undefined };
+  const [min, max] = id.split("-");
+  return {
+    minPrice: Number(min) > 0 ? Number(min) * 1000 : undefined,
+    maxPrice: max ? Number(max) * 1000 : undefined,
+  };
+}
 
 function carRow(v: any) {
   const km = Number(v.mileage) > 0 ? `${Number(v.mileage).toLocaleString("pt-BR")} km` : "km n/i";
@@ -131,26 +141,41 @@ async function handleGaragem(req: any, dealershipId?: string): Promise<any> {
 
   if (req.action === "data_exchange") {
     if (req.screen === "GBUSCA") {
-      const vehicles = await mktVehicles({
+      const busca = String(d.busca || "").trim() || undefined;
+      let vehicles = await mktVehicles({
         brand: d.marca && d.marca !== "todas" ? d.marca : undefined,
-        maxPrice: faixaMax(String(d.faixa || "todas")),
-        search: String(d.busca || "").trim() || undefined,
+        ...faixaRange(String(d.faixa || "todas")),
+        search: busca,
         limit: 10, dealershipId,
       });
-      if (!vehicles.length) return garagemBusca(dealershipId, "Nenhum carro encontrado com esses filtros — tente ampliar a busca. 😉");
+      let resumo = `Encontrei ${vehicles.length} carro(s) pra você. Escolha um pra ver os detalhes:`;
+      let faixaUsada = String(d.faixa || "todas");
+      let marcaUsada = String(d.marca || "todas");
+      let buscaUsada = String(d.busca || "");
+      // BUSCA DE RESGATE: filtros zeraram? tenta a palavra-chave sozinha no estoque inteiro
+      // (ex.: buscou Porsche numa faixa baixa) — melhor mostrar o que existe do que "nada".
+      if (!vehicles.length && (busca || marcaUsada !== "todas")) {
+        const termo = busca || String(d.marca || "");
+        vehicles = await mktVehicles({ search: termo, limit: 10, dealershipId });
+        if (vehicles.length) {
+          resumo = `Não achei com esses filtros exatos, mas olha o que temos parecido no estoque:`;
+          faixaUsada = "todas"; marcaUsada = "todas"; buscaUsada = termo;
+        }
+      }
+      if (!vehicles.length) return garagemBusca(dealershipId, "Nenhum carro encontrado — tente outra marca ou palavra-chave, ou escolha Qualquer preço. 😉");
       return {
         screen: "GRESULT",
         data: {
           carros: vehicles.map(carRow),
-          resumo: `Encontrei ${vehicles.length} carro(s) pra você. Escolha um pra ver os detalhes:`,
-          marca: String(d.marca || "todas"), faixa: String(d.faixa || "todas"), busca: String(d.busca || ""),
+          resumo,
+          marca: marcaUsada, faixa: faixaUsada, busca: buscaUsada,
         },
       };
     }
     if (req.screen === "GRESULT") {
       const vehicles = await mktVehicles({
         brand: d.marca && d.marca !== "todas" ? d.marca : undefined,
-        maxPrice: faixaMax(String(d.faixa || "todas")),
+        ...faixaRange(String(d.faixa || "todas")),
         search: String(d.busca || "").trim() || undefined,
         limit: 30, dealershipId,
       });
