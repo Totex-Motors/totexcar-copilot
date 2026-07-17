@@ -92,6 +92,20 @@ export async function waSendTemplate(s: WaSettings, phone: string, name: string,
   return uazapiPost(s, "/send/text", { number: to, text: tpl.render(clean) });
 }
 
+// ---------------- envio: IMAGEM com legenda (vitrine de carros; janela de 24h) ----------------
+export async function waSendImage(s: WaSettings, phone: string, imageUrl: string, caption?: string): Promise<boolean> {
+  const to = onlyDigits(phone);
+  if (!to || !imageUrl) return false;
+  if (waProvider(s) === "meta") {
+    return metaPost(s, {
+      messaging_product: "whatsapp", to, type: "image",
+      image: { link: imageUrl, ...(caption ? { caption: caption.slice(0, 1024) } : {}) },
+    });
+  }
+  // uazapi: /send/media (type image) — best-effort
+  return uazapiPost(s, "/send/media", { number: to, type: "image", file: imageUrl, text: caption || "" });
+}
+
 // ---------------- envio: FLOW interativo (resposta em janela de 24h) ----------------
 // Abre um formulário nativo (WhatsApp Flow). No uazapi (sem flows), cai no texto de fallback.
 export async function waSendFlow(s: WaSettings, phone: string, opts: {

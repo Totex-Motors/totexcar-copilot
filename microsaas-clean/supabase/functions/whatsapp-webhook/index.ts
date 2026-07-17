@@ -5,7 +5,7 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, waSendFlow, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -120,6 +120,13 @@ const GARAGEM_LABEL = "🚗 Garagem Totex";
 const GARAGEM_URL = "https://totexmotors.com/comprar";
 // Flow com o ESTOQUE AO VIVO (endpoint dinâmico) — substitui o link no provider meta
 const GARAGEM_FLOW_ID = "1052809144367365";
+// Flow da RECOMPRA FIPE AO VIVO (avaliar o próprio carro pela FIPE dentro do WhatsApp)
+const RECOMPRA_FLOW_ID = "2122157961991407";
+
+// pedido de AVALIAR/VENDER o próprio carro → abre o flow da Recompra FIPE (não "vá no app")
+function isRecompraQuery(t: string): boolean {
+  return /(avaliar|avalia[çc][ãa]o|quanto vale|vender|recompra|revender).{0,25}(meu |o )?(carro|ve[íi]culo|autom[óo]vel)|quero vender|vale meu carro/i.test(t || "");
+}
 
 // nome da loja → dealershipId do marketplace (p/ escopar o estoque do cliente de loja no flow)
 let _mktDealers: Record<string, string> | null = null;
@@ -748,14 +755,39 @@ async function mktVehicles(params: Record<string, string | number | undefined>):
   return Array.isArray(d?.data) ? d.data : [];
 }
 
+const carImg = (v: any) => {
+  const imgs = Array.isArray(v?.images) ? v.images : [];
+  return (imgs.find((i: any) => i?.isPrimary) || imgs[0])?.url || "";
+};
+
 // resumo compacto de um carro pro chat (com link rastreável ?ref do dono → comissão do Indique)
 function mktResumo(v: any, refCode?: string | null) {
   return {
     carro: [v.brand, v.model, v.version].filter(Boolean).join(" "),
     ano: v.year, km: v.mileage, preco: v.price, fipe: v.fipePrice ?? null,
     cor: v.color || null, cambio: v.transmission || null, loja: v.dealership?.name || null,
+    img: carImg(v),
     link: `${MARKETPLACE_URL}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
   };
+}
+
+// VITRINE: envia cada carro como uma FOTO com legenda (modelo, ano, km, preço, link) direto no chat.
+// Retorna quantos foram enviados (o agente comenta os porquês SEM repetir a lista).
+async function sendCarShowcase(phone: string, cars: any[], refCode?: string | null): Promise<number> {
+  const s = await getSettings();
+  const brl = (v: any) => v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "consulte";
+  let sent = 0;
+  for (const v of cars.slice(0, 5)) {
+    const img = carImg(v);
+    if (!img) continue;
+    const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+    const km = Number(v.mileage) > 0 ? ` · ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
+    const fipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 abaixo da FIPE" : "";
+    const link = `${MARKETPLACE_URL}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+    const caption = `🚗 *${titulo}* ${v.year || ""}\n${brl(v.price)}${km}${fipe}\n\nFotos e detalhes: ${link}`;
+    if (await waSendImage(s, phone, img, caption)) sent++;
+  }
+  return sent;
 }
 
 // ---------- FERRAMENTAS DA IA (function calling) ----------
@@ -1139,7 +1171,13 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         limit: 6,
       });
       if (!cars.length) return { ok: true, total: 0, message: "Nada no estoque com esses critérios. Ofereça criar_radar pro usuário ser avisado quando aparecer." };
-      return { ok: true, total: cars.length, carros: cars.map((v: any) => mktResumo(v, user.referral_code)) };
+      // VITRINE: manda as fotos dos carros direto no chat
+      const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
+      return {
+        ok: true, total: cars.length, fotos_enviadas: enviados,
+        carros: cars.map((v: any) => mktResumo(v, user.referral_code)),
+        instrucao: enviados > 0 ? "As FOTOS dos carros JÁ foram enviadas ao usuário. Comente 2-3 deles com o PORQUÊ de combinarem com o que ele quer, de forma curta e natural — NÃO repita preço/link (já estão nas fotos)." : undefined,
+      };
     }
 
     if (name === "oportunidades_carros") {
@@ -1157,7 +1195,13 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       }
       const own = `${vehicle?.marca || ""} ${vehicle?.modelo || ""}`.trim().toLowerCase();
       if (own) cars = cars.filter((c: any) => `${c.brand} ${c.model}`.toLowerCase() !== own || c.year !== vehicle?.ano_modelo);
-      return { ok: true, criterio, carros: cars.slice(0, 6).map((c: any) => mktResumo(c, user.referral_code)) };
+      cars = cars.slice(0, 6);
+      const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
+      return {
+        ok: true, criterio, fotos_enviadas: enviados,
+        carros: cars.map((c: any) => mktResumo(c, user.referral_code)),
+        instrucao: enviados > 0 ? "As FOTOS já foram enviadas. Comente rapidamente as opções sem repetir preço/link." : undefined,
+      };
     }
 
     if (name === "criar_radar") {
@@ -1790,7 +1834,9 @@ GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do 
 (2) Só DEPOIS de entender, use buscar_carros com os critérios DELE e recomende 2–3 opções explicando o PORQUÊ de cada uma pro que ELE pediu, sempre com o link.
 (3) oportunidades_carros é só um EXTRA opcional ("se quiser, tenho umas ideias na sua faixa também") — nunca a resposta principal, nunca sozinha, e nunca enquadrada como "você deveria trocar".
 (4) se o desejo dele não estiver no estoque, ofereça criar_radar ("te aviso quando aparecer").
-Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e só ajude a comprar se ELE quiser. Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista honesto sobre prós e contras, conectando ao estoque quando fizer sentido. Para vender/avaliar o carro atual, indique a Garagem Totex no app (/garagem) ou a Recompra FIPE.
+Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e só ajude a comprar se ELE quiser. Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista honesto sobre prós e contras, conectando ao estoque quando fizer sentido.
+FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Só comente os porquês, sem repetir preço/link. NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
+VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Garagem no app". Se precisar, é só dizer que ele pode avaliar por aqui.
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".
 
@@ -1901,6 +1947,28 @@ ${JSON.stringify(snapshot)}`;
     }
     const reply = (text: string) =>
       showMenu ? sendMenu(msg.phone, text, quickActions, "Toque numa ação ou mande um gasto 🚗") : sendText(msg.phone, text);
+
+    // "/" sozinho (comando nativo sem escolha): mostra o menu como ajuda
+    if (inputText.trim() === "/") {
+      await sendMenu(msg.phone, "É só escolher uma opção 👇 ou me mandar sua dúvida/um gasto que eu resolvo. 🚗", quickActions, "Toque numa ação");
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "menu_barra" }, user_id: user.id }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
+    // Atalho: avaliar/vender o próprio carro → FLOW da Recompra FIPE (avalia dentro do WhatsApp)
+    if (msg.kind !== "image" && isRecompraQuery(inputText)) {
+      const sR = await getSettings();
+      await waSendFlow(sR, msg.phone, {
+        header: "Avalie seu carro 🚗",
+        body: "Descubra em segundos quanto seu carro vale pela tabela FIPE e receba uma proposta de recompra da loja parceira — tudo aqui no WhatsApp.",
+        cta: "Avaliar meu carro",
+        flowId: RECOMPRA_FLOW_ID,
+        token: "recompra",
+        fallbackText: "Pra avaliar seu carro na recompra, me diga a marca, o modelo e o ano que eu consulto a FIPE. 🚗",
+      });
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "recompra_flow_cta" }, user_id: user.id }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
 
     // Atalho barato: "onde está meu carro?" (rastreador premium, se ativo)
     if (msg.kind !== "image" && isLocationQuery(inputText)) {
