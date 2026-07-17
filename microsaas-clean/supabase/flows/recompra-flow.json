@@ -1,0 +1,200 @@
+{
+  "version": "7.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "MARCA": ["MODELO"],
+    "MODELO": ["ANO"],
+    "ANO": ["RESULTADO"],
+    "RESULTADO": []
+  },
+  "screens": [
+    {
+      "id": "MARCA",
+      "title": "Avalie seu carro",
+      "data": {
+        "marcas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "59", "title": "VW - VolksWagen" }]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextSubheading", "text": "Descubra quanto seu carro vale pela tabela FIPE, em segundos." },
+              {
+                "type": "Dropdown",
+                "name": "marca",
+                "label": "Marca do carro",
+                "required": true,
+                "data-source": "${data.marcas}"
+              },
+              {
+                "type": "TextInput",
+                "name": "filtro",
+                "label": "Modelo (opcional, ajuda a filtrar)",
+                "required": false
+              },
+              {
+                "type": "Footer",
+                "label": "Continuar",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": { "marca": "${form.marca}", "filtro": "${form.filtro}" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "MODELO",
+      "title": "Avalie seu carro",
+      "data": {
+        "modelos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "5940", "title": "Nivus Highline 1.0 200 TSI" }]
+        },
+        "marca": { "type": "string", "__example__": "59" },
+        "marca_nome": { "type": "string", "__example__": "VW - VolksWagen" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextSubheading", "text": "Agora escolha o modelo:" },
+              {
+                "type": "Dropdown",
+                "name": "modelo",
+                "label": "Modelo",
+                "required": true,
+                "data-source": "${data.modelos}"
+              },
+              {
+                "type": "Footer",
+                "label": "Continuar",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "marca": "${data.marca}",
+                    "marca_nome": "${data.marca_nome}",
+                    "modelo": "${form.modelo}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ANO",
+      "title": "Avalie seu carro",
+      "data": {
+        "anos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "2022-1", "title": "2022 Gasolina" }]
+        },
+        "marca": { "type": "string", "__example__": "59" },
+        "marca_nome": { "type": "string", "__example__": "VW - VolksWagen" },
+        "modelo": { "type": "string", "__example__": "5940" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextSubheading", "text": "Qual o ano do seu carro?" },
+              {
+                "type": "Dropdown",
+                "name": "ano",
+                "label": "Ano / combustível",
+                "required": true,
+                "data-source": "${data.anos}"
+              },
+              {
+                "type": "Footer",
+                "label": "Ver avaliação",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "marca": "${data.marca}",
+                    "marca_nome": "${data.marca_nome}",
+                    "modelo": "${data.modelo}",
+                    "ano": "${form.ano}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "RESULTADO",
+      "title": "Sua avaliação",
+      "terminal": true,
+      "data": {
+        "titulo": { "type": "string", "__example__": "VW Nivus Highline 2022" },
+        "oferta": { "type": "string", "__example__": "R$ 98.500,00" },
+        "corpo": { "type": "string", "__example__": "Tabela FIPE: R$ 110.674,00..." },
+        "marca_nome": { "type": "string", "__example__": "VW" },
+        "modelo_nome": { "type": "string", "__example__": "Nivus Highline" },
+        "ano_nome": { "type": "string", "__example__": "2022" },
+        "combustivel": { "type": "string", "__example__": "Gasolina" },
+        "fipe_code": { "type": "string", "__example__": "005340-8" },
+        "fipe_value": { "type": "string", "__example__": "110674" },
+        "offer_value": { "type": "string", "__example__": "98500" },
+        "pct": { "type": "string", "__example__": "89" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextSubheading", "text": "${data.titulo}" },
+          { "type": "TextHeading", "text": "${data.oferta}" },
+          { "type": "TextBody", "text": "${data.corpo}" },
+          { "type": "TextCaption", "text": "Toque abaixo e a loja parceira entra em contato para fechar a recompra." },
+          {
+            "type": "Footer",
+            "label": "Quero vender — me chamem!",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "tipo": "recompra",
+                "marca_nome": "${data.marca_nome}",
+                "modelo_nome": "${data.modelo_nome}",
+                "ano_nome": "${data.ano_nome}",
+                "combustivel": "${data.combustivel}",
+                "fipe_code": "${data.fipe_code}",
+                "fipe_value": "${data.fipe_value}",
+                "offer_value": "${data.offer_value}",
+                "pct": "${data.pct}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

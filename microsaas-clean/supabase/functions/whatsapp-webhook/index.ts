@@ -587,6 +587,59 @@ async function handlePostsaleNps(phone: string, text: string): Promise<boolean> 
   return true;
 }
 
+// Resposta do FLOW de RECOMPRA FIPE (endpoint dinâmico): payload {tipo:"recompra", ...} do nfm_reply.
+// Cria o lead em buyback_requests, avisa a loja e confirma pro cliente. Funciona p/ não-usuário.
+async function handleRecompraFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
+  if (flow?.tipo !== "recompra") return false;
+  const fipeValue = Number(flow.fipe_value) || 0;
+  const offerValue = Number(flow.offer_value) || 0;
+  const carro = [flow.marca_nome, flow.modelo_nome, flow.ano_nome].filter(Boolean).join(" ") || "veículo";
+
+  // identifica o cliente: usuário do app > jornada de pós-venda > desconhecido (lead de campanha/shopping)
+  const user = await findUserByPhone(phone);
+  const js = user ? [] : await findJourneysByPhone(phone);
+  const j = js?.[0] || null;
+  const dealership = user?.dealership || j?.dealership || null;
+  const nome = user?.name || j?.customer_name || null;
+
+  const { error } = await supabase.from("buyback_requests").insert({
+    owner_id: user?.id || null,
+    dealership,
+    owner_name: nome,
+    owner_phone: phone,
+    brand: flow.marca_nome || null,
+    model: flow.modelo_nome || null,
+    year: flow.ano_nome || null,
+    fuel: flow.combustivel || null,
+    fipe_code: flow.fipe_code || null,
+    fipe_value: fipeValue || null,
+    offer_pct: Number(flow.pct) || null,
+    offer_value: offerValue || null,
+    status: "new",
+  });
+  if (error) { console.error("recompra flow lead:", error.message); return false; }
+
+  const s = await getSettings();
+  const fmtBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+
+  // avisa a loja (template, iniciado pelo negócio); sem loja → avisa o dono do sistema
+  const { data: dealers } = dealership
+    ? await supabase.from("users").select("phone").eq("role", "dealer").eq("dealership", dealership).not("phone", "is", null).limit(3)
+    : { data: [] as any[] };
+  const alvos = (dealers || []).map((d: any) => onlyDigits(d.phone || "")).filter(Boolean);
+  if (!alvos.length && s.support_owner_phone) alvos.push(onlyDigits(s.support_owner_phone));
+  for (const dp of alvos) {
+    await waSendTemplate(s, dp, "pedido_recompra_loja", [
+      dealership || "Totex (lead sem loja)", nome || phone, carro,
+      `${fmtBRL(offerValue)} (${flow.pct}% da FIPE ${fmtBRL(fipeValue)})`, phone,
+    ]);
+  }
+
+  // confirma pro cliente (em sessão — ele acabou de enviar o formulário)
+  await sendText(phone, `✅ Recebido! Seu ${carro} foi avaliado em até *${fmtBRL(offerValue)}* (${flow.pct}% da tabela FIPE).\n\n${dealership ? `A ${dealership}` : "Nossa equipe"} vai entrar em contato pra combinar a vistoria e fechar a proposta. Qualquer dúvida, é só chamar por aqui! 🚗`);
+  return true;
+}
+
 // Resposta do FORMULÁRIO nativo de NPS (WhatsApp Flow): payload {nota, comentario} do nfm_reply.
 async function handleNpsFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
   const score = Number(flow?.nota);
@@ -1503,10 +1556,18 @@ Deno.serve(async (req) => {
   const eventId = evt?.id;
 
   try {
-    // Resposta do FORMULÁRIO de NPS (WhatsApp Flow) — antes de tudo, funciona p/ não-usuário
-    if (msg.flowReply && await handleNpsFlowReply(msg.phone, msg.flowReply)) {
-      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "nps_flow", nota: msg.flowReply.nota } }).eq("id", eventId);
-      return new Response(JSON.stringify({ ok: true, nps_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    // Respostas de FORMULÁRIO (WhatsApp Flows) — antes de tudo, funcionam p/ não-usuário
+    if (msg.flowReply) {
+      // Recompra FIPE ao vivo (endpoint dinâmico)
+      if (await handleRecompraFlowReply(msg.phone, msg.flowReply)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "recompra_flow", carro: `${msg.flowReply.marca_nome || ""} ${msg.flowReply.modelo_nome || ""}` } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, recompra_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // Pesquisa NPS
+      if (await handleNpsFlowReply(msg.phone, msg.flowReply)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "nps_flow", nota: msg.flowReply.nota } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, nps_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
     }
 
     // Pós-venda (antes do cadastro, funciona p/ quem ainda não é usuário):
