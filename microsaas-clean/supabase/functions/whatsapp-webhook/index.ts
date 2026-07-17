@@ -1163,11 +1163,14 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
     }
 
     if (name === "buscar_carros") {
+      // cliente de loja (cortesia/bônus) vê SÓ o estoque da loja dele; demais veem tudo
+      const scopeId = await garagemDealerId(user.dealership).catch(() => null);
       const cars = await mktVehicles({
         search: args?.busca, brand: args?.marca,
         maxPrice: Number(args?.preco_max) > 0 ? Number(args.preco_max) : undefined,
         minYear: Number(args?.ano_min) > 0 ? Number(args.ano_min) : undefined,
         maxMileage: Number(args?.km_max) > 0 ? Number(args.km_max) : undefined,
+        dealershipId: scopeId || undefined,
         limit: 6,
       });
       if (!cars.length) return { ok: true, total: 0, message: "Nada no estoque com esses critérios. Ofereça criar_radar pro usuário ser avisado quando aparecer." };
@@ -1183,11 +1186,15 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
     if (name === "oportunidades_carros") {
       let cars: any[] = [];
       let criterio = "destaques do estoque";
+      // cliente de loja vê SÓ o estoque da loja dele
+      const scopeId = await garagemDealerId(user.dealership).catch(() => null);
       if (vehicle?.valor_compra && Number(vehicle.valor_compra) > 0) {
         const v = Number(vehicle.valor_compra);
         criterio = `upgrade a partir do ${vehicle.marca || ""} ${vehicle.modelo || ""} (referência R$ ${v})`;
-        cars = await mktVehicles({ minPrice: Math.round(v * 0.9), maxPrice: Math.round(v * 1.9), minYear: vehicle.ano_modelo || undefined, limit: 6 });
-        if (!cars.length) cars = await mktVehicles({ minPrice: Math.round(v * 0.7), limit: 6 });
+        cars = await mktVehicles({ minPrice: Math.round(v * 0.9), maxPrice: Math.round(v * 1.9), minYear: vehicle.ano_modelo || undefined, dealershipId: scopeId || undefined, limit: 6 });
+        if (!cars.length) cars = await mktVehicles({ minPrice: Math.round(v * 0.7), dealershipId: scopeId || undefined, limit: 6 });
+      } else if (scopeId) {
+        cars = await mktVehicles({ dealershipId: scopeId, limit: 6, sort: "year_desc" });
       } else {
         const res = await fetch(`${MARKETPLACE_URL}/api/vehicles/featured?limit=6`);
         const d = await res.json().catch(() => []);
