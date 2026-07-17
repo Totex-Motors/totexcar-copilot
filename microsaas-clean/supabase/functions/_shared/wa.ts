@@ -92,6 +92,38 @@ export async function waSendTemplate(s: WaSettings, phone: string, name: string,
   return uazapiPost(s, "/send/text", { number: to, text: tpl.render(clean) });
 }
 
+// ---------------- envio: FLOW interativo (resposta em janela de 24h) ----------------
+// Abre um formulário nativo (WhatsApp Flow). No uazapi (sem flows), cai no texto de fallback.
+export async function waSendFlow(s: WaSettings, phone: string, opts: {
+  body: string; cta: string; flowId: string; token?: string; header?: string; screen?: string; fallbackText?: string;
+}): Promise<boolean> {
+  const to = onlyDigits(phone);
+  if (!to) return false;
+  if (waProvider(s) === "meta") {
+    return metaPost(s, {
+      messaging_product: "whatsapp", to, type: "interactive",
+      interactive: {
+        type: "flow",
+        ...(opts.header ? { header: { type: "text", text: opts.header.slice(0, 60) } } : {}),
+        body: { text: opts.body.slice(0, 1024) },
+        action: {
+          name: "flow",
+          parameters: {
+            flow_message_version: "3",
+            flow_id: opts.flowId,
+            flow_cta: opts.cta.slice(0, 30),
+            ...(opts.token ? { flow_token: opts.token } : {}),
+            ...(opts.screen
+              ? { flow_action: "navigate", flow_action_payload: { screen: opts.screen } }
+              : { flow_action: "data_exchange" }),
+          },
+        },
+      },
+    });
+  }
+  return waSendText(s, phone, opts.fallbackText || opts.body);
+}
+
 // ---------------- transporte bruto ----------------
 async function metaPost(s: WaSettings, body: unknown): Promise<boolean> {
   const token = s.meta_wa_token || "";

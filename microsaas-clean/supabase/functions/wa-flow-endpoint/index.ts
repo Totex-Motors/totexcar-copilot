@@ -75,6 +75,105 @@ const cap200 = (arr: any[], filtro?: string) => {
   return list.slice(0, 200).map((x: any) => ({ id: String(x.codigo), title: String(x.nome).slice(0, 30) }));
 };
 
+// ---------------- telas do flow GARAGEM TOTEX (estoque ao vivo do marketplace) ----------------
+const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function mktVehicles(params: Record<string, string | number | undefined>, attempt = 0): Promise<any[]> {
+  const u = new URL(`${MARKETPLACE}/api/vehicles`);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
+  }
+  const res = await fetch(u.toString(), { headers: { Accept: "application/json" } });
+  if ((res.status === 429 || res.status === 503) && attempt < 3) { await sleep(350 * (attempt + 1)); return mktVehicles(params, attempt + 1); }
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`marketplace_${res.status}`);
+  return Array.isArray(d?.data) ? d.data : [];
+}
+
+const FAIXAS = [
+  { id: "todas", title: "Qualquer preço" },
+  { id: "50", title: "Até R$ 50 mil" },
+  { id: "80", title: "Até R$ 80 mil" },
+  { id: "120", title: "Até R$ 120 mil" },
+  { id: "200", title: "Até R$ 200 mil" },
+];
+const faixaMax = (id: string) => (id === "todas" ? undefined : Number(id) * 1000);
+
+function carRow(v: any) {
+  const km = Number(v.mileage) > 0 ? `${Number(v.mileage).toLocaleString("pt-BR")} km` : "km n/i";
+  const preco = v.price != null ? brl(Number(v.price)) : "consulte";
+  return {
+    id: String(v.id),
+    title: `${v.brand || ""} ${v.model || ""}`.trim().slice(0, 30),
+    description: `${v.year || ""} · ${km} · ${preco}`.slice(0, 100),
+  };
+}
+
+async function garagemBusca(dealershipId: string | undefined, aviso = ""): Promise<any> {
+  let marcas: any[] = [{ id: "todas", title: "Todas as marcas" }];
+  try {
+    const res = await fetch(`${MARKETPLACE}/api/vehicles/brands`);
+    const d = await res.json().catch(() => []);
+    const list = Array.isArray(d) ? d : (d?.data || []);
+    marcas = marcas.concat(list.slice(0, 190).map((b: any) => {
+      const nome = typeof b === "string" ? b : (b?.name || b?.brand || "");
+      return { id: String(nome), title: String(nome).slice(0, 30) };
+    }).filter((x: any) => x.id));
+  } catch { /* segue só com "todas" */ }
+  return { screen: "GBUSCA", data: { marcas, faixas: FAIXAS, aviso: aviso || " " } };
+}
+
+async function handleGaragem(req: any, dealershipId?: string): Promise<any> {
+  const d = req.data || {};
+
+  if (req.action === "INIT") return garagemBusca(dealershipId);
+
+  if (req.action === "data_exchange") {
+    if (req.screen === "GBUSCA") {
+      const vehicles = await mktVehicles({
+        brand: d.marca && d.marca !== "todas" ? d.marca : undefined,
+        maxPrice: faixaMax(String(d.faixa || "todas")),
+        search: String(d.busca || "").trim() || undefined,
+        limit: 10, dealershipId,
+      });
+      if (!vehicles.length) return garagemBusca(dealershipId, "Nenhum carro encontrado com esses filtros — tente ampliar a busca. 😉");
+      return {
+        screen: "GRESULT",
+        data: {
+          carros: vehicles.map(carRow),
+          resumo: `Encontrei ${vehicles.length} carro(s) pra você. Escolha um pra ver os detalhes:`,
+          marca: String(d.marca || "todas"), faixa: String(d.faixa || "todas"), busca: String(d.busca || ""),
+        },
+      };
+    }
+    if (req.screen === "GRESULT") {
+      const vehicles = await mktVehicles({
+        brand: d.marca && d.marca !== "todas" ? d.marca : undefined,
+        maxPrice: faixaMax(String(d.faixa || "todas")),
+        search: String(d.busca || "").trim() || undefined,
+        limit: 30, dealershipId,
+      });
+      const v = vehicles.find((x: any) => String(x.id) === String(d.carro));
+      if (!v) return garagemBusca(dealershipId, "Esse carro acabou de sair do estoque. Faça uma nova busca. 🙏");
+      const km = Number(v.mileage) > 0 ? `${Number(v.mileage).toLocaleString("pt-BR")} km` : "km não informado";
+      const abaixoFipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 Abaixo da FIPE" : "";
+      return {
+        screen: "GDETALHE",
+        data: {
+          titulo: `${v.brand || ""} ${v.model || ""} ${v.version || ""}`.trim().slice(0, 80),
+          preco: v.price != null ? brl(Number(v.price)) : "Consulte",
+          corpo: `Ano ${v.year || "n/i"} · ${km}${abaixoFipe}. Toque em "Tenho interesse" que a loja entra em contato com você, ou veja as fotos no site.`,
+          url: `${MARKETPLACE}/veiculo/${v.id}`,
+          vid: String(v.id),
+        },
+      };
+    }
+  }
+
+  return garagemBusca(dealershipId);
+}
+
 // ---------------- telas do flow RECOMPRA ----------------
 async function handleRecompra(req: any): Promise<any> {
   const d = req.data || {};
@@ -141,7 +240,16 @@ Deno.serve(async (req) => {
     if (flowReq.action === "ping") {
       resp = { data: { status: "active" } };
     } else {
-      resp = await handleRecompra(flowReq);
+      // roteia pelo flow_token ("garagem" ou "garagem:{dealershipId}" = estoque escopado por loja)
+      // e pelas telas (fallback pra flows enviados sem token). Default: recompra.
+      const token = String(flowReq.flow_token || "");
+      const screen = String(flowReq.screen || "");
+      if (token.startsWith("garagem") || screen.startsWith("G")) {
+        const dealershipId = token.includes(":") ? token.split(":")[1] : undefined;
+        resp = await handleGaragem(flowReq, dealershipId);
+      } else {
+        resp = await handleRecompra(flowReq);
+      }
     }
   } catch (e) {
     console.error("wa-flow-endpoint erro:", e);

@@ -1,0 +1,172 @@
+{
+  "version": "7.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "GBUSCA": ["GRESULT"],
+    "GRESULT": ["GDETALHE"],
+    "GDETALHE": []
+  },
+  "screens": [
+    {
+      "id": "GBUSCA",
+      "title": "Garagem Totex",
+      "data": {
+        "marcas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "todas", "title": "Todas as marcas" }]
+        },
+        "faixas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "todas", "title": "Qualquer preço" }]
+        },
+        "aviso": { "type": "string", "__example__": " " }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextSubheading", "text": "Seu próximo carro te espera. Como você quer buscar?" },
+              { "type": "TextCaption", "text": "${data.aviso}" },
+              {
+                "type": "Dropdown",
+                "name": "marca",
+                "label": "Marca",
+                "required": true,
+                "data-source": "${data.marcas}"
+              },
+              {
+                "type": "Dropdown",
+                "name": "faixa",
+                "label": "Faixa de preço",
+                "required": true,
+                "data-source": "${data.faixas}"
+              },
+              {
+                "type": "TextInput",
+                "name": "busca",
+                "label": "Modelo ou palavra-chave (opcional)",
+                "required": false
+              },
+              {
+                "type": "Footer",
+                "label": "Buscar carros",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "marca": "${form.marca}",
+                    "faixa": "${form.faixa}",
+                    "busca": "${form.busca}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "GRESULT",
+      "title": "Carros encontrados",
+      "data": {
+        "carros": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          },
+          "__example__": [{ "id": "abc", "title": "VW Nivus", "description": "2022 · 45.000 km · R$ 98.900" }]
+        },
+        "resumo": { "type": "string", "__example__": "Encontrei 8 carros pra você." },
+        "marca": { "type": "string", "__example__": "todas" },
+        "faixa": { "type": "string", "__example__": "todas" },
+        "busca": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextSubheading", "text": "${data.resumo}" },
+              {
+                "type": "Dropdown",
+                "name": "carro",
+                "label": "Escolha um carro",
+                "required": true,
+                "data-source": "${data.carros}"
+              },
+              {
+                "type": "Footer",
+                "label": "Ver detalhes",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "carro": "${form.carro}",
+                    "marca": "${data.marca}",
+                    "faixa": "${data.faixa}",
+                    "busca": "${data.busca}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "GDETALHE",
+      "title": "Detalhes do carro",
+      "terminal": true,
+      "data": {
+        "titulo": { "type": "string", "__example__": "VW Nivus Highline 1.0 200 TSI" },
+        "preco": { "type": "string", "__example__": "R$ 98.900,00" },
+        "corpo": { "type": "string", "__example__": "Ano 2022 · 45.000 km" },
+        "url": { "type": "string", "__example__": "https://totexmotors.com/veiculo/abc" },
+        "vid": { "type": "string", "__example__": "abc" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextSubheading", "text": "${data.titulo}" },
+          { "type": "TextHeading", "text": "${data.preco}" },
+          { "type": "TextBody", "text": "${data.corpo}" },
+          {
+            "type": "EmbeddedLink",
+            "text": "Ver fotos e detalhes no site 🔗",
+            "on-click-action": { "name": "open_url", "url": "${data.url}" }
+          },
+          {
+            "type": "Footer",
+            "label": "Tenho interesse 🙋",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "tipo": "garagem_lead",
+                "vid": "${data.vid}",
+                "titulo": "${data.titulo}",
+                "preco": "${data.preco}",
+                "url": "${data.url}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

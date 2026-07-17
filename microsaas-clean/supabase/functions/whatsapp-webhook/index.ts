@@ -5,7 +5,7 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -118,6 +118,23 @@ async function sendText(phone: string, text: string) {
 // Página "quero comprar" do marketplace Totexmotors (janela de carros da Garagem Totex)
 const GARAGEM_LABEL = "🚗 Garagem Totex";
 const GARAGEM_URL = "https://totexmotors.com/comprar";
+// Flow com o ESTOQUE AO VIVO (endpoint dinâmico) — substitui o link no provider meta
+const GARAGEM_FLOW_ID = "1052809144367365";
+
+// nome da loja → dealershipId do marketplace (p/ escopar o estoque do cliente de loja no flow)
+let _mktDealers: Record<string, string> | null = null;
+async function garagemDealerId(name?: string | null): Promise<string | null> {
+  if (!name) return null;
+  if (!_mktDealers) {
+    const base = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
+    const res = await fetch(`${base}/api/dealerships`, { headers: { Accept: "application/json" } });
+    const d = await res.json().catch(() => []);
+    const list = Array.isArray(d) ? d : (d?.data || []);
+    _mktDealers = {};
+    for (const x of list) if (x?.name && x?.id) _mktDealers[String(x.name).toLowerCase()] = String(x.id);
+  }
+  return _mktDealers[String(name).toLowerCase()] || null;
+}
 // Opção do menu que gera o link mágico de acesso ao painel web (atalho determinístico)
 const PAINEL_LABEL = "🖥️ Quero o painel";
 
@@ -584,6 +601,27 @@ async function handlePostsaleNps(phone: string, text: string): Promise<boolean> 
   const m = String(text || "").trim().match(/\b(10|[0-9])\b/);
   if (!m) return false; // tem NPS pendente mas não veio número — deixa o fluxo normal seguir
   await applyNpsScore(j, phone, Number(m[1]));
+  return true;
+}
+
+// Resposta do FLOW da GARAGEM TOTEX: "Tenho interesse" num carro do estoque → lead no marketplace.
+async function handleGaragemFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
+  if (flow?.tipo !== "garagem_lead") return false;
+  const user = await findUserByPhone(phone);
+  const base = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
+  try {
+    await fetch(`${base}/api/leads/vehicle-interest`, {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        nome: user?.name || "Cliente WhatsApp",
+        email: user?.email || `${phone}@totexcarfinance.app`,
+        telefone: phone,
+        vehicleId: flow.vid,
+        mensagem: `Interesse via WhatsApp (Garagem Totex): ${flow.titulo} — ${flow.preco}`,
+      }),
+    });
+  } catch (e) { console.error("lead garagem flow:", e); }
+  await sendText(phone, `🙌 Interesse registrado no *${flow.titulo}* (${flow.preco})! A loja já recebeu seus dados e vai te chamar. Enquanto isso, as fotos estão aqui:\n${flow.url}`);
   return true;
 }
 
@@ -1602,6 +1640,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
 
     // Respostas de FORMULÁRIO (WhatsApp Flows) — antes de tudo, funcionam p/ não-usuário
     if (msg.flowReply) {
+      // Garagem Totex (interesse num carro do estoque)
+      if (await handleGaragemFlowReply(msg.phone, msg.flowReply)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "garagem_flow", carro: msg.flowReply.titulo } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, garagem_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       // Recompra FIPE ao vivo (endpoint dinâmico)
       if (await handleRecompraFlowReply(msg.phone, msg.flowReply)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "recompra_flow", carro: `${msg.flowReply.marca_nome || ""} ${msg.flowReply.modelo_nome || ""}` } }).eq("id", eventId);
@@ -1831,6 +1874,25 @@ ${JSON.stringify(snapshot)}`;
       if (!inputText) inputText = "Analise este PDF. Se for um carnê/boletos de financiamento, extraia TODAS as parcelas (número e linha digitável completa de cada) e salve com salvar_carne.";
     }
 
+    // comandos de barra (/gastos, /consumo, /manutencao, /garagem) viram texto normal pro agente
+    if (/^\/\w+/.test(inputText.trim())) inputText = inputText.trim().replace(/^\//, "").replace(/_/g, " ");
+
+    // MENU INTELIGENTE: a lista de ações só acompanha a resposta na 1ª conversa em 12h+ ou quando
+    // o usuário pede ("menu"/"ajuda"/"opções"). No meio do papo, resposta limpa (menos robótico) —
+    // os atalhos permanentes ficam nos comandos de barra e nos ice breakers do número.
+    let showMenu = /\b(menu|ajuda|op[çc][õo]es)\b/i.test(inputText);
+    if (!showMenu && eventId) {
+      const { data: prevEvt } = await supabase.from("whatsapp_events")
+        .select("created_at").eq("from_phone", msg.phone)
+        .lt("created_at", eventAt)
+        .not("kind", "in", "(status_evt,status_fail)")
+        .order("created_at", { ascending: false }).limit(1);
+      const lastAt = prevEvt?.[0]?.created_at ? Date.parse(prevEvt[0].created_at) : 0;
+      showMenu = !lastAt || (Date.now() - lastAt) > 12 * 3600 * 1000;
+    }
+    const reply = (text: string) =>
+      showMenu ? sendMenu(msg.phone, text, quickActions, "Toque numa ação ou mande um gasto 🚗") : sendText(msg.phone, text);
+
     // Atalho barato: "onde está meu carro?" (rastreador premium, se ativo)
     if (msg.kind !== "image" && isLocationQuery(inputText)) {
       try {
@@ -1839,18 +1901,30 @@ ${JSON.stringify(snapshot)}`;
           const nome = vehicle?.name || vehicle?.modelo || "carro";
           const onde = loc.address || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
           const estado = loc.speed > 0 ? `🚗 Em movimento (${Math.round(loc.speed)} km/h)` : "🅿️ Parado";
-          await sendMenu(msg.phone, `📍 Seu ${nome} está em:\n${onde}\n\n${estado}\n\nVer no mapa: https://maps.google.com/?q=${loc.lat},${loc.lng}`, quickActions, "Toque numa ação ou mande um gasto 🚗");
+          await reply(`📍 Seu ${nome} está em:\n${onde}\n\n${estado}\n\nVer no mapa: https://maps.google.com/?q=${loc.lat},${loc.lng}`);
           if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "location" }, user_id: user.id }).eq("id", eventId);
           return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
         }
       } catch (e) { console.error("getCarLocation (atalho) falhou:", e); }
     }
 
-    // Atalho: opção "Garagem Totex" do menu (ou pedido direto) → abre a janela de carros do marketplace
+    // Atalho: opção "Garagem Totex" (menu ou pedido direto) → FLOW com o ESTOQUE AO VIVO.
+    // Cliente de loja vê só o estoque da loja dele (token garagem:{dealershipId}); demais veem tudo.
     if (msg.kind !== "image" && isGaragemQuery(inputText)) {
-      await sendMenu(msg.phone,
-        `${GARAGEM_LABEL} — seu próximo carro te espera! 🔑\n\nVeja os carros disponíveis no marketplace Totexmotors:\n${GARAGEM_URL}\n\nAchou um que curtiu? Me chama que eu simulo o financiamento e ainda avalio seu carro atual na troca. 😉`,
-        quickActions, "Toque numa ação ou mande um gasto 🚗");
+      const sGar = await getSettings();
+      let token = "garagem";
+      try {
+        const did = await garagemDealerId(user.dealership);
+        if (did) token = `garagem:${did}`;
+      } catch { /* estoque geral */ }
+      await waSendFlow(sGar, msg.phone, {
+        header: "Garagem Totex 🚗",
+        body: "Seu próximo carro te espera! Busque no estoque ao vivo, veja preço e detalhes sem sair do WhatsApp. Curtiu algum? Toque em Tenho interesse que a loja te chama.",
+        cta: "Ver carros",
+        flowId: GARAGEM_FLOW_ID,
+        token,
+        fallbackText: `${GARAGEM_LABEL} — veja os carros disponíveis:\n${GARAGEM_URL}`,
+      });
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "garagem" }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
@@ -1884,7 +1958,7 @@ ${JSON.stringify(snapshot)}`;
     }
     if (!replyText) replyText = "Recebi sua mensagem! Pode detalhar um pouco mais pra eu te ajudar? 🙂";
 
-    await sendMenu(msg.phone, replyText, quickActions, "Toque numa ação ou mande um gasto 🚗");
+    await reply(replyText);
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
     if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText }, user_id: user.id }).eq("id", eventId);
 
