@@ -1810,6 +1810,18 @@ ${JSON.stringify(snapshot)}`;
     let inputText = msg.text || msg.transcription || "";
     // mensagens picadas agrupadas pelo debounce viram UMA entrada só (uma resposta única e natural)
     if (earlierTexts) inputText = `${earlierTexts}\n${inputText}`.trim();
+    // COMANDOS "/" (recurso nativo do WhatsApp) → frase natural que a IA/atalhos entendem
+    const CMD_MAP: Record<string, string> = {
+      "/gastos": "Quais foram meus gastos do mês?",
+      "/consumo": "Qual o consumo e o custo por km do meu carro?",
+      "/manutencao": "Quais as próximas manutenções por km?",
+      "/garagem": GARAGEM_LABEL,
+      "/multas": "Quais minhas multas e recursos?",
+      "/painel": PAINEL_LABEL,
+      "/suporte": "Preciso falar com o suporte",
+    };
+    const cmdKey = inputText.trim().toLowerCase().split(/\s/)[0];
+    if (CMD_MAP[cmdKey]) inputText = CMD_MAP[cmdKey];
     if (msg.kind === "image") {
       let img: { data: string; media_type: string } | null = null;
       if (msg.provider === "meta") {
@@ -1873,9 +1885,6 @@ ${JSON.stringify(snapshot)}`;
       parts.push({ kind: "pdf", data: pdf.data });
       if (!inputText) inputText = "Analise este PDF. Se for um carnê/boletos de financiamento, extraia TODAS as parcelas (número e linha digitável completa de cada) e salve com salvar_carne.";
     }
-
-    // comandos de barra (/gastos, /consumo, /manutencao, /garagem) viram texto normal pro agente
-    if (/^\/\w+/.test(inputText.trim())) inputText = inputText.trim().replace(/^\//, "").replace(/_/g, " ");
 
     // MENU INTELIGENTE: a lista de ações só acompanha a resposta na 1ª conversa em 12h+ ou quando
     // o usuário pede ("menu"/"ajuda"/"opções"). No meio do papo, resposta limpa (menos robótico) —
