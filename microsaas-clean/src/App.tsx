@@ -21,6 +21,7 @@ import Rastreador from "./pages/Rastreador";
 import CarroConectado from "./pages/CarroConectado";
 import Multas from "./pages/Multas";
 import Garagem from "./pages/Garagem";
+import Viagem from "./pages/Viagem";
 import Suporte from "./pages/Suporte";
 import AccessLink from "./pages/AccessLink";
 import NotFound from "./pages/NotFound";
@@ -67,6 +68,7 @@ const App = () => (
           <Route path="/conectado" element={<CarroConectado />} />
           <Route path="/multas" element={<Multas />} />
           <Route path="/garagem" element={<Garagem />} />
+          <Route path="/viagem" element={<Viagem />} />
           <Route path="/plans" element={<Plans />} />
           {/* LPs de campanha (tráfego pago) — standalone, sem navbar do site */}
           <Route path="/lp" element={<Lp />} />
