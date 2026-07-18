@@ -913,6 +913,19 @@ const TOOL_SPECS = [
     },
   },
   {
+    name: "planejar_viagem",
+    description: "MODO VIAGEM: monta o plano de uma viagem de CARRO usando os dados REAIS do carro do usuário (consumo, preço médio que ele paga no litro, manutenções pendentes). Use quando falarem de viagem, road trip, feriado, férias, 'vou pra praia/serra', 'quanto gasto pra ir até X'. Retorna os dados do carro; você monta o roteiro e as contas.",
+    parameters: {
+      type: "object",
+      properties: {
+        destino: { type: "string", description: "Cidade/região de destino (se o usuário já disse)" },
+        origem: { type: "string", description: "Cidade de partida, se informada" },
+        dias: { type: "number", description: "Duração em dias, se informada" },
+        perfil: { type: "string", description: "Perfil da viagem: familia, casal, amigos, sozinho, pet, carro_novo" },
+      },
+    },
+  },
+  {
     name: "registrar_receita",
     description: "Registra uma RECEITA/ganho do motorista de aplicativo: print da tela de ganhos (Uber/99/outros), áudio ou texto ('fiz 380 hoje na uber'). No print, leia o app, o período e o VALOR TOTAL. Ativa o Modo PRO automaticamente.",
     parameters: {
@@ -1113,6 +1126,48 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         return { item: r.title, intervalo_km: r.interval_km, faltam_km: faltam, status: faltam <= 0 ? "vencida" : faltam <= 500 ? "proxima" : "em_dia" };
       });
       return { hodometro_atual: km, itens, total: itens.length };
+    }
+
+    if (name === "planejar_viagem") {
+      // MODO VIAGEM: entrega os dados REAIS do carro; a IA monta roteiro + contas por cima.
+      // 1) consumo: real (tanque-a-tanque) > oficial (INMETRO) > estimativa por categoria
+      const consumoReal = await computeConsumo(user.id).catch(() => null);
+      const oficial = (vehicle as any)?.consumo_oficial;
+      const kmPorLitro = Number(consumoReal?.media_km_por_litro) > 0 ? Number(consumoReal.media_km_por_litro)
+        : Number(oficial?.estrada_kml || oficial?.rodovia_kml || oficial?.cidade_kml) > 0
+          ? Number(oficial.estrada_kml || oficial.rodovia_kml || oficial.cidade_kml) : null;
+      const custoPorKm = Number(consumoReal?.custo_combustivel_por_km) > 0 ? Number(consumoReal.custo_combustivel_por_km) : null;
+      // 2) preço médio do litro que ELE paga (últimos abastecimentos com litros)
+      const { data: fuels } = await supabase.from("transactions")
+        .select("amount, litros").eq("user_id", user.id).gt("litros", 0)
+        .order("transaction_date", { ascending: false }).limit(5);
+      let precoLitro: number | null = null;
+      if (fuels?.length) {
+        const totV = fuels.reduce((s: number, t: any) => s + Math.abs(Number(t.amount)), 0);
+        const totL = fuels.reduce((s: number, t: any) => s + Number(t.litros), 0);
+        if (totL > 0) precoLitro = Math.round((totV / totL) * 100) / 100;
+      }
+      // 3) manutenções que merecem atenção ANTES de pegar estrada
+      const { data: rem } = await supabase.from("maintenance_reminders").select("*").eq("user_id", user.id).eq("active", true);
+      const kmAtual = Number(vehicle?.hodometro || 0);
+      const pendencias = (rem || []).map((r: any) => {
+        const faltam = Number(r.interval_km) - (kmAtual - Number(r.last_km || 0));
+        return { item: r.title, faltam_km: faltam };
+      }).filter((p: any) => p.faltam_km <= 1500);
+
+      return {
+        ok: true,
+        carro: { marca: vehicle?.marca, modelo: vehicle?.modelo, ano: vehicle?.ano_modelo, combustivel: vehicle?.combustivel },
+        consumo_km_por_litro: kmPorLitro,
+        custo_combustivel_por_km_real: custoPorKm,
+        fonte_consumo: Number(consumoReal?.media_km_por_litro) > 0 ? "real (medido pelos abastecimentos dele)" : kmPorLitro ? "oficial INMETRO" : "desconhecido",
+        preco_medio_litro_que_ele_paga: precoLitro,
+        manutencoes_antes_de_viajar: pendencias,
+        loja_do_cliente: user.dealership || null,
+        checklist_padrao: ["Calibragem dos pneus (incluindo estepe)", "Nível de óleo e água/arrefecimento", "Palhetas e água do para-brisa", "Documento (CRLV) e CNH válidos", "Triângulo, macaco e chave de roda", "Farol/lanternas funcionando"],
+        destinos_em_alta_2026: ["Morro Branco (CE)", "Juquehy (SP)", "Serra da Canastra (MG)", "Espírito Santo do Pinhal (SP, enoturismo)", "Bento Gonçalves (RS)", "Península de Maraú (BA)"],
+        instrucao: "Monte o plano da viagem: estime a distância de ida (seu conhecimento de rotas BR) e calcule o combustível MOSTRANDO a conta — se houver custo_combustivel_por_km_real, use km total × custo/km; senão (km ÷ km/L) × preço do litro — sempre ida E volta, com os dados REAIS acima. Cite pedágios como estimativa aproximada, e um roteiro curto com paradas. Se houver manutencoes_antes_de_viajar, recomende resolver ANTES (e sugira agendar na loja_do_cliente, se houver). Feche com o checklist resumido. Se não tiver destino, sugira 2-3 dos destinos_em_alta conforme o perfil. Tom leve de parceiro de estrada; não invente preço de hospedagem.",
+      };
     }
 
     if (name === "registrar_multa") {
@@ -1844,6 +1899,8 @@ GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do 
 Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e só ajude a comprar se ELE quiser. Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista honesto sobre prós e contras, conectando ao estoque quando fizer sentido.
 FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Só comente os porquês, sem repetir preço/link. NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
 VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Garagem no app". Se precisar, é só dizer que ele pode avaliar por aqui.
+
+MODO VIAGEM (parceiro de estrada): quando o assunto for viagem, road trip, feriado, férias ou "quanto gasto pra ir até X" → use planejar_viagem e monte o plano com os DADOS REAIS do carro dele: combustível calculado com o consumo/custo por km REAL (mostre a conta de forma simples, ida e volta), estimativa honesta de pedágio, roteiro com paradas, e — MUITO importante — se houver manutenção vencendo, recomende resolver ANTES de pegar estrada (sugira a loja dele, se tiver; isso é cuidado, não venda). Sem destino definido? Sugira 2-3 destinos em alta conforme o perfil (família/casal/EV). Hospedagem: NUNCA invente preço; diga que pode indicar regiões boas de ficar. Esse é um DIFERENCIAL nosso: nenhum app de viagem conhece o carro da pessoa — nós conhecemos.
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".
 
