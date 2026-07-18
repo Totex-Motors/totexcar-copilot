@@ -41,7 +41,8 @@ export function NotificationsBell() {
         supabase.from("accounts").select("name, marca, modelo, hodometro, licenciamento_vencimento, ipva_vencimento, seguro_vencimento")
           .eq("user_id", userId!).eq("is_active", true).limit(1).maybeSingle(),
         supabase.from("users").select("cnh_vencimento").eq("id", userId!).maybeSingle(),
-        supabase.from("maintenance_reminders").select("title, interval_km, last_km").eq("user_id", userId!).eq("active", true),
+        // maintenance_reminders fica fora dos types gerados (mesmo caso de multas, abaixo)
+        (supabase as any).from("maintenance_reminders").select("title, interval_km, last_km").eq("user_id", userId!).eq("active", true),
         (supabase as any).from("multas").select("descricao, prazo_recurso, status")
           .eq("user_id", userId!).in("status", ["nova", "recurso_gerado"]).not("prazo_recurso", "is", null),
       ]);

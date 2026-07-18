@@ -7,6 +7,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { pesquisarRota, pesquisarLugares } from "../_shared/route-research.ts";
+import {
+  SERVICE_TYPES, normalizeServiceType, isEmergencyService, dedupProviders,
+  rankProviders, normalizePhone as radarNormalizePhone,
+  searchViaSearchPreview, searchViaGooglePlaces,
+  type RankingMode,
+} from "../_shared/radar-search.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -283,8 +289,37 @@ async function findUserByPhone(phone: string) {
       .from("users")
       .select("*")
       .ilike("phone", `%${c}`)
-      .limit(1);
-    if (data && data.length) return data[0];
+      .limit(20);
+    if (!data || !data.length) continue;
+    if (data.length === 1) return data[0];
+
+    // DUPLICIDADE DE TELEFONE — antes isto era `.limit(1)` sem ORDER BY, ou seja,
+    // o Postgres devolvia QUALQUER uma das contas conforme o plano de execução.
+    // Na prática: quem tinha 2+ cadastros (típico de e-mail digitado errado no
+    // signup) caía numa conta diferente a cada mensagem, e os gastos ficavam
+    // espalhados. Agora o desempate é explícito e estável.
+    console.warn(`findUserByPhone: ${data.length} contas com o telefone ${c} — desempatando`, data.map((u: any) => u.email));
+
+    // quem tem veículo ATIVO é a conta que o agente realmente serve
+    const ids = data.map((u: any) => u.id);
+    const { data: vehs } = await supabase
+      .from("accounts").select("user_id").in("user_id", ids).eq("is_active", true);
+    const temVeiculo = new Set((vehs || []).map((v: any) => v.user_id));
+
+    const ordenadas = [...data].sort((a: any, b: any) => {
+      // 1) tem carro cadastrado
+      const va = temVeiculo.has(a.id) ? 0 : 1, vb = temVeiculo.has(b.id) ? 0 : 1;
+      if (va !== vb) return va - vb;
+      // 2) assinatura ativa/premium ganha de conta abandonada
+      const pa = a.plan === "premium" ? 0 : 1, pb = b.plan === "premium" ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      // 3) mais recente
+      const da = new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      if (da !== 0) return da;
+      // 4) desempate absoluto — garante estabilidade mesmo com tudo igual
+      return String(a.id).localeCompare(String(b.id));
+    });
+    return ordenadas[0];
   }
   return null;
 }
@@ -847,6 +882,39 @@ const TOOL_SPECS = [
     },
   },
   {
+    name: "buscar_servico",
+    description: "RADAR DE SERVIÇOS: encontra oficina, borracharia, pneus, bateria, autoelétrica, chaveiro, guincho, funilaria, vidros, ar-condicionado ou estética PERTO do motorista. Use SEMPRE que ele precisar de um serviço no carro ('preciso trocar a bateria', 'onde arrumo o freio', 'furei o pneu', 'meu carro não pega'), inclusive depois de um diagnóstico. NÃO peça autorização para pesquisar — busca de dado público é livre. Se não souber onde ele está, pergunte a cidade/bairro ANTES de chamar.",
+    parameters: {
+      type: "object",
+      properties: {
+        service_type: {
+          type: "string",
+          description: "Categoria: oficina, freios, autoeletrica, bateria, pneus, borracharia, chaveiro, vidros, ar_condicionado, funilaria, estetica, vistoria, guincho, socorro, eletrico_hibrido",
+        },
+        location_text: { type: "string", description: "Cidade, bairro ou referência (ex.: 'Barueri', 'Alphaville', 'Castelo Branco km 22'). Se ele já informou antes, pode omitir." },
+        emergency: { type: "boolean", description: "true se o carro está parado/na rua/em risco — prioriza quem vai até ele e atende 24h" },
+        mode: { type: "string", enum: ["balanced", "nearest", "best_rated", "open_now", "mobile_service", "totex_partner"], description: "Ordenação, quando o motorista pedir ('o mais perto', 'o mais bem avaliado')" },
+        limit: { type: "number", description: "Quantos apresentar (3 a 6; padrão 6)" },
+      },
+      required: ["service_type"],
+    },
+  },
+  {
+    name: "pedir_orcamento",
+    description: "Registra pedido de orçamento a estabelecimentos ESCOLHIDOS pelo motorista. EFEITO EXTERNO: só chame DEPOIS de ele autorizar explicitamente e você ter dito QUAIS dados serão compartilhados. Nunca chame por iniciativa própria.",
+    parameters: {
+      type: "object",
+      properties: {
+        provider_ids: { type: "array", items: { type: "string" }, description: "IDs (provider_id) devolvidos por buscar_servico — no máximo 4" },
+        service_type: { type: "string" },
+        details: { type: "string", description: "O que ele quer orçar, em 1 frase" },
+        shared_fields: { type: "array", items: { type: "string" }, description: "Dados autorizados. Ex.: ['primeiro_nome','telefone','resumo_do_veiculo']" },
+        consent_text: { type: "string", description: "A frase de autorização DELE, literal (ex.: 'pode pedir orçamento pras duas primeiras')" },
+      },
+      required: ["provider_ids", "service_type", "shared_fields", "consent_text"],
+    },
+  },
+  {
     name: "registrar_receita",
     description: "Registra uma RECEITA/ganho do motorista de aplicativo: print da tela de ganhos (Uber/99/outros), áudio ou texto ('fiz 380 hoje na uber'). No print, leia o app, o período e o VALOR TOTAL. Ativa o Modo PRO automaticamente.",
     parameters: {
@@ -1047,6 +1115,143 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         return { item: r.title, intervalo_km: r.interval_km, faltam_km: faltam, status: faltam <= 0 ? "vencida" : faltam <= 500 ? "proxima" : "em_dia" };
       });
       return { hodometro_atual: km, itens, total: itens.length };
+    }
+
+    if (name === "buscar_servico") {
+      // RADAR DE SERVIÇOS. Busca pública = livre, sem pedir autorização.
+      // Não cria lead: o estabelecimento é opção, o motorista é que escolhe.
+      const sCfg = await getSettings();
+      if (sCfg?.radar_enabled === false) return { ok: false, error: "radar_desativado" };
+
+      const serviceType = normalizeServiceType(args?.service_type);
+      const def = SERVICE_TYPES[serviceType];
+      const local = String(args?.location_text || (vehicle as any)?.cidade || "").trim();
+      if (!local) {
+        return {
+          ok: false, error: "localizacao_ausente", service_label: def.label,
+          message: `Pergunte em UMA linha onde ele está (cidade ou bairro) para procurar ${def.label.toLowerCase()}. Não invente localização.`,
+        };
+      }
+      // lembra a cidade pra não perguntar toda vez
+      if (args?.location_text && vehicle?.id && String(args.location_text).trim() !== String((vehicle as any)?.cidade || "")) {
+        await supabase.from("accounts").update({ cidade: String(args.location_text).trim() }).eq("id", vehicle.id);
+      }
+
+      const combustivel = String(vehicle?.combustivel || "").toLowerCase();
+      const isEv = /elétric|eletric|ev\b/.test(combustivel);
+      const isHybrid = /híbrid|hibrid/.test(combustivel);
+      const carro = vehicle ? `${vehicle.marca || ""} ${vehicle.modelo || ""} ${vehicle.ano_modelo || ""}`.trim() : null;
+      const limite = Math.min(Math.max(Number(args?.limit) || 6, 3), 6);
+      const emEmergencia = isEmergencyService(serviceType) || args?.emergency === true;
+      const t0 = Date.now();
+
+      const usarPlaces = sCfg?.radar_search_provider === "google_places" && !!sCfg?.google_places_api_key;
+      const r = usarPlaces
+        ? await searchViaGooglePlaces(sCfg.google_places_api_key, { serviceType, locationText: local, limit: limite })
+        : await searchViaSearchPreview(sCfg?.openai_api_key || "", { serviceType, locationText: local, vehicle: carro, limit: limite });
+
+      // parceiros do ecossistema ganham SELO, não posição no ranking
+      const { data: lojas } = await supabase.from("users")
+        .select("dealership").eq("role", "dealer").not("dealership", "is", null);
+      const partnerNames = [...new Set((lojas || []).map((l: any) => String(l.dealership)))];
+
+      const ranked = rankProviders(dedupProviders(r.providers), {
+        mode: (String(args?.mode || "balanced") as RankingMode),
+        isEv, isHybrid, emergency: emEmergencia, partnerNames,
+      }).slice(0, limite);
+
+      // registra a busca (auditoria + custo), mesmo se falhou
+      const { data: busca } = await supabase.from("service_searches").insert({
+        user_id: user.id, vehicle_id: vehicle?.id || null,
+        query: String(args?.service_type || def.label), service_type: serviceType,
+        location_text: local, radius_km: 15,
+        filters: { canal: "whatsapp", emergency: emEmergencia },
+        result_count: ranked.length, sources: [usarPlaces ? "google_places" : "search_preview"],
+        cost: r.cost, duration_ms: Date.now() - t0, ok: !r.error, error: r.error,
+      }).select().single();
+
+      // persiste os estabelecimentos e devolve com id + links prontos
+      const saida: any[] = [];
+      for (const prov of ranked) {
+        const externalId = prov.external_id || (radarNormalizePhone(prov.phone) || prov.name.toLowerCase().replace(/\s+/g, "-"));
+        const { data: up } = await supabase.from("discovered_providers").upsert({
+          external_source: prov.source, external_id: externalId,
+          name: prov.name, normalized_name: prov.name.toLowerCase().trim(),
+          category: def.label, provider_status: prov.provider_status,
+          phone: prov.phone, phone_normalized: radarNormalizePhone(prov.phone),
+          whatsapp: prov.whatsapp, website: prov.website, address: prov.address,
+          city: prov.city, state: prov.state, rating: prov.rating, review_count: prov.review_count,
+          service_attributes: {
+            open_24h: prov.open_24h, mobile_service: prov.mobile_service,
+            supports_ev: prov.supports_ev, supports_hybrid: prov.supports_hybrid,
+          },
+          last_checked_at: new Date().toISOString(),
+        }, { onConflict: "external_source,external_id" }).select().single();
+
+        if (up?.id && busca?.id) {
+          await supabase.from("provider_search_results").upsert({
+            search_id: busca.id, provider_id: up.id, rank_score: prov.rank_score,
+            rank_position: prov.rank_position, matched_reasons: prov.matched_reasons,
+          }, { onConflict: "search_id,provider_id" });
+        }
+
+        const tel = radarNormalizePhone(prov.phone);
+        const zap = radarNormalizePhone(prov.whatsapp) || tel;
+        saida.push({
+          provider_id: up?.id || null, nome: prov.name,
+          tipo: prov.provider_status === "parceiro_totex" ? "PARCEIRO TOTEX" : "resultado público",
+          endereco: prov.address || "não informado",
+          nota: prov.rating ?? "não informado",
+          avaliacoes: prov.review_count ?? "não informado",
+          telefone: tel ? `+55${tel}` : "não informado",
+          whatsapp: zap ? `https://wa.me/55${zap}` : null,
+          mapa: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(prov.address ? `${prov.name} ${prov.address}` : prov.name)}`,
+          site: prov.website || null,
+          atende_24h: prov.open_24h ?? "não informado",
+          vai_ate_voce: prov.mobile_service ?? "não informado",
+          porque: prov.matched_reasons,
+        });
+      }
+
+      return {
+        ok: true, search_id: busca?.id || null,
+        servico: def.label, local, emergencia: emEmergencia,
+        total: saida.length, opcoes: saida,
+        instrucao: saida.length
+          ? `Apresente as ${saida.length} opções de forma CURTA (WhatsApp): nome, o motivo (campo 'porque'), nota e telefone/link. Marque quem é PARCEIRO TOTEX e diga que o resto é resultado público — encontrado em fonte pública, a confirmar direto com o estabelecimento; a Totex não credencia nem garante. NUNCA invente preço, disponibilidade, garantia ou tempo de chegada: o que veio "não informado" fica "não informado". Feche com UMA próxima ação (mandar o link do WhatsApp dele, ligar ou abrir a rota). Se ele quiser que a gente peça orçamento, aí sim peça autorização explícita e diga quais dados vão.`
+          : `Não achei estabelecimento confiável para ${def.label.toLowerCase()} em ${local}. Diga isso com honestidade e ofereça ampliar a região ou tentar categoria parecida. NÃO invente nome de oficina.`,
+      };
+    }
+
+    if (name === "pedir_orcamento") {
+      // EFEITO EXTERNO: sem consentimento explícito, não passa.
+      const consent = String(args?.consent_text || "").trim();
+      const shared: string[] = Array.isArray(args?.shared_fields) ? args.shared_fields : [];
+      const ids: string[] = Array.isArray(args?.provider_ids) ? args.provider_ids.filter(Boolean) : [];
+      if (consent.length < 10) {
+        return { ok: false, error: "consentimento_ausente", message: "NÃO enviado. Antes, diga ao motorista exatamente quais dados serão compartilhados e com quem, e espere ele autorizar com clareza." };
+      }
+      if (!shared.length) return { ok: false, error: "shared_fields_ausente", message: "NÃO enviado. Liste ao motorista quais dados você vai compartilhar e confirme." };
+      if (!ids.length || ids.length > 4) return { ok: false, error: "provider_ids_invalido", message: "Informe de 1 a 4 provider_id vindos de buscar_servico." };
+
+      const { data: qr, error } = await supabase.from("provider_quote_requests").insert({
+        user_id: user.id, vehicle_id: vehicle?.id || null,
+        service_type: normalizeServiceType(args?.service_type),
+        provider_ids: ids, details: { texto: String(args?.details || "") },
+        shared_fields: shared, consent_text: consent, status: "pending",
+      }).select().single();
+      if (error) return { ok: false, error: "falha_ao_registrar", detalhes: error.message };
+
+      for (const pid of ids) {
+        await supabase.from("driver_provider_actions").insert({
+          user_id: user.id, provider_id: pid, action_type: "requested_quote", metadata: { quote_id: qr.id },
+        }).then(() => {}, () => {});
+      }
+
+      return {
+        ok: true, quote_id: qr.id, dados_compartilhados: shared,
+        instrucao: "Confirme que o pedido ficou registrado COM a autorização dele e repita quais dados foram compartilhados. Explique que o envio automático ao estabelecimento ainda não está ativo — então o caminho mais rápido é ele chamar no WhatsApp/telefone pelos links que você já mandou.",
+      };
     }
 
     if (name === "planejar_viagem") {
@@ -1712,17 +1917,59 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
 
     const user = await findUserByPhone(msg.phone);
     if (!user) {
-      await sendText(msg.phone, "Olá! 👋 Sou o TotexCar Co-pilot. Não encontrei seu cadastro — cadastre-se no app e use o mesmo número de WhatsApp para cuidar do seu carro por aqui.");
-      if (eventId) await supabase.from("whatsapp_events").update({ status: "ignored", error: "user_not_found" }).eq("id", eventId);
-      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      // Mesma proteção do aviso de paywall (abaixo): sem cooldown, um número
+      // desconhecido com auto-resposta vira ping-pong infinito e queima o
+      // número na Meta. Aqui não dá pra usar notification_log (não há user_id),
+      // então a janela é medida pelos próprios eventos: se já respondemos a
+      // este telefone nas últimas 24h, não respondemos de novo.
+      const desde24h = new Date(Date.now() - 24 * 3600_000).toISOString();
+      const { count: jaRespondido } = await supabase
+        .from("whatsapp_events")
+        .select("id", { count: "exact", head: true })
+        .eq("from_phone", msg.phone).eq("status", "ignored").gte("created_at", desde24h);
+
+      if (!jaRespondido) {
+        await sendText(msg.phone, "Olá! 👋 Sou o TotexCar Co-pilot. Não encontrei seu cadastro — cadastre-se no app e use o mesmo número de WhatsApp para cuidar do seu carro por aqui.");
+      }
+      if (eventId) {
+        await supabase.from("whatsapp_events").update({
+          status: "ignored",
+          error: jaRespondido ? "user_not_found (ja respondido nas ultimas 24h)" : "user_not_found",
+        }).eq("id", eventId);
+      }
+      return new Response(JSON.stringify({ ok: true, respondido: !jaRespondido }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     if (accessBlocked(user)) {
-      const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-      const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
-      await sendText(msg.phone, `🔒 Seu acesso ao TotexCar Co-pilot está inativo.\n\nPra voltar a cuidar do seu carro por aqui, é só assinar (a partir de R$ 10,99/mês):\n${appUrl}/plans\n\nAssim que o pagamento for confirmado, eu volto a funcionar automaticamente. 🚗`);
-      if (eventId) await supabase.from("whatsapp_events").update({ status: "blocked", error: "subscription_inactive", user_id: user.id }).eq("id", eventId);
-      return new Response(JSON.stringify({ ok: true, blocked: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      // COOLDOWN DO AVISO DE PAYWALL — no máximo 1x por dia por usuário.
+      // Antes, TODA mensagem de quem está inativo disparava uma resposta. Com
+      // auto-respondedor do outro lado isso vira ping-pong infinito: em
+      // 2026-07-18 um número gerou 2.524 mensagens em 20h (124/hora), e nós
+      // respondemos todas — caminho curto pra Meta sinalizar/banir o número.
+      // A dedup é ATÔMICA: grava primeiro no notification_log (índice único
+      // user_id+kind+due_date); só envia se a gravação passou. Se o insert der
+      // conflito, alguém já avisou hoje e a gente cala a boca.
+      const hoje = new Date().toISOString().slice(0, 10);
+      const { error: dedupErr } = await supabase.from("notification_log").insert({
+        user_id: user.id, kind: "paywall_aviso", due_date: hoje,
+        channel: "whatsapp", sent_at: new Date().toISOString(),
+      });
+      const jaAvisadoHoje = !!dedupErr; // conflito no índice único = já mandamos
+
+      if (!jaAvisadoHoje) {
+        const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+        const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+        await sendText(msg.phone, `🔒 Seu acesso ao TotexCar Co-pilot está inativo.\n\nPra voltar a cuidar do seu carro por aqui, é só assinar (a partir de R$ 10,99/mês):\n${appUrl}/plans\n\nAssim que o pagamento for confirmado, eu volto a funcionar automaticamente. 🚗`);
+      }
+
+      if (eventId) {
+        await supabase.from("whatsapp_events").update({
+          status: "blocked",
+          error: jaAvisadoHoje ? "subscription_inactive (aviso ja enviado hoje)" : "subscription_inactive",
+          user_id: user.id,
+        }).eq("id", eventId);
+      }
+      return new Response(JSON.stringify({ ok: true, blocked: true, avisado: !jaAvisadoHoje }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     // "🖥️ Quero o painel" no menu SÓ para conta provisionada pela loja (cortesia/bônus: email
@@ -1832,6 +2079,8 @@ Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e 
 FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Só comente os porquês, sem repetir preço/link. NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
 VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Garagem no app". Se precisar, é só dizer que ele pode avaliar por aqui.
 
+RADAR DE SERVIÇOS (achar oficina/borracharia/guincho/chaveiro/bateria): a busca leva ~8 segundos, então SEMPRE avise antes ("Deixa eu procurar aqui pra você, 1 minutinho…") na MESMA mensagem em que decide buscar — nunca deixe o motorista no vácuo achando que travou. Use quando ele precisar de um serviço no carro — "preciso trocar a bateria", "onde conserto o freio", "furei o pneu", "meu carro não pega", "quanto custa revisão" — use buscar_servico. REGRAS: (1) PESQUISAR é livre — NUNCA peça autorização pra procurar ou pra mostrar dado público; só faça. (2) Se não souber onde ele está, pergunte a cidade/bairro em UMA linha e só então busque. (3) Apresente 3 a 6 opções curtas com o porquê de cada uma; marque quem é PARCEIRO TOTEX e deixe claro que o resto é resultado público (a confirmar direto com o estabelecimento — a Totex não credencia nem garante). (4) NUNCA invente preço, disponibilidade, garantia, distância ou tempo de chegada: o que não veio na busca é "não informado" — e diga isso sem rodeio. (5) Não ordene por interesse comercial; parceiro ganha selo, não posição. (6) Só chame pedir_orcamento DEPOIS de listar quais dados serão compartilhados e ele autorizar explicitamente. Se ele disser "pesquisa mas não passa meu telefone", pesquise e ofereça só os links pra ELE iniciar o contato.
+SEGURANÇA (vem antes de preço, sempre): se o carro estiver parado na via, em acostamento, com fumaça, cheiro de combustível, superaquecendo, sem freio ou após colisão — PRIMEIRO confirme se há feridos e se ele está em local seguro (fora da pista, atrás da barreira, triângulo posto). Só depois procure serviço, com emergency=true. NUNCA diga que é seguro seguir viagem sem inspeção; NUNCA oriente mexer em bateria de alta tensão ou cabo laranja (híbrido/elétrico); NUNCA ensine a desativar item de segurança. Não dê diagnóstico definitivo sem inspeção — trabalhe com hipóteses e diga o grau de incerteza.
 MODO VIAGEM (parceiro de estrada): quando o assunto for viagem, road trip, feriado, férias, "quanto gasto pra ir até X" ou o botão "🏖️ Planejar viagem" → use planejar_viagem. Se ele só tocou no botão (sem destino), pergunte em 1 linha pra onde pensa em ir (ou ofereça sugerir destinos) ANTES de chamar a ferramenta e monte o plano com os DADOS REAIS do carro dele: combustível calculado com o consumo/custo por km REAL (mostre a conta de forma simples, ida e volta), estimativa honesta de pedágio, roteiro com paradas, e — MUITO importante — se houver manutenção vencendo, recomende resolver ANTES de pegar estrada (sugira a loja dele, se tiver; isso é cuidado, não venda). Sem destino definido? Sugira 2-3 destinos em alta conforme o perfil (família/casal/EV). Hospedagem e comida: a ferramenta traz PESQUISA AO VIVO (onde_ficar_e_comer) — indique só o que veio nela, nunca invente estabelecimento ou preço. Esse é um DIFERENCIAL nosso: nenhum app de viagem conhece o carro da pessoa — nós conhecemos.
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".

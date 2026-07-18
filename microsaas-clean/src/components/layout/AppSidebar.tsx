@@ -14,6 +14,7 @@ import {
   LifeBuoy,
   Warehouse,
   Plane,
+  Radar,
   LogOut
 } from "lucide-react";
 import { useAuth, useCurrentUser } from "@/hooks/useAuth";
@@ -42,6 +43,7 @@ const navigation = [
   { title: "Meu Veículo", url: "/settings", icon: Car },
   { title: "Garagem Totex", url: "/garagem", icon: Warehouse },
   { title: "Modo Viagem", url: "/viagem", icon: Plane },
+  { title: "Radar de Serviços", url: "/servicos", icon: Radar },
   { title: "Manutenção", url: "/manutencao", icon: Wrench },
   { title: "Multas", url: "/multas", icon: ShieldAlert },
   { title: "Financiamento", url: "/financiamento", icon: Landmark },

@@ -20,6 +20,7 @@ import Financiamento from "./pages/Financiamento";
 import Multas from "./pages/Multas";
 import Garagem from "./pages/Garagem";
 import Viagem from "./pages/Viagem";
+import Servicos from "./pages/Servicos";
 import Suporte from "./pages/Suporte";
 import AccessLink from "./pages/AccessLink";
 import NotFound from "./pages/NotFound";
@@ -65,6 +66,7 @@ const App = () => (
           <Route path="/multas" element={<Multas />} />
           <Route path="/garagem" element={<Garagem />} />
           <Route path="/viagem" element={<Viagem />} />
+          <Route path="/servicos" element={<Servicos />} />
           <Route path="/plans" element={<Plans />} />
           {/* LPs de campanha (tráfego pago) — standalone, sem navbar do site */}
           <Route path="/lp" element={<Lp />} />
