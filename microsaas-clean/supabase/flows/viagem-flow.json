@@ -1,0 +1,96 @@
+{
+  "version": "7.0",
+  "routing_model": {
+    "VIAGEM": []
+  },
+  "screens": [
+    {
+      "id": "VIAGEM",
+      "title": "Modo Viagem",
+      "terminal": true,
+      "data": {
+        "perfis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "familia", "title": "Família" }]
+        },
+        "duracoes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "3", "title": "Fim de semana (3 dias)" }]
+        },
+        "carro": { "type": "string", "__example__": "Seu Onix 2020" },
+        "origem_padrao": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextSubheading", "text": "Pra onde vamos? 🏖️" },
+              {
+                "type": "TextCaption",
+                "text": "${data.carro}"
+              },
+              {
+                "type": "TextInput",
+                "name": "destino",
+                "label": "Destino",
+                "helper-text": "Ex.: Ilhabela, Gramado, Serra da Canastra",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "name": "origem",
+                "label": "De onde você sai",
+                "helper-text": "Cidade ou bairro de partida",
+                "required": false,
+                "init-value": "${data.origem_padrao}"
+              },
+              {
+                "type": "Dropdown",
+                "name": "dias",
+                "label": "Quantos dias",
+                "required": false,
+                "data-source": "${data.duracoes}"
+              },
+              {
+                "type": "Dropdown",
+                "name": "perfil",
+                "label": "Como você vai viajar",
+                "required": false,
+                "data-source": "${data.perfis}"
+              },
+              {
+                "type": "TextCaption",
+                "text": "Vou calcular o combustível com o consumo REAL do seu carro e pesquisar pedágio, balsa, onde ficar e onde comer. O plano chega aqui no chat em instantes."
+              },
+              {
+                "type": "Footer",
+                "label": "Montar meu plano",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "tipo": "viagem_plano",
+                    "destino": "${form.destino}",
+                    "origem": "${form.origem}",
+                    "dias": "${form.dias}",
+                    "perfil": "${form.perfil}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

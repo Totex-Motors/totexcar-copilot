@@ -129,6 +129,16 @@ const GARAGEM_URL = "https://totexmotors.com/comprar";
 const GARAGEM_FLOW_ID = "1052809144367365";
 // Flow da RECOMPRA FIPE AO VIVO (avaliar o próprio carro pela FIPE dentro do WhatsApp)
 const RECOMPRA_FLOW_ID = "2122157961991407";
+// Flows novos (Radar e Modo Viagem). Ficam em SECRET porque o id só existe depois
+// de publicar o flow na Meta — sem o id, o código cai no caminho de texto do agente
+// em vez de mandar um formulário quebrado.
+const RADAR_FLOW_ID = Deno.env.get("RADAR_FLOW_ID") || "";
+const VIAGEM_FLOW_ID = Deno.env.get("VIAGEM_FLOW_ID") || "";
+
+// pedido de SERVIÇO no carro → abre o flow do Radar
+function isRadarQuery(t: string): boolean {
+  return /(oficina|mec[âa]nic[oa]|borracharia|guincho|reboque|chaveiro|autoel[ée]tric|funilaria|lanternagem|bateria (do |arriada|descarregada)|troc(ar|a) (de )?(pneu|bateria|[óo]leo)|furei o pneu|pneu furado|carro (n[ãa]o pega|quebrou|parou)|onde (arrumo|conserto|consertar)|preciso de (um |uma )?(mec[âa]nico|oficina|guincho|chaveiro))/i.test(t || "");
+}
 
 // pedido de AVALIAR/VENDER o próprio carro → abre o flow da Recompra FIPE (não "vá no app")
 function isRecompraQuery(t: string): boolean {
@@ -155,7 +165,8 @@ const PAINEL_LABEL = "🖥️ Quero o painel";
 // Ações rápidas exibidas após cada resposta. WhatsApp só permite 3 BOTÕES, então com 4+ opções
 // usamos uma LISTA (type:"list"). A 4ª opção (Garagem Totex) abre a janela de carros do marketplace.
 const VIAGEM_LABEL = "🏖️ Planejar viagem";
-const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", GARAGEM_LABEL, VIAGEM_LABEL, PAINEL_LABEL];
+const RADAR_LABEL = "🔎 Achar oficina/serviço";
+const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", RADAR_LABEL, GARAGEM_LABEL, VIAGEM_LABEL, PAINEL_LABEL];
 
 // Envia a resposta com o menu de ações (lista interativa nos dois providers).
 // Usar SÓ em RESPOSTA a mensagem do cliente (janela de 24h da API oficial).
@@ -535,6 +546,13 @@ function isGaragemQuery(t: string): boolean {
   return /garagem\s*totex/i.test(t || "");
 }
 
+// Opção "Planejar viagem" do menu (ou pedido direto) → abre o FORMULÁRIO do Modo Viagem.
+// Só o gatilho EXPLÍCITO abre o flow; conversa solta sobre viagem continua com a IA,
+// que pergunta o destino no meio do papo (mais natural que jogar um formulário na cara).
+function isViagemQuery(t: string): boolean {
+  return /planejar\s*viagem|modo\s*viagem|quero\s*(planejar|fazer)\s*uma\s*viagem/i.test(t || "");
+}
+
 // Busca jornadas de pós-venda pelo telefone com TOLERÂNCIA de formato (a loja registra "11980292779",
 // o WhatsApp entrega "5511980292779"; há ainda números sem o 9º dígito) — mesmo padrão do findUserByPhone.
 async function findJourneysByPhone(phone: string): Promise<any[]> {
@@ -615,6 +633,96 @@ async function handleGaragemFlowReply(phone: string, flow: Record<string, any>):
     });
   } catch (e) { console.error("lead garagem flow:", e); }
   await sendText(phone, `🙌 Interesse registrado no *${flow.titulo}* (${flow.preco})! A loja já recebeu seus dados e vai te chamar. Enquanto isso, as fotos estão aqui:\n${flow.url}`);
+  return true;
+}
+
+// Resposta do FLOW do RADAR: o motorista escolheu um estabelecimento e pediu os contatos.
+// Manda telefone/WhatsApp/rota no chat (fica salvo na conversa dele) e grava a TELEMETRIA.
+// Telemetria de produto, NÃO CRM: não cria cadastro do motorista no estabelecimento.
+async function handleRadarFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
+  if (flow?.tipo === "radar_espera") {
+    await sendText(phone, "Beleza! Assim que a busca terminar eu te mando as opções aqui. 🔎");
+    return true;
+  }
+  if (flow?.tipo !== "radar_escolha") return false;
+
+  const { data: p } = await supabase.from("discovered_providers")
+    .select("*").eq("id", String(flow.pid)).maybeSingle();
+  if (!p) {
+    await sendText(phone, "Não consegui recuperar esse estabelecimento. Me diga o serviço e a cidade que eu procuro de novo. 🙏");
+    return true;
+  }
+
+  const user = await findUserByPhone(phone);
+  await supabase.from("driver_provider_actions").insert({
+    user_id: user?.id || null, provider_id: p.id,
+    search_id: flow.sid || null, action_type: "viewed",
+    metadata: { canal: "flow" },
+  }).then(() => {}, () => {});
+
+  const tel = p.phone ? String(p.phone).replace(/\D/g, "") : "";
+  const zap = (p.whatsapp ? String(p.whatsapp).replace(/\D/g, "") : "") || tel;
+  const destino = p.address
+    ? encodeURIComponent(`${p.name} ${p.address}`)
+    : encodeURIComponent(p.name);
+
+  const linhas = [`📍 *${p.name}*`];
+  if (p.address) linhas.push(p.address);
+  if (p.rating != null) linhas.push(`⭐ ${Number(p.rating).toFixed(1)}${p.review_count ? ` (${p.review_count} avaliações)` : ""}`);
+  linhas.push("");
+  if (tel) linhas.push(`📞 Ligar: +55${tel}`);
+  if (zap) linhas.push(`💬 WhatsApp: https://wa.me/55${zap}`);
+  linhas.push(`🗺️ Rota: https://www.google.com/maps/search/?api=1&query=${destino}`);
+  if (p.website) linhas.push(`🔗 Site: ${p.website}`);
+  linhas.push("");
+  linhas.push(
+    p.provider_status === "parceiro_totex"
+      ? "_Parceiro do ecossistema Totex. Confirme preço e prazo direto com a loja._"
+      : "_Resultado público: confirme preço e disponibilidade direto com o estabelecimento. A Totex não credencia nem garante o serviço._",
+  );
+  await sendText(phone, linhas.join("\n"));
+  return true;
+}
+
+// Resposta do FLOW do MODO VIAGEM: o formulário só COLETA (destino/origem/dias/perfil).
+// O plano é montado aqui e volta no chat — a pesquisa de rota + composição pela IA leva
+// bem mais que o timeout do endpoint de Flow, então não dá pra fazer dentro da tela.
+async function handleViagemFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
+  if (flow?.tipo !== "viagem_plano") return false;
+  const destino = String(flow.destino || "").trim();
+  if (!destino) {
+    await sendText(phone, "Não peguei o destino. Pra onde você quer ir? 🏖️");
+    return true;
+  }
+  const user = await findUserByPhone(phone);
+  if (!user) {
+    await sendText(phone, "Pra montar o plano com os dados do seu carro preciso te identificar. Cadastre-se no app com este mesmo número. 🚗");
+    return true;
+  }
+
+  await sendText(phone, `Fechou! Montando seu plano pra *${destino}* com o consumo real do seu carro — pesquisando pedágio, balsa e onde ficar. Só um instante… 🔎`);
+
+  const { data: vehicles } = await supabase.from("accounts").select("*")
+    .eq("user_id", user.id).eq("is_active", true).limit(1);
+  const vehicle = vehicles?.[0] || null;
+  const today = new Date().toISOString().slice(0, 10);
+  const pedido = `Planejar viagem de carro. Destino: ${destino}. Origem: ${flow.origem || "não informada"}. Dias: ${flow.dias || "não informado"}. Perfil: ${flow.perfil || "não informado"}.`;
+
+  // runAgent já faz o tool-use: ele mesmo chama planejar_viagem e compõe o plano.
+  const sysViagem = `Você é o **TotexCar Co-pilot** no MODO VIAGEM, respondendo no WhatsApp em português do Brasil.
+O cliente acabou de preencher o formulário de viagem, então NÃO se reapresente e NÃO pergunte o destino de novo — ele já disse.
+Chame a ferramenta planejar_viagem com os dados do pedido e monte o plano seguindo a instrução que ela devolver.
+Formato WhatsApp: *negrito* nos títulos de seção (nada de # markdown), frases curtas, no máximo 2 emojis no total, e a conta do combustível explicada de forma simples.
+NUNCA invente pedágio, preço de hospedagem ou estabelecimento: o que a pesquisa não trouxe, diga que não encontrou.`;
+
+  const aiCfg = await getAIConfig();
+  const texto = await runAgent(
+    aiCfg, sysViagem,
+    [{ kind: "text", text: pedido }],
+    { user, vehicle, today, inputText: pedido },
+  ).catch((e) => { console.error("viagem flow runAgent:", e); return ""; });
+
+  await sendText(phone, texto || "Tive um problema pra montar o plano agora. Pode tentar de novo em instantes? 🙏");
   return true;
 }
 
@@ -1888,6 +1996,16 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "garagem_flow", carro: msg.flowReply.titulo } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, garagem_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
+      // Radar de Serviços (escolheu um estabelecimento → manda os contatos no chat)
+      if (await handleRadarFlowReply(msg.phone, msg.flowReply)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "radar_flow", lugar: msg.flowReply.titulo } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, radar_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // Modo Viagem (formulário preenchido → plano montado e enviado no chat)
+      if (await handleViagemFlowReply(msg.phone, msg.flowReply)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "viagem_flow", destino: msg.flowReply.destino } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, viagem_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       // Recompra FIPE ao vivo (endpoint dinâmico)
       if (await handleRecompraFlowReply(msg.phone, msg.flowReply)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "recompra_flow", carro: `${msg.flowReply.marca_nome || ""} ${msg.flowReply.modelo_nome || ""}` } }).eq("id", eventId);
@@ -2107,7 +2225,9 @@ ${JSON.stringify(snapshot)}`;
       "/consumo": "Qual o consumo e o custo por km do meu carro?",
       "/manutencao": "Quais as próximas manutenções por km?",
       "/garagem": GARAGEM_LABEL,
-      "/viagem": "Quero planejar uma viagem de carro",
+      "/radar": RADAR_LABEL,
+      "/oficina": RADAR_LABEL,
+      "/viagem": VIAGEM_LABEL,
       "/multas": "Quais minhas multas e recursos?",
       "/painel": PAINEL_LABEL,
       "/suporte": "Preciso falar com o suporte",
@@ -2234,6 +2354,39 @@ ${JSON.stringify(snapshot)}`;
         fallbackText: `${GARAGEM_LABEL} — veja os carros disponíveis:\n${GARAGEM_URL}`,
       });
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "garagem" }, user_id: user.id }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
+    // Atalho: precisa de SERVIÇO no carro → FLOW do Radar (busca dentro do WhatsApp).
+    // Sem RADAR_FLOW_ID publicado, NÃO manda formulário quebrado: deixa a IA usar a
+    // tool buscar_servico e responder em texto (mesmo resultado, sem a tela bonita).
+    if (msg.kind !== "image" && RADAR_FLOW_ID && isRadarQuery(inputText)) {
+      const sRad = await getSettings();
+      await waSendFlow(sRad, msg.phone, {
+        header: "Radar de Serviços 🔎",
+        body: "Me diga o que seu carro precisa e onde você está. Eu procuro oficina, borracharia, guincho ou chaveiro perto de você, comparo avaliação e distância, e você escolhe.",
+        cta: "Procurar serviço",
+        flowId: RADAR_FLOW_ID,
+        token: `radar:${user.id}`,
+        fallbackText: "Me diga qual serviço você precisa (oficina, pneu, bateria, guincho…) e em que cidade/bairro você está, que eu procuro pra você. 🔎",
+      });
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "radar_flow_cta" }, user_id: user.id }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
+    // Atalho: planejar viagem → FLOW do Modo Viagem (formulário; o PLANO volta no chat,
+    // porque a pesquisa de rota + composição pela IA passa MUITO do timeout do endpoint).
+    if (msg.kind !== "image" && VIAGEM_FLOW_ID && isViagemQuery(inputText)) {
+      const sVia = await getSettings();
+      await waSendFlow(sVia, msg.phone, {
+        header: "Modo Viagem 🏖️",
+        body: "Vou montar seu plano de viagem com o consumo REAL do seu carro: combustível, pedágio, balsa, onde ficar e onde comer. Só me diga pra onde você vai.",
+        cta: "Planejar viagem",
+        flowId: VIAGEM_FLOW_ID,
+        token: `viagem:${user.id}`,
+        fallbackText: "Pra onde você quer viajar? Me diga o destino que eu monto o plano com o consumo real do seu carro. 🏖️",
+      });
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "viagem_flow_cta" }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 

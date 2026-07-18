@@ -1,0 +1,243 @@
+{
+  "version": "7.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "RBUSCA": ["RRESULT", "RESPERA"],
+    "RRESULT": ["RDETALHE"],
+    "RDETALHE": [],
+    "RESPERA": []
+  },
+  "screens": [
+    {
+      "id": "RBUSCA",
+      "title": "Radar de Serviços",
+      "data": {
+        "servicos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "oficina", "title": "Oficina mecânica" }]
+        },
+        "ordens": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+          },
+          "__example__": [{ "id": "balanced", "title": "Melhor combinação" }]
+        },
+        "local_padrao": { "type": "string", "__example__": "" },
+        "aviso": { "type": "string", "__example__": " " }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextSubheading", "text": "Do que seu carro precisa hoje?" },
+              { "type": "TextCaption", "text": "${data.aviso}" },
+              {
+                "type": "Dropdown",
+                "name": "servico",
+                "label": "Serviço",
+                "required": true,
+                "data-source": "${data.servicos}"
+              },
+              {
+                "type": "TextInput",
+                "name": "local",
+                "label": "Onde você está",
+                "helper-text": "Cidade ou bairro. Ex.: Barueri, Alphaville",
+                "required": true,
+                "init-value": "${data.local_padrao}"
+              },
+              {
+                "type": "Dropdown",
+                "name": "ordem",
+                "label": "Ordenar por",
+                "required": false,
+                "data-source": "${data.ordens}"
+              },
+              {
+                "type": "Footer",
+                "label": "Procurar",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "servico": "${form.servico}",
+                    "local": "${form.local}",
+                    "ordem": "${form.ordem}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "RRESULT",
+      "title": "O que encontrei",
+      "data": {
+        "lugares": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          },
+          "__example__": [
+            { "id": "1", "title": "Eletric Alpha", "description": "⭐ 4.9 (170) · Parceiro Totex" }
+          ]
+        },
+        "resumo": { "type": "string", "__example__": "Achei 6 oficinas em Alphaville." },
+        "servico": { "type": "string", "__example__": "oficina" },
+        "local": { "type": "string", "__example__": "Alphaville" },
+        "ordem": { "type": "string", "__example__": "balanced" },
+        "sid": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextSubheading", "text": "${data.resumo}" },
+              {
+                "type": "TextCaption",
+                "text": "Resultados públicos: confirme preço e disponibilidade direto com o estabelecimento."
+              },
+              {
+                "type": "Dropdown",
+                "name": "lugar",
+                "label": "Escolha um para ver os detalhes",
+                "required": true,
+                "data-source": "${data.lugares}"
+              },
+              {
+                "type": "Footer",
+                "label": "Ver detalhes",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "lugar": "${form.lugar}",
+                    "servico": "${data.servico}",
+                    "local": "${data.local}",
+                    "ordem": "${data.ordem}",
+                    "sid": "${data.sid}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "RDETALHE",
+      "title": "Detalhes",
+      "terminal": true,
+      "data": {
+        "titulo": { "type": "string", "__example__": "Eletric Alpha" },
+        "selo": { "type": "string", "__example__": "Resultado público" },
+        "nota": { "type": "string", "__example__": "⭐ 4.9 · 170 avaliações" },
+        "endereco": { "type": "string", "__example__": "Al. Rio Negro, 500 — Alphaville" },
+        "porque": { "type": "string", "__example__": "Nota 4.9 no Google · Tem WhatsApp" },
+        "aviso": {
+          "type": "string",
+          "__example__": "A Totex não credencia nem garante este serviço."
+        },
+        "tem_zap": { "type": "boolean", "__example__": true },
+        "tem_site": { "type": "boolean", "__example__": false },
+        "maps_uri": { "type": "string", "__example__": "https://maps.google.com/" },
+        "zap_uri": { "type": "string", "__example__": "https://wa.me/5511999999999" },
+        "site_uri": { "type": "string", "__example__": "https://exemplo.com.br" },
+        "pid": { "type": "string", "__example__": "" },
+        "sid": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextHeading", "text": "${data.titulo}" },
+          { "type": "TextCaption", "text": "${data.selo}" },
+          { "type": "TextSubheading", "text": "${data.nota}" },
+          { "type": "TextBody", "text": "${data.endereco}" },
+          { "type": "TextCaption", "text": "${data.porque}" },
+          {
+            "type": "EmbeddedLink",
+            "text": "Abrir rota no mapa 📍",
+            "on-click-action": { "name": "open_url", "url": "${data.maps_uri}" }
+          },
+          {
+            "type": "If",
+            "condition": "${data.tem_zap}",
+            "then": [
+              {
+                "type": "EmbeddedLink",
+                "text": "Chamar no WhatsApp 💬",
+                "on-click-action": { "name": "open_url", "url": "${data.zap_uri}" }
+              }
+            ]
+          },
+          {
+            "type": "If",
+            "condition": "${data.tem_site}",
+            "then": [
+              {
+                "type": "EmbeddedLink",
+                "text": "Abrir site 🔗",
+                "on-click-action": { "name": "open_url", "url": "${data.site_uri}" }
+              }
+            ]
+          },
+          { "type": "TextCaption", "text": "${data.aviso}" },
+          {
+            "type": "Footer",
+            "label": "Me manda os contatos",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "tipo": "radar_escolha",
+                "pid": "${data.pid}",
+                "sid": "${data.sid}",
+                "titulo": "${data.titulo}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "RESPERA",
+      "title": "Procurando",
+      "terminal": true,
+      "data": {
+        "titulo": { "type": "string", "__example__": "Estou procurando 🔎" },
+        "corpo": {
+          "type": "string",
+          "__example__": "A busca está demorando um pouco mais que o normal. Te mando as opções aqui no chat em instantes."
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextHeading", "text": "${data.titulo}" },
+          { "type": "TextBody", "text": "${data.corpo}" },
+          {
+            "type": "Footer",
+            "label": "Ok, aguardo no chat",
+            "on-click-action": { "name": "complete", "payload": { "tipo": "radar_espera" } }
+          }
+        ]
+      }
+    }
+  ]
+}

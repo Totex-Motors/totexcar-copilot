@@ -10,6 +10,10 @@
 // Chave privada: secret WA_FLOW_PRIVATE_KEY_B64 (PEM PKCS8 em base64).
 // Pública correspondente: subida no número via /whatsapp_business_encryption.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import {
+  SERVICE_TYPES, normalizeServiceType, isEmergencyService, dedupProviders,
+  rankProviders, normalizePhone, searchViaSearchPreview, searchViaGooglePlaces,
+} from "../_shared/radar-search.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -199,6 +203,229 @@ async function handleGaragem(req: any, dealershipId?: string): Promise<any> {
   return garagemBusca(dealershipId);
 }
 
+// ---------------- telas do flow RADAR DE SERVIÇOS ----------------
+// Achar oficina/borracharia/guincho perto do motorista, dentro do WhatsApp.
+// NÃO É CRM: estabelecimento é opção de serviço, não lead.
+//
+// ⚠️ ORÇAMENTO DE TEMPO: o Meta corta a requisição do endpoint por volta de 10s.
+// A busca ao vivo medida em produção leva ~8s — perto demais do limite. Por isso:
+//   1) tenta CACHE (consulta ao banco, milissegundos);
+//   2) só então busca ao vivo, com trava de RADAR_TIMEOUT_MS;
+//   3) estourou? devolve a tela RESPERA e o agente manda o resultado no chat.
+// Melhor avisar com elegância do que deixar o formulário quebrar na cara do cliente.
+const RADAR_TIMEOUT_MS = 6500;
+
+// Telas do radar — usadas no roteamento. Precisa ser lista exata porque a tela
+// RESULTADO (flow da Recompra) também começa com "R".
+const RADAR_SCREENS = new Set(["RBUSCA", "RRESULT", "RDETALHE", "RESPERA"]);
+
+const ORDENS = [
+  { id: "balanced", title: "Melhor combinação" },
+  { id: "nearest", title: "Mais perto" },
+  { id: "best_rated", title: "Melhor avaliado" },
+  { id: "mobile_service", title: "Que vai até mim" },
+];
+
+function radarBusca(localPadrao = "", aviso = ""): any {
+  return {
+    screen: "RBUSCA",
+    data: {
+      servicos: Object.entries(SERVICE_TYPES).map(([id, def]) => ({ id, title: def.label.slice(0, 30) })),
+      ordens: ORDENS,
+      local_padrao: localPadrao,
+      aviso: aviso || " ",
+    },
+  };
+}
+
+// linha da lista: nome + os sinais objetivos que ajudam a escolher
+function lugarRow(p: any, idx: number) {
+  const sinais: string[] = [];
+  if (p.rating != null) sinais.push(`⭐ ${Number(p.rating).toFixed(1)}${p.review_count ? ` (${p.review_count})` : ""}`);
+  if (p.provider_status === "parceiro_totex") sinais.push("Parceiro Totex");
+  if (p.open_24h) sinais.push("24h");
+  if (p.mobile_service) sinais.push("vai até você");
+  if (p.distance_km != null) sinais.push(`${p.distance_km} km`);
+  return {
+    id: String(idx),
+    title: String(p.name).slice(0, 30),
+    description: (sinais.join(" · ") || "Resultado público").slice(0, 100),
+  };
+}
+
+async function handleRadar(req: any, userId?: string): Promise<any> {
+  const d = req.data || {};
+
+  if (req.action === "INIT") {
+    let local = "";
+    if (userId) {
+      const { data: veh } = await admin.from("accounts").select("cidade")
+        .eq("user_id", userId).eq("is_active", true).limit(1).maybeSingle();
+      local = String(veh?.cidade || "");
+    }
+    return radarBusca(local);
+  }
+
+  if (req.action === "data_exchange") {
+    if (req.screen === "RBUSCA") {
+      const serviceType = normalizeServiceType(d.servico);
+      const def = SERVICE_TYPES[serviceType];
+      const local = String(d.local || "").trim();
+      if (!local) return radarBusca("", "Preciso saber onde você está pra procurar. 📍");
+
+      const { data: cfg } = await admin.from("app_settings")
+        .select("openai_api_key, radar_cache_hours, radar_search_provider, google_places_api_key")
+        .eq("id", 1).single();
+
+      // 1) CACHE — rápido e suficiente na maioria das vezes
+      const horas = Number(cfg?.radar_cache_hours || 72);
+      const desde = new Date(Date.now() - horas * 3600_000).toISOString();
+      const { data: cached } = await admin.from("discovered_providers").select("*")
+        .eq("category", def.label).gte("last_checked_at", desde)
+        .ilike("city", `%${local.split(/[,\-]/)[0].trim()}%`).limit(30);
+
+      let brutos: any[] = [];
+      if (cached && cached.length >= 3) {
+        brutos = cached.map((c: any) => ({
+          name: c.name, category: c.category, phone: c.phone, whatsapp: c.whatsapp,
+          website: c.website, address: c.address, city: c.city, state: c.state,
+          latitude: c.latitude, longitude: c.longitude, rating: c.rating,
+          review_count: c.review_count, open_now: null,
+          open_24h: c.service_attributes?.open_24h ?? null,
+          mobile_service: c.service_attributes?.mobile_service ?? null,
+          supports_ev: c.service_attributes?.supports_ev ?? null,
+          supports_hybrid: c.service_attributes?.supports_hybrid ?? null,
+          source: c.external_source, external_id: c.external_id,
+        }));
+      } else {
+        // 2) AO VIVO com trava de tempo
+        const usarPlaces = cfg?.radar_search_provider === "google_places" && !!cfg?.google_places_api_key;
+        const busca = usarPlaces
+          ? searchViaGooglePlaces(cfg!.google_places_api_key!, { serviceType, locationText: local, limit: 6 })
+          : searchViaSearchPreview(cfg?.openai_api_key || "", { serviceType, locationText: local, limit: 6 });
+        const resultado: any = await Promise.race([
+          busca,
+          new Promise((r) => setTimeout(() => r({ __timeout: true }), RADAR_TIMEOUT_MS)),
+        ]);
+        if (resultado?.__timeout) {
+          // 3) estourou: o agente assume no chat (flow_token carrega o pedido)
+          return {
+            screen: "RESPERA",
+            data: {
+              titulo: "Estou procurando 🔎",
+              corpo: `Achar ${def.label.toLowerCase()} em ${local} está demorando um pouco mais que o normal. Fecha aqui que eu te mando as melhores opções no chat em instantes.`,
+            },
+          };
+        }
+        brutos = resultado?.providers || [];
+      }
+
+      // parceiros do ecossistema ganham SELO, não posição
+      const { data: lojas } = await admin.from("users")
+        .select("dealership").eq("role", "dealer").not("dealership", "is", null);
+      const partnerNames = [...new Set((lojas || []).map((l: any) => String(l.dealership)))];
+
+      const ranked = rankProviders(dedupProviders(brutos), {
+        mode: String(d.ordem || "balanced") as any,
+        emergency: isEmergencyService(serviceType),
+        partnerNames,
+      }).slice(0, 6);
+
+      if (!ranked.length) {
+        return radarBusca(local, `Não achei ${def.label.toLowerCase()} em ${local}. Tente outra região ou categoria parecida.`);
+      }
+
+      // guarda os resultados desta busca pra próxima tela (o Flow não mantém estado grande)
+      const { data: busca } = await admin.from("service_searches").insert({
+        user_id: userId || null, query: def.label, service_type: serviceType,
+        location_text: local, filters: { canal: "flow", ordem: d.ordem || "balanced" },
+        result_count: ranked.length, sources: ["flow"], ok: true,
+      }).select().single();
+
+      if (busca?.id) {
+        for (const p of ranked) {
+          const externalId = p.external_id || (normalizePhone(p.phone) || p.name.toLowerCase().replace(/\s+/g, "-"));
+          const { data: up } = await admin.from("discovered_providers").upsert({
+            external_source: p.source, external_id: externalId,
+            name: p.name, normalized_name: p.name.toLowerCase().trim(),
+            category: def.label, provider_status: p.provider_status,
+            phone: p.phone, phone_normalized: normalizePhone(p.phone),
+            whatsapp: p.whatsapp, website: p.website, address: p.address,
+            city: p.city, state: p.state, rating: p.rating, review_count: p.review_count,
+            service_attributes: {
+              open_24h: p.open_24h, mobile_service: p.mobile_service,
+              supports_ev: p.supports_ev, supports_hybrid: p.supports_hybrid,
+            },
+            last_checked_at: new Date().toISOString(),
+          }, { onConflict: "external_source,external_id" }).select().single();
+          if (up?.id) {
+            await admin.from("provider_search_results").upsert({
+              search_id: busca.id, provider_id: up.id, rank_score: p.rank_score,
+              rank_position: p.rank_position, matched_reasons: p.matched_reasons,
+            }, { onConflict: "search_id,provider_id" });
+          }
+        }
+      }
+
+      return {
+        screen: "RRESULT",
+        data: {
+          lugares: ranked.map(lugarRow),
+          resumo: `Achei ${ranked.length} ${ranked.length === 1 ? "opção" : "opções"} de ${def.label.toLowerCase()} em ${local}.`,
+          servico: serviceType, local, ordem: String(d.ordem || "balanced"),
+          sid: String(busca?.id || ""),
+        },
+      };
+    }
+
+    if (req.screen === "RRESULT") {
+      // recupera a busca gravada e pega o escolhido pela posição
+      const sid = String(d.sid || "");
+      const idx = Number(d.lugar);
+      if (!sid) return radarBusca(String(d.local || ""), "Perdi o resultado da busca. Vamos procurar de novo? 🙏");
+
+      const { data: rows } = await admin.from("provider_search_results")
+        .select("provider_id, rank_position, matched_reasons, distance_km, discovered_providers(*)")
+        .eq("search_id", sid).order("rank_position");
+      const escolhido: any = (rows || [])[idx];
+      const p: any = escolhido?.discovered_providers;
+      if (!p) return radarBusca(String(d.local || ""), "Não consegui abrir esse estabelecimento. Tente de novo. 🙏");
+
+      const tel = normalizePhone(p.phone);
+      const zap = normalizePhone(p.whatsapp) || tel;
+      const destino = p.address
+        ? encodeURIComponent(`${p.name} ${p.address}`)
+        : p.latitude != null ? `${p.latitude},${p.longitude}` : encodeURIComponent(p.name);
+      const parceiro = p.provider_status === "parceiro_totex";
+
+      return {
+        screen: "RDETALHE",
+        data: {
+          titulo: String(p.name).slice(0, 80),
+          selo: parceiro ? "✅ Parceiro Totex" : "Resultado público",
+          nota: p.rating != null
+            ? `⭐ ${Number(p.rating).toFixed(1)}${p.review_count ? ` · ${p.review_count} avaliações` : ""}`
+            : "Sem nota pública encontrada",
+          endereco: String(p.address || "Endereço não informado").slice(0, 120),
+          porque: (escolhido?.matched_reasons || []).join(" · ").slice(0, 120) || " ",
+          aviso: parceiro
+            ? "Parceiro do ecossistema Totex. Confirme preço e prazo direto com a loja."
+            : "Encontrado em fonte pública. Confirme preço e disponibilidade direto com o estabelecimento — a Totex não credencia nem garante o serviço.",
+          tem_zap: !!zap,
+          tem_site: !!p.website,
+          maps_uri: `https://www.google.com/maps/search/?api=1&query=${destino}`,
+          zap_uri: zap ? `https://wa.me/55${zap}` : "https://wa.me/",
+          site_uri: String(p.website || "https://totexmotors.com"),
+          pid: String(p.id),
+          sid,
+        },
+      };
+    }
+  }
+
+  return radarBusca();
+}
+
 // ---------------- telas do flow RECOMPRA ----------------
 async function handleRecompra(req: any): Promise<any> {
   const d = req.data || {};
@@ -272,6 +499,12 @@ Deno.serve(async (req) => {
       if (token.startsWith("garagem") || screen.startsWith("G")) {
         const dealershipId = token.includes(":") ? token.split(":")[1] : undefined;
         resp = await handleGaragem(flowReq, dealershipId);
+      // ⚠️ NÃO usar screen.startsWith("R"): a tela RESULTADO da RECOMPRA também
+      // começa com R e seria sequestrada pelo radar. Lista explícita.
+      } else if (token.startsWith("radar") || RADAR_SCREENS.has(screen)) {
+        // token "radar:{userId}" → usa a cidade salva do motorista como padrão
+        const userId = token.includes(":") ? token.split(":")[1] : undefined;
+        resp = await handleRadar(flowReq, userId);
       } else {
         resp = await handleRecompra(flowReq);
       }
