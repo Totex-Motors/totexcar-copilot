@@ -2,6 +2,7 @@
 // Mesmo motor do agente WhatsApp (tool planejar_viagem), exposto pro app: o front manda
 // destino/origem/dias/perfil e recebe o plano pronto (IA) + os dados usados na conta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { pesquisarRota } from "../_shared/route-research.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -120,13 +121,20 @@ Deno.serve(async (req) => {
       loja: me?.dealership || null,
     };
 
-    const sys = `Você é o TotexCar Co-pilot no MODO VIAGEM: parceiro de estrada do dono do carro. Monte um plano de viagem de CARRO em português do Brasil, claro e amigável, formato: 🗺️ Rota e distância (estime pela sua base de rotas BR, ida) · ⛽ Custo de combustível (MOSTRE a conta com os dados reais: se houver custo_por_km use km total ida+volta × custo/km; senão (km ÷ km/L) × preço do litro; se faltar dado, diga o que falta medir) · 🛣️ Pedágios (estimativa honesta e aproximada) · 📍 Roteiro com 2-3 paradas boas · 🔧 Antes de viajar (se houver manutenções pendentes, recomende resolver ANTES, sugerindo a loja do cliente se houver) · ✅ Checklist: ${CHECKLIST.join(", ")}. NUNCA invente preço de hospedagem — no máximo indique bairros/regiões boas de ficar. Se não houver destino, sugira 2-3 destes destinos em alta 2026 conforme o perfil: ${DESTINOS_2026.join("; ")}. Tom leve, zero jargão, no máximo 3 emojis.`;
-    const userMsg = `Dados reais do carro do cliente: ${JSON.stringify(dados)}\n\nPedido: destino=${p.destino || "(sem destino, sugerir)"}; origem=${p.origem || "(não informada — assuma capital mais provável do perfil ou peça)"}; dias=${p.dias || "?"}; perfil=${p.perfil || "não informado"}.`;
-
     const { data: s } = await admin.from("app_settings").select("ai_provider, ai_model, openai_api_key, anthropic_api_key, gemini_api_key").eq("id", 1).single();
+
+    // PESQUISA EM TEMPO REAL da rota (pedágios atuais, balsa, condições) — busca web via OpenAI
+    let pesquisa: string | null = null;
+    if (p.destino && s?.openai_api_key) {
+      pesquisa = await pesquisarRota(s.openai_api_key, String(p.origem || ""), String(p.destino));
+    }
+
+    const sys = `Você é o TotexCar Co-pilot no MODO VIAGEM: parceiro de estrada do dono do carro. Monte um plano de viagem de CARRO em português do Brasil, claro e amigável, formato: 🗺️ Rota e distância (ida) · ⛽ Custo de combustível (MOSTRE a conta com os dados reais: se houver custo_por_km use km total ida+volta × custo/km; senão (km ÷ km/L) × preço do litro; se faltar dado, diga o que falta medir) · 🛣️ Pedágios (LISTE praça a praça com valores e o total ida+volta) · ⛴️ Balsa/travessia SE a rota tiver (preço do carro, fila, compra antecipada) · 📍 Roteiro com 2-3 paradas boas · 🔧 Antes de viajar (se houver manutenções pendentes, recomende resolver ANTES, sugerindo a loja do cliente se houver) · ✅ Checklist: ${CHECKLIST.join(", ")}. ${pesquisa ? "Use a PESQUISA EM TEMPO REAL abaixo como FONTE DA VERDADE de distância, pedágios, balsa e condições — NÃO chute valores de rota; onde a pesquisa disser que não encontrou, seja transparente." : "Sem pesquisa ao vivo disponível: use sua base de rotas BR e SINALIZE que os valores de pedágio/travessia são aproximados e devem ser conferidos."} NUNCA invente preço de hospedagem — no máximo indique bairros/regiões boas de ficar. Se não houver destino, sugira 2-3 destes destinos em alta 2026 conforme o perfil: ${DESTINOS_2026.join("; ")}. Tom leve, zero jargão, no máximo 4 emojis.`;
+    const userMsg = `Dados reais do carro do cliente: ${JSON.stringify(dados)}\n\nPedido: destino=${p.destino || "(sem destino, sugerir)"}; origem=${p.origem || "(não informada — assuma a mais provável ou peça)"}; dias=${p.dias || "?"}; perfil=${p.perfil || "não informado"}.${pesquisa ? `\n\nPESQUISA EM TEMPO REAL (fonte da verdade da rota):\n${pesquisa}` : ""}`;
+
     const plano = await aiText(s, sys, userMsg);
 
-    return json({ ok: true, plano, dados });
+    return json({ ok: true, plano, dados, pesquisa_web: !!pesquisa });
   } catch (e) {
     console.error("viagem erro:", e);
     return json({ error: String((e as any)?.message || e) }, 500);

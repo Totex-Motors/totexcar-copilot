@@ -6,6 +6,7 @@
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { pesquisarRota } from "../_shared/route-research.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1156,6 +1157,15 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         return { item: r.title, faltam_km: faltam };
       }).filter((p: any) => p.faltam_km <= 1500);
 
+      // PESQUISA EM TEMPO REAL da rota (pedágios praça a praça, balsa, condições) — busca web
+      let pesquisa: string | null = null;
+      if (args?.destino) {
+        const sCfg = await getSettings();
+        if (sCfg?.openai_api_key) {
+          pesquisa = await pesquisarRota(sCfg.openai_api_key, String(args?.origem || ""), String(args.destino)).catch(() => null);
+        }
+      }
+
       return {
         ok: true,
         carro: { marca: vehicle?.marca, modelo: vehicle?.modelo, ano: vehicle?.ano_modelo, combustivel: vehicle?.combustivel },
@@ -1167,7 +1177,10 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         loja_do_cliente: user.dealership || null,
         checklist_padrao: ["Calibragem dos pneus (incluindo estepe)", "Nível de óleo e água/arrefecimento", "Palhetas e água do para-brisa", "Documento (CRLV) e CNH válidos", "Triângulo, macaco e chave de roda", "Farol/lanternas funcionando"],
         destinos_em_alta_2026: ["Morro Branco (CE)", "Juquehy (SP)", "Serra da Canastra (MG)", "Espírito Santo do Pinhal (SP, enoturismo)", "Bento Gonçalves (RS)", "Península de Maraú (BA)"],
-        instrucao: "Monte o plano da viagem: estime a distância de ida (seu conhecimento de rotas BR) e calcule o combustível MOSTRANDO a conta — se houver custo_combustivel_por_km_real, use km total × custo/km; senão (km ÷ km/L) × preço do litro — sempre ida E volta, com os dados REAIS acima. Cite pedágios como estimativa aproximada, e um roteiro curto com paradas. Se houver manutencoes_antes_de_viajar, recomende resolver ANTES (e sugira agendar na loja_do_cliente, se houver). Feche com o checklist resumido. Se não tiver destino, sugira 2-3 dos destinos_em_alta conforme o perfil. Tom leve de parceiro de estrada; não invente preço de hospedagem.",
+        pesquisa_tempo_real: pesquisa,
+        instrucao: pesquisa
+          ? "Monte o plano usando a pesquisa_tempo_real como FONTE DA VERDADE da rota: distância, PEDÁGIOS praça a praça (some ida e volta), BALSA/travessia se houver (preço do carro + dica de fila/compra antecipada) e condições. NÃO chute valores de rota. Combustível: MOSTRE a conta com os dados reais — se houver custo_combustivel_por_km_real use km total × custo/km; senão (km ÷ km/L) × preço do litro, ida E volta. Se houver manutencoes_antes_de_viajar, recomende resolver ANTES (agendar na loja_do_cliente, se houver). Feche com checklist resumido. Tom leve de parceiro de estrada; não invente preço de hospedagem."
+          : "Monte o plano da viagem: estime a distância (base de rotas BR) SINALIZANDO que pedágio/travessia são aproximados e devem ser conferidos. Combustível com a conta mostrada (custo/km real ou km÷km/L × preço do litro, ida e volta). Manutenções pendentes → resolver antes (loja do cliente). Checklist no fim. Sem destino → sugira 2-3 destinos_em_alta pelo perfil. Não invente preço de hospedagem.",
       };
     }
 
