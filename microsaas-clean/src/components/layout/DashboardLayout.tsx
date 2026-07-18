@@ -1,6 +1,7 @@
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
-import { Bell, Search, Settings, LogOut } from "lucide-react";
+import { NotificationsBell } from "./NotificationsBell";
+import { PanelLeft, Search, Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -13,6 +14,23 @@ import { useNavigate, Navigate } from "react-router-dom";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+}
+
+// Botão do menu com rótulo por extenso — só o ícone dos "quadradinhos" confundia quem não conhece
+function MenuTrigger() {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={toggleSidebar}
+      className="gap-1.5 px-2 text-foreground flex-shrink-0"
+      title="Abrir/fechar o menu"
+    >
+      <PanelLeft className="h-5 w-5" />
+      <span className="text-sm font-medium">Menu</span>
+    </Button>
+  );
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -61,7 +79,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex h-16 items-center justify-between px-4 md:px-6 gap-2">
               <div className="flex items-center gap-3 min-w-0 flex-1">
-                <SidebarTrigger className="text-foreground flex-shrink-0" />
+                <MenuTrigger />
                 <div className="relative w-full max-w-sm hidden md:block">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -72,12 +90,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
 
               <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0">
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-primary rounded-full flex items-center justify-center">
-                    <span className="text-[10px] text-primary-foreground font-bold">3</span>
-                  </span>
-                </Button>
+                <NotificationsBell />
                 
                 <Button variant="ghost" size="icon" onClick={goToSettings} title="Configurações">
                   <Settings className="h-5 w-5" />

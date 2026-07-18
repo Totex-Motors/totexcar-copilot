@@ -1,7 +1,7 @@
 // TotexCar Co-pilot — Agente de IA do carro via WhatsApp (DUAL: Uazapi OU API oficial Meta)
 // Recebe texto/foto/áudio, identifica o usuário pelo telefone e usa a IA (OpenAI/Claude/Gemini)
 // com FERRAMENTAS (function calling): registrar gasto (com litros), medir consumo pela foto do
-// hodômetro, resumo financeiro, manutenção, localização (rastreador opcional) e ANTI-MULTAS
+// hodômetro, resumo financeiro, manutenção e ANTI-MULTAS
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
@@ -495,57 +495,6 @@ async function resolveCategory(name: string, type: string, isNew: boolean): Prom
   return created.id;
 }
 
-// ---------- SmartGPS (rastreador — recurso PREMIUM opcional) ----------
-const sgNorm = (s: any) => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-async function smartgpsLogin(base: string, email: string, password: string): Promise<string> {
-  const res = await fetch(`${base}/api/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  const d = await res.json().catch(() => ({}));
-  if (!res.ok || !d?.user_api_hash) throw new Error(`smartgps_login_${res.status}`);
-  await supabase.from("app_settings").update({ smartgps_hash: d.user_api_hash, smartgps_hash_at: new Date().toISOString() }).eq("id", 1);
-  return d.user_api_hash;
-}
-
-async function sgAuthAndDevices(): Promise<{ base: string; hash: string; devices: any[] } | null> {
-  const s = await getSettings();
-  if (!s.smartgps_enabled || !s.smartgps_email || !s.smartgps_password) return null;
-  const base = (s.smartgps_base_url || "https://web.smartgps.com.br").replace(/\/+$/, "");
-  let hash = s.smartgps_hash;
-  const fresh = hash && s.smartgps_hash_at && (Date.now() - new Date(s.smartgps_hash_at).getTime() < 12 * 3600 * 1000);
-  if (!fresh) hash = await smartgpsLogin(base, s.smartgps_email, s.smartgps_password);
-  const fetchDevices = async (h: string): Promise<any[] | null> => {
-    const res = await fetch(`${base}/api/get_devices?user_api_hash=${encodeURIComponent(h)}`, { headers: { Accept: "application/json" } });
-    if (res.status === 401 || res.status === 419) return null;
-    const d = await res.json().catch(() => ({}));
-    const items = d?.items ?? d?.data ?? d;
-    if (Array.isArray(items)) return items;
-    if (Array.isArray(items?.[0]?.items)) return items.flatMap((g: any) => g.items || []);
-    return [];
-  };
-  let devices = await fetchDevices(hash);
-  if (devices === null) { hash = await smartgpsLogin(base, s.smartgps_email, s.smartgps_password); devices = (await fetchDevices(hash)) || []; }
-  return { base, hash, devices: devices || [] };
-}
-
-function sgFindDevice(vehicle: any, devices: any[]) {
-  if (!vehicle) return null;
-  const p = sgNorm(vehicle.placa);
-  return (vehicle.smartgps_device_id != null && devices.find((x: any) => Number(x.id) === Number(vehicle.smartgps_device_id))) ||
-    (vehicle.smartgps_imei && devices.find((x: any) => sgNorm(x.imei) === sgNorm(vehicle.smartgps_imei))) ||
-    (p && devices.find((x: any) => sgNorm(x.name).includes(p))) || null;
-}
-
-function isLocationQuery(t: string): boolean {
-  const s = (t || "").toLowerCase();
-  if (/(localiza[cç][aã]o|rastrea\w*|\bgps\b)/.test(s)) return true;
-  if (/(\bonde\b|\bcad[êe]\b)/.test(s) && /(carro|ve[ií]culo|\bele\b|moto)/.test(s)) return true;
-  return false;
-}
-
 // Opção "Garagem Totex" do menu (ou pedido direto): manda o link da janela de carros do marketplace
 function isGaragemQuery(t: string): boolean {
   return /garagem\s*totex/i.test(t || "");
@@ -720,31 +669,6 @@ async function handlePostsaleTransfer(phone: string, text: string): Promise<bool
   return true;
 }
 
-async function getCarLocation(vehicle: any): Promise<{ address: string | null; lat: number; lng: number; speed: number; online: any; last_update: any; odometer: number | null } | null> {
-  if (!vehicle) return null;
-  const ctx = await sgAuthAndDevices();
-  if (!ctx) return null;
-  const device = sgFindDevice(vehicle, ctx.devices);
-  if (!device) return null;
-  if (vehicle.smartgps_device_id == null) {
-    await supabase.from("accounts").update({ smartgps_device_id: Number(device.id), smartgps_imei: device.imei ?? null }).eq("id", vehicle.id);
-  }
-  const lat = Number(device.lat ?? device.latitude);
-  const lng = Number(device.lng ?? device.lon ?? device.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  let address: string | null = null;
-  try {
-    const a = await fetch(`${ctx.base}/api/geo_address?lat=${lat}&lon=${lng}&user_api_hash=${encodeURIComponent(ctx.hash)}`, { headers: { Accept: "application/json" } });
-    const aj = await a.json().catch(() => ({}));
-    address = aj?.address ?? null;
-  } catch { /* */ }
-  const odo = Number(device.odometer ?? device.total_distance ?? device.distance);
-  if (Number.isFinite(odo) && odo > Number(vehicle.hodometro || 0)) {
-    await supabase.from("accounts").update({ hodometro: odo }).eq("id", vehicle.id);
-  }
-  return { address, lat, lng, speed: Number(device.speed) || 0, online: device.online, last_update: device.last_update ?? null, odometer: Number.isFinite(odo) ? odo : null };
-}
-
 // ---------- Garagem Totex (estoque do marketplace totexmotors.com) ----------
 const MARKETPLACE_URL = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 
@@ -876,11 +800,6 @@ const TOOL_SPECS = [
   {
     name: "pontos_cnh",
     description: "Pontos acumulados na CNH nos últimos 12 meses (das multas registradas) e risco de suspensão (regra do CTB). Use para 'quantos pontos eu tenho?', 'vou perder a CNH?', 'tô perto de suspender?'.",
-    parameters: { type: "object", properties: {} },
-  },
-  {
-    name: "localizar_carro",
-    description: "Localização atual do carro (rastreador PREMIUM, se ativo).",
     parameters: { type: "object", properties: {} },
   },
   {
@@ -1228,12 +1147,6 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           obs: "Baseado nas multas registradas aqui nos últimos 12 meses — pode não incluir todas; confirme o total no DETRAN.",
         };
       } catch (e) { return { error: String((e as any)?.message || e) }; }
-    }
-
-    if (name === "localizar_carro") {
-      const loc = await getCarLocation(vehicle);
-      if (!loc) return { ok: false, error: "rastreador_indisponivel", message: "O rastreamento por GPS é um recurso opcional e não está ativo nesta conta." };
-      return { ok: true, endereco: loc.address, lat: loc.lat, lng: loc.lng, em_movimento: loc.speed > 0, velocidade_kmh: Math.round(loc.speed), mapa: `https://maps.google.com/?q=${loc.lat},${loc.lng}` };
     }
 
     if (name === "buscar_carros") {
@@ -1927,7 +1840,7 @@ TRANSFERÊNCIA / DOCUMENTAÇÃO DO CARRO: se perguntarem da transferência de pr
 
 ACESSO / COMO USAR (ancore-se AQUI — nunca invente): o jeito PRINCIPAL de usar o TotexCar Co-pilot é AQUI no WhatsApp — o dono te manda foto de cupom, áudio ou pergunta, e você resolve. A conta dele JÁ está ativa; ele NÃO precisa criar login nem senha pra usar por aqui. Existe TAMBÉM um painel web em ${appUrl} — abre no NAVEGADOR (celular ou computador) e pode ser "adicionado à tela inicial" pra virar um atalho parecido com app (é um PWA). ⚠️ NÃO EXISTE aplicativo na Play Store nem na App Store, e "Totexmotors" é o MARKETPLACE de carros (site diferente) — NUNCA mande o dono baixar/procurar app em loja de aplicativos, nem procurar "Totexmotors". Se ele perguntar como acessar/entrar no painel/app/site, ou pedir pra logar, chame link_acesso (gera e envia um link SEGURO de uso único que já loga, sem senha). Se tiver dúvida sobre acesso, NÃO invente: mande o link ${appUrl} ou use abrir_chamado.
 
-Regras: depois de registrar algo, confirme em 1 frase. Se faltar o valor, peça. Não invente dados nem funcionalidades — use as ferramentas; se não souber, diga que vai verificar (abrir_chamado) em vez de chutar. Localização por GPS é um recurso opcional; se não estiver ativo, explique com naturalidade.
+Regras: depois de registrar algo, confirme em 1 frase. Se faltar o valor, peça. Não invente dados nem funcionalidades — use as ferramentas; se não souber, diga que vai verificar (abrir_chamado) em vez de chutar. Rastreamento por GPS NÃO é um recurso do produto — se pedirem localização do carro, explique com naturalidade que o Co-pilot não rastreia o veículo.
 
 Hoje é ${today}.
 ${historico ? `CONVERSA RECENTE (para contexto e correções):\n${historico}\n` : ""}
@@ -2052,21 +1965,6 @@ ${JSON.stringify(snapshot)}`;
       });
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "recompra_flow_cta" }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
-    }
-
-    // Atalho barato: "onde está meu carro?" (rastreador premium, se ativo)
-    if (msg.kind !== "image" && isLocationQuery(inputText)) {
-      try {
-        const loc = await getCarLocation(vehicle);
-        if (loc) {
-          const nome = vehicle?.name || vehicle?.modelo || "carro";
-          const onde = loc.address || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
-          const estado = loc.speed > 0 ? `🚗 Em movimento (${Math.round(loc.speed)} km/h)` : "🅿️ Parado";
-          await reply(`📍 Seu ${nome} está em:\n${onde}\n\n${estado}\n\nVer no mapa: https://maps.google.com/?q=${loc.lat},${loc.lng}`);
-          if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "location" }, user_id: user.id }).eq("id", eventId);
-          return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
-        }
-      } catch (e) { console.error("getCarLocation (atalho) falhou:", e); }
     }
 
     // Atalho: opção "Garagem Totex" (menu ou pedido direto) → FLOW com o ESTOQUE AO VIVO.

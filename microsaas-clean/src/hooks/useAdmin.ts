@@ -163,10 +163,6 @@ export interface AppSettings {
   placa_api_bearer: string | null;
   placa_api_device: string | null;
   referral_buyer_offer: string | null;
-  smartgps_enabled: boolean | null;
-  smartgps_base_url: string | null;
-  smartgps_email: string | null;
-  smartgps_password: string | null;
   support_owner_phone: string | null;
   // WhatsApp oficial (Meta Cloud API / BM) + chave de troca de provider
   wa_provider: string | null;          // "uazapi" | "meta"

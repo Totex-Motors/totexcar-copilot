@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Switch } from "@/components/ui/switch";
-import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Navigation, Gift } from "lucide-react";
+import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -478,7 +478,6 @@ function ConfigTab() {
     buyback_fipe_pct: "90",
     placa_bearer: "", placa_device: "", placa_url: "",
     referral_buyer_offer: "Transferência grátis",
-    smartgps_enabled: false, smartgps_base_url: "https://web.smartgps.com.br", smartgps_email: "", smartgps_password: "",
     support_owner_phone: "",
     wa_provider: "uazapi", meta_wa_token: "", meta_wa_phone_id: "", meta_wa_verify_token: "", meta_waba_id: "",
   });
@@ -505,10 +504,6 @@ function ConfigTab() {
         placa_device: settings.placa_api_device || "",
         placa_url: settings.placa_api_url || "",
         referral_buyer_offer: settings.referral_buyer_offer || "Transferência grátis",
-        smartgps_enabled: (settings as any).smartgps_enabled ?? false,
-        smartgps_base_url: (settings as any).smartgps_base_url || "https://web.smartgps.com.br",
-        smartgps_email: (settings as any).smartgps_email || "",
-        smartgps_password: (settings as any).smartgps_password || "",
         support_owner_phone: (settings as any).support_owner_phone || "",
         wa_provider: (settings as any).wa_provider || "uazapi",
         meta_wa_token: (settings as any).meta_wa_token || "",
@@ -543,10 +538,6 @@ function ConfigTab() {
         placa_api_device: f.placa_device || null,
         placa_api_url: f.placa_url || null,
         referral_buyer_offer: f.referral_buyer_offer || null,
-        smartgps_enabled: f.smartgps_enabled,
-        smartgps_base_url: f.smartgps_base_url || null,
-        smartgps_email: f.smartgps_email || null,
-        smartgps_password: f.smartgps_password || null,
         support_owner_phone: f.support_owner_phone.replace(/\D/g, "") || null,
         wa_provider: f.wa_provider || "uazapi",
         meta_wa_token: f.meta_wa_token || null,
@@ -683,27 +674,6 @@ function ConfigTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2"><Label>Token PuxaPlaca</Label><Input type="password" value={f.placa_bearer} onChange={(e) => set("placa_bearer", e.target.value)} placeholder="seu token da PuxaPlaca" /></div>
             <div className="space-y-2"><Label>URL (avançado — deixe em branco p/ PuxaPlaca)</Label><Input value={f.placa_url} onChange={(e) => set("placa_url", e.target.value)} placeholder="https://api.puxaplaca.app" /></div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Rastreador (SmartGPS) */}
-      <Card className="border-0 shadow-premium-md lg:col-span-2">
-        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Navigation className="w-5 h-5" /> Rastreador (SmartGPS)</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-xs text-muted-foreground">
-            Conta-mestre do <strong>SmartGPS</strong>: o sistema loga uma vez e vincula cada carro ao seu rastreador
-            pela <strong>placa</strong> (ou IMEI). O dono vê a localização ao vivo, o trajeto e o hodômetro é
-            sincronizado sozinho. Use o host do seu tenant (ex.: <code>https://sc.smartgps.com.br</code>).
-          </p>
-          <div className="flex items-center gap-3">
-            <Switch checked={f.smartgps_enabled} onCheckedChange={(v) => set("smartgps_enabled", v)} />
-            <Label>Ativar rastreamento</Label>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>URL base (tenant)</Label><Input value={f.smartgps_base_url} onChange={(e) => set("smartgps_base_url", e.target.value)} placeholder="https://web.smartgps.com.br" /></div>
-            <div className="space-y-2"><Label>E-mail da conta-mestre</Label><Input type="email" value={f.smartgps_email} onChange={(e) => set("smartgps_email", e.target.value)} placeholder="conta@totexmotors.com" /></div>
-            <div className="space-y-2"><Label>Senha da conta-mestre</Label><Input type="password" value={f.smartgps_password} onChange={(e) => set("smartgps_password", e.target.value)} placeholder="••••••••" /></div>
           </div>
         </CardContent>
       </Card>

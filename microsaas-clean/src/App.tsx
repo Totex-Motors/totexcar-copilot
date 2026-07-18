@@ -17,8 +17,6 @@ import Indique from "./pages/Indique";
 import Recompra from "./pages/Recompra";
 import Manutencao from "./pages/Manutencao";
 import Financiamento from "./pages/Financiamento";
-import Rastreador from "./pages/Rastreador";
-import CarroConectado from "./pages/CarroConectado";
 import Multas from "./pages/Multas";
 import Garagem from "./pages/Garagem";
 import Viagem from "./pages/Viagem";
@@ -64,8 +62,6 @@ const App = () => (
           <Route path="/recompra" element={<Recompra />} />
           <Route path="/manutencao" element={<Manutencao />} />
           <Route path="/financiamento" element={<Financiamento />} />
-          <Route path="/rastreador" element={<Rastreador />} />
-          <Route path="/conectado" element={<CarroConectado />} />
           <Route path="/multas" element={<Multas />} />
           <Route path="/garagem" element={<Garagem />} />
           <Route path="/viagem" element={<Viagem />} />
