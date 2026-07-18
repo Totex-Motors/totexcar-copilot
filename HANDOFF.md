@@ -1,7 +1,91 @@
 # HANDOFF — Totex_CAR_FINANCE (TCF) — continuação do projeto
 
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
-> Última atualização: 2026-07-16.
+> Última atualização: 2026-07-17.
+
+## 0-AAA. ⭐ ESTADO ATUAL (2026-07-16/17) — LER PRIMEIRO (sessão mais recente)
+
+App no ar em **https://totexcarco-pilot.vercel.app** (deploy auto via push na `main`). Supabase TCF
+`gkkjhnzkqhpgrwrmofev`. Deploy de edge = CLI (`C:\Users\marco\Downloads\supabase\supabase.exe functions
+deploy <fn> --project-ref gkkjhnzkqhpgrwrmofev [--no-verify-jwt]`) — ⚠️ ANTES ajustar `config.toml`
+(sed `ip_version "ipv6"→"IPv6"` + comentar `email_double_confirm_changes`) e REVERTER depois.
+
+### ⭐⭐ WHATSApp API OFICIAL — MIGRAÇÃO CONCLUÍDA E ATIVA (wa_provider=meta NO AR)
+- **Ciclo completo testado pelo dono.** Número oficial **+55 11 96378-6699** (registrado via API — UI bugada;
+  ⚠️ **PIN de 2 etapas: 731942**). WABA "TotexCar Co-Pilot" `1300328208581382`, phone_id `1140690362471572`,
+  Business (BM) TotexMotors `1004785579378572`. Token permanente do system user `tcf-copilot` (Employee) com
+  4 escopos (whatsapp_business_messaging/management + catalog_management + business_management) no /admin.
+- **21 templates APROVADOS** (registry = fonte da verdade em `_shared/wa.ts`; script `scripts/create-wa-templates.mjs`
+  cria/atualiza via API). Doc: `TEMPLATES-WHATSAPP-META.md`.
+- **Pegadinhas resolvidas:** template "accepted" sem entregar = **faltava cartão/billing na WABA** (dono
+  resolveu); falhas de entrega agora persistem em `whatsapp_events kind=status_fail`. Número Uazapi antigo
+  **DELETADO** (SEM rollback). Links `wa.me` do site → 5511963786699.
+- **⚠️ PENDENTE:** campanha de REAPRESENTAÇÃO do número novo pros clientes antigos (ex.: Renata só conhece o
+  número velho, que morreu). Base de telefones toda no banco → campanha de 1 comando pelo motor de campanhas.
+- **REGRA:** gerar token novo NÃO afeta tokens do CRM (TotexGest, outro system user); **NUNCA** clicar "Anular
+  tokens" no system user do CRM. Ver [[whatsapp-meta-oficial]].
+
+### WHATSApp FLOWS (formulários nativos) — 3 no ar, fundação criptografada pronta
+- **Endpoint criptografado** `wa-flow-endpoint` (RSA-OAEP+AES-GCM, IV invertido, 421=refresh de chave; privada
+  em secret `WA_FLOW_PRIVATE_KEY_B64`, pública no número). **Reutilizável p/ qualquer flow dinâmico futuro.**
+- **NPS** `nps_pesquisa_flow` (formulário nota 0-10 + comentário; substitui "responde com número").
+- **RECOMPRA FIPE AO VIVO** `recompra_fipe_flow` id `2122157961991407`: marca→modelo→ano da FIPE ao vivo →
+  avaliação → lead em `buyback_requests`. Atalho no agente: "avaliar/vender/quanto vale meu carro" abre o flow.
+- **GARAGEM TOTEX** `garagem_flow` id `1052809144367365`: marca+faixa+busca → estoque ao vivo do marketplace →
+  detalhe → lead. Escopado por loja (token `garagem:{dealershipId}` = cliente de loja vê só o estoque dela).
+- JSONs versionados em `supabase/flows/`.
+
+### VITRINE DE CARROS POR FOTO (catálogo nativo DESCARTADO)
+- Catálogo Meta **não deu**: BM automotiva força vertical "vehicles", que o WhatsApp **não conecta** (só aceita
+  "commerce"); e o system user não é admin da BM pra criar via API. Edge `catalog-sync` fica DORMENTE.
+- **Solução no ar:** `buscar_carros`/`oportunidades_carros` mandam cada carro como **mensagem de imagem**
+  (foto real do marketplace + legenda modelo/ano/km/preço + link), escopado por loja. `waSendImage` em wa.ts.
+
+### 🏖️ MODO VIAGEM — NOVO módulo (WhatsApp + APP), Fase 1 no ar
+Ideia do dono (spec em `C:\Users\marco\TotexCar_Viajem\...`). Decisões: SEM agência (automatizar), SEM AISa
+(usa nossa camada de IA). **Diferencial:** único player de viagem que conhece o CARRO da pessoa (consumo real,
+custo/km, manutenções). 
+- **Tool `planejar_viagem`** (agente) + **página `/viagem`** (item "Modo Viagem" na sidebar) + **edge `viagem`**.
+- **Pesquisa AO VIVO** (`_shared/route-research.ts`, gpt-4o-search-preview): `pesquisarRota` (pedágios praça a
+  praça, balsa c/ preço/fila, condições) + `pesquisarLugares` (hospedagem por faixa, restaurantes) em paralelo.
+- Edge devolve **JSON estruturado** → página renderiza em **cards bonitos** (stat tiles, pedágios, balsa,
+  hospedagem por faixa colorida, comida, alerta de manutenção, checklist). Fim do texto cru.
+- **PRÓXIMOS (não feito):** afiliado Booking (dono cria conta → `booking_affiliate_id` no /admin → comissão
+  automática nas hospedagens); campanhas sazonais de feriado; opção Google Places (nota+foto). Ver [[modo-viagem]]
+  e `VISAO-MODO-VIAGEM-TOTEX.md`.
+
+### AGENTE MAIS HUMANO + NATIVO
+- **Debounce de 8s** p/ mensagens picadas (agrupa e responde 1x) + **dedup por wamid** (Meta reenvia em retry).
+- **Menu inteligente:** lista só aparece na 1ª conversa/12h ou quando pede "menu/ajuda" (não em toda mensagem).
+- **Comandos "/" + Ice Breakers** nativos configurados no número (conversational_automation) — exibição depende
+  do rollout Meta/versão do app. CMD_MAP no webhook mapeia /gastos, /viagem, /garagem, /painel etc.
+- **"Quero o painel"** só p/ conta provisionada pela loja (email sintético @totexcarfinance.app, sem senha).
+- Prompt: seção CONTINUIDADE E TOM (não se reapresentar, respostas curtas p/ continuação).
+
+### 🗑️ REMOVIDOS DEFINITIVAMENTE (decisão do dono 2026-07-17)
+- **Rastreador (SmartGPS)** e **Carro Conectado**: páginas, hooks, edges (`smartgps`/`car-link`/`car-ingest`
+  deletadas do servidor), card do /admin, tool `localizar_carro`, tabelas `car_*` (DROP) e colunas smartgps_*,
+  deps leaflet/qrcode.react. Agente diz que GPS não é recurso. Ver [[smartgps-tracker]] [[carro-conectado]].
+
+### UI/UX corrigido
+- **Sininho de notificações** agora REAL (`NotificationsBell`): docs vencendo ≤30d, manutenção ≤500km/vencida,
+  prazo de multa ≤7d; clique navega; badge some quando vazio. (Antes era "3" fixo do template.)
+- **Botão Menu** com ícone + rótulo "Menu" por extenso (antes só os 2 quadradinhos).
+
+### Edge functions atuais (todas no ar)
+`whatsapp-webhook` (dual, +flows/vitrine/viagem/comandos), `car-expiration-alerts` (cron, templates),
+`viagem` (JWT, Modo Viagem), `wa-flow-endpoint` (flows criptografados), `dealer-api`, `integration`,
+`marketplace`, `buyback`, `garagem`, `vehicle-lookup`, `create-checkout`, `asaas-webhook`, `admin-api`,
+`support-agent`, `car-spec`, `car-consumo`, `catalog-sync` (dormente). **Deletadas:** smartgps, car-link, car-ingest.
+
+### PRÓXIMOS PASSOS SUGERIDOS (pra próxima sessão)
+1. **Campanha de reapresentação** do número WhatsApp novo pros clientes antigos (a maior pendência operacional).
+2. **Afiliado Booking** no Modo Viagem (monetização automática das hospedagens).
+3. Testar em produção com casos reais: vitrine de fotos, recompra flow, Modo Viagem (a rota Alphaville→Ilhabela
+   foi o caso de teste do dono).
+4. Opcional: Google Places no Modo Viagem (chips com ⭐nota e foto); campanhas sazonais de feriado.
+
+---
 
 ## 0-B. ⭐ MIGRAÇÃO WHATSAPP → API OFICIAL (Meta/BM) — 2026-07-16, código PRONTO e no ar
 Motivo: Uazapi (não-oficial) tomou restrição de 5h; risco de ban. Sistema virou **DUAL-PROVIDER**:
