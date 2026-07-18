@@ -133,12 +133,35 @@ Deno.serve(async (req) => {
       ]);
     }
 
-    const sys = `Você é o TotexCar Co-pilot no MODO VIAGEM: parceiro de estrada do dono do carro. Monte um plano de viagem de CARRO em português do Brasil, claro e amigável, formato: 🗺️ Rota e distância (ida) · ⛽ Custo de combustível (MOSTRE a conta com os dados reais: se houver custo_por_km use km total ida+volta × custo/km; senão (km ÷ km/L) × preço do litro; se faltar dado, diga o que falta medir) · 🛣️ Pedágios (LISTE praça a praça com valores e o total ida+volta) · ⛴️ Balsa/travessia SE a rota tiver (preço do carro, fila, compra antecipada) · 📍 Roteiro com 2-3 paradas boas · 🏨 Onde ficar (APENAS da pesquisa de lugares: 2-3 opções por faixa com bairro e reputação; diária só se a pesquisa trouxe — senão sem preço) · 🍽️ Onde comer e beber (da pesquisa: os imperdíveis com o prato típico) · 🔧 Antes de viajar (se houver manutenções pendentes, recomende resolver ANTES, sugerindo a loja do cliente se houver) · ✅ Checklist: ${CHECKLIST.join(", ")}. ${pesquisa || lugares ? "Use as PESQUISAS EM TEMPO REAL abaixo como FONTE DA VERDADE (rota E lugares) — NÃO chute valores nem invente estabelecimentos; onde a pesquisa disser que não encontrou, seja transparente." : "Sem pesquisa ao vivo disponível: use sua base e SINALIZE que valores/nomes são aproximados e devem ser conferidos."} Se não houver destino, sugira 2-3 destes destinos em alta 2026 conforme o perfil: ${DESTINOS_2026.join("; ")}. Tom leve, zero jargão, no máximo 5 emojis.`;
-    const userMsg = `Dados reais do carro do cliente: ${JSON.stringify(dados)}\n\nPedido: destino=${p.destino || "(sem destino, sugerir)"}; origem=${p.origem || "(não informada — assuma a mais provável ou peça)"}; dias=${p.dias || "?"}; perfil=${p.perfil || "não informado"}.${pesquisa ? `\n\nPESQUISA EM TEMPO REAL — ROTA (fonte da verdade):\n${pesquisa}` : ""}${lugares ? `\n\nPESQUISA EM TEMPO REAL — ONDE FICAR E COMER (fonte da verdade):\n${lugares}` : ""}`;
+    const sys = `Você é o TotexCar Co-pilot no MODO VIAGEM. Monte o plano de viagem de CARRO e responda APENAS com um JSON válido (sem markdown, sem crase), neste formato exato:
+{
+ "titulo": "Alphaville → Ilhabela",
+ "resumo": "1-2 frases vendedoras e leves sobre a viagem",
+ "rota": { "descricao": "rodovias principais e caminho", "distancia_km_ida": 210, "tempo_ida": "3h30", "condicoes": "obras/serra/dicas ou null" },
+ "combustivel": { "conta": "explicação curta da conta com os números", "total_ida_volta": 260.50 },
+ "pedagios": { "itens": [{ "praca": "nome/rodovia", "valor": 15.30 }], "total_ida_volta": 120.00, "obs": "obs ou null" },
+ "balsa": { "descricao": "trecho da travessia", "preco_carro": 34.10, "dica": "fila/antecipado/site" } (ou null se a rota não tiver),
+ "roteiro": [{ "titulo": "Parada X", "descricao": "por que parar" }],
+ "hospedagem": [{ "faixa": "economica|intermediaria|charme", "nome": "...", "regiao": "...", "motivo": "reputação/por quê", "diaria": 450.00 (ou null se não encontrado) }],
+ "comida": [{ "nome": "...", "especialidade": "prato/experiência" }],
+ "passeios": ["..."],
+ "antes_de_viajar": ["recomendações de manutenção pré-viagem, citando a loja do cliente se houver — ou lista vazia"],
+ "checklist": ${JSON.stringify(CHECKLIST)}
+}
+REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_km: km ida+volta × custo/km; senão (km ÷ km/L) × preço do litro; se faltar dado, explique na "conta" o que falta medir e use null no total). ${pesquisa || lugares ? "Use as PESQUISAS EM TEMPO REAL como FONTE DA VERDADE de rota, pedágios, balsa, hospedagens e restaurantes — NÃO chute valores nem invente estabelecimentos; onde a pesquisa não encontrou, use null." : "Sem pesquisa ao vivo: valores aproximados e diga isso nas obs."} NUNCA invente diária de hospedagem (null se não veio na pesquisa). Sem destino → "titulo": "Sugestões pra sua próxima viagem" e preencha "roteiro" com 2-3 destinos destes conforme o perfil: ${DESTINOS_2026.join("; ")}. Números como number (sem "R$"). Tudo em português do Brasil.`;
+    const userMsg = `Dados reais do carro do cliente: ${JSON.stringify(dados)}\n\nPedido: destino=${p.destino || "(sem destino, sugerir)"}; origem=${p.origem || "(não informada)"}; dias=${p.dias || "?"}; perfil=${p.perfil || "não informado"}.${pesquisa ? `\n\nPESQUISA EM TEMPO REAL — ROTA (fonte da verdade):\n${pesquisa}` : ""}${lugares ? `\n\nPESQUISA EM TEMPO REAL — ONDE FICAR E COMER (fonte da verdade):\n${lugares}` : ""}`;
 
-    const plano = await aiText(s, sys, userMsg);
+    const bruto = await aiText(s, sys, userMsg);
+    // extrai o JSON (tolerante a cercas de código)
+    let plano: any = null;
+    try {
+      let t = bruto.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+      const a = t.indexOf("{"); const b = t.lastIndexOf("}");
+      if (a >= 0 && b > a) t = t.slice(a, b + 1);
+      plano = JSON.parse(t);
+    } catch { /* cai no texto cru */ }
 
-    return json({ ok: true, plano, dados, pesquisa_web: !!(pesquisa || lugares) });
+    return json({ ok: true, plano, plano_texto: plano ? null : bruto, dados, pesquisa_web: !!(pesquisa || lugares) });
   } catch (e) {
     console.error("viagem erro:", e);
     return json({ error: String((e as any)?.message || e) }, 500);
