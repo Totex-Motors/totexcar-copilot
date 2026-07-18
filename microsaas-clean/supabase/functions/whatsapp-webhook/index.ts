@@ -147,7 +147,8 @@ const PAINEL_LABEL = "🖥️ Quero o painel";
 
 // Ações rápidas exibidas após cada resposta. WhatsApp só permite 3 BOTÕES, então com 4+ opções
 // usamos uma LISTA (type:"list"). A 4ª opção (Garagem Totex) abre a janela de carros do marketplace.
-const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", GARAGEM_LABEL, PAINEL_LABEL];
+const VIAGEM_LABEL = "🏖️ Planejar viagem";
+const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", GARAGEM_LABEL, VIAGEM_LABEL, PAINEL_LABEL];
 
 // Envia a resposta com o menu de ações (lista interativa nos dois providers).
 // Usar SÓ em RESPOSTA a mensagem do cliente (janela de 24h da API oficial).
@@ -1900,7 +1901,7 @@ Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e 
 FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Só comente os porquês, sem repetir preço/link. NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
 VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Garagem no app". Se precisar, é só dizer que ele pode avaliar por aqui.
 
-MODO VIAGEM (parceiro de estrada): quando o assunto for viagem, road trip, feriado, férias ou "quanto gasto pra ir até X" → use planejar_viagem e monte o plano com os DADOS REAIS do carro dele: combustível calculado com o consumo/custo por km REAL (mostre a conta de forma simples, ida e volta), estimativa honesta de pedágio, roteiro com paradas, e — MUITO importante — se houver manutenção vencendo, recomende resolver ANTES de pegar estrada (sugira a loja dele, se tiver; isso é cuidado, não venda). Sem destino definido? Sugira 2-3 destinos em alta conforme o perfil (família/casal/EV). Hospedagem: NUNCA invente preço; diga que pode indicar regiões boas de ficar. Esse é um DIFERENCIAL nosso: nenhum app de viagem conhece o carro da pessoa — nós conhecemos.
+MODO VIAGEM (parceiro de estrada): quando o assunto for viagem, road trip, feriado, férias, "quanto gasto pra ir até X" ou o botão "🏖️ Planejar viagem" → use planejar_viagem. Se ele só tocou no botão (sem destino), pergunte em 1 linha pra onde pensa em ir (ou ofereça sugerir destinos) ANTES de chamar a ferramenta e monte o plano com os DADOS REAIS do carro dele: combustível calculado com o consumo/custo por km REAL (mostre a conta de forma simples, ida e volta), estimativa honesta de pedágio, roteiro com paradas, e — MUITO importante — se houver manutenção vencendo, recomende resolver ANTES de pegar estrada (sugira a loja dele, se tiver; isso é cuidado, não venda). Sem destino definido? Sugira 2-3 destinos em alta conforme o perfil (família/casal/EV). Hospedagem: NUNCA invente preço; diga que pode indicar regiões boas de ficar. Esse é um DIFERENCIAL nosso: nenhum app de viagem conhece o carro da pessoa — nós conhecemos.
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".
 
@@ -1926,6 +1927,7 @@ ${JSON.stringify(snapshot)}`;
       "/consumo": "Qual o consumo e o custo por km do meu carro?",
       "/manutencao": "Quais as próximas manutenções por km?",
       "/garagem": GARAGEM_LABEL,
+      "/viagem": "Quero planejar uma viagem de carro",
       "/multas": "Quais minhas multas e recursos?",
       "/painel": PAINEL_LABEL,
       "/suporte": "Preciso falar com o suporte",
