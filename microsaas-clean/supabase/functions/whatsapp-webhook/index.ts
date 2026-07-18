@@ -6,7 +6,7 @@
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
-import { pesquisarRota } from "../_shared/route-research.ts";
+import { pesquisarRota, pesquisarLugares } from "../_shared/route-research.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1157,12 +1157,16 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         return { item: r.title, faltam_km: faltam };
       }).filter((p: any) => p.faltam_km <= 1500);
 
-      // PESQUISA EM TEMPO REAL da rota (pedágios praça a praça, balsa, condições) — busca web
+      // PESQUISAS EM TEMPO REAL (paralelas): rota (pedágios/balsa) + lugares (onde ficar/comer)
       let pesquisa: string | null = null;
+      let lugares: string | null = null;
       if (args?.destino) {
         const sCfg = await getSettings();
         if (sCfg?.openai_api_key) {
-          pesquisa = await pesquisarRota(sCfg.openai_api_key, String(args?.origem || ""), String(args.destino)).catch(() => null);
+          [pesquisa, lugares] = await Promise.all([
+            pesquisarRota(sCfg.openai_api_key, String(args?.origem || ""), String(args.destino)).catch(() => null),
+            pesquisarLugares(sCfg.openai_api_key, String(args.destino), args?.perfil ? String(args.perfil) : undefined).catch(() => null),
+          ]);
         }
       }
 
@@ -1178,9 +1182,10 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         checklist_padrao: ["Calibragem dos pneus (incluindo estepe)", "Nível de óleo e água/arrefecimento", "Palhetas e água do para-brisa", "Documento (CRLV) e CNH válidos", "Triângulo, macaco e chave de roda", "Farol/lanternas funcionando"],
         destinos_em_alta_2026: ["Morro Branco (CE)", "Juquehy (SP)", "Serra da Canastra (MG)", "Espírito Santo do Pinhal (SP, enoturismo)", "Bento Gonçalves (RS)", "Península de Maraú (BA)"],
         pesquisa_tempo_real: pesquisa,
-        instrucao: pesquisa
-          ? "Monte o plano usando a pesquisa_tempo_real como FONTE DA VERDADE da rota: distância, PEDÁGIOS praça a praça (some ida e volta), BALSA/travessia se houver (preço do carro + dica de fila/compra antecipada) e condições. NÃO chute valores de rota. Combustível: MOSTRE a conta com os dados reais — se houver custo_combustivel_por_km_real use km total × custo/km; senão (km ÷ km/L) × preço do litro, ida E volta. Se houver manutencoes_antes_de_viajar, recomende resolver ANTES (agendar na loja_do_cliente, se houver). Feche com checklist resumido. Tom leve de parceiro de estrada; não invente preço de hospedagem."
-          : "Monte o plano da viagem: estime a distância (base de rotas BR) SINALIZANDO que pedágio/travessia são aproximados e devem ser conferidos. Combustível com a conta mostrada (custo/km real ou km÷km/L × preço do litro, ida e volta). Manutenções pendentes → resolver antes (loja do cliente). Checklist no fim. Sem destino → sugira 2-3 destinos_em_alta pelo perfil. Não invente preço de hospedagem.",
+        onde_ficar_e_comer: lugares,
+        instrucao: pesquisa || lugares
+          ? "Monte o plano usando as pesquisas como FONTE DA VERDADE. Da pesquisa_tempo_real: distância, PEDÁGIOS praça a praça (some ida e volta), BALSA/travessia se houver (preço do carro + dica de fila/compra antecipada) e condições — NÃO chute valores de rota. De onde_ficar_e_comer: cite 2-3 hospedagens por faixa (nome + bairro + reputação; diária só se veio na pesquisa) e os restaurantes/bares imperdíveis — NUNCA invente estabelecimento nem preço. Combustível: MOSTRE a conta com os dados reais — se houver custo_combustivel_por_km_real use km total × custo/km; senão (km ÷ km/L) × preço do litro, ida E volta. Se houver manutencoes_antes_de_viajar, recomende resolver ANTES (agendar na loja_do_cliente, se houver). Feche com checklist resumido. Tom leve de parceiro de estrada."
+          : "Monte o plano da viagem: estime a distância (base de rotas BR) SINALIZANDO que pedágio/travessia são aproximados e devem ser conferidos. Combustível com a conta mostrada (custo/km real ou km÷km/L × preço do litro, ida e volta). Manutenções pendentes → resolver antes (loja do cliente). Checklist no fim. Sem destino → sugira 2-3 destinos_em_alta pelo perfil. Não invente preço de hospedagem nem estabelecimentos.",
       };
     }
 
@@ -1914,7 +1919,7 @@ Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e 
 FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Só comente os porquês, sem repetir preço/link. NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
 VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Garagem no app". Se precisar, é só dizer que ele pode avaliar por aqui.
 
-MODO VIAGEM (parceiro de estrada): quando o assunto for viagem, road trip, feriado, férias, "quanto gasto pra ir até X" ou o botão "🏖️ Planejar viagem" → use planejar_viagem. Se ele só tocou no botão (sem destino), pergunte em 1 linha pra onde pensa em ir (ou ofereça sugerir destinos) ANTES de chamar a ferramenta e monte o plano com os DADOS REAIS do carro dele: combustível calculado com o consumo/custo por km REAL (mostre a conta de forma simples, ida e volta), estimativa honesta de pedágio, roteiro com paradas, e — MUITO importante — se houver manutenção vencendo, recomende resolver ANTES de pegar estrada (sugira a loja dele, se tiver; isso é cuidado, não venda). Sem destino definido? Sugira 2-3 destinos em alta conforme o perfil (família/casal/EV). Hospedagem: NUNCA invente preço; diga que pode indicar regiões boas de ficar. Esse é um DIFERENCIAL nosso: nenhum app de viagem conhece o carro da pessoa — nós conhecemos.
+MODO VIAGEM (parceiro de estrada): quando o assunto for viagem, road trip, feriado, férias, "quanto gasto pra ir até X" ou o botão "🏖️ Planejar viagem" → use planejar_viagem. Se ele só tocou no botão (sem destino), pergunte em 1 linha pra onde pensa em ir (ou ofereça sugerir destinos) ANTES de chamar a ferramenta e monte o plano com os DADOS REAIS do carro dele: combustível calculado com o consumo/custo por km REAL (mostre a conta de forma simples, ida e volta), estimativa honesta de pedágio, roteiro com paradas, e — MUITO importante — se houver manutenção vencendo, recomende resolver ANTES de pegar estrada (sugira a loja dele, se tiver; isso é cuidado, não venda). Sem destino definido? Sugira 2-3 destinos em alta conforme o perfil (família/casal/EV). Hospedagem e comida: a ferramenta traz PESQUISA AO VIVO (onde_ficar_e_comer) — indique só o que veio nela, nunca invente estabelecimento ou preço. Esse é um DIFERENCIAL nosso: nenhum app de viagem conhece o carro da pessoa — nós conhecemos.
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".
 
