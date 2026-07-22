@@ -1,9 +1,108 @@
 # HANDOFF — Totex_CAR_FINANCE (TCF) — continuação do projeto
 
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
-> Última atualização: 2026-07-17.
+> Última atualização: 2026-07-22.
 
-## 0-AAA. ⭐ ESTADO ATUAL (2026-07-16/17) — LER PRIMEIRO (sessão mais recente)
+## 0-AAAA. ⭐ ESTADO ATUAL (2026-07-22) — LER PRIMEIRO (sessão mais recente)
+
+App no ar em **https://totexcarco-pilot.vercel.app** (deploy auto via push na `main`). Supabase TCF
+`gkkjhnzkqhpgrwrmofev`. Deploy de edge = CLI (`C:\Users\marco\Downloads\supabase\supabase.exe functions
+deploy <fn> --project-ref gkkjhnzkqhpgrwrmofev [--no-verify-jwt]`) — ⚠️ ANTES ajustar `config.toml`
+(sed `ip_version "ipv6"→"IPv6"`) e **REVERTER depois** (fazer no MESMO comando, como sempre).
+
+### 🔎 RADAR DE SERVIÇOS — NOVO módulo (WhatsApp + APP), no ar
+Acha oficina/borracharia/pneus/bateria/autoelétrica/chaveiro/guincho/funilaria/estética perto do
+motorista, com os dados REAIS do carro dele. **NÃO É CRM:** estabelecimento é OPÇÃO DE SERVIÇO, não lead —
+zero pipeline/SDR/abordagem comercial. Origem da ideia: 2 pacotes que o dono trouxe (skill `totexcar-copilot`
++ módulo de prospecção do CRM). Reaproveitado do CRM SÓ o útil (parser normalizado, dedup, cache/log de custo);
+**descartado de propósito** o Firecrawl raspando Google Maps (ToS + custo num recurso de consumidor), o
+`prospeccao-analisar` (diagnóstico comercial) e o multi-tenant.
+- **Migração `radar_servicos` APLICADA:** 6 tabelas (`service_searches`, `discovered_providers`,
+  `provider_services`, `provider_search_results`, `driver_provider_actions`, `provider_quote_requests`),
+  RLS em todas. SEM postgis (distância = haversine em TS). `accounts` += `cidade`/`uf` (não havia cidade em
+  lugar nenhum). `app_settings` += `radar_enabled`, `radar_cache_hours` (72), `radar_default_radius` (15),
+  `radar_search_provider` ('search_preview' default | 'google_places'), `google_places_api_key`.
+- **`_shared/radar-search.ts`:** busca, dedup (fonte>telefone>domínio>nome+coords), ranking (pesos
+  distância 25/nota 20/volume 15/aberto 15/compat 15/contato 10 — **comissão NÃO entra**; parceiro Totex ganha
+  SELO, não posição), 15 categorias de serviço. Fonte de dados: **`gpt-4o-search-preview`** (mesma do Modo
+  Viagem). Google Places como 2º provider **plugável** (liga por `app_settings.radar_search_provider`).
+- **Edge `radar` (JWT):** ações `search | contact_actions | record_action | quote | history`. Rate limit 20/h
+  por usuário. `quote` (pedir orçamento) EXIGE consentimento explícito + lista de dados compartilhados (CHECK
+  no banco `quote_requires_consent` + validação no edge/agente).
+- **Agente:** tools `buscar_servico` e `pedir_orcamento` + seções de prompt RADAR e SEGURANÇA (triagem antes de
+  preço; nunca mexer em bateria de alta tensão; não dar diagnóstico definitivo sem inspeção).
+- **App:** página `/servicos` (`Servicos.tsx` + `useRadar.ts`), item "Radar de Serviços" na sidebar.
+- **Testes:** `npm run test:radar` (31 casos, sem dep nova — usa o esbuild do Vite). Teste real em produção:
+  "funilaria em Alphaville" → 6 estabelecimentos com fonte rastreável, telefones certos, ~8s.
+- **Custo:** cada busca ao vivo grava `service_searches.cost` (~US$ 0,03 estimado; monitore
+  `SELECT sum(cost), count(*) FROM service_searches`). ⚠️ NÃO há teto global, só por usuário.
+
+### 📱 FLOWS do RADAR e do MODO VIAGEM — criados na WABA (DRAFT), FALTA PUBLICAR
+Reusa a fundação criptografada `wa-flow-endpoint` (mesma dos flows Recompra/Garagem). **JSONs em
+`supabase/flows/`.** Novo script **`scripts/create-wa-flows.mjs`** cria/valida/publica via Graph API (os 3
+flows antigos foram feitos na mão; agora é reproduzível).
+- **`radar_servicos`** (id **2305034016700306**, DRAFT): telas RBUSCA→RRESULT→RDETALHE + RESPERA.
+  ⚠️ **Orçamento de tempo:** o endpoint de Flow é cortado pela Meta em ~10s; a busca leva ~8s. Por isso o
+  handler faz CACHE primeiro, busca ao vivo com trava de 6,5s, e se estourar mostra a tela RESPERA e manda o
+  resultado no CHAT. Roteamento por lista EXATA de telas (a tela RESULTADO da Recompra também começa com "R").
+- **`modo_viagem`** (id **2086296845310231**, DRAFT): formulário puro (destino/origem/dias/perfil). O PLANO
+  volta no CHAT via `runAgent` (a pesquisa de rota + composição passa MUITO do timeout do endpoint).
+- **Menu WhatsApp** ganhou "🔎 Achar oficina/serviço" + comandos `/radar`, `/oficina`. Gatilhos `isRadarQuery`
+  (furei o pneu, carro não pega…) e `isViagemQuery` abrem os flows — MAS só se os secrets existirem.
+- **⚠️ PENDENTE p/ ativar os flows (3 passos, precisa do dono):**
+  1. No **Flow Builder**, apontar o ENDPOINT do `radar_servicos` para
+     `https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/wa-flow-endpoint` (o `modo_viagem` NÃO usa endpoint).
+  2. `node scripts/create-wa-flows.mjs 1300328208581382 <TOKEN> --publish` (publish é IRREVERSÍVEL p/ a versão).
+  3. `supabase secrets set RADAR_FLOW_ID=2305034016700306 VIAGEM_FLOW_ID=2086296845310231 --project-ref …` +
+     redeploy do `whatsapp-webhook`. SEM os secrets, o código cai no caminho de TEXTO do agente (funciona, só
+     sem a tela bonita) — por isso nada quebra enquanto não publica.
+
+### 🚨 INCIDENTE RESOLVIDO — loop de mensagens (dois bots do ecossistema conversando)
+- **Sintoma:** o número **5511978846716** (do **TotexGest**, o CRM) trocou **~5.341 mensagens em 43h** com o
+  WhatsApp do Co-pilot (1 a cada 30s, ~124/h). Padrão clássico de queimar número na Meta — e o nº novo (Meta
+  oficial) não tem rollback.
+- **Causa raiz:** o número do TotexGest estava **cadastrado como conta de teste** ("pablo teste") no TCF. Dois
+  bots com auto-resposta, cada um com o número do outro. O aviso de paywall era enviado a CADA mensagem, sem
+  cooldown → ping-pong infinito.
+- **Corrigido (no ar):** (a) cooldown ATÔMICO do aviso de paywall via `notification_log` (kind
+  `paywall_aviso`, 1x/usuário/dia — grava primeiro, só envia se gravou); (b) mesma proteção no caminho de
+  número NÃO cadastrado (24h, medido pelos próprios eventos); (c) número desvinculado das contas de teste.
+  Loop parou no ciclo seguinte ao deploy (silêncio de >9min vs recorde de 1,6min em 43h).
+- **`findUserByPhone` agora é DETERMINÍSTICO:** era `.limit(1)` SEM `ORDER BY` → quem tinha cadastro duplicado
+  caía numa conta diferente a cada mensagem (gastos espalhados). Desempate explícito: **tem veículo > premium >
+  mais recente > id**. Loga `console.warn` quando há duplicidade.
+
+### 🧹 LIMPEZA DA BASE de usuários (produção) — 25 → 8 contas
+Backup ANTES em **`backup_20260718_users` / `_accounts` / `_transactions`** (dropar quando tiver certeza).
+**Mantidas (8):** marcos leite (admin, marcovend@gmail.com) · Renata Parentel (premium até 2027) · Marcoaurelio
+· juan (premium ativo até 2027, cortesia da loja) · PEDRO (dealer PG Motors) · Marcos (dealer Cardoso) · Sergio
+Caprini (tem veículo) · Joseane Santos (tem veículo). **Excluídas 17** (testes + cadastros vazios + duplicados
+do André/Joseane). ⚠️ **GOTCHA:** excluir usuário NÃO tem cascade entre `auth.users` e `public.users` — precisa
+deletar dos DOIS lugares (deletei só de auth primeiro e ficou órfão; completar sempre com `public.users`).
+
+### 🐛 BUGFIX herdado — NotificationsBell (typecheck quebrado desde 0929d5d)
+`maintenance_reminders` sem cast `(supabase as any)` (está fora dos types gerados, mesmo caso de `multas`). O
+`npx tsc` do projeto estava vermelho ANTES desta sessão. Corrigido (1 linha).
+
+### 📊 Apresentação de cortesia v2 (fora do repo, em Downloads)
+**`C:\Users\marco\Downloads\APRESENTACAO-CORTESIA-LOJISTA-v2.pdf`** (14 pág = 11 originais + 3 novas): galeria
+de 6 fotos reais dos totens em shopping (rostos DESFOCADOS/pixelizados — o dono pediu; conferência visual
+manual porque o detector Haar falhou em 2), slide dos NÚMEROS de leads (derivados por contagem do export do
+grupo "LEADS TOTEX MOTORS" — é estimativa defensável, NÃO relatório do sistema; ideal bater com o Totex Gest) e
+slide do CRM **Totex Gest**. Fontes/fotos em `scratchpad/leads` (710 imgs do zip).
+
+### PRÓXIMOS PASSOS SUGERIDOS (pra próxima sessão)
+1. **Publicar os 2 flows** (Radar + Modo Viagem) — 3 passos acima; `modo_viagem` pode publicar já (não depende
+   de endpoint), o `radar_servicos` só depois de apontar o endpoint no Flow Builder.
+2. **Google Places** no Radar quando quiser nota/"aberto agora" confiáveis (serve ao Modo Viagem também).
+3. Dropar as tabelas `backup_20260718_*` quando confirmar que os 17 excluídos não fazem falta.
+4. **André Mendes** (3 contas apagadas, e-mail errado nas 3, nunca cadastrou carro) — cheira a fricção no
+   signup, vale investigar.
+5. Prompt pronto (na conversa desta sessão) p/ a equipe do TotexGest: guarda anti-loop preventiva.
+
+---
+
+## 0-AAA. ⭐ ESTADO ATUAL (2026-07-16/17) — LER (sessão anterior)
 
 App no ar em **https://totexcarco-pilot.vercel.app** (deploy auto via push na `main`). Supabase TCF
 `gkkjhnzkqhpgrwrmofev`. Deploy de edge = CLI (`C:\Users\marco\Downloads\supabase\supabase.exe functions
