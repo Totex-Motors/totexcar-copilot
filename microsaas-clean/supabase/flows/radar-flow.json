@@ -37,6 +37,7 @@
           {
             "type": "Form",
             "name": "form",
+            "init-values": { "local": "${data.local_padrao}" },
             "children": [
               { "type": "TextSubheading", "text": "Do que seu carro precisa hoje?" },
               { "type": "TextCaption", "text": "${data.aviso}" },
@@ -52,8 +53,7 @@
                 "name": "local",
                 "label": "Onde você está",
                 "helper-text": "Cidade ou bairro. Ex.: Barueri, Alphaville",
-                "required": true,
-                "init-value": "${data.local_padrao}"
+                "required": true
               },
               {
                 "type": "Dropdown",
@@ -184,17 +184,6 @@
                 "type": "EmbeddedLink",
                 "text": "Chamar no WhatsApp 💬",
                 "on-click-action": { "name": "open_url", "url": "${data.zap_uri}" }
-              }
-            ]
-          },
-          {
-            "type": "If",
-            "condition": "${data.tem_site}",
-            "then": [
-              {
-                "type": "EmbeddedLink",
-                "text": "Abrir site 🔗",
-                "on-click-action": { "name": "open_url", "url": "${data.site_uri}" }
               }
             ]
           },

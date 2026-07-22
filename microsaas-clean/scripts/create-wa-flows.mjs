@@ -96,8 +96,10 @@ async function upsert(nome, def) {
   const conteudo = readFileSync(resolve(FLOWS_DIR, def.file), "utf8");
   const form = new FormData();
   form.append("asset_type", "FLOW_JSON");
-  form.append("name", def.file);
-  form.append("file", new Blob([conteudo], { type: "application/json" }), def.file);
+  // A Meta EXIGE que o asset se chame exatamente "flow.json" (erro 2498084 se não for).
+  // O nome do arquivo no repo é livre — só o nome enviado é que importa.
+  form.append("name", "flow.json");
+  form.append("file", new Blob([conteudo], { type: "application/json" }), "flow.json");
 
   const up = await graph(`/${flowId}/assets`, { method: "POST", body: form });
   const erros = up?.validation_errors || [];

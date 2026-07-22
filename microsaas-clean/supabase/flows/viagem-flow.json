@@ -34,6 +34,7 @@
           {
             "type": "Form",
             "name": "form",
+            "init-values": { "origem": "${data.origem_padrao}" },
             "children": [
               { "type": "TextSubheading", "text": "Pra onde vamos? 🏖️" },
               {
@@ -52,8 +53,7 @@
                 "name": "origem",
                 "label": "De onde você sai",
                 "helper-text": "Cidade ou bairro de partida",
-                "required": false,
-                "init-value": "${data.origem_padrao}"
+                "required": false
               },
               {
                 "type": "Dropdown",
