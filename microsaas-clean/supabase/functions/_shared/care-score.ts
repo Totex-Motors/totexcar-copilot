@@ -91,6 +91,16 @@ export async function careStatement(supabase: any, user: any): Promise<any> {
   }
   return {
     elegivel, loja: user.dealership || null, score, tier, meses_ativos: meses, delta_mes: deltaMes,
+    // escada completa do programa (pra UI mostrar todos os níveis + teto de 90%)
+    programa: {
+      teto_pct: Math.round(cfg.fipe.ouro_max * 100),
+      troca12m_pct: Math.round(cfg.fipe.troca12m * 100),
+      niveis: ladder.map((l) => ({
+        tier: l.tier, pontos: l.score, meses: l.months,
+        fipe_min_pct: Math.round(l.fipe_min * 100),
+        ...(l.tier === "ouro" ? { fipe_max_pct: Math.round(cfg.fipe.ouro_max * 100) } : {}),
+      })),
+    },
     faixa_garantida: atual ? { min_pct: Math.round(atual.fipe_min * 100), max_pct: tier === "ouro" ? Math.round(cfg.fipe.ouro_max * 100) : null } : null,
     proximo_selo: prox ? { tier: prox.tier, faltam_pontos: Math.max(0, prox.score - score), faltam_meses: Math.max(0, prox.months - meses), fipe_min_pct: Math.round(prox.fipe_min * 100) } : null,
     troca12m_ate: troca12mAte,

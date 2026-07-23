@@ -3,7 +3,8 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Award, Fuel, Gauge, TrendingUp, ShieldCheck, Loader2, Banknote, Store, Flame } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Award, Fuel, Gauge, TrendingUp, ShieldCheck, Loader2, Banknote, Flame, HelpCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -15,6 +16,10 @@ type Statement = {
   score: number; tier: string; meses_ativos: number; delta_mes: number;
   faixa_garantida: { min_pct: number; max_pct: number | null } | null;
   proximo_selo: { tier: string; faltam_pontos: number; faltam_meses: number; fipe_min_pct: number } | null;
+  programa?: {
+    teto_pct: number; troca12m_pct: number;
+    niveis: { tier: string; pontos: number; meses: number; fipe_min_pct: number; fipe_max_pct?: number }[];
+  };
   troca12m_ate: string | null;
   ultimos_eventos: { o_que: string; pontos: number; data: string }[];
 };
@@ -80,7 +85,8 @@ export default function Selo() {
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Seu histórico vale dinheiro: cada cupom, foto de hodômetro e revisão comprovada aumenta a
-            garantia de recompra do seu carro na <strong>{st.loja}</strong>.
+            garantia de recompra do seu carro na <strong>{st.loja}</strong> — que pode chegar a{" "}
+            <strong className="text-primary">até {st.programa?.teto_pct ?? 90}% da tabela FIPE</strong>.
           </p>
         </div>
 
@@ -139,6 +145,41 @@ export default function Selo() {
           </CardContent>
         </Card>
 
+        {/* Níveis do programa — Bronze / Prata / Ouro (até 90%) */}
+        <Card className="border-0 shadow-premium-md">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Os 3 níveis do Selo</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {(st.programa?.niveis || []).map((n) => {
+              const atual = n.tier === st.tier;
+              const m = TIER_META[n.tier];
+              return (
+                <div key={n.tier} className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${atual ? "border-primary bg-primary/5" : "border-border"}`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-2xl">{m?.emoji}</span>
+                    <div>
+                      <p className="font-bold text-sm flex items-center gap-2">
+                        Selo {m?.label}
+                        {atual && <Badge className="bg-primary/15 text-primary border-0">seu nível</Badge>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{n.pontos} pontos + {n.meses} meses de histórico ativo</p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-extrabold text-primary text-sm">
+                      mín. {n.fipe_min_pct}%{n.fipe_max_pct ? ` — até ${n.fipe_max_pct}%` : ""}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">da FIPE na troca</p>
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-xs text-muted-foreground pt-1">
+              🥇 Ouro tem o <strong>Bônus Troca em 12 meses</strong>: trocando o carro em até 1 ano após
+              conquistar o selo, a garantia vai ao teto de <strong>{st.programa?.troca12m_pct ?? 90}% da FIPE</strong>.
+            </p>
+          </CardContent>
+        </Card>
+
         {/* Como pontuar */}
         <Card className="border-0 shadow-premium-md">
           <CardHeader className="pb-2"><CardTitle className="text-base">Como ganhar pontos</CardTitle></CardHeader>
@@ -173,6 +214,53 @@ export default function Selo() {
                 Nenhum ponto ainda — registre o próximo abastecimento no WhatsApp (foto do cupom + hodômetro) e comece a construir o valor do seu carro.
               </p>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Como funciona e as regras (acordeão) */}
+        <Card className="border-0 shadow-premium-md">
+          <CardHeader className="pb-0">
+            <CardTitle className="text-base flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-primary" /> Como funciona e as regras
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="pontos">
+                <AccordionTrigger className="text-sm">Como os pontos funcionam</AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground space-y-2">
+                  <p>• Abastecimento com <strong>foto do cupom + hodômetro</strong> vale +10 (só cupom ou só valor, +5). Limite de 40 pontos/mês em abastecimentos completos.</p>
+                  <p>• Conta <strong>1 abastecimento pontuado a cada 48h</strong> (motorista de app: a cada 24h).</p>
+                  <p>• <strong>Hodômetro atualizado</strong> vale +10, uma vez por mês.</p>
+                  <p>• <strong>Constância paga</strong>: 3 meses seguidos com pelo menos 4 registros = +50.</p>
+                  <p>• Cupom com mais de <strong>7 dias</strong> vale metade dos pontos (registre no dia!).</p>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="manter">
+                <AccordionTrigger className="text-sm">O Selo é um compromisso vivo</AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground space-y-2">
+                  <p>• Além dos pontos, cada selo exige <strong>meses de histórico ativo</strong> (pelo menos 1 registro válido no mês): Bronze 3, Prata 6, Ouro 12.</p>
+                  <p>• Ficar <strong>90 dias sem registrar</strong> (45 para motorista de app) faz o score começar a decair até o piso do seu selo atual.</p>
+                  <p>• Registro é pelo WhatsApp mesmo: foto do cupom, foto do hodômetro — o Co-pilot cuida do resto.</p>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="garantia">
+                <AccordionTrigger className="text-sm">A garantia na recompra</AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground space-y-2">
+                  <p>• O selo garante o <strong>MÍNIMO da faixa</strong> (Bronze 82% · Prata 85% · Ouro 87%) na recompra feita na <strong>loja parceira</strong> onde você comprou — podendo chegar a <strong>até 90% da FIPE</strong>.</p>
+                  <p>• A garantia é <strong>condicionada à vistoria presencial</strong> confirmar o histórico. Divergência material (km adulterado, dano estrutural, passagem por leilão) anula a garantia.</p>
+                  <p>• A <strong>oferta final é sempre da loja</strong> — o programa define o piso, não o valor exato.</p>
+                  <p>• <strong>Bônus Troca em 12 meses</strong>: com o Selo Ouro, trocando em até 1 ano após a conquista, a garantia vai ao teto de 90%.</p>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="quem">
+                <AccordionTrigger className="text-sm">Quem participa</AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground space-y-2">
+                  <p>• O programa é <strong>exclusivo para clientes que compraram o carro em uma loja parceira</strong> do ecossistema Totexmotors aderida ao Selo.</p>
+                  <p>• Seus registros são seus: mesmo fora do programa, o histórico do carro continua valendo como comprovação na revenda.</p>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </CardContent>
         </Card>
 
