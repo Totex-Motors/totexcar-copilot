@@ -13,6 +13,7 @@ import {
   usePostsaleList, usePostsaleStats, usePostsaleConfig, usePostsaleCreate, usePostsaleConfigSave, usePostsaleTransferSave,
   type PostsaleJourney,
 } from "@/hooks/useDealer";
+import { SeloLojaCard } from "./SeloLojaCard";
 
 const TRANSFER_STEPS: Array<[string, string]> = [
   ["vistoria", "Vistoria (se exigida)"],
@@ -98,6 +99,9 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
 
   return (
     <div className="space-y-6">
+      {/* Selo Totex — adesão da loja + Central de Valor (Fase 4) */}
+      <SeloLojaCard dealership={dealership} />
+
       {/* KPIs de NPS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="NPS" value={stats?.nps != null ? String(stats.nps) : "—"} hint={`${stats?.respondidos ?? 0} respostas`} accent="text-primary" />

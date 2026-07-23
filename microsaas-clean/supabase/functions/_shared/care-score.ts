@@ -15,12 +15,88 @@ export const CARE_POINTS = {
 };
 
 // faixas do Selo: score mínimo + meses de histórico ativo (meses com ≥1 evento positivo)
+// Scores vêm de app_settings (Fase 4, parametrizável); estes são os fallbacks.
 export const CARE_TIERS: Array<{ tier: string; score: number; months: number }> = [
   { tier: "ouro", score: 850, months: 12 },
   { tier: "prata", score: 600, months: 6 },
   { tier: "bronze", score: 300, months: 3 },
 ];
 const tierFloor = (tier: string) => CARE_TIERS.find((t) => t.tier === tier)?.score ?? 0;
+
+// ---- PROGRAMA SELO TOTEX (Fase 4) ----
+export type SeloConfig = {
+  scores: { bronze: number; prata: number; ouro: number };
+  fipe: { bronze: number; prata: number; ouro_min: number; ouro_max: number; troca12m: number };
+};
+export async function loadSeloConfig(supabase: any): Promise<SeloConfig> {
+  const { data } = await supabase.from("app_settings")
+    .select("selo_bronze_score, selo_prata_score, selo_ouro_score, selo_bronze_fipe_min, selo_prata_fipe_min, selo_ouro_fipe_min, selo_ouro_fipe_max, selo_ouro_troca12m_fipe")
+    .eq("id", 1).single();
+  return {
+    scores: { bronze: Number(data?.selo_bronze_score) || 300, prata: Number(data?.selo_prata_score) || 600, ouro: Number(data?.selo_ouro_score) || 850 },
+    fipe: {
+      bronze: Number(data?.selo_bronze_fipe_min) || 0.82, prata: Number(data?.selo_prata_fipe_min) || 0.85,
+      ouro_min: Number(data?.selo_ouro_fipe_min) || 0.87, ouro_max: Number(data?.selo_ouro_fipe_max) || 0.90,
+      troca12m: Number(data?.selo_ouro_troca12m_fipe) || 0.90,
+    },
+  };
+}
+
+// REGRA DO DONO: Selo SÓ para cliente vindo de loja parceira que ADERIU ao programa.
+export async function seloElegivel(supabase: any, user: { dealership?: string | null }): Promise<boolean> {
+  if (!user?.dealership) return false;
+  const { data } = await supabase.from("dealership_settings")
+    .select("selo_aderido").eq("dealership", user.dealership).maybeSingle();
+  return !!data?.selo_aderido;
+}
+
+// mapa de lojas aderidas (pro cron não consultar por usuário)
+export async function lojasAderidas(supabase: any): Promise<Set<string>> {
+  const { data } = await supabase.from("dealership_settings").select("dealership").eq("selo_aderido", true);
+  return new Set((data || []).map((d: any) => String(d.dealership)));
+}
+
+const KIND_LABEL: Record<string, string> = {
+  abastecimento: "Abastecimento completo (cupom + km)", abastecimento_parcial: "Abastecimento",
+  hodometro: "Hodômetro do mês", streak_bonus: "Bônus de constância (3 meses)", decay: "Inatividade",
+};
+
+// extrato do Selo pro agente/extrato mensal — SEMPRE traduzível em faixa da FIPE, nunca só pontos
+export async function careStatement(supabase: any, user: any): Promise<any> {
+  const cfg = await loadSeloConfig(supabase);
+  const elegivel = await seloElegivel(supabase, user);
+  const { data: evs } = await supabase.from("care_score_events")
+    .select("kind, points, created_at").eq("user_id", user.id)
+    .order("created_at", { ascending: false }).limit(200);
+  const score = Number(user.care_score) || 0;
+  const tier = String(user.care_tier || "none");
+  const meses = new Set((evs || []).filter((e: any) => Number(e.points) > 0).map((e: any) => String(e.created_at).slice(0, 7))).size;
+
+  const ladder = [
+    { tier: "bronze", score: cfg.scores.bronze, months: 3, fipe_min: cfg.fipe.bronze },
+    { tier: "prata", score: cfg.scores.prata, months: 6, fipe_min: cfg.fipe.prata },
+    { tier: "ouro", score: cfg.scores.ouro, months: 12, fipe_min: cfg.fipe.ouro_min },
+  ];
+  const prox = ladder.find((l) => score < l.score || meses < l.months) || null;
+  const atual = [...ladder].reverse().find((l) => l.tier === tier) || null;
+
+  const iniMes = new Date().toISOString().slice(0, 7) + "-01";
+  const deltaMes = (evs || []).filter((e: any) => String(e.created_at) >= iniMes)
+    .reduce((s: number, e: any) => s + Number(e.points || 0), 0);
+
+  let troca12mAte: string | null = null;
+  if (tier === "ouro" && user.care_tier_at) {
+    const d = new Date(user.care_tier_at); d.setFullYear(d.getFullYear() + 1);
+    troca12mAte = d.toISOString().split("T")[0];
+  }
+  return {
+    elegivel, loja: user.dealership || null, score, tier, meses_ativos: meses, delta_mes: deltaMes,
+    faixa_garantida: atual ? { min_pct: Math.round(atual.fipe_min * 100), max_pct: tier === "ouro" ? Math.round(cfg.fipe.ouro_max * 100) : null } : null,
+    proximo_selo: prox ? { tier: prox.tier, faltam_pontos: Math.max(0, prox.score - score), faltam_meses: Math.max(0, prox.months - meses), fipe_min_pct: Math.round(prox.fipe_min * 100) } : null,
+    troca12m_ate: troca12mAte,
+    ultimos_eventos: (evs || []).slice(0, 5).map((e: any) => ({ o_que: KIND_LABEL[e.kind] || e.kind, pontos: Number(e.points), data: String(e.created_at).split("T")[0] })),
+  };
+}
 
 const monthKey = (d: Date = new Date()) => d.toISOString().slice(0, 7);
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -32,8 +108,18 @@ export async function careRecompute(supabase: any, userId: string, opts?: { touc
   const score = Math.max(0, (evs || []).reduce((s: number, e: any) => s + Number(e.points || 0), 0));
   const months = new Set((evs || []).filter((e: any) => Number(e.points) > 0)
     .map((e: any) => String(e.created_at).slice(0, 7))).size;
+  // limiares parametrizáveis (Fase 4); meses seguem os padrões 3/6/12
+  let tiers = CARE_TIERS;
+  try {
+    const cfg = await loadSeloConfig(supabase);
+    tiers = [
+      { tier: "ouro", score: cfg.scores.ouro, months: 12 },
+      { tier: "prata", score: cfg.scores.prata, months: 6 },
+      { tier: "bronze", score: cfg.scores.bronze, months: 3 },
+    ];
+  } catch { /* fallback constantes */ }
   let tier = "none";
-  for (const t of CARE_TIERS) if (score >= t.score && months >= t.months) { tier = t.tier; break; }
+  for (const t of tiers) if (score >= t.score && months >= t.months) { tier = t.tier; break; }
 
   const { data: u } = await supabase.from("users").select("care_tier").eq("id", userId).single();
   const upd: any = { care_score: score };

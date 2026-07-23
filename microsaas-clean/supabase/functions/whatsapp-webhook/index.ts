@@ -8,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { pesquisarRota, pesquisarLugares } from "../_shared/route-research.ts";
 import { loadDossier, runExtractor } from "../_shared/proactive.ts";
-import { careFuel, careOdometer } from "../_shared/care-score.ts";
+import { careFuel, careOdometer, careStatement, seloElegivel } from "../_shared/care-score.ts";
 import { upcoming as calendarUpcoming, kmMedioDia as calendarKmDia } from "../_shared/calendar.ts";
 import {
   SERVICE_TYPES, normalizeServiceType, isEmergencyService, dedupProviders,
@@ -1086,6 +1086,11 @@ const TOOL_SPECS = [
     },
   },
   {
+    name: "care_statement",
+    description: "Score de Cuidado / Selo Totex do usuário: pontos, selo (Bronze/Prata/Ouro), o que falta pro próximo, faixa garantida da FIPE na recompra e últimos eventos. Use quando ele perguntar do Selo, pontos, 'quanto vale meu cuidado', 'quanto meu carro vale na troca garantida', progresso do programa.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
     name: "meu_calendario",
     description: "Próximas datas do carro num lugar só: vencimentos (IPVA, licenciamento, seguro, CNH, parcela do financiamento, prazo de multa, assinatura) e revisões PROJETADAS pelo ritmo de uso. Use para 'o que vence?', 'tá tudo em dia?', 'quando é minha próxima revisão?', 'o que tenho pra pagar?'.",
     parameters: { type: "object", properties: { dias: { type: "number", description: "janela em dias, default 60" } } },
@@ -1649,6 +1654,20 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         ok: true, de, ate,
         receita: Number(receita.toFixed(2)), despesa: Number(despesa.toFixed(2)), lucro,
         km_rodados: km, lucro_por_km: km && km > 0 ? Number((lucro / km).toFixed(2)) : null,
+      };
+    }
+
+    if (name === "care_statement") {
+      const st = await careStatement(supabase, user);
+      if (!st.elegivel) {
+        return {
+          ok: false, error: "nao_elegivel",
+          message: "O programa Selo Totex é EXCLUSIVO para clientes que compraram o carro numa loja parceira aderida. NÃO venda nem prometa o programa a este usuário. Se ele perguntou, explique com naturalidade que é um benefício dos clientes das lojas parceiras Totex — e que os registros dele continuam valorizando o histórico do carro de qualquer forma.",
+        };
+      }
+      return {
+        ok: true, ...st,
+        orientacao: "Traduza SEMPRE em dinheiro/faixa, nunca só pontos: selo atual → faixa mínima garantida da FIPE na recompra da loja dele (condicionada à vistoria presencial). NUNCA prometa 90% fixo — diga 'até 90%, conforme seu Selo e a vistoria'. Se tiver proximo_selo, mostre o caminho ('faltam X pontos e Y meses pro Selo prata = mínimo 85%'). Se troca12m_ate existir, lembre do bônus: trocando até essa data, garante o teto de 90%.",
       };
     }
 
@@ -2276,6 +2295,15 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       }
     } catch { /* dossiê é opcional — nunca trava a resposta */ }
 
+    // SELO TOTEX (Fase 4): a seção só entra no prompt pra cliente de loja parceira ADERIDA —
+    // os demais nem ficam sabendo do programa (regra do dono; o score deles acumula em silêncio).
+    let seloPrompt = "";
+    try {
+      if (await seloElegivel(supabase, user)) {
+        seloPrompt = `\nSELO TOTEX (seu histórico vale dinheiro — benefício da loja parceira dele): o usuário participa do programa. Cada cupom com hodômetro, revisão e cuidado comprovado vira ponto; o Score define o Selo (Bronze/Prata/Ouro) e o Selo define a garantia MÍNIMA de recompra na loja dele (82%/85%/87% da FIPE, teto 90% — a oferta final é da loja, após vistoria presencial). Regras de copy: NUNCA prometa 90% fixo ("até 90%, conforme seu Selo e a vistoria"); ao registrar abastecimento com foto+km, quando fizer sentido mencione em 1 linha que isso constrói o Selo (sem repetir toda hora — vira ruído). "Quanto vale meu cuidado/meu selo/pontos?" → use care_statement e responda em FAIXA/R$, nunca só pontos. Selo atual do usuário: ${String(user.care_tier || "none")}.\n`;
+      }
+    } catch { /* sem selo no prompt em caso de erro */ }
+
     const today = new Date().toISOString().split("T")[0];
     const { data: appCfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
     const appUrl = (appCfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
@@ -2318,6 +2346,7 @@ Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.j
 
 CALENDÁRIO DO CARRO: para "o que vence?", "tá tudo em dia?", "próxima revisão", "o que tenho pra pagar?" → use meu_calendario. Apresente em ordem de data, com dias restantes ("IPVA em 12 dias — R$ 1.850"). Revisões projetadas por km: deixe claro que é projeção pelo ritmo de uso DELE ("mantendo seus ~40 km/dia, o óleo vence ~12/09"). Se estiver tudo em dia por 60+ dias, diga isso de forma leve e ofereça no máximo 1 cuidado preventivo. NUNCA invente data nem valor — veio da ferramenta ou não existe.
 
+${seloPrompt}
 MODO INDICADOR (motorista PRO como indicador da loja): se o motorista pedir carro/estoque PARA OUTRA PESSOA — "meu passageiro quer um Argo", "tem SUV até 80 mil? é pra um cliente", "manda o Onix pra eu mostrar pra um amigo" — use buscar_carros normalmente (por voz ou texto). As fotos que você envia JÁ saem com o link rastreado DELE (Indique e Ganhe). Depois de enviar, oriente em 1 linha: "é só tocar em ENCAMINHAR na foto e mandar pro seu passageiro — se rolar negócio pelo link, sua indicação fica registrada e você ganha a comissão". Se ele pedir pra VOCÊ mandar mensagem direto pro número do passageiro, explique com naturalidade que não fazemos contato com quem não falou com a gente primeiro (proteção do canal) — encaminhar a foto é mais rápido e, vindo dele, o passageiro confia mais. Incentive sem exagero: motorista PRO é um parceiro de vendas das lojas do ecossistema.
 
 RELATÓRIO FISCAL (PRO): para "relatório", "IR", "imposto de renda", "MEI", "carnê-leão", "extrato pra contador" → use relatorio_fiscal (default: mês anterior fechado; "do ano"/"declaração" → anual). O PDF é enviado automaticamente na conversa; você só resume (lucro + R$/km) e diz que serve de base pro contador. NUNCA dê conselho fiscal definitivo — "sou seu copiloto, não seu contador; ele confirma os enquadramentos".

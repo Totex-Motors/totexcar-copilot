@@ -7,7 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate, waProvider, type WaSettings } from "../_shared/wa.ts";
 import { composeProactive, loadDossier, pickAngle, type AIConfig } from "../_shared/proactive.ts";
-import { careStreak, careDecay } from "../_shared/care-score.ts";
+import { careStreak, careDecay, careStatement, lojasAderidas } from "../_shared/care-score.ts";
 import { kmMedioDia, syncCalendar, projectRevisions } from "../_shared/calendar.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -573,9 +573,13 @@ Deno.serve(async (req) => {
       (spons || []).forEach((s: any) => { sponsoredByUser[s.user_id] = { dealership: s.dealership, sponsored_at: s.sponsored_at, coupon_code: s.coupon_code }; });
     } catch (e) { console.error("erro carregando cortesias:", e); }
 
+    // SELO TOTEX (Fase 4): lojas que ADERIRAM ao programa — clientes das demais não veem o Selo
+    let aderidas = new Set<string>();
+    try { aderidas = await lojasAderidas(supabase); } catch (e) { console.error("erro lojas aderidas:", e); }
+
     const { data: users } = await supabase
       .from("users")
-      .select("id, name, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership, proactive_unanswered, last_proactive_angle, care_score, care_tier, care_last_activity")
+      .select("id, name, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership, proactive_unanswered, last_proactive_angle, care_score, care_tier, care_tier_at, care_last_activity")
       .not("phone", "is", null);
 
     for (const u of users || []) {
@@ -685,6 +689,61 @@ Deno.serve(async (req) => {
         if (new Date().getDate() <= 3) await careStreak(supabase, u.id);
         await careDecay(supabase, u as any);
       } catch (e) { console.error("erro care score:", e); }
+
+      // SELO TOTEX (Fase 4) — SÓ cliente de loja parceira ADERIDA (regra do dono 2026-07-23)
+      try {
+        if (u.dealership && aderidas.has(String(u.dealership))) {
+          // 1) comemorativa de conquista de Selo (mudou de tier nas últimas 48h)
+          if (u.care_tier && u.care_tier !== "none" && (u as any).care_tier_at &&
+              Date.now() - new Date((u as any).care_tier_at).getTime() < 48 * 3600_000) {
+            const dueT = String((u as any).care_tier_at).split("T")[0];
+            const { error: e1 } = await supabase.from("notification_log")
+              .insert({ user_id: u.id, kind: `selo_tier:${u.care_tier}`, due_date: dueT, channel: "whatsapp" });
+            if (!e1) {
+              const st = await careStatement(supabase, u);
+              const insight = {
+                tipo: "selo_conquista", selo: u.care_tier, faixa: st.faixa_garantida,
+                loja: u.dealership, troca12m_ate: st.troca12m_ate,
+                observacao: "conquista REAL — comemore de verdade. Faixa é MÍNIMO garantido na recompra da loja parceira, condicionado à vistoria; NUNCA prometa 90% fixo.",
+              };
+              await sendProactiveIA(u, phone, insight, {
+                carro: v?.name || "", assuntoDefault: "selo_conquista", forceSend: true,
+                fallback: async () => {
+                  const pct = st.faixa_garantida?.min_pct || 82;
+                  await sendTpl(phone, "copilot_msg", [
+                    `Parabéns! Seu cuidado com o carro conquistou o *Selo ${String(u.care_tier).toUpperCase()}* — garantia mínima de ${pct}% da FIPE na recompra da ${u.dealership} (confirmada na vistoria). Continue registrando que ele só cresce.`,
+                  ]);
+                },
+              });
+              sent++;
+            }
+          }
+          // 2) extrato mensal do Selo (dia 1º–3, quem já pontua) — sempre em faixa/R$, nunca só pontos
+          if (new Date().getDate() <= 3 && (Number(u.care_score) || 0) > 0) {
+            const mesKey = new Date().toISOString().slice(0, 7);
+            const { error: e2 } = await supabase.from("notification_log")
+              .insert({ user_id: u.id, kind: `selo_extrato:${mesKey}`, due_date: `${mesKey}-01`, channel: "whatsapp" });
+            if (!e2) {
+              const st = await careStatement(supabase, u);
+              const insight = {
+                tipo: "extrato_selo", score: st.score, selo: st.tier, delta_mes: st.delta_mes,
+                faixa: st.faixa_garantida, proximo_selo: st.proximo_selo, loja: u.dealership,
+                observacao: "abra com a conquista/faixa garantida, nunca com número de pontos seco",
+              };
+              await sendProactiveIA(u, phone, insight, {
+                carro: v?.name || "", assuntoDefault: "extrato_selo", forceSend: false,
+                fallback: async () => {
+                  const prox = st.proximo_selo ? ` Faltam ${st.proximo_selo.faltam_pontos} pontos pro Selo ${st.proximo_selo.tier} (mínimo ${st.proximo_selo.fipe_min_pct}% da FIPE).` : "";
+                  await sendTpl(phone, "copilot_msg", [
+                    `Seu extrato do Selo: ${st.score} pontos${st.tier !== "none" ? `, Selo ${String(st.tier).toUpperCase()} ativo` : ""}.${prox} Cada cupom e revisão comprovada vale dinheiro na troca.`,
+                  ]);
+                },
+              });
+              sent++;
+            }
+          }
+        }
+      } catch (e) { console.error("erro selo:", e); }
 
       // Radar da Garagem Totex (carro do desejo apareceu no estoque)
       try {

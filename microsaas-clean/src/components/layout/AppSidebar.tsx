@@ -15,6 +15,7 @@ import {
   Warehouse,
   Plane,
   Radar,
+  Award,
   LogOut
 } from "lucide-react";
 import { useAuth, useCurrentUser } from "@/hooks/useAuth";
@@ -47,6 +48,7 @@ const navigation = [
   { title: "Manutenção", url: "/manutencao", icon: Wrench },
   { title: "Multas", url: "/multas", icon: ShieldAlert },
   { title: "Financiamento", url: "/financiamento", icon: Landmark },
+  { title: "Selo Totex", url: "/selo", icon: Award },
   { title: "Indique e Ganhe", url: "/indique", icon: Gift },
   { title: "Vender meu carro", url: "/recompra", icon: Banknote },
   { title: "Suporte", url: "/suporte", icon: LifeBuoy },

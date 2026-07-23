@@ -3,6 +3,7 @@
 // (até X% da FIPE). O pedido aparece no painel do lojista e dispara um aviso no WhatsApp da loja.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
+import { loadSeloConfig, seloElegivel } from "../_shared/care-score.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -44,9 +45,38 @@ Deno.serve(async (req) => {
   if (uErr || !ud?.user) return json({ error: "invalid_token" }, 401);
 
   const { data: me } = await admin.from("users")
-    .select("id, name, phone, role, dealership").eq("id", ud.user.id).single();
+    .select("id, name, phone, role, dealership, care_tier, care_tier_at").eq("id", ud.user.id).single();
   if (!me) return json({ error: "no_profile" }, 403);
   const isDealerOrAdmin = me.role === "dealer" || me.role === "admin";
+
+  // SELO TOTEX (Fase 4): garantia por faixa da FIPE — SÓ cliente de loja parceira ADERIDA.
+  // Retorna null quando não elegível; tier "none" volta com faixa null (ainda sem selo).
+  async function seloInfo(): Promise<any | null> {
+    try {
+      if (!(await seloElegivel(admin, me))) return null;
+      const cfg = await loadSeloConfig(admin);
+      const tier = String(me.care_tier || "none");
+      const faixas: Record<string, { min: number; teto: number | null }> = {
+        bronze: { min: cfg.fipe.bronze, teto: null },
+        prata: { min: cfg.fipe.prata, teto: null },
+        ouro: { min: cfg.fipe.ouro_min, teto: cfg.fipe.ouro_max },
+      };
+      let troca12mAte: string | null = null;
+      let dentro12m = false;
+      if (tier === "ouro" && me.care_tier_at) {
+        const d = new Date(me.care_tier_at); d.setFullYear(d.getFullYear() + 1);
+        troca12mAte = d.toISOString().split("T")[0];
+        dentro12m = new Date() <= d;
+      }
+      const f = faixas[tier] || null;
+      return {
+        elegivel: true, tier,
+        min_pct: f ? Math.round((dentro12m ? cfg.fipe.troca12m : f.min) * 100) : null,
+        teto_pct: Math.round(cfg.fipe.ouro_max * 100),
+        troca12m_ate: troca12mAte, troca12m_ativo: dentro12m,
+      };
+    } catch { return null; }
+  }
 
   let p: any = {};
   try { p = await req.json(); } catch { /* */ }
@@ -75,6 +105,7 @@ Deno.serve(async (req) => {
         const fipeValue = parseBRL(d?.Valor);
         const { data: s } = await admin.from("app_settings").select("buyback_fipe_pct").eq("id", 1).single();
         const pct = Number(s?.buyback_fipe_pct ?? 90);
+        const selo = await seloInfo();
         return json({
           ok: true,
           fipe: {
@@ -83,6 +114,11 @@ Deno.serve(async (req) => {
           },
           offer_pct: pct,
           offer_value: round2(fipeValue * pct / 100),
+          // garantia do Selo: MÍNIMO da faixa (condicionado à vistoria) — a oferta final é da loja
+          selo: selo && selo.min_pct ? {
+            ...selo,
+            valor_minimo_garantido: round2(fipeValue * selo.min_pct / 100),
+          } : selo,
         });
       }
 
@@ -96,7 +132,9 @@ Deno.serve(async (req) => {
         const pct = Number(p.offer_pct ?? s?.buyback_fipe_pct ?? 90);
         const offerValue = round2(fipeValue * pct / 100);
 
+        const seloReq = await seloInfo();
         const { data: inserted, error } = await admin.from("buyback_requests").insert({
+          selo_aplicado: seloReq && seloReq.min_pct ? seloReq : null,
           owner_id: me.id,
           dealership: me.dealership,
           owner_name: me.name,
@@ -123,7 +161,7 @@ Deno.serve(async (req) => {
             me.dealership,
             me.name || "Cliente",
             [p.brand, p.model, p.year].filter(Boolean).join(" ") || "veículo",
-            `${brl(offerValue)} (${pct}% da FIPE ${brl(fipeValue)})`,
+            `${brl(offerValue)} (${pct}% da FIPE ${brl(fipeValue)})${seloReq?.min_pct ? ` · cliente com SELO ${String(seloReq.tier).toUpperCase()} (mín. ${seloReq.min_pct}% garantido${seloReq.troca12m_ativo ? ", bônus troca 12m ativo" : ""})` : ""}`,
             me.phone || "sem telefone",
           ]);
         }

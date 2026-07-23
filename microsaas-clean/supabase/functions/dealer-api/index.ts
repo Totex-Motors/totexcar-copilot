@@ -398,6 +398,69 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
+      // ===================== SELO TOTEX (Fase 4) =====================
+      // Programa por ADESÃO: sem aderir, nenhum cliente da loja vê o Selo (regra do dono).
+      case "selo_status": {
+        const { data: cfg } = await admin.from("dealership_settings")
+          .select("selo_aderido, selo_aderido_em, selo_aderido_por").eq("dealership", scopeDealership).maybeSingle();
+        const { data: s } = await admin.from("app_settings")
+          .select("selo_bronze_fipe_min, selo_prata_fipe_min, selo_ouro_fipe_min, selo_ouro_fipe_max").eq("id", 1).single();
+        return json({
+          ok: true, aderido: !!cfg?.selo_aderido, aderido_em: cfg?.selo_aderido_em || null, aderido_por: cfg?.selo_aderido_por || null,
+          faixas: {
+            bronze: Math.round((Number(s?.selo_bronze_fipe_min) || 0.82) * 100),
+            prata: Math.round((Number(s?.selo_prata_fipe_min) || 0.85) * 100),
+            ouro_min: Math.round((Number(s?.selo_ouro_fipe_min) || 0.87) * 100),
+            ouro_max: Math.round((Number(s?.selo_ouro_fipe_max) || 0.90) * 100),
+          },
+        });
+      }
+
+      case "selo_aderir": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const aderir = p.aderir !== false;
+        const { error } = await admin.from("dealership_settings").upsert({
+          dealership: writeStore,
+          selo_aderido: aderir,
+          selo_aderido_em: aderir ? new Date().toISOString() : null,
+          selo_aderido_por: me.name || me.id,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "dealership" });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true, aderido: aderir });
+      }
+
+      case "selo_carteira": {
+        if (!scopeDealership) return json({ error: "sem_loja" }, 400);
+        const { data: clientes } = await admin.from("users")
+          .select("id, name, phone, care_score, care_tier, care_tier_at, driver_mode")
+          .eq("dealership", scopeDealership).eq("role", "owner");
+        const resumo = { ouro: 0, prata: 0, bronze: 0, sem_selo: 0 };
+        for (const c of (clientes || [])) {
+          const t = String(c.care_tier || "none");
+          if (t === "ouro") resumo.ouro++; else if (t === "prata") resumo.prata++;
+          else if (t === "bronze") resumo.bronze++; else resumo.sem_selo++;
+        }
+        // "Prontos para troca": Prata/Ouro (lead quente — cuidou do carro e tem garantia a usar)
+        const quentes = (clientes || []).filter((c: any) => ["prata", "ouro"].includes(String(c.care_tier)));
+        const ids = quentes.map((c: any) => c.id);
+        let veiculos: Record<string, any> = {};
+        if (ids.length) {
+          const { data: accs } = await admin.from("accounts")
+            .select("user_id, marca, modelo, ano_modelo, hodometro").in("user_id", ids).eq("is_active", true);
+          (accs || []).forEach((a: any) => { veiculos[a.user_id] = a; });
+        }
+        return json({
+          ok: true, total: (clientes || []).length, resumo,
+          prontos: quentes.map((c: any) => ({
+            id: c.id, name: c.name, phone: c.phone, selo: c.care_tier, score: c.care_score,
+            selo_desde: c.care_tier_at ? String(c.care_tier_at).split("T")[0] : null,
+            veiculo: veiculos[c.id] ? `${veiculos[c.id].marca || ""} ${veiculos[c.id].modelo || ""}`.trim() : null,
+            km: veiculos[c.id]?.hodometro || null,
+          })),
+        });
+      }
+
       case "postsale_create": {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
         const loja = writeStore;

@@ -119,11 +119,40 @@ aprovados pelo dono para execução:
 - Fica pra depois: página `/calendario` no app (card no Dashboard), seed do `ipva_calendario`,
   botão "quitei" (pontua no Score — casa com a Fase 4).
 
+### ✅ FASE 4 IMPLEMENTADA E NO AR (2026-07-23, mesma sessão) — SELO TOTEX lançável por adesão
+**⭐ REGRA DO DONO:** o Selo/garantia SÓ funciona para cliente que comprou o carro em LOJA
+PARCEIRA (users.dealership) E cuja loja ADERIU ao programa. Os demais nem ficam sabendo — o
+score deles acumula em silêncio (a seção de prompt e a tool respondem "não elegível").
+- Migração `fase4_selo_totex`: faixas em `app_settings` (selo_*: 300/600/850 pontos;
+  82/85/87–90% FIPE; bônus troca-12m 90%) + `dealership_settings.selo_aderido/em/por` +
+  `buyback_requests.selo_aplicado`.
+- **care-score.ts:** `loadSeloConfig`, `seloElegivel(user)` (loja + adesão), `lojasAderidas`,
+  `careStatement` (score/tier/meses, faixa garantida, próximo selo, bônus 12m, últimos eventos);
+  `careRecompute` agora lê os limiares do app_settings.
+- **Cron (gated por adesão):** comemorativa de conquista de Selo (mudou de tier <48h, dedup
+  `selo_tier:{tier}`) + extrato mensal do Selo (dia 1º–3, dedup `selo_extrato:{mês}`) — ambos
+  via compositor IA, copy SEMPRE em faixa/R$ e "nunca prometa 90% fixo".
+- **Agente:** tool `care_statement` (não-elegível → instrução de NÃO vender o programa) + seção
+  SELO no prompt SÓ para elegíveis.
+- **Buyback:** `fipe_price` devolve `selo` (faixa mínima + valor garantido em R$ + bônus 12m
+  ativo); `request` grava `selo_aplicado` e o template pro lojista informa "cliente com SELO X".
+- **Edge nova `care-score`** (JWT): extrato pro app.
+- **Front (deploy via push):** página **/selo** (gauge score, faixa garantida, como pontuar,
+  extrato, CTA avaliar; não-elegível vê aviso de benefício exclusivo) + item "Selo Totex" na
+  sidebar + **SeloLojaCard** no /lojista (aba Sucesso do Cliente): adesão com termo resumido +
+  Central de Valor (selos da carteira + "Prontos para troca" com botão de WhatsApp).
+- **⚠️ PENDENTE (dono):** (1) ADERIR pela 1ª loja no /lojista (nada aparece pros clientes antes
+  disso); (2) validar faixas com loja âncora — são editáveis em app_settings; (3) termo jurídico
+  formal do programa (o card mostra o resumo das condições); (4) marketing (QR na entrega,
+  adesivo, campanha "Mês da Troca Garantida"). Fica p/ depois: revisão c/ nota CNPJ pontuando,
+  documentos quitados, badge do Selo na página /recompra do app.
+
 ### 🎯 ORDEM DE EXECUÇÃO ACORDADA (racional: retenção primeiro, Selo só com histórico)
 - **Fase 1 — Proativo composto por IA** ✅ FEITA (acima).
 - **Fase 2 — Pontos silenciosos + IR/MEI** ✅ FEITA (acima; o score acumula em silêncio para o
   Selo nascer com histórico retroativo — mitiga o penhasco da cortesia em meados de 2027).
 - **Fase 3 — Calendário** ✅ FEITA (acima).
+- **Fase 4 — Selo Totex** ✅ FEITA (acima; lançamento efetivo = adesão da 1ª loja).
 - **Fase 4 — Lançamento do Selo** (faixas, termo de adesão, /selo, Central de Valor no
   /lojista, marketing "seu histórico vale dinheiro") — SÓ após decisões do dono.
 
