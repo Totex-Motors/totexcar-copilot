@@ -99,11 +99,31 @@ aprovados pelo dono para execução:
   estoque vivo (63 carros ≤80k → 19 SUVs; Mobi/Focus rejeitados; obs.: Peugeot 2008 É SUV
   compacto de classificação oficial — mantido como SUV). Legenda da vitrine ganhou 📍 nome da loja.
 
+### ✅ FASE 3 IMPLEMENTADA E NO AR (2026-07-23, mesma sessão) — Calendário do Carro
+- Migração `fase3_calendario_do_carro` APLICADA: `car_calendar` (RLS select próprio; delete+insert
+  no sync = idempotente) + `ipva_calendario` (VAZIA — seed manual por UF/ano fica pro dono; o
+  calendário usa as datas de accounts.*_vencimento) + `maintenance_reminders.projected_date/source`.
+- **`_shared/calendar.ts`:** `kmMedioDia` (leituras de hodômetro 90d; fallback 40 dono/250 PRO;
+  descarta >1500 km/dia), `projectRevisions` (data projetada por ritmo real → reminders +
+  car_calendar kind=revisao projected=true), `syncCalendar` (docs/CNH/parcela/multa/assinatura),
+  `upcoming` (janela com dias restantes).
+- **Cron:** sync semanal por usuário (dedup `calendar_sync:{segunda}`) + **proativa de revisão
+  projetada** (janela ~1000 km OU 15 dias; reforço ~300 km/5 dias; máx. 1/rodada; compositor IA
+  c/ fallback copilot_msg). Docs/parcela/multa CONTINUAM nos alertas existentes — sem duplicação;
+  a consolidação total no seletor do calendário é refinamento futuro.
+- **Webhook:** tool **`meu_calendario`** ("o que vence?", "tá tudo em dia?", "próxima revisão") +
+  seção CALENDÁRIO no prompt (projeção sempre apresentada como estimativa pelo ritmo DELE).
+- ✅ **Validado em produção** (rodada manual do cron): car_calendar populou 10 eventos (óleo
+  projetado 03/08, parcela Safra 09/08, IPVA 2027, assinaturas Renata/juan 07/2027) e a 1ª
+  proativa de revisão saiu pro dono, escrita pela IA com a projeção correta.
+- Fica pra depois: página `/calendario` no app (card no Dashboard), seed do `ipva_calendario`,
+  botão "quitei" (pontua no Score — casa com a Fase 4).
+
 ### 🎯 ORDEM DE EXECUÇÃO ACORDADA (racional: retenção primeiro, Selo só com histórico)
 - **Fase 1 — Proativo composto por IA** ✅ FEITA (acima).
 - **Fase 2 — Pontos silenciosos + IR/MEI** ✅ FEITA (acima; o score acumula em silêncio para o
   Selo nascer com histórico retroativo — mitiga o penhasco da cortesia em meados de 2027).
-- **Fase 3 — Calendário** (refactor do cron alimentando `car_calendar` + tool `meu_calendario`).
+- **Fase 3 — Calendário** ✅ FEITA (acima).
 - **Fase 4 — Lançamento do Selo** (faixas, termo de adesão, /selo, Central de Valor no
   /lojista, marketing "seu histórico vale dinheiro") — SÓ após decisões do dono.
 

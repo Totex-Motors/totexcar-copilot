@@ -8,6 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate, waProvider, type WaSettings } from "../_shared/wa.ts";
 import { composeProactive, loadDossier, pickAngle, type AIConfig } from "../_shared/proactive.ts";
 import { careStreak, careDecay } from "../_shared/care-score.ts";
+import { kmMedioDia, syncCalendar, projectRevisions } from "../_shared/calendar.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -582,7 +583,7 @@ Deno.serve(async (req) => {
       if (!phone) continue;
 
       const { data: vehicles } = await supabase
-        .from("accounts").select("name, licenciamento_vencimento, ipva_vencimento, seguro_vencimento")
+        .from("accounts").select("id, name, hodometro, licenciamento_vencimento, ipva_vencimento, seguro_vencimento")
         .eq("user_id", u.id).eq("is_active", true).limit(1);
       const v = vehicles && vehicles.length ? vehicles[0] : null;
 
@@ -632,6 +633,51 @@ Deno.serve(async (req) => {
 
       // Renovação da assinatura (avulsa): lembra antes e re-bloqueia no vencimento
       try { if (await maybeNotifyRenovacao(u, phone, appUrl, sponsoredByUser[u.id] || null)) sent++; } catch (e) { console.error("erro renovacao:", e); }
+
+      // CALENDÁRIO DO CARRO (Fase 3): sync semanal do motor de datas + projeção de revisões
+      // por km médio/dia + proativa quando uma revisão entra na janela (~1000 km OU 15 dias;
+      // reforço em ~300 km/5 dias). Docs/parcela/multa continuam nos alertas existentes acima —
+      // aqui só entra o que era INÉDITO (revisão projetada). Dedup semanal por usuário.
+      try {
+        const now = new Date();
+        const seg = new Date(now); seg.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+        const weekKey = seg.toISOString().split("T")[0];
+        const { error: calDup } = await supabase.from("notification_log")
+          .insert({ user_id: u.id, kind: `calendar_sync:${weekKey}`, due_date: weekKey, channel: "whatsapp" });
+        if (!calDup) {
+          const kmDia = await kmMedioDia(supabase, u.id, !!(u as any).driver_mode);
+          await syncCalendar(supabase, u, v, fins || [], (f: any) => addMonthsStr(f.primeira_parcela, Number(f.parcelas_pagas)));
+          const revs = await projectRevisions(supabase, u.id, v, kmDia);
+          // revisão mais urgente dentro da janela → 1 proativa no máximo por rodada
+          const emJanela = revs
+            .filter((r) => r.km_restante <= 1000 || r.projected_date <= new Date(Date.now() + 15 * 86400000).toISOString().split("T")[0])
+            .sort((a, b) => a.km_restante - b.km_restante);
+          const alvo = emJanela[0];
+          if (alvo) {
+            const reforco = alvo.km_restante <= 300 || alvo.projected_date <= new Date(Date.now() + 5 * 86400000).toISOString().split("T")[0];
+            const dedupKind = `${reforco ? "cal_rev2" : "cal_rev"}:${alvo.id}`;
+            const { error: revDup } = await supabase.from("notification_log")
+              .insert({ user_id: u.id, kind: dedupKind, due_date: alvo.projected_date, channel: "whatsapp" });
+            if (!revDup) {
+              const insight = {
+                tipo: "revisao_projetada", item: alvo.title,
+                km_restante: Math.max(0, alvo.km_restante), data_projetada: alvo.projected_date,
+                km_medio_dia: kmDia, reforco,
+                observacao: "projeção pelo ritmo real de uso dele — deixe claro que é estimativa",
+              };
+              await sendProactiveIA(u, phone, insight, {
+                carro: v?.name || "", assuntoDefault: "revisao", forceSend: false,
+                fallback: async () => {
+                  await sendTpl(phone, "copilot_msg", [
+                    `A ${alvo.title} do seu carro está chegando: faltam ~${Math.max(0, alvo.km_restante)} km (previsão ${fmt(alvo.projected_date)}, pelo seu ritmo de uso). Quer que eu procure um lugar de confiança perto de você?`,
+                  ]);
+                },
+              });
+              sent++;
+            }
+          }
+        }
+      } catch (e) { console.error("erro calendario:", e); }
 
       // Score de Cuidado (fase SILENCIOSA): streak nos primeiros dias do mês + decay de inatividade.
       // Nenhuma mensagem é enviada — só acumula/decai pontos (dedup interno no próprio motor).

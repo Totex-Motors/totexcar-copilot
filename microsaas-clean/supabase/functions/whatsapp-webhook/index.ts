@@ -9,6 +9,7 @@ import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSend
 import { pesquisarRota, pesquisarLugares } from "../_shared/route-research.ts";
 import { loadDossier, runExtractor } from "../_shared/proactive.ts";
 import { careFuel, careOdometer } from "../_shared/care-score.ts";
+import { upcoming as calendarUpcoming, kmMedioDia as calendarKmDia } from "../_shared/calendar.ts";
 import {
   SERVICE_TYPES, normalizeServiceType, isEmergencyService, dedupProviders,
   rankProviders, normalizePhone as radarNormalizePhone,
@@ -1085,6 +1086,11 @@ const TOOL_SPECS = [
     },
   },
   {
+    name: "meu_calendario",
+    description: "Próximas datas do carro num lugar só: vencimentos (IPVA, licenciamento, seguro, CNH, parcela do financiamento, prazo de multa, assinatura) e revisões PROJETADAS pelo ritmo de uso. Use para 'o que vence?', 'tá tudo em dia?', 'quando é minha próxima revisão?', 'o que tenho pra pagar?'.",
+    parameters: { type: "object", properties: { dias: { type: "number", description: "janela em dias, default 60" } } },
+  },
+  {
     name: "relatorio_fiscal",
     description: "Gera e ENVIA (PDF aqui no WhatsApp) o relatório fiscal do motorista: receitas por app, despesas dedutíveis, lucro, km, R$/km e % do limite MEI. Use para: relatório, IR, imposto de renda, MEI, carnê-leão, extrato pra contador. Default: mês anterior fechado; 'do ano'/'declaração' → anual.",
     parameters: {
@@ -1643,6 +1649,23 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         ok: true, de, ate,
         receita: Number(receita.toFixed(2)), despesa: Number(despesa.toFixed(2)), lucro,
         km_rodados: km, lucro_por_km: km && km > 0 ? Number((lucro / km).toFixed(2)) : null,
+      };
+    }
+
+    if (name === "meu_calendario") {
+      const dias = Number(args?.dias) > 0 ? Math.min(365, Number(args.dias)) : 60;
+      const eventos = await calendarUpcoming(supabase, user.id, dias);
+      const kmDia = await calendarKmDia(supabase, user.id, !!user.driver_mode);
+      return {
+        ok: true, janela_dias: dias, km_medio_dia: kmDia, hodometro: vehicle?.hodometro || null,
+        eventos: eventos.map((e: any) => ({
+          o_que: e.label, tipo: e.kind, data: e.due_date, dias_restantes: e.dias,
+          valor: e.amount || undefined, vencido: e.status === "vencido" || e.dias < 0,
+          projetado_por_uso: !!e.projected, ...(e.projected && e.meta?.km_restante != null ? { km_restante: e.meta.km_restante } : {}),
+        })),
+        orientacao: eventos.length
+          ? "Apresente em ordem de data com os dias restantes ('IPVA em 12 dias'). Revisões projetadas: deixe claro que é projeção pelo ritmo DELE ('mantendo seus ~X km/dia'). Vencido = alerta com cuidado, sem bronca."
+          : "Nada nos próximos dias — diga isso de forma leve ('tudo em dia por aqui 🙌') e, se fizer sentido, 1 cuidado preventivo curto.",
       };
     }
 
@@ -2292,6 +2315,8 @@ MULTAS: se a foto for um auto de infração/notificação:
 PONTOS DA CNH: para "quantos pontos eu tenho?", "vou perder a CNH?", "tô perto de suspender?" → use pontos_cnh (soma dos últimos 12 meses das multas + limite de suspensão do CTB). Depois de registrar uma multa nova COM pontos, vale mencionar o total atualizado e, se estiver perto do limite, alertar com cuidado (sem alarmismo). Deixe claro que conta só as multas registradas aqui.
 
 Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.join(", ")}. Use is_new_category=true só se nenhuma existente servir.
+
+CALENDÁRIO DO CARRO: para "o que vence?", "tá tudo em dia?", "próxima revisão", "o que tenho pra pagar?" → use meu_calendario. Apresente em ordem de data, com dias restantes ("IPVA em 12 dias — R$ 1.850"). Revisões projetadas por km: deixe claro que é projeção pelo ritmo de uso DELE ("mantendo seus ~40 km/dia, o óleo vence ~12/09"). Se estiver tudo em dia por 60+ dias, diga isso de forma leve e ofereça no máximo 1 cuidado preventivo. NUNCA invente data nem valor — veio da ferramenta ou não existe.
 
 MODO INDICADOR (motorista PRO como indicador da loja): se o motorista pedir carro/estoque PARA OUTRA PESSOA — "meu passageiro quer um Argo", "tem SUV até 80 mil? é pra um cliente", "manda o Onix pra eu mostrar pra um amigo" — use buscar_carros normalmente (por voz ou texto). As fotos que você envia JÁ saem com o link rastreado DELE (Indique e Ganhe). Depois de enviar, oriente em 1 linha: "é só tocar em ENCAMINHAR na foto e mandar pro seu passageiro — se rolar negócio pelo link, sua indicação fica registrada e você ganha a comissão". Se ele pedir pra VOCÊ mandar mensagem direto pro número do passageiro, explique com naturalidade que não fazemos contato com quem não falou com a gente primeiro (proteção do canal) — encaminhar a foto é mais rápido e, vindo dele, o passageiro confia mais. Incentive sem exagero: motorista PRO é um parceiro de vendas das lojas do ecossistema.
 
