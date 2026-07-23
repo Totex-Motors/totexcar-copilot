@@ -842,6 +842,40 @@ function mktResumo(v: any, refCode?: string | null) {
   };
 }
 
+// ---- CATEGORIA DE CARROCERIA (SUV/sedan/hatch/picape) ----
+// O bodyType do marketplace vem do importador e é SUJO (45% genérico "Carro"; GLA marcado "Hatch").
+// Classificador híbrido: mapa de modelos do mercado BR decide primeiro; bodyType é só fallback.
+// ORDEM IMPORTA: suv antes de sedan/hatch ("corolla cross" vence "corolla", "onix plus" vence "onix").
+const MODEL_CLASS: Array<[string, string[]]> = [
+  ["suv", ["corolla cross", "rav4", "sw4", "renegade", "compass", "commander", "tracker", "trailblazer", "equinox", "creta", "tucson", "ix35", "santa fe", "kona", "kicks", "captur", "duster", "t-cross", "tcross", "taos", "tiguan", "touareg", "nivus", "pulse", "territory", "bronco", "ecosport", "hr-v", "hrv", "zr-v", "zrv", "cr-v", "crv", "wr-v", "wrv", "pajero", "tr4", "asx", "outlander", "eclipse cross", "tiggo", "haval", "song", "yuan", "x1", "x2", "x3", "x4", "x5", "x6", "gla", "glb", "glc", "gle", "evoque", "discovery", "defender", "range rover", "xc40", "xc60", "xc90", "2008", "3008", "5008", "aircross", "cactus", "grand vitara", "vitara", "jimny", "land cruiser", "macan", "cayenne", "seltos", "sportage", "sorento", "stonic", "q2", "q3", "q5", "q7", "q8", "edge", "mustang mach"]],
+  ["picape", ["saveiro", "strada", "toro", "hilux", "ranger", "s10", "s-10", "amarok", "frontier", "l200", "triton", "montana", "oroch", "maverick", "courier", "f-250", "f250", "gladiator", "ram"]],
+  ["sedan", ["onix plus", "hb20s", "civic", "corolla", "sentra", "versa", "virtus", "jetta", "passat", "cruze", "prisma", "cronos", "siena", "logan", "fluence", "cerato", "elantra", "azera", "camry", "accord", "voyage", "cobalt", "classic", "a3 sedan", "a4", "a5", "c180", "c200", "c250", "c300", "320i", "330i", "m3"]],
+  ["hatch", ["onix", "hb20", "gol", "up!", "up ", "polo", "fox", "golf", "argo", "mobi", "uno", "palio", "punto", "208", "207", "c3", "kwid", "sandero", "march", "picanto", "i30", "etios", "yaris", "500", "fit", "dolphin", "mini cooper", "a1", "a3", "118i", "clio", "ka ", "fiesta", "focus"]],
+];
+function carClass(v: any): string | null {
+  const nome = ` ${String(v.model || "")} ${String(v.version || "")} `.toLowerCase();
+  // "fastback" é ambíguo: Fiat Fastback = SUV, mas Ford Focus Fastback = sedan.
+  // Só é SUV quando o MODELO em si é Fastback (Fiat).
+  if (/^\s*fastback/.test(String(v.model || "").toLowerCase())) return "suv";
+  for (const [cls, termos] of MODEL_CLASS) {
+    if (termos.some((t) => nome.includes(t))) return cls;
+  }
+  const bt = String(v.bodyType || "").toLowerCase();
+  if (/suv|utilit[aá]rio esportivo/.test(bt)) return "suv";
+  if (/picap|pick-?up/.test(bt)) return "picape";
+  if (/sed[aã]/.test(bt)) return "sedan";
+  if (/hatch/.test(bt)) return "hatch";
+  return null; // "Carro" genérico / desconhecido
+}
+const normCategoria = (c: any): string | null => {
+  const s = String(c || "").toLowerCase();
+  if (/suv|utilit[aá]rio esportivo/.test(s)) return "suv";
+  if (/picap|pick-?up|caminhonete/.test(s)) return "picape";
+  if (/sed[aã]/.test(s)) return "sedan";
+  if (/hatch/.test(s)) return "hatch";
+  return null;
+};
+
 // VITRINE: envia cada carro como uma FOTO com legenda (modelo, ano, km, preço, link) direto no chat.
 // Retorna quantos foram enviados (o agente comenta os porquês SEM repetir a lista).
 async function sendCarShowcase(phone: string, cars: any[], refCode?: string | null): Promise<number> {
@@ -955,7 +989,8 @@ const TOOL_SPECS = [
     parameters: {
       type: "object",
       properties: {
-        busca: { type: "string", description: "Texto livre: modelo, tipo (SUV, sedan), etc." },
+        busca: { type: "string", description: "Texto livre: MODELO específico (ex.: 'Argo', 'Corolla'). NUNCA coloque categoria (SUV/sedan) aqui — use o campo categoria." },
+        categoria: { type: "string", enum: ["suv", "sedan", "hatch", "picape"], description: "Categoria de carroceria, quando o usuário pedir por tipo ('um SUV', 'uma picape', 'um sedan')" },
         marca: { type: "string" },
         preco_max: { type: "number", description: "Preço máximo em reais" },
         ano_min: { type: "number", description: "Ano mínimo" },
@@ -1491,15 +1526,19 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
     if (name === "buscar_carros") {
       // cliente de loja (cortesia/bônus) vê SÓ o estoque da loja dele; demais veem tudo
       const scopeId = await garagemDealerId(user.dealership).catch(() => null);
-      const cars = await mktVehicles({
+      // categoria de carroceria: o filtro é NOSSO (a API do marketplace não filtra por categoria
+      // e o bodyType vem sujo) — busca um lote maior e classifica com carClass()
+      const catFiltro = normCategoria(args?.categoria);
+      let cars = await mktVehicles({
         search: args?.busca, brand: args?.marca,
         maxPrice: Number(args?.preco_max) > 0 ? Number(args.preco_max) : undefined,
         minYear: Number(args?.ano_min) > 0 ? Number(args.ano_min) : undefined,
         maxMileage: Number(args?.km_max) > 0 ? Number(args.km_max) : undefined,
         dealershipId: scopeId || undefined,
-        limit: 6,
+        limit: catFiltro ? 40 : 6,
       });
-      if (!cars.length) return { ok: true, total: 0, message: "Nada no estoque com esses critérios. Ofereça criar_radar pro usuário ser avisado quando aparecer." };
+      if (catFiltro) cars = cars.filter((c: any) => carClass(c) === catFiltro).slice(0, 6);
+      if (!cars.length) return { ok: true, total: 0, categoria: catFiltro || undefined, message: `Nada no estoque com esses critérios${catFiltro ? ` na categoria ${catFiltro}` : ""}. Ofereça criar_radar pro usuário ser avisado quando aparecer.` };
       // VITRINE: manda as fotos dos carros direto no chat
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
       return {
@@ -2264,7 +2303,7 @@ SEU CARRO — CONCIERGE TÉCNICO DO DONO: você é o concierge automotivo PESSOA
 
 GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do ecossistema Totexmotors — entende profundamente de carros (versões, motores, consumo, confiabilidade, custo de manutenção, revenda) e tem acesso ao ESTOQUE REAL das lojas via ferramentas. FILOSOFIA: a recomendação é guiada pelo DESEJO do dono, NÃO pelo preço do carro atual. O carro dele pode já ser ótimo — então NUNCA empurre "upgrade" só porque dá. Fluxo quando falar em comprar/trocar/procurar carro:
 (1) ENTENDA O DESEJO PRIMEIRO. Se ele ainda não disse claramente o que procura, faça 1–2 perguntas curtas antes de buscar: o que você quer de diferente no próximo carro? (ex.: tipo/tamanho — SUV, sedan, picape; uso — família, viagem, cidade; marca/modelo que curte; orçamento; algo que falte ou incomode no atual). NÃO pergunte se ele já deu os critérios.
-(2) Só DEPOIS de entender, use buscar_carros com os critérios DELE e recomende 2–3 opções explicando o PORQUÊ de cada uma pro que ELE pediu, sempre com o link.
+(2) Só DEPOIS de entender, use buscar_carros com os critérios DELE e recomende 2–3 opções explicando o PORQUÊ de cada uma pro que ELE pediu, sempre com o link. ⚠️ Se ele pedir por TIPO de carroceria ("um SUV", "uma picape", "um sedan", "um hatch"), passe no campo "categoria" da ferramenta — NUNCA escreva SUV/sedan no campo "busca" (a categoria é filtrada pela nossa classificação; texto livre traria carro errado).
 (3) oportunidades_carros é só um EXTRA opcional ("se quiser, tenho umas ideias na sua faixa também") — nunca a resposta principal, nunca sozinha, e nunca enquadrada como "você deveria trocar".
 (4) se o desejo dele não estiver no estoque, ofereça criar_radar ("te aviso quando aparecer").
 Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e só ajude a comprar se ELE quiser. Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista honesto sobre prós e contras, conectando ao estoque quando fizer sentido.

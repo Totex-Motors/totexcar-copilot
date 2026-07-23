@@ -84,6 +84,21 @@ aprovados pelo dono para execução:
   agente explica isso se pedirem. **V2 (só se a V1 provar volume):** envio direto via template
   MARKETING com confirmação + limite/dia + opt-out SAIR + lead no painel do lojista.
 
+### ✅ TAMBÉM NESTA SESSÃO (2026-07-23): FLOWS PUBLICADOS + FILTRO DE CATEGORIA
+- **📱 Flows Radar + Modo Viagem PUBLICADOS** (a pendência dos "3 passos" foi 100% via API, sem
+  Flow Builder manual): endpoint do radar_servicos setado via `POST /{flow_id}` c/ endpoint_uri →
+  publish nos dois → secrets `RADAR_FLOW_ID`/`VIAGEM_FLOW_ID` setados → webhook redeployado.
+  Status: ambos PUBLISHED na WABA. Gatilhos (isRadarQuery/isViagemQuery/menu) agora abrem os flows.
+- **🚙 Filtro de CATEGORIA no buscar_carros** (gap achado pelo dono: "SUV até 80 mil" trouxe Mobi):
+  a API do marketplace NÃO filtra por carroceria e o bodyType vem sujo do importador (45% "Carro"
+  genérico; GLA rotulado "Hatch"). Solução: classificador híbrido `carClass()` no webhook — mapa
+  de modelos BR decide primeiro (ordem: suv > picape > sedan > hatch; "corolla cross" vence
+  "corolla", "onix plus" vence "onix", Fastback só é SUV quando o MODELO é Fastback), bodyType
+  como fallback. Tool ganhou arg `categoria` (enum suv|sedan|hatch|picape; busca lote de 40 e
+  filtra) + prompt manda usar categoria e NUNCA pôr "SUV" no texto de busca. Testado contra o
+  estoque vivo (63 carros ≤80k → 19 SUVs; Mobi/Focus rejeitados; obs.: Peugeot 2008 É SUV
+  compacto de classificação oficial — mantido como SUV). Legenda da vitrine ganhou 📍 nome da loja.
+
 ### 🎯 ORDEM DE EXECUÇÃO ACORDADA (racional: retenção primeiro, Selo só com histórico)
 - **Fase 1 — Proativo composto por IA** ✅ FEITA (acima).
 - **Fase 2 — Pontos silenciosos + IR/MEI** ✅ FEITA (acima; o score acumula em silêncio para o
