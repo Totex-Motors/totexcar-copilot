@@ -22,6 +22,30 @@ if (!WABA_ID || !TOKEN) {
 // name → { category, body, example: valores de exemplo na ordem {{1}}..{{n}} }
 // ⚠️ Espelho de _shared/wa.ts — se mudar lá, mude aqui.
 const TEMPLATES = {
+  // ============ TEMPLATE-CURINGA do proativo IA (4 variantes; botões são FIXOS na Meta) ============
+  copilot_msg: {
+    category: "UTILITY",
+    body: "Olá! {{1}} — TotexCar Co-pilot 🚗",
+    example: ["Seu resumo PRO da semana está pronto: faturou R$ 1.240, gastou R$ 380, sobraram R$ 860. O óleo vence em cerca de 400 km, melhor resolver antes do feriado."],
+  },
+  copilot_msg_sim: {
+    category: "UTILITY",
+    body: "Olá! {{1}} É só tocar num botão abaixo. — TotexCar Co-pilot 🚗",
+    buttons: ["Sim, quero", "Agora não"],
+    example: ["Faltam 3 dias pro prazo do recurso da sua multa de avanço de sinal (R$ 293,47). Sua minuta já está pronta, quer revisar o texto comigo?"],
+  },
+  copilot_msg_feito: {
+    category: "UTILITY",
+    body: "Olá! {{1}} Me conta pelos botões abaixo. — TotexCar Co-pilot 🚗",
+    buttons: ["Já resolvi", "Me ajuda"],
+    example: ["Conseguiu trocar o óleo no fim de semana? Pergunto porque já está entrando na faixa dos 300 km restantes."],
+  },
+  copilot_msg_ver: {
+    category: "UTILITY",
+    body: "Olá! {{1}} Toque abaixo pra escolher. — TotexCar Co-pilot 🚗",
+    buttons: ["Ver agora", "Depois"],
+    example: ["Seu extrato do mês fechou: 14 registros, consumo médio de 11,4 km/l e custo de R$ 0,68 por km rodado."],
+  },
   // ===================== UTILIDADE =====================
   vencimento_documento: {
     category: "UTILITY",
@@ -161,6 +185,10 @@ async function createTemplate(name, t) {
         text: t.body,
         ...(hasVars ? { example: { body_text: [t.example] } } : {}),
       },
+      // quick replies: rótulo FIXO (a Meta não aceita texto dinâmico em botão)
+      ...(t.buttons?.length
+        ? [{ type: "BUTTONS", buttons: t.buttons.map((b) => ({ type: "QUICK_REPLY", text: b })) }]
+        : []),
     ],
   };
   const res = await fetch(`${GRAPH}/${WABA_ID}/message_templates`, {
@@ -185,7 +213,7 @@ if (STATUS_ONLY) {
   const ours = Object.keys(TEMPLATES);
   const missing = ours.filter((n) => !list.some((t) => t.name === n));
   if (missing.length) console.log(`\n⚠️ Faltando (${missing.length}): ${missing.join(", ")}`);
-  else console.log("\n✅ Todos os 21 templates existem na WABA.");
+  else console.log(`\n✅ Todos os ${ours.length} templates existem na WABA.`);
   const notApproved = list.filter((t) => ours.includes(t.name) && t.status !== "APPROVED");
   if (notApproved.length) console.log(`⏳ Aguardando aprovação: ${notApproved.map((t) => `${t.name}(${t.status})`).join(", ")}`);
   process.exit(0);

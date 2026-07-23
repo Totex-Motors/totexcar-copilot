@@ -3,6 +3,67 @@
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
 > Última atualização: 2026-07-22.
 
+## 0-AAAAA. ⭐ PLANO DE RETENÇÃO (2026-07-22, sessão 2) — LER PRIMEIRO
+
+### 📋 5 SPECS NOVOS na raiz do repo (origem: análise externa Kimi, revisados pelo Claude Code)
+O dono fez uma consultoria externa (LLM Kimi) sobre recorrência/retenção; saíram 5 specs que
+foram **revisados tecnicamente** (correções marcadas com "⚠️ CORREÇÃO" em cada arquivo) e
+aprovados pelo dono para execução:
+1. `MODULO-PROATIVO-TOTEXCAR.md` — cron proativo composto por IA (compositor + extrator +
+   dossiê `user_memory`/`open_loops` + template-curinga). ⚠️ Correção principal: quick reply
+   Meta NÃO aceita rótulo dinâmico → 4 variantes pré-aprovadas de template (`copilot_msg*`);
+   guarda anti-recategorização UTILITY→MARKETING (precedente: boas_vindas_cortesia).
+2. `GAMIFICACAO-SCORE-CUIDADO.md` — motor de pontos/anti-fraude/streaks (alimenta o Selo).
+3. `PROGRAMA-SELO-TOTEX-RECOMPRA.md` — Selo Bronze/Prata/Ouro → garantia de recompra por
+   faixa da FIPE (82/85/87–90%). ⚠️ PRÉ-REQUISITO de lançamento: termo de adesão POR LOJA +
+   decisões do dono (faixas com loja âncora, jurídico, nome).
+4. `CALENDARIO-DO-CARRO.md` — motor de datas unificado (⚠️ REFACTOR do cron existente, não
+   sistema paralelo; `accounts.uf` já existe).
+5. `RELATORIO-IR-MEI.md` — relatório fiscal do PRO (⚠️ sem lib de PDF nas edges hoje →
+   pdf-lib/Deno; envio pelo cron exige template com header DOCUMENT).
+
+### ✅ FASE 1 IMPLEMENTADA E NO AR (2026-07-22, mesma sessão)
+- **Migração `proativo_ia` APLICADA:** `user_memory` + `open_loops` (RLS select próprio; escrita
+  via service role) + `users.proactive_unanswered/last_proactive_angle/last_proactive_at`.
+- **`_shared/proactive.ts` (novo):** `chatJSON` (OpenAI/Anthropic/Gemini, saída JSON),
+  `composeProactive` (prompt compositor + 4 few-shots + guarda anti-marketing + strip de
+  markdown-link — WhatsApp não renderiza `[x](url)`), `runExtractor` (modelo barato:
+  gpt-4o-mini/haiku/flash; gate `worthExtracting` pula "ok/valeu"), `loadDossier`, `pickAngle`.
+- **4 templates-curinga CRIADOS na WABA** via script (agora com suporte a BUTTONS):
+  `copilot_msg` (sem botão — Meta RECATEGORIZOU p/ MARKETING, como previsto), `copilot_msg_sim`
+  [Sim, quero|Agora não], `copilot_msg_feito` [Já resolvi|Me ajuda], `copilot_msg_ver`
+  [Ver agora|Depois]. 3 APROVADOS na hora; `copilot_msg_feito` PENDING (fallback cobre).
+- **`car-expiration-alerts` (deployado):** `sendProactiveIA` (dossiê + última proativa + ângulo
+  rotativo + throttling; telemetria em `whatsapp_events kind=proativo`; incrementa
+  `proactive_unanswered`). Migrados p/ IA: **resumo_pro_semanal** (agora com comparação
+  lucro/km vs semana anterior — `weekTotals`) e **prazo de multa** (forceSend: pular/falha SEMPRE
+  cai no template fixo — prazo legal não se perde). Restante segue nos templates fixos.
+- **`whatsapp-webhook` (deployado):** dossiê + pendências injetados no system prompt (máx. 1
+  referência por resposta, nunca recitar a lista); QUALQUER resposta do usuário zera
+  `proactive_unanswered`; extrator roda em background (waitUntil) após cada resposta.
+- **Testado ao vivo** (compositor real, gpt-4o-mini): resumo PRO e multa D-3 saíram humanos, com
+  variante certa e URL pura (bug de markdown-link achado no teste e corrigido).
+- **⏭️ Próx. teste real:** dono manda mensagem no WhatsApp → conferir `user_memory`/`open_loops`
+  povoando; segunda-feira → conferir resumo PRO composto por IA (e `whatsapp_events kind=proativo`).
+
+### 🎯 ORDEM DE EXECUÇÃO ACORDADA (racional: retenção primeiro, Selo só com histórico)
+- **Fase 1 — Proativo composto por IA** ✅ FEITA (acima).
+- **Fase 2 — Motor de pontos SILENCIOSO** (acumula sem UI/marketing, para o Selo nascer com
+  histórico retroativo — mitiga o penhasco da conversão da cortesia em meados de 2027)
+  **+ IR/MEI em paralelo** (isolado, dados prontos).
+- **Fase 3 — Calendário** (refactor do cron alimentando `car_calendar` + tool `meu_calendario`).
+- **Fase 4 — Lançamento do Selo** (faixas, termo de adesão, /selo, Central de Valor no
+  /lojista, marketing "seu histórico vale dinheiro") — SÓ após decisões do dono.
+
+### 🎬 Também nesta sessão (fora do repo)
+Vídeo de marketing pros lojistas em mp4: **`C:\Users\marco\Downloads\TotexCar-Copilot-Lojistas.mp4`**
+(76s, 9:16 1080×1920, narração PT-BR ElevenLabs voz "Julian" + trilha; mockup de celular
+navegando pelos módulos reais). Pipeline reproduzível em
+`scratchpad/mp4render` da sessão (record.js headless Chrome + finalize.sh ffmpeg). Artifact
+do vídeo interativo: https://claude.ai/code/artifact/9bf4f065-a2e2-4504-80fc-73f450e39de4
+
+---
+
 ## 0-AAAA. ⭐ ESTADO ATUAL (2026-07-22) — LER PRIMEIRO (sessão mais recente)
 
 App no ar em **https://totexcarco-pilot.vercel.app** (deploy auto via push na `main`). Supabase TCF

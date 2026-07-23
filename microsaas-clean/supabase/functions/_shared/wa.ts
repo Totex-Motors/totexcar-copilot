@@ -244,9 +244,36 @@ export function metaVerifyChallenge(url: URL, s: WaSettings): Response | null {
 // Fonte da verdade dos templates do BM. O corpo com {{n}} é o que se cadastra no gerenciador;
 // render() é o fallback em texto pro provider uazapi (mesmos parâmetros, mesma ordem).
 // Categorias: UTILITY (transacional) e MARKETING — separadas conforme regra do Meta.
-type WaTemplate = { category: "UTILITY" | "MARKETING"; body: string; render: (p: string[]) => string };
+type WaTemplate = { category: "UTILITY" | "MARKETING"; body: string; render: (p: string[]) => string; buttons?: string[] };
 
 export const WA_TEMPLATES: Record<string, WaTemplate> = {
+  // ============ TEMPLATE-CURINGA do proativo composto por IA (MODULO-PROATIVO §6) ============
+  // 4 variantes: o rótulo de quick reply é FIXO na criação (a Meta NÃO aceita texto dinâmico
+  // em botão) — o compositor escolhe a variante, e {{1}} recebe o texto que a IA escreveu.
+  // Categoria UTILITY: conteúdo de serviço/conta. Guarda anti-marketing na edge antes de enviar.
+  copilot_msg: {
+    category: "UTILITY",
+    body: "Olá! {{1}} — TotexCar Co-pilot 🚗",
+    render: (p) => `Olá! ${p[0]}`,
+  },
+  copilot_msg_sim: {
+    category: "UTILITY",
+    body: "Olá! {{1}} É só tocar num botão abaixo. — TotexCar Co-pilot 🚗",
+    buttons: ["Sim, quero", "Agora não"],
+    render: (p) => `Olá! ${p[0]}\n\n(Responda: *Sim, quero* ou *Agora não*)`,
+  },
+  copilot_msg_feito: {
+    category: "UTILITY",
+    body: "Olá! {{1}} Me conta pelos botões abaixo. — TotexCar Co-pilot 🚗",
+    buttons: ["Já resolvi", "Me ajuda"],
+    render: (p) => `Olá! ${p[0]}\n\n(Responda: *Já resolvi* ou *Me ajuda*)`,
+  },
+  copilot_msg_ver: {
+    category: "UTILITY",
+    body: "Olá! {{1}} Toque abaixo pra escolher. — TotexCar Co-pilot 🚗",
+    buttons: ["Ver agora", "Depois"],
+    render: (p) => `Olá! ${p[0]}\n\n(Responda: *Ver agora* ou *Depois*)`,
+  },
   // ===================== UTILIDADE =====================
   vencimento_documento: {
     category: "UTILITY",

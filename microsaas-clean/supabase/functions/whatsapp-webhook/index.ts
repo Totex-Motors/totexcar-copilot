@@ -7,6 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { pesquisarRota, pesquisarLugares } from "../_shared/route-research.ts";
+import { loadDossier, runExtractor } from "../_shared/proactive.ts";
 import {
   SERVICE_TYPES, normalizeServiceType, isEmergencyService, dedupProviders,
   rankProviders, normalizePhone as radarNormalizePhone,
@@ -2058,6 +2059,13 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       return new Response(JSON.stringify({ ok: true, respondido: !jaRespondido }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
+    // PROATIVO: qualquer resposta do usuário zera o contador de proativas sem resposta
+    // (alimenta o throttling do compositor — MODULO-PROATIVO §7). Fire-and-forget.
+    if (Number((user as any).proactive_unanswered) > 0) {
+      const rst = supabase.from("users").update({ proactive_unanswered: 0 }).eq("id", user.id);
+      (globalThis as any).EdgeRuntime?.waitUntil?.(rst) ?? rst.then(() => {}, () => {});
+    }
+
     if (accessBlocked(user)) {
       // COOLDOWN DO AVISO DE PAYWALL — no máximo 1x por dia por usuário.
       // Antes, TODA mensagem de quem está inativo disparava uma resposta. Com
@@ -2144,6 +2152,18 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       }).join("\n");
     } catch { /* */ }
 
+    // memória LONGA: dossiê do dono (user_memory) + open loops — o "ele me conhece" do agente
+    let dossie = "";
+    try {
+      const d = await loadDossier(supabase, user.id);
+      const temMem = d.memorias && d.memorias !== "(vazio)";
+      const temLoops = d.loopsRaw.length > 0;
+      if (temMem || temLoops) {
+        dossie = `DOSSIÊ DO DONO (fatos/padrões/preferências aprendidos — use com naturalidade, no máx. 1 referência por resposta; NUNCA recite a lista):\n${temMem ? d.memorias : "(vazio)"}\n` +
+          (temLoops ? `PENDÊNCIAS EM ABERTO do dono (se ele tocar no assunto ou disser que resolveu, reconheça — ex.: "boa, tirou essa da lista!"):\n${d.loops}\n` : "");
+      }
+    } catch { /* dossiê é opcional — nunca trava a resposta */ }
+
     const today = new Date().toISOString().split("T")[0];
     const { data: appCfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
     const appUrl = (appCfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
@@ -2211,7 +2231,7 @@ Regras: depois de registrar algo, confirme em 1 frase. Se faltar o valor, peça.
 
 Hoje é ${today}.
 ${historico ? `CONVERSA RECENTE (para contexto e correções):\n${historico}\n` : ""}
-RESUMO DO USUÁRIO (respostas rápidas; use ferramentas p/ o resto):
+${dossie}RESUMO DO USUÁRIO (respostas rápidas; use ferramentas p/ o resto):
 ${JSON.stringify(snapshot)}`;
 
     // monta as partes normalizadas (texto/imagem)
@@ -2422,6 +2442,13 @@ ${JSON.stringify(snapshot)}`;
     await reply(replyText);
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
     if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText }, user_id: user.id }).eq("id", eventId);
+
+    // EXTRATOR DE MEMÓRIA (proativo IA): atualiza dossiê + open loops em background, modelo barato.
+    // Nunca bloqueia nem quebra a conversa (runExtractor engole os próprios erros).
+    try {
+      const ext = runExtractor(supabase, aiConfig, user.id, inputText, replyText);
+      (globalThis as any).EdgeRuntime?.waitUntil?.(ext) ?? ext.catch(() => {});
+    } catch { /* */ }
 
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
   } catch (e) {

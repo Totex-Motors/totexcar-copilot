@@ -6,6 +6,7 @@
 // v9: TODO alerta é iniciado pelo negócio → na API oficial sai por TEMPLATE aprovado (ver _shared/wa.ts).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate, waProvider, type WaSettings } from "../_shared/wa.ts";
+import { composeProactive, loadDossier, pickAngle, type AIConfig } from "../_shared/proactive.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -27,6 +28,68 @@ async function waS(): Promise<WaSettings> {
 // Envia um alerta (iniciado pelo negócio) pelo template certo; no uazapi vira o texto equivalente.
 async function sendTpl(phone: string, name: string, params: any[]) {
   await waSendTemplate(await waS(), phone, name, params);
+}
+
+// ---- PROATIVO COMPOSTO POR IA (MODULO-PROATIVO-TOTEXCAR.md) ----
+// O insight vem calculado em código; a IA só ESCREVE a mensagem. Qualquer falha (sem chave,
+// JSON inválido, template não aprovado, tom comercial) cai no template fixo antigo — nada quebra.
+let _ai: AIConfig | null = null;
+async function aiCfg(): Promise<AIConfig> {
+  if (_ai) return _ai;
+  const { data } = await supabase.from("app_settings")
+    .select("ai_provider, ai_model, openai_api_key, anthropic_api_key, gemini_api_key").eq("id", 1).single();
+  const provider = data?.ai_provider || "anthropic";
+  const key = provider === "openai" ? (data?.openai_api_key || "")
+    : provider === "gemini" ? (data?.gemini_api_key || "")
+    : (data?.anthropic_api_key || "");
+  const defaults: Record<string, string> = { anthropic: "claude-opus-4-8", openai: "gpt-4o", gemini: "gemini-2.5-flash" };
+  _ai = { provider, model: data?.ai_model || defaults[provider], key };
+  return _ai;
+}
+
+// Compõe e envia a proativa via IA. Retorna true se ENVIOU (por IA). `fallback` é chamado quando
+// a IA falha; quando a IA decide PULAR: com forceSend=true cai no fallback (prazo legal nunca
+// se perde), sem forceSend a mensagem é simplesmente não enviada nesta rodada.
+async function sendProactiveIA(u: any, phone: string, insight: any, opts: {
+  carro?: string; forceSend?: boolean; assuntoDefault: string; fallback: () => Promise<void>;
+}): Promise<boolean> {
+  try {
+    const cfg = await aiCfg();
+    if (!cfg.key) { await opts.fallback(); return false; }
+    const d = await loadDossier(supabase, u.id);
+    const { data: lastPro } = await supabase.from("whatsapp_events")
+      .select("parsed").eq("user_id", u.id).eq("kind", "proativo")
+      .order("created_at", { ascending: false }).limit(1);
+    const ultima = lastPro?.[0]?.parsed?.texto || "";
+    const angulo = pickAngle(u.last_proactive_angle);
+    const out = await composeProactive(cfg, {
+      insight, angulo, memorias: d.memorias, loops: d.loops, ultima,
+      unanswered: Number(u.proactive_unanswered) || 0,
+      nome: String(u.name || "").split(" ")[0], carro: opts.carro || "",
+      pro: !!u.driver_mode, loja: u.dealership || "",
+    });
+    if (out === "pular") {
+      if (opts.forceSend) { await opts.fallback(); }
+      return false;
+    }
+    if (!out) { await opts.fallback(); return false; }
+    const ok = await waSendTemplate(await waS(), phone, out.variante, [out.texto]);
+    if (!ok) { await opts.fallback(); return false; } // template ainda não aprovado, etc.
+    await supabase.from("users").update({
+      proactive_unanswered: (Number(u.proactive_unanswered) || 0) + 1,
+      last_proactive_angle: out.angulo_usado,
+      last_proactive_at: new Date().toISOString(),
+    }).eq("id", u.id);
+    await supabase.from("whatsapp_events").insert({
+      from_phone: phone, user_id: u.id, kind: "proativo", status: "sent",
+      raw: { proativo: true }, parsed: { assunto: out.assunto || opts.assuntoDefault, texto: out.texto, variante: out.variante },
+    });
+    return true;
+  } catch (e) {
+    console.error("sendProactiveIA:", e);
+    try { await opts.fallback(); } catch { /* */ }
+    return false;
+  }
 }
 
 function daysUntil(dateStr: string): number {
@@ -145,10 +208,8 @@ function lastWeekRange(): { de: string; ate: string; weekKey: string } {
   return { de: iso(monPrev), ate: iso(sunPrev), weekKey: iso(monPrev) };
 }
 
-async function maybeWeeklyPro(userId: string, phone: string) {
-  if (new Date().getDay() !== 1) return false; // só segunda
-  const { de, ate, weekKey } = lastWeekRange();
-
+// soma receita/despesa/km de um intervalo (insight engine: cálculo é SEMPRE em código)
+async function weekTotals(userId: string, de: string, ate: string) {
   const { data: tx } = await supabase.from("transactions")
     .select("amount, type, odometer")
     .eq("user_id", userId).gte("transaction_date", de).lte("transaction_date", ate);
@@ -159,29 +220,52 @@ async function maybeWeeklyPro(userId: string, phone: string) {
     else despesa += Math.abs(Number(t.amount));
     if (Number(t.odometer) > 0) odos.push(Number(t.odometer));
   });
-  if (receita === 0 && despesa === 0) return false; // semana sem movimento: não incomoda
+  const km = odos.length >= 2 ? Math.round(Math.max(...odos) - Math.min(...odos)) : null;
+  return { receita, despesa, lucro: receita - despesa, km };
+}
+
+async function maybeWeeklyPro(u: any, phone: string, carro: string) {
+  if (new Date().getDay() !== 1) return false; // só segunda
+  const { de, ate, weekKey } = lastWeekRange();
+  const cur = await weekTotals(u.id, de, ate);
+  if (cur.receita === 0 && cur.despesa === 0) return false; // semana sem movimento: não incomoda
 
   // dedup por semana
   const { error } = await supabase.from("notification_log")
-    .insert({ user_id: userId, kind: `pro_weekly:${weekKey}`, due_date: weekKey, channel: "whatsapp" });
+    .insert({ user_id: u.id, kind: `pro_weekly:${weekKey}`, due_date: weekKey, channel: "whatsapp" });
   if (error) { if ((error as any).code === "23505") return false; console.error("log pro_weekly:", error); return false; }
 
-  const lucro = receita - despesa;
-  const km = odos.length >= 2 ? Math.round(Math.max(...odos) - Math.min(...odos)) : null;
-  const kmLinha = km && km > 0
-    ? `🛣️ ${km.toLocaleString("pt-BR")} km rodados, lucro de ${fmtBRL(lucro / km)} por km.`
-    : `Bora pra mais uma semana!`;
-  await sendTpl(phone, "resumo_pro_semanal", [
-    `${fmt(de)} a ${fmt(ate)}`, fmtBRL(receita), fmtBRL(despesa),
-    `${lucro >= 0 ? "sobrou" : "ficou negativo"} ${fmtBRL(lucro)}`, kmLinha,
-  ]);
+  // semana ANTERIOR à anterior, pra tendência do lucro/km (o que o template fixo nunca teve)
+  const deD = new Date(de + "T12:00:00"); deD.setDate(deD.getDate() - 7);
+  const ateD = new Date(de + "T12:00:00"); ateD.setDate(ateD.getDate() - 1);
+  const iso = (d: Date) => d.toISOString().split("T")[0];
+  const prev = await weekTotals(u.id, iso(deD), iso(ateD));
+
+  const lucroKm = cur.km && cur.km > 0 ? Number((cur.lucro / cur.km).toFixed(2)) : null;
+  const lucroKmPrev = prev.km && prev.km > 0 ? Number((prev.lucro / prev.km).toFixed(2)) : null;
+
+  const insight = {
+    tipo: "resumo_pro_semanal", periodo: `${fmt(de)} a ${fmt(ate)}`,
+    receita: cur.receita, despesa: cur.despesa, lucro: cur.lucro,
+    km: cur.km, lucro_km: lucroKm, lucro_km_semana_anterior: lucroKmPrev,
+  };
+  const fallback = async () => {
+    const kmLinha = cur.km && cur.km > 0
+      ? `🛣️ ${cur.km.toLocaleString("pt-BR")} km rodados, lucro de ${fmtBRL(cur.lucro / cur.km)} por km.`
+      : `Bora pra mais uma semana!`;
+    await sendTpl(phone, "resumo_pro_semanal", [
+      `${fmt(de)} a ${fmt(ate)}`, fmtBRL(cur.receita), fmtBRL(cur.despesa),
+      `${cur.lucro >= 0 ? "sobrou" : "ficou negativo"} ${fmtBRL(cur.lucro)}`, kmLinha,
+    ]);
+  };
+  await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "resumo_pro", forceSend: true, fallback });
   return true;
 }
 
 // Marcos do prazo de recurso de multa (curtos: o recurso é urgente)
 const MULTA_MARKS = [5, 3, 1, 0];
 
-async function maybeNotifyMulta(userId: string, phone: string, m: any, appUrl: string) {
+async function maybeNotifyMulta(u: any, phone: string, m: any, appUrl: string, carro: string) {
   const days = daysUntil(m.prazo_recurso);
   if (!MULTA_MARKS.includes(days)) return false; // prazo vencido não notifica (recurso perdeu o objeto)
   const kind = `multa:${m.id}:d${days}`;
@@ -194,13 +278,22 @@ async function maybeNotifyMulta(userId: string, phone: string, m: any, appUrl: s
 
   const { error } = await supabase
     .from("notification_log")
-    .insert({ user_id: userId, kind, due_date: m.prazo_recurso, channel: "whatsapp" });
+    .insert({ user_id: u.id, kind, due_date: m.prazo_recurso, channel: "whatsapp" });
   if (error) {
     if ((error as any).code === "23505") return false; // já notificado
     console.error("erro notification_log multa:", error);
     return false;
   }
-  await sendTpl(phone, "prazo_recurso_multa", [`${desc}${valor}`, quando, fmt(m.prazo_recurso), instrucao]);
+  const insight = {
+    tipo: "multa_prazo", dias: days, descricao: desc,
+    valor: m.valor != null ? Number(m.valor) : null, chance: m.chance || null,
+    recurso_pronto: !!m.recurso_texto, link_recurso: m.recurso_texto ? `${appUrl}/multas` : null,
+  };
+  const fallback = async () => {
+    await sendTpl(phone, "prazo_recurso_multa", [`${desc}${valor}`, quando, fmt(m.prazo_recurso), instrucao]);
+  };
+  // prazo LEGAL: forceSend — se a IA pular/falhar, o template fixo garante o aviso
+  await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "multa_prazo", forceSend: true, fallback });
   return true;
 }
 
@@ -402,6 +495,7 @@ async function runPostsale(): Promise<number> {
 
 Deno.serve(async (req) => {
   _wa = null;
+  _ai = null;
   // proteção: aceita secret na query (usado pelo cron) — ou execução manual autenticada
   const url = new URL(req.url);
   if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
@@ -424,7 +518,7 @@ Deno.serve(async (req) => {
 
     const { data: users } = await supabase
       .from("users")
-      .select("id, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership")
+      .select("id, name, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership, proactive_unanswered, last_proactive_angle")
       .not("phone", "is", null);
 
     for (const u of users || []) {
@@ -460,21 +554,21 @@ Deno.serve(async (req) => {
         if (await maybeNotifyParcela(u.id, phone, f, due)) sent++;
       }
 
-      // Resumo semanal do Motorista PRO (segundas)
+      // Resumo semanal do Motorista PRO (segundas) — agora composto por IA (fallback: template fixo)
       if ((u as any).driver_mode) {
-        try { if (await maybeWeeklyPro(u.id, phone)) sent++; } catch (e) { console.error("erro weekly pro:", e); }
+        try { if (await maybeWeeklyPro(u, phone, v?.name || "")) sent++; } catch (e) { console.error("erro weekly pro:", e); }
       }
 
-      // Prazo de recurso de multas (só as que ainda precisam de ação)
+      // Prazo de recurso de multas (só as que ainda precisam de ação) — composto por IA (fallback fixo)
       try {
         const { data: multas } = await supabase
           .from("multas")
-          .select("id, descricao, valor, prazo_recurso, recurso_texto, status")
+          .select("id, descricao, valor, prazo_recurso, recurso_texto, status, chance")
           .eq("user_id", u.id)
           .in("status", ["nova", "recurso_gerado"])
           .not("prazo_recurso", "is", null);
         for (const m of multas || []) {
-          if (await maybeNotifyMulta(u.id, phone, m, appUrl)) sent++;
+          if (await maybeNotifyMulta(u, phone, m, appUrl, v?.name || "")) sent++;
         }
       } catch (e) { console.error("erro multas alerts:", e); }
 
