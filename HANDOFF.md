@@ -46,11 +46,48 @@ aprovados pelo dono para execução:
 - **⏭️ Próx. teste real:** dono manda mensagem no WhatsApp → conferir `user_memory`/`open_loops`
   povoando; segunda-feira → conferir resumo PRO composto por IA (e `whatsapp_events kind=proativo`).
 
+### ✅ FASE 2 IMPLEMENTADA E NO AR (2026-07-22/23, mesma sessão)
+**A) Motor de pontos SILENCIOSO** (`_shared/care-score.ts` — acumula sem UI/menção; Selo lança na F4):
+- Migração `fase2_care_score_e_fiscal` APLICADA: `care_score_events` (RLS select próprio) +
+  `users.care_score/care_tier/care_tier_at/care_last_activity/care_frozen/selo_terms_accepted_at`
+  + `categories.dedutivel` + `fiscal_reports` + `app_settings.mei_limite_anual` (81000; ⚠️ conferir
+  valor vigente antes da F4) + bucket Storage `reports` (privado).
+- Regras ATIVAS (só o verificável hoje): combustível c/ litros+km +10 (cap 40/mês) · parcial +5
+  (cap 20) · hodômetro +10 (1×/mês) · streak 3 meses c/ ≥4 registros +50 · retroativo >7d = metade ·
+  ritmo 48h (PRO 24h) · decay −50/sem após 90d parado (PRO 45d) até o piso do tier. Faixas
+  Bronze 300/3m · Prata 600/6m · Ouro 850/12m calculadas em silêncio (`users.care_tier`).
+  Parâmetros = CONSTANTES no módulo (não em app_settings) durante a fase silenciosa.
+- Hooks: `registrar_gasto` (combustível) e `atualizar_hodometro` no webhook (fire-and-forget);
+  streak (dia 1–3) + decay no cron. FALTAM p/ F4: revisão c/ nota CNPJ, documentos quitados,
+  multa resolvida, indicação, consistência km/L, capacidade do tanque.
+**B) Relatório IR/MEI do PRO** (`fiscal-report` edge NOVA, RELATORIO-IR-MEI.md):
+- `generate`: cálculo 100% em código (receita/despesas c/ flag dedutível/lucro/km/R$/km + % MEI),
+  PDF via **pdf-lib** (Helvetica/Latin-1), CSV UTF-8 BOM ";", upload no bucket + URL assinada 7d,
+  upsert idempotente em `fiscal_reports`. Auth: service role (com user_id) OU JWT do usuário.
+- Tool **`relatorio_fiscal`** no agente (gatilhos: relatório/IR/MEI/carnê-leão/contador) — manda o
+  PDF na conversa via **`waSendDocument`** (novo em wa.ts) + resumo de 2 linhas.
+- Cron dia 1º–3: gera o mês fechado p/ driver_mode c/ movimento + proativa IA (variante Ver agora;
+  fallback copilot_msg fixo) + alertas 70%/90% do limite MEI (dedup por ano/marco).
+  ⚠️ PDF automático SEM interação exigiria template Meta c/ header DOCUMENT — decisão: convite por
+  proativa; o PDF sai quando o usuário responde (ou pela tool a qualquer momento).
+**C) Botões das proativas fechados:** os 6 rótulos fixos (Sim, quero / Agora não / Já resolvi /
+  Me ajuda / Ver agora / Depois) são embrulhados com o texto da última proativa (≤72h) antes de ir
+  pra IA — o agente sabe o que o usuário aceitou/recusou.
+- Deploy: `fiscal-report` + `whatsapp-webhook` + `car-expiration-alerts` no ar. ✅ **Testado pelo
+  dono em produção**: "relatório" no WhatsApp → PDF de junho entregue na conversa ("está perfeito").
+**D) MODO INDICADOR V1 (ideia do dono, 2026-07-23):** motorista PRO como indicador das lojas.
+  Ele pergunta por voz/texto ("tem Fiat Argo no estoque? é pra um passageiro") → buscar_carros já
+  responde com fotos + link `?ref=` DELE (comissão via Indique e Ganhe) → ele usa o ENCAMINHAR
+  nativo do WhatsApp pro passageiro. Feito: seção MODO INDICADOR no prompt + nome da LOJA na
+  legenda da vitrine (legenda pensada pra ser encaminhada). **Decisão de segurança:** NÃO fazemos
+  envio direto pro número do passageiro (contato frio = risco de spam/ban do número + LGPD); o
+  agente explica isso se pedirem. **V2 (só se a V1 provar volume):** envio direto via template
+  MARKETING com confirmação + limite/dia + opt-out SAIR + lead no painel do lojista.
+
 ### 🎯 ORDEM DE EXECUÇÃO ACORDADA (racional: retenção primeiro, Selo só com histórico)
 - **Fase 1 — Proativo composto por IA** ✅ FEITA (acima).
-- **Fase 2 — Motor de pontos SILENCIOSO** (acumula sem UI/marketing, para o Selo nascer com
-  histórico retroativo — mitiga o penhasco da conversão da cortesia em meados de 2027)
-  **+ IR/MEI em paralelo** (isolado, dados prontos).
+- **Fase 2 — Pontos silenciosos + IR/MEI** ✅ FEITA (acima; o score acumula em silêncio para o
+  Selo nascer com histórico retroativo — mitiga o penhasco da cortesia em meados de 2027).
 - **Fase 3 — Calendário** (refactor do cron alimentando `car_calendar` + tool `meu_calendario`).
 - **Fase 4 — Lançamento do Selo** (faixas, termo de adesão, /selo, Central de Valor no
   /lojista, marketing "seu histórico vale dinheiro") — SÓ após decisões do dono.

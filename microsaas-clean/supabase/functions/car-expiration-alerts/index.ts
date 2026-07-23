@@ -7,6 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate, waProvider, type WaSettings } from "../_shared/wa.ts";
 import { composeProactive, loadDossier, pickAngle, type AIConfig } from "../_shared/proactive.ts";
+import { careStreak, careDecay } from "../_shared/care-score.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -259,6 +260,61 @@ async function maybeWeeklyPro(u: any, phone: string, carro: string) {
     ]);
   };
   await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "resumo_pro", forceSend: true, fallback });
+  return true;
+}
+
+// ---- Relatório fiscal mensal do PRO (dia 1º–3) + alertas de limite MEI ----
+// Gera o relatório do mês FECHADO na edge fiscal-report e convida pela proativa IA
+// (variante "Ver agora"); o PDF sai quando o usuário responde (janela de 24h reaberta).
+async function maybeMonthlyFiscal(u: any, phone: string, carro: string): Promise<boolean> {
+  if (new Date().getDate() > 3) return false;
+  const prev = new Date(); prev.setDate(1); prev.setMonth(prev.getMonth() - 1);
+  const periodo = prev.toISOString().slice(0, 7);
+
+  const { error } = await supabase.from("notification_log")
+    .insert({ user_id: u.id, kind: `fiscal:${periodo}`, due_date: `${periodo}-01`, channel: "whatsapp" });
+  if (error) { if ((error as any).code === "23505") return false; console.error("log fiscal:", error); return false; }
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/fiscal-report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+    body: JSON.stringify({ user_id: u.id, periodo, kind: "mensal" }),
+  });
+  const r = await res.json().catch(() => ({}));
+  if (!r?.ok) return false; // sem movimento no mês = não incomoda
+
+  const t = r.totals || {};
+  const insight = {
+    tipo: "relatorio_mensal", periodo: r.label, receita: t.receita, despesa: t.despesa,
+    lucro: t.lucro, km: t.km, rs_km: t.rs_km, mei_pct: t.mei_pct,
+    observacao: "o PDF já está pronto; se ele quiser ver, responde e recebe na conversa",
+  };
+  const fallback = async () => {
+    await sendTpl(phone, "copilot_msg", [
+      `Seu relatório de ${r.label} fechou: faturou ${fmtBRL(Number(t.receita) || 0)}, gastou ${fmtBRL(Number(t.despesa) || 0)}, lucro de ${fmtBRL(Number(t.lucro) || 0)}. Quer o PDF pro contador? É só responder "relatório".`,
+    ]);
+  };
+  await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "relatorio_mensal", forceSend: true, fallback });
+
+  // limite MEI: avisos únicos por ano ao cruzar 70% e 90%
+  const pct = Number(t.mei_pct) || 0;
+  const ano = periodo.slice(0, 4);
+  for (const marco of [90, 70]) {
+    if (pct < marco) continue;
+    const { error: e2 } = await supabase.from("notification_log")
+      .insert({ user_id: u.id, kind: `mei:${ano}:${marco}`, due_date: `${ano}-12-31`, channel: "whatsapp" });
+    if (e2) break; // 23505 = já avisado deste marco (e implicitamente do menor)
+    const insightMei = { tipo: "mei_limite", pct, marco, ano, observacao: "informação que PROTEGE o motorista — tom de cuidado, sem bronca; sugerir conversar com o contador" };
+    await sendProactiveIA(u, phone, insightMei, {
+      carro, assuntoDefault: "mei_limite", forceSend: true,
+      fallback: async () => {
+        await sendTpl(phone, "copilot_msg", [
+          `Atenção: sua receita registrada em ${ano} já está em ${pct}% do limite anual do MEI. Vale conferir com seu contador como se organizar até dezembro.`,
+        ]);
+      },
+    });
+    break;
+  }
   return true;
 }
 
@@ -518,7 +574,7 @@ Deno.serve(async (req) => {
 
     const { data: users } = await supabase
       .from("users")
-      .select("id, name, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership, proactive_unanswered, last_proactive_angle")
+      .select("id, name, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership, proactive_unanswered, last_proactive_angle, care_score, care_tier, care_last_activity")
       .not("phone", "is", null);
 
     for (const u of users || []) {
@@ -557,6 +613,8 @@ Deno.serve(async (req) => {
       // Resumo semanal do Motorista PRO (segundas) — agora composto por IA (fallback: template fixo)
       if ((u as any).driver_mode) {
         try { if (await maybeWeeklyPro(u, phone, v?.name || "")) sent++; } catch (e) { console.error("erro weekly pro:", e); }
+        // Relatório fiscal mensal (dia 1º-3) + alertas de limite MEI
+        try { if (await maybeMonthlyFiscal(u, phone, v?.name || "")) sent++; } catch (e) { console.error("erro fiscal mensal:", e); }
       }
 
       // Prazo de recurso de multas (só as que ainda precisam de ação) — composto por IA (fallback fixo)
@@ -574,6 +632,13 @@ Deno.serve(async (req) => {
 
       // Renovação da assinatura (avulsa): lembra antes e re-bloqueia no vencimento
       try { if (await maybeNotifyRenovacao(u, phone, appUrl, sponsoredByUser[u.id] || null)) sent++; } catch (e) { console.error("erro renovacao:", e); }
+
+      // Score de Cuidado (fase SILENCIOSA): streak nos primeiros dias do mês + decay de inatividade.
+      // Nenhuma mensagem é enviada — só acumula/decai pontos (dedup interno no próprio motor).
+      try {
+        if (new Date().getDate() <= 3) await careStreak(supabase, u.id);
+        await careDecay(supabase, u as any);
+      } catch (e) { console.error("erro care score:", e); }
 
       // Radar da Garagem Totex (carro do desejo apareceu no estoque)
       try {

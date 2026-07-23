@@ -106,6 +106,19 @@ export async function waSendImage(s: WaSettings, phone: string, imageUrl: string
   return uazapiPost(s, "/send/media", { number: to, type: "image", file: imageUrl, text: caption || "" });
 }
 
+// ---------------- envio: DOCUMENTO (PDF de relatório etc.; janela de 24h) ----------------
+export async function waSendDocument(s: WaSettings, phone: string, docUrl: string, filename: string, caption?: string): Promise<boolean> {
+  const to = onlyDigits(phone);
+  if (!to || !docUrl) return false;
+  if (waProvider(s) === "meta") {
+    return metaPost(s, {
+      messaging_product: "whatsapp", to, type: "document",
+      document: { link: docUrl, filename: filename.slice(0, 240), ...(caption ? { caption: caption.slice(0, 1024) } : {}) },
+    });
+  }
+  return uazapiPost(s, "/send/media", { number: to, type: "document", file: docUrl, docName: filename, text: caption || "" });
+}
+
 // ---------------- envio: FLOW interativo (resposta em janela de 24h) ----------------
 // Abre um formulário nativo (WhatsApp Flow). No uazapi (sem flows), cai no texto de fallback.
 export async function waSendFlow(s: WaSettings, phone: string, opts: {

@@ -5,9 +5,10 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { pesquisarRota, pesquisarLugares } from "../_shared/route-research.ts";
 import { loadDossier, runExtractor } from "../_shared/proactive.ts";
+import { careFuel, careOdometer } from "../_shared/care-score.ts";
 import {
   SERVICE_TYPES, normalizeServiceType, isEmergencyService, dedupProviders,
   rankProviders, normalizePhone as radarNormalizePhone,
@@ -854,7 +855,9 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
     const km = Number(v.mileage) > 0 ? ` · ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
     const fipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 abaixo da FIPE" : "";
     const link = `${MARKETPLACE_URL}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-    const caption = `🚗 *${titulo}* ${v.year || ""}\n${brl(v.price)}${km}${fipe}\n\nFotos e detalhes: ${link}`;
+    // legenda pensada TAMBÉM pra ser ENCAMINHADA (Modo Indicador: motorista manda pro passageiro)
+    const loja = v.dealership?.name ? `\n📍 ${v.dealership.name}` : "";
+    const caption = `🚗 *${titulo}* ${v.year || ""}\n${brl(v.price)}${km}${fipe}${loja}\n\nFotos e detalhes: ${link}`;
     if (await waSendImage(s, phone, img, caption)) sent++;
   }
   return sent;
@@ -1047,6 +1050,17 @@ const TOOL_SPECS = [
     },
   },
   {
+    name: "relatorio_fiscal",
+    description: "Gera e ENVIA (PDF aqui no WhatsApp) o relatório fiscal do motorista: receitas por app, despesas dedutíveis, lucro, km, R$/km e % do limite MEI. Use para: relatório, IR, imposto de renda, MEI, carnê-leão, extrato pra contador. Default: mês anterior fechado; 'do ano'/'declaração' → anual.",
+    parameters: {
+      type: "object",
+      properties: {
+        periodo: { type: "string", description: "AAAA-MM (mensal) ou AAAA (anual); vazio = mês anterior fechado" },
+        kind: { type: "string", enum: ["mensal", "anual"] },
+      },
+    },
+  },
+  {
     name: "custo_por_km",
     description: "Custo REAL do carro: quanto custa por KM rodado e por MÊS, e pra onde vai o dinheiro (combustível, manutenção, impostos/seguro, financiamento). Use para 'quanto meu carro me custa?', 'custo por km', 'quanto gasto por mês com o carro?'. Sem datas = tudo que foi registrado.",
     parameters: { type: "object", properties: { de: { type: "string", description: "AAAA-MM-DD (opcional)" }, ate: { type: "string", description: "AAAA-MM-DD (opcional)" } } },
@@ -1144,6 +1158,12 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         vehicle.hodometro = odometer;
       }
       const isFuel = /combust/i.test(String(exp.category || "")) || litros != null;
+      // Score de Cuidado (fase SILENCIOSA — GAMIFICACAO-SCORE-CUIDADO.md): pontua em background,
+      // sem mencionar nada ao usuário até o lançamento do Selo (Fase 4).
+      if (isFuel && tipo === "expense" && !ins.error) {
+        const p = careFuel(supabase, user.id, vehicle.id, { litros, odometer, dateStr: date, isPro: !!user.driver_mode });
+        (globalThis as any).EdgeRuntime?.waitUntil?.(p) ?? p.catch(() => {});
+      }
       return {
         ok: true,
         registrado: { descricao: exp.description, valor: Math.abs(Number(exp.amount)), tipo, categoria: exp.category, data: date, litros },
@@ -1180,6 +1200,11 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         }
       } catch { /* */ }
       const consumo = await computeConsumo(user.id);
+      // Score de Cuidado (silencioso): hodômetro do mês pontua 1×
+      {
+        const p = careOdometer(supabase, user.id, vehicle.id, km);
+        (globalThis as any).EdgeRuntime?.waitUntil?.(p) ?? p.catch(() => {});
+      }
       return { ok: true, hodometro: km, consumo };
     }
 
@@ -1579,6 +1604,31 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         ok: true, de, ate,
         receita: Number(receita.toFixed(2)), despesa: Number(despesa.toFixed(2)), lucro,
         km_rodados: km, lucro_por_km: km && km > 0 ? Number((lucro / km).toFixed(2)) : null,
+      };
+    }
+
+    if (name === "relatorio_fiscal") {
+      // gera na edge fiscal-report (cálculo 100% em código) e manda o PDF AQUI na conversa
+      const kind = args?.kind === "anual" ? "anual" : "mensal";
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/fiscal-report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+        body: JSON.stringify({ user_id: user.id, periodo: args?.periodo || undefined, kind }),
+      });
+      const r = await res.json().catch(() => ({}));
+      if (!r?.ok) {
+        if (r?.error === "sem_movimento") return { ok: false, error: "sem_movimento", periodo: r.periodo, message: "Não há receitas/gastos registrados nesse período. Diga isso com naturalidade e lembre que é só mandar os prints de ganhos e cupons que você organiza tudo." };
+        return { ok: false, error: String(r?.error || "falha_geracao") };
+      }
+      let pdf_enviado = false;
+      if (r.pdf_url) {
+        pdf_enviado = await waSendDocument(await getSettings(), String(user.phone || ""),
+          r.pdf_url, `relatorio-${kind}-${r.periodo}.pdf`, `📄 Relatório ${kind} — ${r.label}`);
+      }
+      return {
+        ok: true, periodo: r.periodo, label: r.label, kind, totais: r.totals,
+        pdf_enviado, csv_url: r.csv_url,
+        orientacao: "Resuma em 2 linhas: lucro do período + R$/km. O PDF já foi enviado na conversa (se pdf_enviado=true). Diga que serve de base pro contador/carnê-leão, mas NUNCA dê conselho fiscal definitivo ('sou seu copiloto, não seu contador'). Se mei_pct >= 70, avise com cuidado que está se aproximando do limite MEI — é proteção, não bronca. Ofereça o CSV (link) só se ele pedir 'pra planilha/contador'.",
       };
     }
 
@@ -2204,6 +2254,10 @@ PONTOS DA CNH: para "quantos pontos eu tenho?", "vou perder a CNH?", "tô perto 
 
 Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.join(", ")}. Use is_new_category=true só se nenhuma existente servir.
 
+MODO INDICADOR (motorista PRO como indicador da loja): se o motorista pedir carro/estoque PARA OUTRA PESSOA — "meu passageiro quer um Argo", "tem SUV até 80 mil? é pra um cliente", "manda o Onix pra eu mostrar pra um amigo" — use buscar_carros normalmente (por voz ou texto). As fotos que você envia JÁ saem com o link rastreado DELE (Indique e Ganhe). Depois de enviar, oriente em 1 linha: "é só tocar em ENCAMINHAR na foto e mandar pro seu passageiro — se rolar negócio pelo link, sua indicação fica registrada e você ganha a comissão". Se ele pedir pra VOCÊ mandar mensagem direto pro número do passageiro, explique com naturalidade que não fazemos contato com quem não falou com a gente primeiro (proteção do canal) — encaminhar a foto é mais rápido e, vindo dele, o passageiro confia mais. Incentive sem exagero: motorista PRO é um parceiro de vendas das lojas do ecossistema.
+
+RELATÓRIO FISCAL (PRO): para "relatório", "IR", "imposto de renda", "MEI", "carnê-leão", "extrato pra contador" → use relatorio_fiscal (default: mês anterior fechado; "do ano"/"declaração" → anual). O PDF é enviado automaticamente na conversa; você só resume (lucro + R$/km) e diz que serve de base pro contador. NUNCA dê conselho fiscal definitivo — "sou seu copiloto, não seu contador; ele confirma os enquadramentos".
+
 MOTORISTA PRO (TotexCar Co-pilot PRO): MODO PRO do usuário: ${user.driver_mode ? "ATIVO" : "inativo"}. Se ativo, trate o carro como NEGÓCIO: registre ganhos (registrar_receita) além dos gastos, e responda "quanto sobrou?" com lucro_periodo (receita − despesa, lucro por km). Na PRIMEIRA receita registrada, dê boas-vindas ao Modo PRO e explique o resumo semanal. Se alguém sem Modo PRO mandar print de ganhos, registre normalmente (o modo ativa sozinho).
 
 SEU CARRO — CONCIERGE TÉCNICO DO DONO: você é o concierge automotivo PESSOAL deste dono e conhece o carro DELE a fundo. ${fichaStr ? `FICHA TÉCNICA do carro (use como FONTE DA VERDADE): ${fichaStr}` : "A ficha técnica deste carro ainda está sendo montada — se perguntarem especificação, dê uma faixa honesta e diga que vai confirmar."} Cruze a ficha com os DADOS REAIS do dono (hodômetro, consumo calculado, gastos, próximas manutenções por km) pra dar dicas ESPECÍFICAS: qual óleo/pneu/vela e quando trocar, intervalo de revisão, o que fazer neste km, economia de combustível, e compare o consumo REAL com o esperado da ficha (ex.: "seu consumo tá abaixo do normal desse motor — pode ser calibragem/filtro"). Para elétrico/híbrido: cuidados de bateria (carga 20–80%), regeneração, autonomia. ⚠️ REGRA DE OURO: NUNCA invente número exato de óleo/pneu/torque/intervalo — use a ficha; se o dado não estiver nela, dê uma FAIXA e mande confirmar no manual do proprietário ou concessionária. Segurança e o bolso do dono em 1º lugar; seja proativo e didático.
@@ -2254,6 +2308,21 @@ ${JSON.stringify(snapshot)}`;
     };
     const cmdKey = inputText.trim().toLowerCase().split(/\s/)[0];
     if (CMD_MAP[cmdKey]) inputText = CMD_MAP[cmdKey];
+
+    // BOTÕES DAS PROATIVAS (quick replies dos templates copilot_msg*): o rótulo é fixo
+    // ("Sim, quero" etc.) e sozinho não diz do que se trata — embrulha com o contexto da
+    // última proativa enviada (≤72h) pra IA saber o que o usuário está aceitando/recusando.
+    const PROATIVE_BTNS = ["sim, quero", "agora não", "já resolvi", "me ajuda", "ver agora", "depois"];
+    if (PROATIVE_BTNS.includes(inputText.trim().toLowerCase())) {
+      try {
+        const desde = new Date(Date.now() - 72 * 3600_000).toISOString();
+        const { data: pro } = await supabase.from("whatsapp_events")
+          .select("parsed").eq("user_id", user.id).eq("kind", "proativo")
+          .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+        const ptxt = pro?.[0]?.parsed?.texto;
+        if (ptxt) inputText = `[O usuário tocou no botão "${inputText.trim()}" respondendo à sua mensagem proativa: "${String(ptxt).slice(0, 300)}"] — aja de acordo (se aceitou, execute; se recusou/adiou, confirme em 1 linha sem insistir).`;
+      } catch { /* sem contexto, segue como texto normal */ }
+    }
     if (msg.kind === "image") {
       let img: { data: string; media_type: string } | null = null;
       if (msg.provider === "meta") {
