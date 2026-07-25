@@ -83,16 +83,33 @@ export function consumoDoVeiculo(veh: any, realKmL: number | null): { kml: numbe
   if (Number(realKmL) > 0) return { kml: Number(realKmL), fonte: "real (medido pelos abastecimentos dele)" };
 
   const of = veh?.consumo_oficial || {};
+  const ficha = veh?.ficha_tecnica || {};
+  const fichaKmL = (): number | null => {
+    for (const campo of [ficha.consumo_estrada, ficha.consumo_cidade]) {
+      const m = String(campo || "").replace(",", ".").match(/(\d+(?:\.\d+)?)\s*km\s*\/?\s*l/i);
+      if (m && Number(m[1]) >= 3 && Number(m[1]) <= 30) return Number(m[1]);
+    }
+    return null;
+  };
+
+  // HÍBRIDO/PHEV: o ciclo INMETRO só-combustão SUBESTIMA muito (ex.: Tank 300 PHEV dá 7,6
+  // no PBE e ~18,8 no uso real) → pra híbrido, a ficha técnica vem primeiro.
+  const hibrido = /phev|h[íi]brid|hev\b/i.test(`${of.match || ""} ${ficha.combustivel || ""} ${veh?.combustivel || ""} ${veh?.modelo || ""}`)
+    || Number(of.autonomia_km) > 0;
+  if (hibrido) {
+    const f = fichaKmL();
+    if (f) return { kml: f, fonte: "ficha técnica do modelo (híbrido — o ciclo INMETRO subestima)" };
+  }
+
   const oficial = Number(of.referencia_media) || Number(of.estrada_gasolina) || Number(of.cidade_gasolina)
     || Number(of.estrada_etanol) || Number(of.cidade_etanol)
     || Number(of.estrada_kml) || Number(of.rodovia_kml) || Number(of.cidade_kml); // chaves legadas
   if (oficial > 0) return { kml: oficial, fonte: "oficial INMETRO" };
 
   // ficha técnica guarda texto ("18,8 km/L (gasolina) / 14,1 km/L (etanol)") → pega o 1º número
-  const ficha = veh?.ficha_tecnica || {};
-  for (const campo of [ficha.consumo_estrada, ficha.consumo_cidade]) {
-    const m = String(campo || "").replace(",", ".").match(/(\d+(?:\.\d+)?)\s*km\s*\/?\s*l/i);
-    if (m && Number(m[1]) >= 3 && Number(m[1]) <= 30) return { kml: Number(m[1]), fonte: "ficha técnica do modelo" };
+  {
+    const f = fichaKmL();
+    if (f) return { kml: f, fonte: "ficha técnica do modelo" };
   }
 
   // último recurso: estimativa honesta pela categoria/combustível

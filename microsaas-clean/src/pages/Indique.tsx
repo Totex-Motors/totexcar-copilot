@@ -53,7 +53,8 @@ export default function Indique() {
   const shareStore = () => {
     const link = storeReferralLink(feed?.dealership?.url, code);
     if (!link) { toast({ title: "Loja indisponível no marketplace", variant: "destructive" }); return; }
-    shareToFriend(link, `Conheça os carros da ${storeName}! 🎁 Pela minha indicação você ganha ${offer}:`);
+    // SEM emojis no texto do wa.me: em vários Androids eles viram "�" na mensagem compartilhada
+    shareToFriend(link, `Conheça os carros da ${storeName}! Pela minha indicação você ganha: ${offer}. Veja o estoque:`);
   };
 
   if (loading) {
@@ -203,7 +204,7 @@ function CarCard({ car, code, storeName, offer, onCopy }: {
           {[car.km != null ? `${Number(car.km).toLocaleString("pt-BR")} km` : null, car.color, car.fuel].filter(Boolean).join(" · ")}
         </p>
         <div className="flex gap-2 mt-2">
-          <Button size="sm" className="flex-1 bg-gradient-primary" onClick={() => shareToFriend(link, `Olha esse ${car.title} na ${storeName}! 🎁 Pela minha indicação você ganha ${offer}:`)}>
+          <Button size="sm" className="flex-1 bg-gradient-primary" onClick={() => shareToFriend(link, `Olha esse ${car.title} na ${storeName}! Pela minha indicação você ganha: ${offer}. Veja aqui:`)}>
             <Share2 className="w-4 h-4 mr-1.5" /> Indicar
           </Button>
           <Button size="sm" variant="outline" onClick={() => onCopy(link)} title="Copiar link">
