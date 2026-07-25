@@ -1435,6 +1435,28 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
     }
 
     if (name === "planejar_viagem") {
+      // CAMINHO PRINCIPAL: edge viagem (mesmo motor do app) — pesquisa ao vivo, monta o plano
+      // ESTRUTURADO e SALVA em viagem_planos → a página /viagem abre em cards sem recalcular.
+      try {
+        const resV = await fetch(`${SUPABASE_URL}/functions/v1/viagem`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+          body: JSON.stringify({ user_id: user.id, destino: args?.destino || undefined, origem: args?.origem || undefined, dias: args?.dias || undefined, perfil: args?.perfil || undefined }),
+        });
+        const rv = await resV.json().catch(() => ({}));
+        if (rv?.ok && (rv.plano || rv.plano_texto)) {
+          const { data: cfgApp } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+          const appUrl = String(cfgApp?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+          return {
+            ok: true, plano: rv.plano || null, plano_texto: rv.plano_texto || null,
+            dados_do_carro: rv.dados, pesquisa_web: rv.pesquisa_web,
+            link_cards: `${appUrl}/viagem`,
+            instrucao: "Transforme o PLANO em uma mensagem de WhatsApp gostosa de ler: título com origem→destino, a conta do combustível MOSTRADA (dados reais do carro), pedágios (total ida+volta), balsa se houver (preço + dica), 2-3 hospedagens por faixa, comidas imperdíveis e o alerta de manutenção pré-viagem se existir. Use *negrito* e emojis com moderação. FECHE SEMPRE com: '✨ Seu plano ficou salvo no app com cards e valores: ' + link_cards. NUNCA invente valor que não está no plano.",
+          };
+        }
+      } catch (e) { console.error("edge viagem falhou, caindo no caminho inline:", e); }
+
+      // FALLBACK (edge indisponível): monta os ingredientes aqui e a IA compõe o texto.
       // MODO VIAGEM: entrega os dados REAIS do carro; a IA monta roteiro + contas por cima.
       // 1) consumo: real (tanque-a-tanque) > oficial (INMETRO) > estimativa por categoria
       const consumoReal = await computeConsumo(user.id).catch(() => null);

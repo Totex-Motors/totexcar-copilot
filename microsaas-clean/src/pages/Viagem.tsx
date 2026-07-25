@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,23 @@ export default function Viagem() {
   const [planoTexto, setPlanoTexto] = useState<string | null>(null);
   const [dados, setDados] = useState<DadosCarro | null>(null);
   const [pesquisaWeb, setPesquisaWeb] = useState(false);
+  const [planoSalvo, setPlanoSalvo] = useState<{ quando: string; origem_pedido: string } | null>(null);
+
+  // último plano salvo (gerado aqui OU no WhatsApp) abre direto em cards, sem recalcular
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await (supabase as any).from("viagem_planos")
+          .select("plano, dados, created_at, origem_pedido")
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (data?.plano) {
+          setPlano(data.plano);
+          setDados(data.dados || null);
+          setPlanoSalvo({ quando: data.created_at, origem_pedido: data.origem_pedido || "app" });
+        }
+      } catch { /* sem plano salvo */ }
+    })();
+  }, []);
 
   const montar = async () => {
     setLoading(true);
@@ -175,6 +192,18 @@ export default function Viagem() {
 
         {temResultado && (
           <>
+            {planoSalvo && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-2.5 text-sm">
+                <span className="text-muted-foreground">
+                  📌 Seu último plano{planoSalvo.origem_pedido === "whatsapp" ? ", feito pelo WhatsApp" : ""} em{" "}
+                  {new Date(planoSalvo.quando).toLocaleDateString("pt-BR")}.
+                </span>
+                <Button size="sm" variant="outline" className="gap-1.5 shrink-0"
+                  onClick={() => { setPlano(null); setPlanoTexto(null); setPlanoSalvo(null); }}>
+                  <RotateCcw className="w-3.5 h-3.5" /> Montar outro
+                </Button>
+              </div>
+            )}
             {/* Cabeçalho do plano */}
             <Card className="border-0 shadow-premium-md bg-gradient-primary text-white overflow-hidden">
               <CardContent className="p-6">

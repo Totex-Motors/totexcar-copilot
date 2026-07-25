@@ -76,26 +76,33 @@ Deno.serve(async (req) => {
 
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return json({ error: "missing_token" }, 401);
-  const { data: ud, error: uErr } = await admin.auth.getUser(token);
-  if (uErr || !ud?.user) return json({ error: "invalid_token" }, 401);
 
   let p: any = {};
   try { p = await req.json(); } catch { /* */ }
 
+  // service role (webhook do WhatsApp) pode indicar o usuário; JWT comum usa o próprio
+  let userId = "";
+  if (token === SERVICE_ROLE && p.user_id) userId = String(p.user_id);
+  else {
+    const { data: ud, error: uErr } = await admin.auth.getUser(token);
+    if (uErr || !ud?.user) return json({ error: "invalid_token" }, 401);
+    userId = ud.user.id;
+  }
+
   try {
-    const { data: me } = await admin.from("users").select("name, dealership").eq("id", ud.user.id).single();
+    const { data: me } = await admin.from("users").select("name, dealership").eq("id", userId).single();
     const { data: veh } = await admin.from("accounts").select("*")
-      .eq("user_id", ud.user.id).eq("is_active", true).limit(1).maybeSingle();
+      .eq("user_id", userId).eq("is_active", true).limit(1).maybeSingle();
 
     // dados reais do carro
-    const real = await consumoReal(ud.user.id);
+    const real = await consumoReal(userId);
     const oficial = (veh as any)?.consumo_oficial;
     const kmPorLitro = real?.media_km_por_litro
       ?? (Number(oficial?.estrada_kml || oficial?.rodovia_kml || oficial?.cidade_kml) > 0
         ? Number(oficial.estrada_kml || oficial.rodovia_kml || oficial.cidade_kml) : null);
 
     const { data: fuels } = await admin.from("transactions")
-      .select("amount, litros").eq("user_id", ud.user.id).gt("litros", 0)
+      .select("amount, litros").eq("user_id", userId).gt("litros", 0)
       .order("transaction_date", { ascending: false }).limit(5);
     let precoLitro: number | null = null;
     if (fuels?.length) {
@@ -105,7 +112,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: rem } = await admin.from("maintenance_reminders").select("*")
-      .eq("user_id", ud.user.id).eq("active", true);
+      .eq("user_id", userId).eq("active", true);
     const kmAtual = Number(veh?.hodometro || 0);
     const pendencias = (rem || []).map((r: any) => ({
       item: r.title, faltam_km: Number(r.interval_km) - (kmAtual - Number(r.last_km || 0)),
@@ -160,6 +167,17 @@ REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_
       if (a >= 0 && b > a) t = t.slice(a, b + 1);
       plano = JSON.parse(t);
     } catch { /* cai no texto cru */ }
+
+    // salva o plano estruturado — a página /viagem abre o último em cards sem recalcular
+    if (plano) {
+      try {
+        await admin.from("viagem_planos").insert({
+          user_id: userId, destino: p.destino || null, origem: p.origem || null,
+          dias: p.dias != null ? String(p.dias) : null, perfil: p.perfil || null,
+          plano, dados, origem_pedido: token === SERVICE_ROLE ? "whatsapp" : "app",
+        });
+      } catch (e) { console.error("erro ao salvar plano:", e); }
+    }
 
     return json({ ok: true, plano, plano_texto: plano ? null : bruto, dados, pesquisa_web: !!(pesquisa || lugares) });
   } catch (e) {
