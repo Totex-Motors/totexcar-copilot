@@ -2544,15 +2544,18 @@ ${JSON.stringify(snapshot)}`;
     // tool buscar_servico e responder em texto (mesmo resultado, sem a tela bonita).
     if (msg.kind !== "image" && RADAR_FLOW_ID && isRadarQuery(inputText)) {
       const sRad = await getSettings();
-      await waSendFlow(sRad, msg.phone, {
+      const fallbackRadar = "Me diga qual serviço você precisa (oficina, pneu, bateria, guincho…) e em que cidade/bairro você está, que eu procuro pra você. 🔎";
+      const okFlow = await waSendFlow(sRad, msg.phone, {
         header: "Radar de Serviços 🔎",
         body: "Me diga o que seu carro precisa e onde você está. Eu procuro oficina, borracharia, guincho ou chaveiro perto de você, comparo avaliação e distância, e você escolhe.",
         cta: "Procurar serviço",
         flowId: RADAR_FLOW_ID,
         token: `radar:${user.id}`,
-        fallbackText: "Me diga qual serviço você precisa (oficina, pneu, bateria, guincho…) e em que cidade/bairro você está, que eu procuro pra você. 🔎",
+        fallbackText: fallbackRadar,
       });
-      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "radar_flow_cta" }, user_id: user.id }).eq("id", eventId);
+      // NUNCA silêncio: se a Meta rejeitar o flow, responde em texto (a IA assume dali)
+      if (!okFlow) await waSendText(sRad, msg.phone, fallbackRadar);
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "radar_flow_cta", flow_ok: okFlow }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
@@ -2560,15 +2563,21 @@ ${JSON.stringify(snapshot)}`;
     // porque a pesquisa de rota + composição pela IA passa MUITO do timeout do endpoint).
     if (msg.kind !== "image" && VIAGEM_FLOW_ID && isViagemQuery(inputText)) {
       const sVia = await getSettings();
-      await waSendFlow(sVia, msg.phone, {
+      const fallbackViagem = "Pra onde você quer viajar? Me diga o destino que eu monto o plano com o consumo real do seu carro. 🏖️";
+      // ⚠️ modo_viagem é formulário PURO (sem endpoint): precisa de flow_action NAVIGATE com a
+      // tela inicial ("VIAGEM"). Sem o screen, o waSendFlow manda data_exchange e a Meta REJEITA
+      // (foi a causa do silêncio nos testes de 23-24/07).
+      const okFlow = await waSendFlow(sVia, msg.phone, {
         header: "Modo Viagem 🏖️",
         body: "Vou montar seu plano de viagem com o consumo REAL do seu carro: combustível, pedágio, balsa, onde ficar e onde comer. Só me diga pra onde você vai.",
         cta: "Planejar viagem",
         flowId: VIAGEM_FLOW_ID,
         token: `viagem:${user.id}`,
-        fallbackText: "Pra onde você quer viajar? Me diga o destino que eu monto o plano com o consumo real do seu carro. 🏖️",
+        screen: "VIAGEM",
+        fallbackText: fallbackViagem,
       });
-      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "viagem_flow_cta" }, user_id: user.id }).eq("id", eventId);
+      if (!okFlow) await waSendText(sVia, msg.phone, fallbackViagem);
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "viagem_flow_cta", flow_ok: okFlow }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
