@@ -73,3 +73,35 @@ Se algum valor não for encontrado, diga explicitamente "não encontrei valor at
     return null;
   }
 }
+
+// ---- CONSUMO DO VEÍCULO (cadeia de fontes) ----
+// real (tanque-a-tanque) > oficial INMETRO (Auto Data: cidade_gasolina/estrada_gasolina/
+// referencia_media — ⚠️ NÃO é estrada_kml, bug que deixava o Modo Viagem "sem dados") >
+// ficha técnica (texto tipo "18,8 km/L (gasolina)") > estimativa pela categoria.
+// Retorna também a FONTE, pra IA sempre dizer de onde veio o número.
+export function consumoDoVeiculo(veh: any, realKmL: number | null): { kml: number | null; fonte: string } {
+  if (Number(realKmL) > 0) return { kml: Number(realKmL), fonte: "real (medido pelos abastecimentos dele)" };
+
+  const of = veh?.consumo_oficial || {};
+  const oficial = Number(of.referencia_media) || Number(of.estrada_gasolina) || Number(of.cidade_gasolina)
+    || Number(of.estrada_etanol) || Number(of.cidade_etanol)
+    || Number(of.estrada_kml) || Number(of.rodovia_kml) || Number(of.cidade_kml); // chaves legadas
+  if (oficial > 0) return { kml: oficial, fonte: "oficial INMETRO" };
+
+  // ficha técnica guarda texto ("18,8 km/L (gasolina) / 14,1 km/L (etanol)") → pega o 1º número
+  const ficha = veh?.ficha_tecnica || {};
+  for (const campo of [ficha.consumo_estrada, ficha.consumo_cidade]) {
+    const m = String(campo || "").replace(",", ".").match(/(\d+(?:\.\d+)?)\s*km\s*\/?\s*l/i);
+    if (m && Number(m[1]) >= 3 && Number(m[1]) <= 30) return { kml: Number(m[1]), fonte: "ficha técnica do modelo" };
+  }
+
+  // último recurso: estimativa honesta pela categoria/combustível
+  const cat = `${ficha.categoria || ""} ${veh?.modelo || ""}`.toLowerCase();
+  const diesel = /diesel/i.test(String(veh?.combustivel || ficha.combustivel || ""));
+  let est: number | null = null;
+  if (/picape|pickup/.test(cat)) est = diesel ? 10 : 8.5;
+  else if (/suv/.test(cat)) est = diesel ? 10.5 : 10;
+  else if (/sed[aã]/.test(cat)) est = 12;
+  else if (/hatch|compacto/.test(cat)) est = 12.5;
+  return est ? { kml: est, fonte: "estimativa pela categoria do carro (aproximada)" } : { kml: null, fonte: "desconhecido" };
+}

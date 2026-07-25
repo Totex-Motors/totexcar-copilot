@@ -6,7 +6,7 @@
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
-import { pesquisarRota, pesquisarLugares } from "../_shared/route-research.ts";
+import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
 import { loadDossier, runExtractor } from "../_shared/proactive.ts";
 import { careFuel, careOdometer, careStatement, seloElegivel } from "../_shared/care-score.ts";
 import { upcoming as calendarUpcoming, kmMedioDia as calendarKmDia } from "../_shared/calendar.ts";
@@ -1447,11 +1447,13 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         if (rv?.ok && (rv.plano || rv.plano_texto)) {
           const { data: cfgApp } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
           const appUrl = String(cfgApp?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+          // link só quando o plano ESTRUTURADO existe (é ele que vira cards e fica salvo)
+          const linkCards = rv.plano ? `${appUrl}/viagem` : null;
           return {
             ok: true, plano: rv.plano || null, plano_texto: rv.plano_texto || null,
             dados_do_carro: rv.dados, pesquisa_web: rv.pesquisa_web,
-            link_cards: `${appUrl}/viagem`,
-            instrucao: "Transforme o PLANO em uma mensagem de WhatsApp gostosa de ler: título com origem→destino, a conta do combustível MOSTRADA (dados reais do carro), pedágios (total ida+volta), balsa se houver (preço + dica), 2-3 hospedagens por faixa, comidas imperdíveis e o alerta de manutenção pré-viagem se existir. Use *negrito* e emojis com moderação. FECHE SEMPRE com: '✨ Seu plano ficou salvo no app com cards e valores: ' + link_cards. NUNCA invente valor que não está no plano.",
+            link_cards: linkCards,
+            instrucao: `Transforme o PLANO em uma mensagem de WhatsApp gostosa de ler: título com origem→destino, a conta do combustível MOSTRADA (cite a fonte do consumo que está em dados_do_carro.fonte_consumo — se for estimativa, DIGA que é estimativa), pedágios (total ida+volta), balsa se houver (preço + dica), 2-3 hospedagens por faixa, comidas imperdíveis e o alerta de manutenção pré-viagem se existir. Use *negrito* e emojis com moderação.${linkCards ? " FECHE SEMPRE com: '✨ Seu plano ficou salvo no app com cards e valores: " + linkCards + "'" : ""} NUNCA invente valor que não está no plano.`,
           };
         }
       } catch (e) { console.error("edge viagem falhou, caindo no caminho inline:", e); }
@@ -1460,10 +1462,8 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       // MODO VIAGEM: entrega os dados REAIS do carro; a IA monta roteiro + contas por cima.
       // 1) consumo: real (tanque-a-tanque) > oficial (INMETRO) > estimativa por categoria
       const consumoReal = await computeConsumo(user.id).catch(() => null);
-      const oficial = (vehicle as any)?.consumo_oficial;
-      const kmPorLitro = Number(consumoReal?.media_km_por_litro) > 0 ? Number(consumoReal.media_km_por_litro)
-        : Number(oficial?.estrada_kml || oficial?.rodovia_kml || oficial?.cidade_kml) > 0
-          ? Number(oficial.estrada_kml || oficial.rodovia_kml || oficial.cidade_kml) : null;
+      const consV = consumoDoVeiculo(vehicle, Number(consumoReal?.media_km_por_litro) > 0 ? Number(consumoReal.media_km_por_litro) : null);
+      const kmPorLitro = consV.kml;
       const custoPorKm = Number(consumoReal?.custo_combustivel_por_km) > 0 ? Number(consumoReal.custo_combustivel_por_km) : null;
       // 2) preço médio do litro que ELE paga (últimos abastecimentos com litros)
       const { data: fuels } = await supabase.from("transactions")
@@ -1501,7 +1501,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         carro: { marca: vehicle?.marca, modelo: vehicle?.modelo, ano: vehicle?.ano_modelo, combustivel: vehicle?.combustivel },
         consumo_km_por_litro: kmPorLitro,
         custo_combustivel_por_km_real: custoPorKm,
-        fonte_consumo: Number(consumoReal?.media_km_por_litro) > 0 ? "real (medido pelos abastecimentos dele)" : kmPorLitro ? "oficial INMETRO" : "desconhecido",
+        fonte_consumo: consV.fonte,
         preco_medio_litro_que_ele_paga: precoLitro,
         manutencoes_antes_de_viajar: pendencias,
         loja_do_cliente: user.dealership || null,

@@ -2,7 +2,7 @@
 // Mesmo motor do agente WhatsApp (tool planejar_viagem), exposto pro app: o front manda
 // destino/origem/dias/perfil e recebe o plano pronto (IA) + os dados usados na conta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { pesquisarRota, pesquisarLugares } from "../_shared/route-research.ts";
+import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -94,12 +94,10 @@ Deno.serve(async (req) => {
     const { data: veh } = await admin.from("accounts").select("*")
       .eq("user_id", userId).eq("is_active", true).limit(1).maybeSingle();
 
-    // dados reais do carro
+    // dados reais do carro — cadeia: real > INMETRO > ficha técnica > estimativa por categoria
     const real = await consumoReal(userId);
-    const oficial = (veh as any)?.consumo_oficial;
-    const kmPorLitro = real?.media_km_por_litro
-      ?? (Number(oficial?.estrada_kml || oficial?.rodovia_kml || oficial?.cidade_kml) > 0
-        ? Number(oficial.estrada_kml || oficial.rodovia_kml || oficial.cidade_kml) : null);
+    const cons = consumoDoVeiculo(veh, real?.media_km_por_litro ?? null);
+    const kmPorLitro = cons.kml;
 
     const { data: fuels } = await admin.from("transactions")
       .select("amount, litros").eq("user_id", userId).gt("litros", 0)
@@ -121,7 +119,7 @@ Deno.serve(async (req) => {
     const dados = {
       carro: veh ? `${veh.marca || ""} ${veh.modelo || ""} ${veh.ano_modelo || ""}`.trim() : null,
       consumo_km_por_litro: kmPorLitro,
-      fonte_consumo: real ? "real (abastecimentos medidos)" : kmPorLitro ? "oficial INMETRO" : null,
+      fonte_consumo: kmPorLitro ? cons.fonte : null,
       custo_por_km: real?.custo_por_km ?? null,
       preco_medio_litro: precoLitro,
       manutencoes_pendentes: pendencias,
