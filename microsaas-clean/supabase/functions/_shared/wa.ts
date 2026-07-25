@@ -122,7 +122,8 @@ export async function waSendDocument(s: WaSettings, phone: string, docUrl: strin
 // ---------------- envio: FLOW interativo (resposta em janela de 24h) ----------------
 // Abre um formulário nativo (WhatsApp Flow). No uazapi (sem flows), cai no texto de fallback.
 export async function waSendFlow(s: WaSettings, phone: string, opts: {
-  body: string; cta: string; flowId: string; token?: string; header?: string; screen?: string; fallbackText?: string;
+  body: string; cta: string; flowId: string; token?: string; header?: string; screen?: string;
+  data?: Record<string, unknown>; fallbackText?: string;
 }): Promise<boolean> {
   const to = onlyDigits(phone);
   if (!to) return false;
@@ -141,7 +142,7 @@ export async function waSendFlow(s: WaSettings, phone: string, opts: {
             flow_cta: opts.cta.slice(0, 30),
             ...(opts.token ? { flow_token: opts.token } : {}),
             ...(opts.screen
-              ? { flow_action: "navigate", flow_action_payload: { screen: opts.screen } }
+              ? { flow_action: "navigate", flow_action_payload: { screen: opts.screen, ...(opts.data ? { data: opts.data } : {}) } }
               : { flow_action: "data_exchange" }),
           },
         },

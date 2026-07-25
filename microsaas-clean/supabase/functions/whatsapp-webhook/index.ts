@@ -2567,6 +2567,13 @@ ${JSON.stringify(snapshot)}`;
       // ⚠️ modo_viagem é formulário PURO (sem endpoint): precisa de flow_action NAVIGATE com a
       // tela inicial ("VIAGEM"). Sem o screen, o waSendFlow manda data_exchange e a Meta REJEITA
       // (foi a causa do silêncio nos testes de 23-24/07).
+      // dados dinâmicos do formulário (o flow JSON lê ${data.*}): opções dos dropdowns +
+      // carro do usuário no topo + cidade como origem pré-preenchida
+      const { data: vVia } = await supabase.from("accounts")
+        .select("marca, modelo, cidade, uf").eq("user_id", user.id).eq("is_active", true).limit(1).maybeSingle();
+      const carroLabel = vVia?.marca || vVia?.modelo
+        ? `🚗 Seu ${[vVia.marca, vVia.modelo].filter(Boolean).join(" ")} — vou usar o consumo REAL dele no cálculo.`
+        : "🚗 Vou usar o consumo real do seu carro no cálculo.";
       const okFlow = await waSendFlow(sVia, msg.phone, {
         header: "Modo Viagem 🏖️",
         body: "Vou montar seu plano de viagem com o consumo REAL do seu carro: combustível, pedágio, balsa, onde ficar e onde comer. Só me diga pra onde você vai.",
@@ -2574,6 +2581,25 @@ ${JSON.stringify(snapshot)}`;
         flowId: VIAGEM_FLOW_ID,
         token: `viagem:${user.id}`,
         screen: "VIAGEM",
+        data: {
+          carro: carroLabel,
+          origem_padrao: vVia?.cidade ? [vVia.cidade, vVia.uf].filter(Boolean).join(" - ") : "",
+          duracoes: [
+            { id: "2", title: "Bate e volta / 2 dias" },
+            { id: "3", title: "Fim de semana (3 dias)" },
+            { id: "5", title: "Até 5 dias" },
+            { id: "7", title: "1 semana" },
+            { id: "10", title: "Mais de 1 semana" },
+          ],
+          perfis: [
+            { id: "familia", title: "👨‍👩‍👧 Família" },
+            { id: "casal", title: "💑 Casal" },
+            { id: "amigos", title: "🎉 Amigos" },
+            { id: "sozinho", title: "🧳 Sozinho(a)" },
+            { id: "pet", title: "🐶 Com pet" },
+            { id: "carro_novo", title: "✨ Primeira viagem com o carro novo" },
+          ],
+        },
         fallbackText: fallbackViagem,
       });
       if (!okFlow) await waSendText(sVia, msg.phone, fallbackViagem);
