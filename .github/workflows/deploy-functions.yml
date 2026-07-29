@@ -39,7 +39,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinado no último CLI v1: o config.toml do repo é formato v1
+          # ([inbucket], etc.) e a v2 do CLI dá ProjectConfigParseError.
+          version: 1.226.4
       - name: Deploy
         run: |
           FN="${{ github.event.inputs.function }}"
