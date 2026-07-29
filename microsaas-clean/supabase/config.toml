@@ -21,7 +21,7 @@ max_client_conn = 100
 
 [realtime]
 enabled = true
-ip_version = "ipv6"
+ip_version = "IPv6"
 
 [studio]
 enabled = true
