@@ -1,13 +1,15 @@
 name: Deploy
 
 # Deploy na Vercel a cada push na main + manual (workflow_dispatch).
-# Sobe o código e deixa a Vercel INSTALAR e BUILDAR no servidor dela (evita
-# problemas de build local tipo "vite not found"). Funciona com repo privado:
-# o upload é direto via token da Vercel, sem depender do app GitHub↔Vercel.
+# Sobe o código e a Vercel INSTALA e BUILDA no servidor dela (evita build
+# local). Funciona com repo privado (upload via token, sem app GitHub↔Vercel).
+#
+# IMPORTANTE: rodar da RAIZ do repo. O projeto na Vercel já tem
+# "Root Directory = microsaas-clean" configurado — se rodar de dentro de
+# microsaas-clean, o caminho dobra (microsaas-clean/microsaas-clean).
 #
 # Segredos (Settings → Secrets and variables → Actions → Repository secrets):
 #   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
-# App em microsaas-clean/.
 
 on:
   push:
@@ -26,9 +28,6 @@ jobs:
   deploy:
     name: Deploy to Vercel (production)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: microsaas-clean
     steps:
       - uses: actions/checkout@v4
 
@@ -40,5 +39,5 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
-      - name: Deploy (Vercel builds on its servers)
+      - name: Deploy (Vercel builds on its servers; root dir vem do projeto)
         run: vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
