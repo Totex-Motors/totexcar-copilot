@@ -16,6 +16,7 @@ import {
   Plane,
   Radar,
   Award,
+  Megaphone,
   LogOut
 } from "lucide-react";
 import { useAuth, useCurrentUser } from "@/hooks/useAuth";
@@ -54,6 +55,10 @@ const navigation = [
   { title: "Suporte", url: "/suporte", icon: LifeBuoy },
 ];
 
+// "Anuncie seu carro" (vitrine self-publish) — SÓ para cliente do shopping/avulso,
+// não para quem foi provisionado por loja parceira (users.dealership preenchido).
+const anuncieItem = { title: "Anuncie seu carro", url: "https://anuncie.totexmotors.com", icon: Megaphone, external: true };
+
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
@@ -68,9 +73,16 @@ export function AppSidebar() {
     navigate("/");
   };
 
+  // cliente do shopping/avulso = sem loja provisionadora (users.dealership vazio)
+  const isShoppingClient = !((userData?.dealership ?? "").toString().trim());
+  const baseNav: Array<{ title: string; url: string; icon: typeof Home; external?: boolean }> = [...navigation];
+  if (isShoppingClient) {
+    const idx = baseNav.findIndex((i) => i.url === "/recompra");
+    baseNav.splice(idx >= 0 ? idx + 1 : baseNav.length, 0, anuncieItem);
+  }
   const navItems = userData?.role === "admin"
-    ? [...navigation, { title: "Admin", url: "/admin", icon: ShieldCheck }]
-    : navigation;
+    ? [...baseNav, { title: "Admin", url: "/admin", icon: ShieldCheck }]
+    : baseNav;
 
   const isActive = (path: string) => {
     if (path === "/" && currentPath === "/") return true;
@@ -111,21 +123,31 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="space-y-1">
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${getNavClasses(item.url)}`}
-                    >
-                      <item.icon className="w-5 h-5 flex-shrink-0" />
-                      {!collapsed && (
-                        <span className="font-medium">{item.title}</span>
+              {navItems.map((item) => {
+                const isExternal = "external" in item && item.external;
+                const linkCls = `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${getNavClasses(item.url)}`;
+                const inner = (
+                  <>
+                    <item.icon className="w-5 h-5 flex-shrink-0" />
+                    {!collapsed && <span className="font-medium">{item.title}</span>}
+                  </>
+                );
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      {isExternal ? (
+                        <a href={item.url} target="_blank" rel="noopener noreferrer" className={linkCls}>
+                          {inner}
+                        </a>
+                      ) : (
+                        <NavLink to={item.url} className={linkCls}>
+                          {inner}
+                        </NavLink>
                       )}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
