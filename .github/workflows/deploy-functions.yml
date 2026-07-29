@@ -1,0 +1,48 @@
+name: Deploy Supabase Functions
+
+# Deploy das edge functions do Co-Pilot (Supabase) via CLI — que empacota os
+# imports de _shared automaticamente (o que o deploy inline não faz).
+# Dispara no push da main quando functions mudam, e manualmente (workflow_dispatch).
+#
+# Segredo necessário (Settings → Secrets and variables → Actions → Repository secrets):
+#   SUPABASE_ACCESS_TOKEN — token pessoal em supabase.com/dashboard/account/tokens
+#
+# App/Supabase ficam em microsaas-clean/. Projeto: gkkjhnzkqhpgrwrmofev.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'microsaas-clean/supabase/functions/**'
+  workflow_dispatch:
+    inputs:
+      function:
+        description: 'Função a deployar (vazio = whatsapp-webhook)'
+        required: false
+        default: 'whatsapp-webhook'
+
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: supabase functions deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: microsaas-clean
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: gkkjhnzkqhpgrwrmofev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Deploy
+        run: |
+          FN="${{ github.event.inputs.function }}"
+          FN="${FN:-whatsapp-webhook}"
+          echo "Deployando função: $FN"
+          supabase functions deploy "$FN" --project-ref "$PROJECT_REF" --no-verify-jwt
