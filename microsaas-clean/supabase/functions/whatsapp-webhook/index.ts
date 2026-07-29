@@ -2040,6 +2040,31 @@ async function runAgent(cfg: { provider: string; model: string; key: string }, s
 }
 
 // ---------- handler ----------
+// CTWA (Click-to-WhatsApp): quando a mensagem vem de um anúncio, o payload traz um
+// `referral` com o id do anúncio. O resolvedor `stand.ctwa_lead` mapeia esse id para
+// campanha → carro → vendedor, REGISTRA o lead (stand.lead, source=ctwa) e devolve tudo.
+// Assim o lead do anúncio fica na mão da Totex, já identificado. O fluxo normal da IA
+// segue respondendo o comprador; aqui só registramos/identificamos o lead.
+async function handleCtwaReferral(msg: any) {
+  try {
+    const ref = msg?.referral;
+    if (!ref?.source_id) return;
+    const { data, error } = await supabase.schema("stand").rpc("ctwa_lead", {
+      p_source_id: String(ref.source_id),
+      p_phone: msg.phone || null,
+      p_name: msg.contactName || null,
+      p_message: msg.text || null,
+    });
+    if (error) { console.error("ctwa_lead rpc:", error.message); return; }
+    if (data?.found) {
+      console.log("CTWA lead:", JSON.stringify({ car: data.car, seller: data.seller?.name, lead_id: data.lead_id }));
+      // TODO(roteamento): notificar o vendedor (data.seller.phone) e/ou abrir o card do carro.
+    } else {
+      console.log("CTWA referral sem correspondência no stand:", ref.source_id);
+    }
+  } catch (e) { console.error("handleCtwaReferral:", e); }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   _settings = null; // recarrega configs a cada requisição
@@ -2106,6 +2131,15 @@ Deno.serve(async (req) => {
   }
   const eventId = evt?.id;
   const eventAt = evt?.created_at || new Date().toISOString();
+
+  // CTWA: se a mensagem veio de um anúncio (referral), registra o lead e identifica o carro.
+  // Roda uma vez por mensagem (depois do dedup), sem bloquear a resposta 200.
+  if (metaMsg?.referral) {
+    const ctwaWork = handleCtwaReferral(msg);
+    const wu2 = (globalThis as any).EdgeRuntime?.waitUntil;
+    if (wu2) wu2(ctwaWork.catch((e: any) => console.error("ctwa bg:", e)));
+    else await ctwaWork;
+  }
 
   // Responde 200 JÁ e processa em BACKGROUND (IA leva 5-20s; com o debounce, mais) —
   // segura o Meta sem timeout/retry. Fora do EdgeRuntime (testes locais), processa inline.

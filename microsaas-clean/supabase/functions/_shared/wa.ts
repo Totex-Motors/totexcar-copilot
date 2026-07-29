@@ -203,19 +203,32 @@ export async function metaDownloadMedia(s: WaSettings, mediaId: string): Promise
 
 // ---------------- inbound Meta → formato normalizado do webhook ----------------
 // Devolve null se o payload NÃO for da Cloud API (aí o webhook tenta o parser Uazapi).
+export type MetaReferral = {
+  source_id: string; source_type: string; headline: string; body: string; source_url: string; ctwa_clid: string;
+};
 export function parseMetaInbound(body: any): {
   provider: "meta"; fromMe: boolean; phone: string; kind: "text" | "image" | "audio" | "pdf" | "other";
   text: string; transcription: string; mediaId: string; mimetype: string; messageid: string;
   statusOnly: boolean; phoneNumberId: string; flowReply: Record<string, any> | null; isMenuReply: boolean;
+  referral: MetaReferral | null; contactName: string;
 } | null {
   if (body?.object !== "whatsapp_business_account") return null;
   const value = body?.entry?.[0]?.changes?.[0]?.value;
   const phoneNumberId = String(value?.metadata?.phone_number_id || "");
+  const contactName = String(value?.contacts?.[0]?.profile?.name || "");
   const m = value?.messages?.[0];
   if (!m) {
     // eventos de status (sent/delivered/read) ou outros — reconhecer e ignorar
-    return { provider: "meta", fromMe: false, phone: "", kind: "other", text: "", transcription: "", mediaId: "", mimetype: "", messageid: "", statusOnly: true, phoneNumberId, flowReply: null, isMenuReply: false };
+    return { provider: "meta", fromMe: false, phone: "", kind: "other", text: "", transcription: "", mediaId: "", mimetype: "", messageid: "", statusOnly: true, phoneNumberId, flowReply: null, isMenuReply: false, referral: null, contactName };
   }
+  // CTWA: mensagem vinda de um anúncio de clique-para-WhatsApp traz um objeto `referral`
+  // com o id do anúncio (source_id). Usado para identificar o carro/campanha do lead.
+  const r = m.referral;
+  const referral: MetaReferral | null = (r && r.source_id) ? {
+    source_id: String(r.source_id), source_type: String(r.source_type || ""),
+    headline: String(r.headline || ""), body: String(r.body || ""),
+    source_url: String(r.source_url || ""), ctwa_clid: String(r.ctwa_clid || ""),
+  } : null;
   const phone = onlyDigits(m.from || "");
   const type = String(m.type || "");
   let kind: "text" | "image" | "audio" | "pdf" | "other" = "other";
@@ -239,7 +252,7 @@ export function parseMetaInbound(body: any): {
   } else if (type === "button") { kind = "text"; text = m.button?.text || ""; }
   // toque em botão/lista/flow = ação intencional (não passa pelo debounce de mensagens picadas)
   const isMenuReply = type === "interactive" || type === "button";
-  return { provider: "meta", fromMe: false, phone, kind, text: String(text), transcription: "", mediaId, mimetype, messageid: String(m.id || ""), statusOnly: false, phoneNumberId, flowReply, isMenuReply };
+  return { provider: "meta", fromMe: false, phone, kind, text: String(text), transcription: "", mediaId, mimetype, messageid: String(m.id || ""), statusOnly: false, phoneNumberId, flowReply, isMenuReply, referral, contactName };
 }
 
 // Verificação do webhook (GET do Meta ao cadastrar a URL): responde o hub.challenge.
