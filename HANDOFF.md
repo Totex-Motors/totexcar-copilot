@@ -3,6 +3,32 @@
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
 > Última atualização: 2026-07-22.
 
+## 0-AAAAAA. ⭐ SESSÃO 2026-07-25 — correções Modo Viagem, repo privado, CI e cliente de shopping
+
+- **Repo GitHub agora é PRIVADO.** Consequência: o app da Vercel perdeu acesso (só OWNER da org
+  autoriza — e o owner é **João Vitor Mendes/joaomendes0524**; casa1615 é só Member → PEDIR
+  promoção a Owner). Deploys voltaram via **GitHub Actions** (deploy.yml Vercel + deploy-functions.yml
+  edges, criados por sessão paralela) — push na main deploya TUDO sozinho agora. Deploy manual de
+  emergência: token Vercel temporário (expira 26/07) + `npx vercel deploy --prod` DA RAIZ do repo.
+- **Fluxo multi-sessão:** SEMPRE `git pull --rebase origin main` antes de push (sessões paralelas
+  no mesmo repo: CTWA referral, Anuncie seu carro, vitrine particular na Garagem vieram de lá).
+- **Modo Viagem consertado (3 bugs):** (1) flow não abria — flow SEM endpoint exige
+  `flow_action navigate` + tela inicial "VIAGEM" (data_exchange era rejeitado em silêncio; agora há
+  fallback de texto anti-silêncio nos 2 CTAs + parsed.flow_ok no evento); (2) dropdowns vazios —
+  o envio agora passa `data` (duracoes/perfis/carro/origem) no flow_action_payload; (3) consumo
+  NUNCA usou INMETRO — chaves erradas (é cidade_gasolina/estrada_gasolina/referencia_media, não
+  estrada_kml). Nova cadeia em `_shared/route-research.ts consumoDoVeiculo`: real > (híbrido? ficha
+  técnica primeiro — PBE subestima PHEV) > INMETRO > ficha > estimativa por categoria, SEMPRE com fonte.
+- **Plano de viagem SALVO:** tabela `viagem_planos` (RLS); edge viagem aceita service role e grava;
+  tool do WhatsApp usa a edge (motor único) e fecha com link; /viagem abre o último plano em cards
+  (banner "feito pelo WhatsApp" + Montar outro). Link só vai quando há plano estruturado.
+- **Indique e Ganhe:** cliente de SHOPPING (sem dealership) agora vê o estoque COMPLETO do
+  marketplace (todas as lojas) com ?ref= normal; textos de compartilhamento SEM emojis (viravam �
+  no wa.me de Androids); oferta em app_settings reescrita sem emojis.
+- **Pendências:** João autorizar app Vercel + promover casa1615 a Owner; OG image por loja no
+  marketplace (foto/fachada no preview do link — é no repo do marketplace); Dependabot 53 vulns
+  (21 high) pra triagem; voz do vídeo (amostras MiniMax/Vibe prontas OU Renata grava as 17 falas).
+
 ## 0-AAAAA. ⭐ PLANO DE RETENÇÃO (2026-07-22, sessão 2) — LER PRIMEIRO
 
 ### 📋 5 SPECS NOVOS na raiz do repo (origem: análise externa Kimi, revisados pelo Claude Code)
