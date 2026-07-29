@@ -33,7 +33,8 @@ export default function Indique() {
   useEffect(() => { if (userData?.pix_key != null) setPix(userData.pix_key); }, [userData?.pix_key]);
 
   const code = (feed?.referral_code || userData?.referral_code) as string | undefined;
-  const storeName = feed?.dealership?.name || userData?.dealership || "sua loja";
+  // cliente de shopping (sem loja): o "catálogo" é o marketplace inteiro
+  const storeName = feed?.dealership?.name || userData?.dealership || "Totexmotors";
   const offer = feed?.buyer_offer || "Transferência grátis";
   const cars = feed?.cars || [];
 
@@ -163,7 +164,7 @@ export default function Indique() {
         </CardTitle></CardHeader>
         <CardContent>
           {loadingFeed ? (
-            <div className="p-8 text-center text-muted-foreground">Carregando estoque da sua loja...</div>
+            <div className="p-8 text-center text-muted-foreground">Carregando o estoque...</div>
           ) : cars.length ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
               {cars.map((c) => <CarCard key={c.id} car={c} code={code} storeName={storeName} offer={offer} onCopy={copy} />)}

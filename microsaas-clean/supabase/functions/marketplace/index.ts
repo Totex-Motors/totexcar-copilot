@@ -74,7 +74,24 @@ Deno.serve(async (req) => {
     }
 
     if (action === "feed") {
-      if (!me.dealership) return json({ ok: true, dealership: null, cars: [], reason: "owner_without_dealership" });
+      // CLIENTE DE SHOPPING (sem loja vinculada): vê o estoque COMPLETO do marketplace —
+      // todas as lojas — e indica qualquer carro (comissão via ?ref= do mesmo jeito).
+      if (!me.dealership) {
+        const res = await fetch(`${MARKETPLACE}/api/vehicles?limit=60`);
+        let cars: any[] = [];
+        if (res.ok) {
+          const body = await res.json();
+          const raw = Array.isArray(body) ? body : (body?.data || body?.vehicles || []);
+          cars = raw.filter((v: any) => (v.status || "ACTIVE") === "ACTIVE").map(normalizeCar);
+        }
+        const { data: cfg } = await admin.from("app_settings").select("referral_buyer_offer").eq("id", 1).single();
+        return json({
+          ok: true, dealership: null, marketplace_wide: true,
+          referral_code: me.referral_code,
+          buyer_offer: cfg?.referral_buyer_offer || "Transferência grátis",
+          cars,
+        });
+      }
       const d = await resolveDealership(me.dealership);
       if (!d) return json({ ok: true, dealership: { name: me.dealership, slug: null }, cars: [], reason: "dealership_not_found" });
 
