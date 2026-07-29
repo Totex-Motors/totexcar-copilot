@@ -17,7 +17,7 @@ import { useVehicle } from "@/hooks/useAccounts";
 import { toast } from "@/hooks/use-toast";
 import {
   useGaragemSearch, useGaragemBrands, useOportunidades, useInteresse,
-  useVenderAvaliar, useRadars, useSalvarRadar, useExcluirRadar,
+  useVenderAvaliar, useRadars, useSalvarRadar, useExcluirRadar, useVitrineListings,
   type GaragemCar, type GaragemFilters,
 } from "@/hooks/useGaragem";
 
@@ -93,6 +93,9 @@ function CarCard({ car }: { car: GaragemCar }) {
         {car.fipe_price != null && car.price < car.fipe_price && (
           <Badge className="absolute top-2 left-2 bg-green-500/90 text-white">Abaixo da FIPE</Badge>
         )}
+        {car.is_particular && (
+          <Badge className="absolute top-2 right-2 bg-blue-600 text-white">Particular</Badge>
+        )}
       </div>
       <CardContent className="p-4 flex flex-col gap-2 flex-1">
         <div>
@@ -103,23 +106,32 @@ function CarCard({ car }: { car: GaragemCar }) {
         </div>
         <p className="text-xl font-extrabold text-primary">{brl(car.price)}</p>
         <div className="mt-auto flex flex-col gap-2 pt-1">
-          <div className="flex gap-2">
-            <Button size="sm" className="flex-1 gap-1.5" disabled={interesse.isPending || sent}
-              onClick={() => interesse.mutate({ vehicle_id: car.id }, {
-                onSuccess: () => { setSent(true); toast({ title: "Interesse enviado! 🎉", description: "A loja vai entrar em contato com você." }); },
-                onError: (e: any) => toast({ title: "Não foi possível enviar", description: String(e?.message || e), variant: "destructive" }),
-              })}>
-              {sent ? <CheckCircle2 className="w-4 h-4" /> : <Heart className="w-4 h-4" />}
-              {sent ? "Enviado" : "Tenho interesse"}
-            </Button>
-            <a href={car.url} target="_blank" rel="noreferrer">
-              <Button size="sm" variant="outline"><ExternalLink className="w-4 h-4" /></Button>
+          {car.is_particular ? (
+            // Particular: sem CRM da loja — leva à PDP própria (WhatsApp do vendedor + pixel)
+            <a href={car.url} target="_blank" rel="noreferrer" className="w-full">
+              <Button size="sm" className="w-full gap-1.5"><ExternalLink className="w-4 h-4" /> Ver anúncio</Button>
             </a>
-          </div>
-          {car.financing_enabled && car.financing_cnpj && (
-            <Button size="sm" className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setFinOpen(true)}>
-              <Calculator className="w-4 h-4" /> Simular financiamento
-            </Button>
+          ) : (
+            <>
+              <div className="flex gap-2">
+                <Button size="sm" className="flex-1 gap-1.5" disabled={interesse.isPending || sent}
+                  onClick={() => interesse.mutate({ vehicle_id: car.id }, {
+                    onSuccess: () => { setSent(true); toast({ title: "Interesse enviado! 🎉", description: "A loja vai entrar em contato com você." }); },
+                    onError: (e: any) => toast({ title: "Não foi possível enviar", description: String(e?.message || e), variant: "destructive" }),
+                  })}>
+                  {sent ? <CheckCircle2 className="w-4 h-4" /> : <Heart className="w-4 h-4" />}
+                  {sent ? "Enviado" : "Tenho interesse"}
+                </Button>
+                <a href={car.url} target="_blank" rel="noreferrer">
+                  <Button size="sm" variant="outline"><ExternalLink className="w-4 h-4" /></Button>
+                </a>
+              </div>
+              {car.financing_enabled && car.financing_cnpj && (
+                <Button size="sm" className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setFinOpen(true)}>
+                  <Calculator className="w-4 h-4" /> Simular financiamento
+                </Button>
+              )}
+            </>
           )}
         </div>
       </CardContent>
@@ -173,6 +185,19 @@ export default function Garagem() {
   const totalCars = search.data?.total ?? 0;
   const temMais = accumCars.length > 0 && accumCars.length < totalCars;
   const scope = search.data?.scope || oport.data?.scope || null; // loja do cliente (estoque exclusivo)
+
+  // Vitrine (carros de particular) — entra no topo da busca, com selo Particular.
+  const vitrine = useVitrineListings(!!userId);
+  const vitrineFiltrados = (vitrine.data || []).filter((c) => {
+    const q = (applied.search || "").toLowerCase().trim();
+    if (q && !`${c.brand} ${c.model} ${c.version || ""} ${c.city || ""}`.toLowerCase().includes(q)) return false;
+    if (applied.brand && c.brand.toLowerCase() !== applied.brand.toLowerCase()) return false;
+    if (applied.max_price && c.price > applied.max_price) return false;
+    if (applied.min_year && c.year < applied.min_year) return false;
+    if (applied.max_km && c.km > applied.max_km) return false;
+    return true;
+  });
+  const displayCars = [...vitrineFiltrados, ...accumCars];
 
   const enviarRadar = () => {
     salvarRadar.mutate({
@@ -278,14 +303,14 @@ export default function Garagem() {
                 </div>
               </CardContent>
             </Card>
-            {search.data && <p className="text-sm text-muted-foreground">{totalCars} carro(s) no estoque {search.data.scope ? `da ${search.data.scope}` : "Totexmotors"}</p>}
-            {search.isError && !accumCars.length ? (
+            {search.data && <p className="text-sm text-muted-foreground">{totalCars + vitrineFiltrados.length} carro(s) {search.data.scope ? `no estoque da ${search.data.scope} + particulares` : "no estoque Totexmotors"}</p>}
+            {search.isError && !displayCars.length ? (
               <div className="text-center py-10 space-y-3">
                 <p className="text-sm text-muted-foreground">O estoque está indisponível no momento (muitas buscas em sequência). Tente de novo em instantes.</p>
                 <Button variant="outline" onClick={() => search.refetch()} className="gap-1.5"><Search className="w-4 h-4" /> Tentar de novo</Button>
               </div>
             ) : (
-              <CarGrid cars={accumCars} loading={search.isLoading && (applied.page || 1) === 1} empty="Nenhum carro encontrado com esses filtros. Tente ampliar a busca — ou deixe um radar em 'Ofertas para mim'. 😉" />
+              <CarGrid cars={displayCars} loading={search.isLoading && (applied.page || 1) === 1} empty="Nenhum carro encontrado com esses filtros. Tente ampliar a busca — ou deixe um radar em 'Ofertas para mim'. 😉" />
             )}
             {temMais && (
               <div className="flex justify-center pt-2">

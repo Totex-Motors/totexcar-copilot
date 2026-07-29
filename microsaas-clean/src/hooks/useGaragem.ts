@@ -11,6 +11,35 @@ export interface GaragemCar {
   financing_enabled?: boolean;
   financing_cnpj?: string | null;
   photo: string | null; url: string;
+  is_particular?: boolean;
+}
+
+// Anúncios de PARTICULAR (vitrine B2C, schema `stand`) — lidos via RPC pública
+// stand.public_listings. Entram na Garagem junto ao estoque das lojas, com selo
+// "Particular"; o card leva à PDP própria totexmotors.com/anuncio/{id}.
+export function useVitrineListings(enabled: boolean) {
+  return useQuery({
+    queryKey: ["vitrine-listings"],
+    enabled,
+    staleTime: 60_000,
+    queryFn: async (): Promise<GaragemCar[]> => {
+      const { data, error } = await (supabase as any).schema("stand").rpc("public_listings", { p_limit: 48 });
+      if (error) return [];
+      const rows = Array.isArray(data) ? data : [];
+      return rows.map((l: any): GaragemCar => ({
+        id: l.id,
+        title: [l.marca, l.modelo].filter(Boolean).join(" ") || "Veículo",
+        brand: l.marca ?? "", model: l.modelo ?? "", version: l.versao ?? null,
+        year: l.ano ?? 0, km: Number(l.km) || 0, price: Number(l.preco) || 0, fipe_price: null,
+        color: l.cor ?? null, fuel: l.combustivel ?? null, transmission: l.cambio ?? null,
+        city: l.cidade ?? null, state: l.uf ?? null, dealership: null,
+        financing_enabled: false, financing_cnpj: null,
+        photo: l.capa ?? null,
+        url: `https://totexmotors.com/anuncio/${l.id}`,
+        is_particular: true,
+      }));
+    },
+  });
 }
 export interface GaragemFilters {
   search?: string; brand?: string; model?: string;
