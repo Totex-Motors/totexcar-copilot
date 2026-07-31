@@ -44,11 +44,14 @@
                 #0b1220;
     color: #fff; justify-content: space-between;
   }
+  /* presente pequeno, ao lado do título (marcação do dono na revisão da capa) */
+  .titlerow { display: flex; gap: 12px; align-items: flex-start; }
+  .titlerow h1 { flex: 1; }
   .cover .gift-img {
-    width: 78px; height: 78px; object-fit: contain; margin-bottom: 14px;
-    filter: drop-shadow(0 10px 22px rgba(0,0,0,.45));
+    width: 52px; height: 52px; object-fit: contain; margin-top: 6px; flex-shrink: 0;
+    filter: drop-shadow(0 8px 16px rgba(0,0,0,.45));
   }
-  .cover h1 { font-size: 34px; color: #fff; }
+  .cover h1 { font-size: 32px; color: #fff; }
   .cover .sub { color: #b8c4d8; font-size: 16.5px; line-height: 1.55; margin-top: 14px; }
   .cover .brand { font-weight: 800; font-size: 19px; letter-spacing: .01em; }
   .cover .brand span { color: #2dd4bf; }
@@ -59,8 +62,8 @@
   .valuebox b { color: #2dd4bf; }
   .cover .foot { border-top-color: rgba(255,255,255,.14); color: #7e8ba1; }
   .cover .foot b { color: #e2e8f0; }
-  /* fachada da loja (só nos kits personalizados; o genérico não mostra nada) */
-  .storecard { margin-top: 14px; border-radius: 16px; overflow: hidden; position: relative; height: 108px; border: 1px solid rgba(255,255,255,.16); }
+  /* fachada da loja no TOPO da capa (só nos kits personalizados; o genérico não mostra nada) */
+  .storecard { margin: 12px 0 16px; border-radius: 16px; overflow: hidden; position: relative; height: 168px; border: 1px solid rgba(255,255,255,.16); }
   .storecard img { width: 100%; height: 100%; object-fit: cover; object-position: center 40%; display: block; }
   .storecard .nm {
     position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 14px 9px;
@@ -159,13 +162,15 @@
 <div class="page cover">
   <div>
     <div class="brand">Totex<span>Car</span> Co-pilot</div>
+    {{STORE_BLOCK}}
   </div>
   <div>
-    <img class="gift-img" src="{{GIFT_IMG}}" alt="">
-    <h1>Você ganhou um assistente pessoal para o seu carro.</h1>
+    <div class="titlerow">
+      <img class="gift-img" src="{{GIFT_IMG}}" alt="">
+      <h1>Você ganhou um assistente pessoal para o seu carro.</h1>
+    </div>
     <p class="sub">Um presente {{PRESENTE_DA_LOJA}}: <b style="color:#fff">1 ano de TotexCar Co-pilot</b>, o copiloto que cuida dos gastos, prazos e da saúde do seu veículo — direto no seu WhatsApp.</p>
     <div class="valuebox">🤝 Este benefício é uma cortesia da {{CORTESIA_DA_LOJA}}: o plano anual de <b>R$&nbsp;109,90 já está pago</b> por ela. Você não paga nada para usar durante 1 ano.</div>
-    {{STORE_BLOCK}}
   </div>
   <div class="foot"><span>Kit de boas-vindas</span><span><b>Ecossistema Totexmotors</b></span></div>
 </div>
