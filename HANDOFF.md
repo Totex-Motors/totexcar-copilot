@@ -73,8 +73,10 @@
   na 1ª resposta (dedup `whatsapp_events kind=kit_pdf`). `_shared/kit.ts` resolve o kit da loja
   (HEAD + fallback). Design v2 (a v1 foi reprovada por "cara de IA"): Archivo + IBM Plex Sans/Mono
   embutidas, sem emoji em título, "ficha do benefício" no lugar do emoji de presente.
-  ⚠️ **Copy:** os R$ 500 são o crédito do AMIGO que compra (`app_settings.referral_buyer_offer`);
-  quem indica ganha comissão em PIX. NÃO prometer "indique e ganhe R$ 500".
+  **⭐ v3 FINAL (31/07): o dono aprovou o LAYOUT ORIGINAL** (v1, Segoe/emojis) com texto congelado;
+  única troca: 🎁 da capa → imagem do presente sem fundo; fachada+nome por loja na capa.
+  **Copy decidida pelo dono:** "Indique um carro e ganhe R$ 500,00" = comissão fixa de QUEM INDICA;
+  prêmio do indicado fica de fora (discricionário por loja, `referral_buyer_offer`).
 - **Pendências:** aprovação do template `boas_vindas_cortesia_pdf` na Meta (estava PENDING; o
   fallback cobre); fachadas das demais lojas pra gerar os kits delas; validar a aba Conversas
   logado como lojista.
