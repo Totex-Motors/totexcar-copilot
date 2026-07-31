@@ -35,6 +35,14 @@ function vencimentosOf(vehicle: any, owner: any) {
 }
 
 const onlyDigits = (s: any) => String(s || "").replace(/\D/g, "");
+// Variantes do telefone (com/sem DDI 55) — whatsapp_events grava from_phone como vem da Meta
+function phoneVariants(phone: any): string[] {
+  const d = onlyDigits(phone);
+  if (d.length < 10) return [];
+  const set = new Set<string>([d]);
+  if (d.startsWith("55")) set.add(d.slice(2)); else set.add("55" + d);
+  return [...set];
+}
 const fmtBR = (d: any) => {
   if (!d) return "";
   const [y, m, day] = String(d).split("-");
@@ -338,6 +346,141 @@ Deno.serve(async (req) => {
         });
       }
 
+      // ===================== CONVERSAS (visibilidade do WhatsApp, somente leitura) =====================
+      // A loja vê o ENGAJAMENTO do cliente com o Co-pilot (mandou msg? recebeu? falhou?), mas NUNCA o
+      // conteúdo do que o cliente escreveu — a conversa dele é com o assistente (privacidade/LGPD).
+      case "conversas_list": {
+        let q = admin.from("users")
+          .select("id, name, phone, plan, subscription_status, dealership, created_at")
+          .eq("role", "owner").order("created_at", { ascending: false });
+        if (scopeDealership) q = q.eq("dealership", scopeDealership);
+        const { data: owners } = await q.limit(500);
+        const ids = (owners || []).map((o: any) => o.id);
+        if (!ids.length) return json({ ok: true, clients: [] });
+
+        const desde90 = new Date(Date.now() - 90 * 86400000).toISOString();
+        const desde30 = new Date(Date.now() - 30 * 86400000).toISOString();
+        const ownerByPhone: Record<string, string> = {};
+        const variants: string[] = [];
+        for (const o of owners || []) {
+          for (const v of phoneVariants(o.phone)) { variants.push(v); ownerByPhone[v] = o.id; }
+        }
+
+        // eventos com user_id + eventos só com telefone (ex.: status_fail não tem user_id)
+        const [r1, r2] = await Promise.all([
+          admin.from("whatsapp_events").select("user_id, from_phone, kind, status, created_at")
+            .in("user_id", ids).gte("created_at", desde90).limit(5000),
+          variants.length
+            ? admin.from("whatsapp_events").select("user_id, from_phone, kind, status, created_at")
+              .in("from_phone", variants).is("user_id", null).gte("created_at", desde90).limit(5000)
+            : Promise.resolve({ data: [] as any[] }),
+        ]);
+
+        const INBOUND = ["text", "audio", "image", "pdf", "other"];
+        const DESCARTA = ["blocked", "superseded", "aggregated"];
+        const agg: Record<string, any> = {};
+        const bump = (uid: string, e: any) => {
+          const a = agg[uid] || (agg[uid] = { last_in: null, in30: 0, last_out: null, fails30: 0 });
+          if (e.kind === "status_fail") { if (e.created_at >= desde30) a.fails30++; return; }
+          if (DESCARTA.includes(String(e.status))) return;
+          if (INBOUND.includes(String(e.kind))) {
+            if (!a.last_in || e.created_at > a.last_in) a.last_in = e.created_at;
+            if (e.created_at >= desde30) a.in30++;
+          } else if (["proativo", "campanha", "boas_vindas"].includes(String(e.kind))) {
+            if (!a.last_out || e.created_at > a.last_out) a.last_out = e.created_at;
+          }
+        };
+        (r1.data || []).forEach((e: any) => bump(e.user_id, e));
+        (r2.data || []).forEach((e: any) => {
+          const uid = ownerByPhone[onlyDigits(e.from_phone)];
+          if (uid) bump(uid, e);
+        });
+
+        // boas-vindas/NPS do pós-venda (welcome_sent mora em postsale_journeys)
+        let jq = admin.from("postsale_journeys")
+          .select("user_id, customer_phone, welcome_sent, sponsored, nps_score");
+        if (scopeDealership && scopeDealership !== "__none__") jq = jq.eq("dealership", scopeDealership);
+        const { data: js } = await jq.limit(1000);
+        const jByKey: Record<string, any> = {};
+        (js || []).forEach((j: any) => {
+          if (j.user_id) jByKey[j.user_id] = j;
+          for (const v of phoneVariants(j.customer_phone)) {
+            const uid = ownerByPhone[v];
+            if (uid && !jByKey[uid]) jByKey[uid] = j;
+          }
+        });
+
+        const clients = (owners || []).map((o: any) => {
+          const a = agg[o.id] || { last_in: null, in30: 0, last_out: null, fails30: 0 };
+          const j = jByKey[o.id] || null;
+          return {
+            id: o.id, name: o.name, phone: o.phone,
+            plan: o.plan, subscription_status: o.subscription_status, created_at: o.created_at,
+            last_client_msg_at: a.last_in, msgs_30d: a.in30,
+            last_sent_at: a.last_out, fails_30d: a.fails30,
+            welcome_sent: !!j?.welcome_sent, sponsored: !!j?.sponsored,
+            nps_score: j?.nps_score ?? null,
+          };
+        });
+        return json({ ok: true, dealership: scopeDealership, clients });
+      }
+
+      case "conversa_timeline": {
+        const { user_id } = p;
+        if (!user_id) return json({ error: "user_id_required" }, 400);
+        const { data: ow } = await admin.from("users")
+          .select("id, name, phone, dealership, created_at").eq("id", user_id).limit(1);
+        const owner = ow?.[0];
+        if (!owner) return json({ ok: true, owner: null, items: [] });
+        // ESCOPO: lojista só acessa cliente da própria loja
+        if (!isAdmin && owner.dealership !== me.dealership) return json({ error: "forbidden" }, 403);
+
+        const variants = phoneVariants(owner.phone);
+        const orExpr = [
+          `user_id.eq.${owner.id}`,
+          ...(variants.length ? [`from_phone.in.(${variants.join(",")})`] : []),
+        ].join(",");
+        const { data: evs } = await admin.from("whatsapp_events")
+          .select("id, kind, status, parsed, created_at")
+          .or(orExpr)
+          .order("created_at", { ascending: false }).limit(300);
+
+        const DESCARTA = ["blocked", "superseded", "aggregated"];
+        const items: any[] = [];
+        for (const e of (evs || [])) {
+          const st = String(e.status || "");
+          if (e.kind === "status_evt" || DESCARTA.includes(st)) continue;
+          if (e.kind === "status_fail") { items.push({ at: e.created_at, type: "falha" }); continue; }
+          if (e.kind === "proativo") { items.push({ at: e.created_at, type: "proativa", assunto: e.parsed?.assunto || null, texto: e.parsed?.texto || null }); continue; }
+          if (e.kind === "campanha") { items.push({ at: e.created_at, type: "campanha", texto: e.parsed?.texto || null, ok: st === "sent" }); continue; }
+          if (e.kind === "boas_vindas") { items.push({ at: e.created_at, type: "boas_vindas", ok: st === "sent", cortesia: !!e.parsed?.cortesia }); continue; }
+          // entrada do cliente: só TIPO e AÇÃO — nunca o conteúdo
+          items.push({ at: e.created_at, type: "cliente", kind: e.kind, acao: e.parsed?.action || null });
+        }
+
+        // marcos do pós-venda (registro na loja, NPS)
+        if (owner.dealership) {
+          const jOr = [
+            `user_id.eq.${owner.id}`,
+            ...(variants.length ? [`customer_phone.in.(${variants.join(",")})`] : []),
+          ].join(",");
+          const { data: js } = await admin.from("postsale_journeys")
+            .select("created_at, sponsored, welcome_sent, car_desc, nps_score, nps_at, nps_comment")
+            .eq("dealership", owner.dealership).or(jOr).limit(5);
+          for (const j of (js || [])) {
+            items.push({ at: j.created_at, type: "registro", cortesia: !!j.sponsored, welcome: !!j.welcome_sent, car: j.car_desc || null });
+            if (j.nps_at) items.push({ at: j.nps_at, type: "nps", nota: j.nps_score, comentario: j.nps_comment || null });
+          }
+        }
+
+        items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+        return json({
+          ok: true,
+          owner: { id: owner.id, name: owner.name, phone: owner.phone, created_at: owner.created_at },
+          items,
+        });
+      }
+
       // Painel do Lojista — Campanhas (WhatsApp)
       case "campaign_recipients": {
         const audience = String(p.audience || "all");
@@ -365,6 +508,7 @@ Deno.serve(async (req) => {
         if (!list.length) return json({ ok: true, total: 0, sent: 0, failed: 0, results: [] });
 
         const results: any[] = [];
+        const evRows: any[] = [];
         let sent = 0, failed = 0;
         const lojaCamp = (isAdmin ? (p.dealership || me.dealership) : me.dealership) || "sua loja";
         for (const c of list) {
@@ -374,8 +518,15 @@ Deno.serve(async (req) => {
           const ok = await waSendTemplate(wa, c.phone, "campanha_loja", [primeiro, lojaCamp, txt]);
           if (ok) sent++; else failed++;
           results.push({ id: c.id, name: c.name, phone: c.phone, ok });
+          evRows.push({
+            from_phone: onlyDigits(c.phone), user_id: c.id, kind: "campanha",
+            status: ok ? "sent" : "error",
+            raw: { campanha: true, loja: lojaCamp, por: me.id, audience },
+            parsed: { texto: txt, assunto: "campanha_loja" },
+          });
           await new Promise((r) => setTimeout(r, 350)); // pacing entre envios
         }
+        if (evRows.length) await admin.from("whatsapp_events").insert(evRows); // alimenta a aba Conversas
         return json({ ok: true, total: list.length, sent, failed, results });
       }
 
@@ -510,6 +661,12 @@ Deno.serve(async (req) => {
             : await waSendTemplate(wa, phone, "convite_copilot_loja", [primeiro, car ? `seu ${car}` : "seu carro", loja, link]);
         } catch { /* WhatsApp off: cria a jornada mesmo assim */ }
         if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
+        await admin.from("whatsapp_events").insert({ // alimenta a aba Conversas
+          from_phone: phone, user_id: provisionedUserId, kind: "boas_vindas",
+          status: welcome ? "sent" : "error",
+          raw: { postsale_journey: created.id, loja },
+          parsed: { cortesia, template: cortesia ? "boas_vindas_cortesia" : "convite_copilot_loja", carro: car },
+        });
         return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated });
       }
 

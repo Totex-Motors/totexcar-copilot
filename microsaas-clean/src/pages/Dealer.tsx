@@ -19,7 +19,7 @@ import {
   Car, Users, LogOut, Search, Store, CalendarClock, Wallet,
   Phone, Mail, Gauge, AlertTriangle, ShieldCheck, BadgeCheck, Fuel,
   Megaphone, Sparkles, Send, Loader2, MessageCircle, Banknote, HeartHandshake,
-  ExternalLink, KanbanSquare,
+  ExternalLink, KanbanSquare, MessagesSquare, Bot, UserRound, XCircle, Gift, Star,
 } from "lucide-react";
 import { PostSaleTab } from "@/components/dealer/PostSaleTab";
 import { useSearchParams } from "react-router-dom";
@@ -29,7 +29,9 @@ import { toast } from "@/hooks/use-toast";
 import {
   useDealerMe, useDealerClients, useClientJourney,
   useCampaignRecipients, useDraftMessage, useSendCampaign,
+  useConversas, useConversaTimeline,
   type DealerClient, type ClientNextDue, type CampaignAudience,
+  type ConversaClient, type ConversaItem,
 } from "@/hooks/useDealer";
 import { useBuybackRequests, useUpdateBuyback, type BuybackRequest } from "@/hooks/useBuyback";
 
@@ -53,6 +55,40 @@ function previewPersonalize(tpl: string, c: any): string {
 }
 
 const VARIAVEIS = ["{nome}", "{veiculo}", "{placa}", "{vencimento}", "{dias}", "{loja}"];
+
+// Campanhas prontas: divulgam os recursos do Co-pilot pra base da loja. O template oficial já abre com
+// "Olá {nome}! Mensagem da {loja}: ..." — por isso os textos NÃO se apresentam de novo. Sem quebra de
+// linha (parâmetro de template Meta não aceita \n).
+const CAMPANHAS_PRONTAS: { titulo: string; texto: string }[] = [
+  {
+    titulo: "💰 Indique e Ganhe",
+    texto: "Você já conhece o Indique e Ganhe? Compartilhe carros do nosso estoque com amigos pelo TotexCar Co-pilot e ganhe comissão em PIX quando a venda sair. Abra o app e toque em Indique e Ganhe para pegar seu link. 💰",
+  },
+  {
+    titulo: "💵 Avaliação FIPE / Recompra",
+    texto: "Quer saber quanto o seu {veiculo} vale hoje? Responda 'avaliar meu carro' e veja a tabela FIPE ao vivo — e a {loja} pode te fazer uma proposta de recompra. 💵",
+  },
+  {
+    titulo: "🔎 Radar de Serviços",
+    texto: "Precisando de oficina, borracharia, guincho ou elétrica pro {veiculo}? Manda /radar aqui no WhatsApp que o Co-pilot encontra os serviços mais perto de você, com telefone e endereço. 🔎",
+  },
+  {
+    titulo: "🏖️ Modo Viagem",
+    texto: "Vai pegar estrada com o {veiculo}? Responda 'planejar viagem' que o Co-pilot monta seu roteiro com pedágios, consumo real do seu carro e boas paradas no caminho. 🏖️",
+  },
+  {
+    titulo: "🗓️ Calendário do Carro",
+    texto: "Tá tudo em dia com o {veiculo}? Pergunte 'o que vence?' que o Co-pilot mostra IPVA, licenciamento, parcelas e a próxima revisão no ritmo real do seu carro. 🗓️",
+  },
+  {
+    titulo: "🚗 Vitrine da loja",
+    texto: "Pensando em trocar de carro? Responda 'quero ver carros' que o Co-pilot mostra o estoque da {loja} com fotos e preços, direto aqui no WhatsApp. 🚗",
+  },
+  {
+    titulo: "📄 Relatório IR/MEI (motoristas)",
+    texto: "Dirige de aplicativo? O Co-pilot gera seu relatório de ganhos e gastos pronto pra IR/MEI. Responda 'relatório' e receba o PDF na hora. 📄",
+  },
+];
 
 function dueTone(days: number | null): { cls: string; label: string } {
   if (days == null) return { cls: "bg-muted text-muted-foreground", label: "—" };
@@ -198,6 +234,7 @@ export default function Dealer() {
         <Tabs defaultValue="clientes" className="w-full">
           <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="clientes" className="gap-2"><Users className="w-4 h-4" /> Clientes</TabsTrigger>
+            <TabsTrigger value="conversas" className="gap-2"><MessagesSquare className="w-4 h-4" /> Conversas</TabsTrigger>
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="w-4 h-4" /> Campanhas</TabsTrigger>
             <TabsTrigger value="recompras" className="gap-2"><Banknote className="w-4 h-4" /> Recompras</TabsTrigger>
             <TabsTrigger value="posvenda" className="gap-2"><HeartHandshake className="w-4 h-4" /> Sucesso do Cliente</TabsTrigger>
@@ -252,6 +289,10 @@ export default function Dealer() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="conversas" className="mt-6">
+            <ConversasTab dealership={viewStore} />
+          </TabsContent>
+
           <TabsContent value="campanhas" className="mt-6">
             <Card className="border-0 shadow-premium-md">
               <CardHeader>
@@ -276,6 +317,217 @@ export default function Dealer() {
       {/* Ficha / jornada do cliente */}
       <ClientSheet client={selected} onClose={() => setSelected(null)} />
     </div>
+  );
+}
+
+// ===== Conversas: engajamento do cliente com o Co-pilot (somente leitura) =====
+const relTime = (s?: string | null) => {
+  if (!s) return null;
+  const days = Math.floor((Date.now() - new Date(s).getTime()) / 86400000);
+  if (days <= 0) return "hoje";
+  if (days === 1) return "ontem";
+  if (days < 30) return `há ${days}d`;
+  const m = Math.floor(days / 30);
+  return `há ${m} ${m === 1 ? "mês" : "meses"}`;
+};
+const fmtDateTime = (s: string) =>
+  new Date(s).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " +
+  new Date(s).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+const KIND_LABEL: Record<string, string> = {
+  text: "mensagem de texto", audio: "áudio", image: "foto", pdf: "documento", other: "mensagem",
+};
+const ACAO_LABEL: Record<string, string> = {
+  garagem_flow: "se interessou por um carro da vitrine",
+  radar_flow: "buscou oficina/serviço no Radar",
+  viagem_flow: "montou um plano de viagem",
+  recompra_flow: "avaliou o carro na FIPE",
+  nps_flow: "respondeu a pesquisa NPS",
+  nps: "respondeu a pesquisa NPS",
+  transferencia: "consultou a transferência/documentação",
+};
+
+function ConversasTab({ dealership }: { dealership?: string }) {
+  const { data: clients, isLoading } = useConversas(true, dealership);
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<ConversaClient | null>(null);
+
+  const filtered = useMemo(() => {
+    const list = clients || [];
+    const term = q.trim().toLowerCase();
+    const base = term
+      ? list.filter((c) => [c.name, c.phone].filter(Boolean).some((v) => String(v).toLowerCase().includes(term)))
+      : list;
+    // mais recente primeiro; quem nunca conversou vai pro fim
+    return [...base].sort((a, b) => String(b.last_client_msg_at || "").localeCompare(String(a.last_client_msg_at || "")));
+  }, [clients, q]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+        <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <span>
+          Aqui você acompanha o <b className="text-foreground">engajamento</b> de cada cliente com o Co-pilot no WhatsApp:
+          o que a loja mandou, se entregou e como o cliente interage. O conteúdo das mensagens do cliente com o
+          assistente é privado e não é exibido.
+        </span>
+      </div>
+
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input className="pl-10" placeholder="Buscar por nome ou telefone..." value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2"><MessagesSquare className="w-5 h-5" /> Conversas ({filtered.length})</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-8 text-center text-muted-foreground">Carregando conversas...</div>
+          ) : filtered.length ? (
+            <div className="divide-y divide-border">
+              {filtered.map((c) => (
+                <button key={c.id} onClick={() => setSelected(c)}
+                  className="w-full text-left flex items-center justify-between gap-4 p-4 hover:bg-muted/40 transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate flex items-center gap-2">
+                      {c.name || "Sem nome"}
+                      {c.sponsored && <Badge className="bg-primary/15 text-primary border-0 gap-1"><Gift className="w-3 h-3" /> Cortesia</Badge>}
+                      {c.nps_score != null && (
+                        <Badge className={`border-0 gap-1 ${c.nps_score >= 9 ? "bg-green-500/15 text-green-600" : c.nps_score <= 6 ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning"}`}>
+                          <Star className="w-3 h-3" /> NPS {c.nps_score}
+                        </Badge>
+                      )}
+                    </p>
+                    <p className="text-sm text-muted-foreground truncate">{c.phone || "sem telefone"}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0 text-xs">
+                    {c.last_client_msg_at ? (
+                      <span className="text-foreground font-medium">respondeu {relTime(c.last_client_msg_at)}</span>
+                    ) : c.last_sent_at || c.welcome_sent ? (
+                      <span className="text-warning font-medium">sem resposta ainda</span>
+                    ) : (
+                      <span className="text-muted-foreground">sem conversa</span>
+                    )}
+                    <span className="text-muted-foreground">{c.msgs_30d} interação(ões) em 30d</span>
+                    {c.fails_30d > 0 && (
+                      <span className="text-destructive flex items-center gap-1"><XCircle className="w-3 h-3" /> {c.fails_30d} falha(s) de entrega</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-muted-foreground">Nenhum cliente com WhatsApp nesta loja ainda.</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <ConversaSheet client={selected} onClose={() => setSelected(null)} />
+    </div>
+  );
+}
+
+function TimelineItem({ it }: { it: ConversaItem }) {
+  const when = <span className="text-xs text-muted-foreground flex-shrink-0">{fmtDateTime(it.at)}</span>;
+  if (it.type === "cliente") {
+    return (
+      <div className="flex items-start gap-3">
+        <UserRound className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" />
+        <div className="min-w-0 flex-1 text-sm">
+          <span className="font-medium">Cliente</span>{" "}
+          {it.acao && ACAO_LABEL[it.acao] ? ACAO_LABEL[it.acao] : `enviou ${KIND_LABEL[it.kind || "other"] || "mensagem"} ao Co-pilot`}
+        </div>
+        {when}
+      </div>
+    );
+  }
+  if (it.type === "proativa" || it.type === "campanha") {
+    const rotulo = it.type === "campanha" ? "Campanha da loja" : `Co-pilot (proativa${it.assunto ? `: ${it.assunto}` : ""})`;
+    return (
+      <div className="flex items-start gap-3">
+        {it.type === "campanha" ? <Megaphone className="w-4 h-4 mt-0.5 text-foreground flex-shrink-0" /> : <Bot className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />}
+        <div className="min-w-0 flex-1 text-sm">
+          <span className="font-medium">{rotulo}</span>
+          {it.ok === false && <span className="text-destructive text-xs ml-2">falhou</span>}
+          {it.texto && <p className="mt-1 rounded-lg bg-[#075E54]/5 border border-[#075E54]/20 p-2 text-xs whitespace-pre-wrap">{it.texto}</p>}
+        </div>
+        {when}
+      </div>
+    );
+  }
+  if (it.type === "boas_vindas") {
+    return (
+      <div className="flex items-start gap-3">
+        <Gift className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" />
+        <div className="min-w-0 flex-1 text-sm">
+          <span className="font-medium">Boas-vindas {it.cortesia ? "(cortesia da loja)" : "(convite do Co-pilot)"}</span>{" "}
+          {it.ok ? "enviada" : <span className="text-destructive">falhou</span>}
+        </div>
+        {when}
+      </div>
+    );
+  }
+  if (it.type === "registro") {
+    return (
+      <div className="flex items-start gap-3">
+        <Store className="w-4 h-4 mt-0.5 text-foreground flex-shrink-0" />
+        <div className="min-w-0 flex-1 text-sm">
+          <span className="font-medium">Cliente registrado pela loja</span>
+          {it.car ? ` — ${it.car}` : ""}{it.cortesia ? " · cortesia de 1 ano" : ""}
+        </div>
+        {when}
+      </div>
+    );
+  }
+  if (it.type === "nps") {
+    return (
+      <div className="flex items-start gap-3">
+        <Star className="w-4 h-4 mt-0.5 text-warning flex-shrink-0" />
+        <div className="min-w-0 flex-1 text-sm">
+          <span className="font-medium">NPS respondido: nota {it.nota ?? "—"}</span>
+          {it.comentario && <p className="mt-1 text-xs text-muted-foreground">"{it.comentario}"</p>}
+        </div>
+        {when}
+      </div>
+    );
+  }
+  // falha de entrega
+  return (
+    <div className="flex items-start gap-3">
+      <XCircle className="w-4 h-4 mt-0.5 text-destructive flex-shrink-0" />
+      <div className="min-w-0 flex-1 text-sm text-destructive">Mensagem do WhatsApp não entregue</div>
+      {when}
+    </div>
+  );
+}
+
+function ConversaSheet({ client, onClose }: { client: ConversaClient | null; onClose: () => void }) {
+  const { data, isLoading } = useConversaTimeline(client?.id || null);
+  const items = data?.items || [];
+  return (
+    <Sheet open={!!client} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader className="text-left">
+          <SheetTitle>{client?.name || "Cliente"}</SheetTitle>
+          <SheetDescription className="flex items-center gap-1.5">
+            <Phone className="w-3.5 h-3.5" /> {client?.phone || "—"}
+          </SheetDescription>
+        </SheetHeader>
+        {isLoading ? (
+          <div className="py-12 text-center text-muted-foreground">Carregando linha do tempo...</div>
+        ) : items.length ? (
+          <div className="mt-6 space-y-4">
+            {items.map((it, i) => <TimelineItem key={i} it={it} />)}
+          </div>
+        ) : (
+          <div className="py-12 text-center text-muted-foreground text-sm">
+            Nenhuma interação registrada ainda para este cliente.
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -410,6 +662,21 @@ function CampaignComposer({ fixedClient, dealership }: { fixedClient?: DealerCli
         ) : loadingRec ? "Calculando destinatários..." : (
           <><b className="text-foreground">{count}</b> destinatário(s) com WhatsApp{count === 0 ? " — ninguém se encaixa nesse público." : "."}</>
         )}
+      </div>
+
+      {/* Campanhas prontas (recursos do Co-pilot) */}
+      <div className="space-y-2">
+        <Label>Campanhas prontas</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {CAMPANHAS_PRONTAS.map((cp) => (
+            <button key={cp.titulo} type="button" onClick={() => setMessage(cp.texto)}
+              className="text-xs rounded-full border px-2.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title={cp.texto}>
+              {cp.titulo}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">Toque numa campanha pra preencher a mensagem — dá pra editar antes de enviar.</p>
       </div>
 
       {/* Gerar com IA */}

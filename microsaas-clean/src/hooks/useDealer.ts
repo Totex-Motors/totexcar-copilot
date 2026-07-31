@@ -84,6 +84,55 @@ export const useClientJourney = (userId: string | null) =>
     enabled: !!userId,
   });
 
+// ===== Conversas (visibilidade do WhatsApp por cliente, somente leitura) =====
+export interface ConversaClient {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  plan: string | null;
+  subscription_status: string | null;
+  created_at: string | null;
+  last_client_msg_at: string | null;
+  msgs_30d: number;
+  last_sent_at: string | null;
+  fails_30d: number;
+  welcome_sent: boolean;
+  sponsored: boolean;
+  nps_score: number | null;
+}
+
+export interface ConversaItem {
+  at: string;
+  type: "cliente" | "proativa" | "campanha" | "boas_vindas" | "falha" | "registro" | "nps";
+  kind?: string | null;
+  acao?: string | null;
+  texto?: string | null;
+  assunto?: string | null;
+  ok?: boolean;
+  cortesia?: boolean;
+  welcome?: boolean;
+  car?: string | null;
+  nota?: number | null;
+  comentario?: string | null;
+}
+
+export const useConversas = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["dealer-conversas", dealership || null],
+    queryFn: async () => ((await callDealer("conversas_list", dealership ? { dealership } : {})).clients || []) as ConversaClient[],
+    enabled,
+  });
+
+export const useConversaTimeline = (userId: string | null) =>
+  useQuery({
+    queryKey: ["dealer-conversa-timeline", userId],
+    queryFn: async () => {
+      const data = await callDealer("conversa_timeline", { user_id: userId });
+      return data as { owner: { id: string; name: string | null; phone: string | null; created_at: string | null } | null; items: ConversaItem[] };
+    },
+    enabled: !!userId,
+  });
+
 // ===== Sucesso do Cliente / Pós-venda =====
 export interface PostsaleJourney {
   id: string; dealership: string; customer_name: string | null; customer_phone: string;
