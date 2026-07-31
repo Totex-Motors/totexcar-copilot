@@ -6,6 +6,7 @@
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
 import { loadDossier, runExtractor } from "../_shared/proactive.ts";
 import { careFuel, careOdometer, careStatement, seloElegivel } from "../_shared/care-score.ts";
@@ -2314,8 +2315,8 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
           const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
           const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
           await waSendDocument(await getSettings(), msg.phone,
-            `${appUrl}/kit-boas-vindas-copilot.pdf`, "Kit-Boas-Vindas-Co-pilot.pdf",
-            "🎁 Seu guia de boas-vindas: tudo o que eu faço pelo seu carro, em 6 páginas rápidas.");
+            await kitUrlFor(appUrl, user.dealership), KIT_FILENAME,
+            "🎁 Seu guia de boas-vindas: tudo o que eu faço pelo seu carro, em 7 páginas rápidas.");
         } catch (e) { console.error("kit boas-vindas:", e); }
       })();
       (globalThis as any).EdgeRuntime?.waitUntil?.(kitJob) ?? kitJob.catch(() => {});

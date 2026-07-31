@@ -4,6 +4,7 @@
 // nunca enxerga clientes de outra loja. Reaproveita a lógica da função `integration`.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
+import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -666,9 +667,9 @@ Deno.serve(async (req) => {
           if (cortesia) {
             // 1º tenta a boas-vindas com o KIT em PDF anexado (header DOCUMENT); se o template
             // ainda não estiver aprovado (ou falhar), cai na versão texto — nada quebra.
-            const kitUrl = `${appUrl}/kit-boas-vindas-copilot.pdf`;
+            const kitUrl = await kitUrlFor(appUrl, loja); // personalizado da loja, ou o genérico
             welcome = await waSendTemplate(wa, phone, "boas_vindas_cortesia_pdf", [primeiro, car || "carro", loja],
-              { documentUrl: kitUrl, documentFilename: "Kit-Boas-Vindas-Co-pilot.pdf" });
+              { documentUrl: kitUrl, documentFilename: KIT_FILENAME });
             kitEnviado = welcome;
             if (!welcome) welcome = await waSendTemplate(wa, phone, "boas_vindas_cortesia", [primeiro, car || "carro", loja]);
           } else {

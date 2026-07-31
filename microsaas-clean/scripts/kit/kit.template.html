@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Kit de boas-vindas — TotexCar Co-pilot</title>
+<style>
+  /* Fontes embutidas em base64 pelo scripts/build-kit.mjs (o PDF precisa ser autocontido) */
+  @font-face { font-family: "Archivo"; src: url({{FONT_ARCHIVO}}) format("woff2"); font-weight: 600 800; font-display: block; }
+  @font-face { font-family: "Plex"; src: url({{FONT_PLEX_SANS}}) format("woff2"); font-weight: 400 700; font-display: block; }
+  @font-face { font-family: "PlexMono"; src: url({{FONT_PLEX_MONO_5}}) format("woff2"); font-weight: 500; font-display: block; }
+  @font-face { font-family: "PlexMono"; src: url({{FONT_PLEX_MONO_6}}) format("woff2"); font-weight: 600; font-display: block; }
+
+  :root {
+    --ink: #0A1424;
+    --ink-2: #16233A;
+    --paper-2: #F6F8FB;
+    --line: #E4E9F0;
+    --body: #47566B;
+    --muted: #7C8AA0;
+    --teal: #0FB5A2;
+    --teal-2: #2DD4BF;
+    --store: {{ACCENT}};
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page { size: 420px 747px; margin: 0; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: "Plex", sans-serif; color: var(--ink); }
+
+  .page {
+    width: 420px; height: 747px; page-break-after: always; overflow: hidden;
+    position: relative; background: #fff; display: flex; flex-direction: column;
+    padding: 34px 34px 26px;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  /* ---------- sistema de tipos ---------- */
+  h1 { font-family: "Archivo", sans-serif; font-weight: 800; letter-spacing: -.026em; }
+  h2 { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 25px; line-height: 1.14; letter-spacing: -.022em; }
+  h3 { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 14.5px; letter-spacing: -.012em; line-height: 1.25; }
+  p  { font-size: 13.5px; line-height: 1.56; color: var(--body); }
+  b, strong { font-weight: 600; color: var(--ink); }
+
+  /* eyebrow: rótulo mono — encode a seção, não decora */
+  .eyebrow {
+    font-family: "PlexMono", monospace; font-weight: 600; font-size: 9.5px;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--teal);
+    display: flex; align-items: center; gap: 9px; margin-bottom: 13px;
+  }
+  .eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  .lede { font-size: 14px; line-height: 1.55; color: var(--body); margin-top: 9px; }
+
+  .foot {
+    margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: "PlexMono", monospace; font-weight: 500; font-size: 9px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  }
+  .foot .pg { color: var(--ink); font-weight: 600; }
+
+  /* ---------- CAPA ---------- */
+  .cover { padding: 0; background: var(--ink); color: #fff; }
+  .hero {
+    height: 268px; position: relative; overflow: hidden;
+    background-image: {{STORE_PHOTO_CSS}};
+    background-size: cover; background-position: center 42%;
+  }
+  .hero::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(178deg, rgba(10,20,36,.10) 0%, rgba(10,20,36,.62) 62%, var(--ink) 99%);
+  }
+  .hero .store {
+    position: absolute; left: 34px; bottom: 20px; z-index: 2;
+    font-family: "PlexMono", monospace; font-weight: 600; font-size: 10px;
+    letter-spacing: .18em; text-transform: uppercase; color: #fff;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .hero .store::before { content: ""; width: 22px; height: 2px; background: var(--store); }
+  .cover-body { flex: 1; padding: 26px 34px 24px; display: flex; flex-direction: column; }
+  .cover h1 { font-size: 35px; line-height: 1.06; color: #fff; }
+  .cover h1 em { font-style: normal; color: var(--teal-2); }
+  .cover .sub { font-size: 14px; line-height: 1.55; color: #A9B7CC; margin-top: 12px; }
+
+  /* signature: a ficha do benefício — o presente entregue como documento do carro */
+  .ficha { margin-top: 20px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; overflow: hidden; }
+  .ficha .hd {
+    background: rgba(255,255,255,.05); padding: 8px 14px;
+    font-family: "PlexMono", monospace; font-weight: 600; font-size: 8.5px;
+    letter-spacing: .18em; text-transform: uppercase; color: #8FA0B8;
+    border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+  .ficha .row { display: flex; gap: 12px; padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .ficha .row:last-child { border-bottom: 0; }
+  .ficha .k {
+    width: 92px; flex-shrink: 0; font-family: "PlexMono", monospace; font-weight: 500;
+    font-size: 8.5px; letter-spacing: .13em; text-transform: uppercase; color: #7386A0; padding-top: 3px;
+  }
+  .ficha .v { font-size: 12.5px; line-height: 1.4; color: #EAF0F8; font-weight: 500; }
+  .ficha .v b { color: #fff; font-weight: 600; }
+  .ficha .v .free { color: var(--teal-2); font-weight: 600; }
+
+  .cover .foot { border-top-color: rgba(255,255,255,.13); color: #6C7C93; }
+  .cover .foot .pg { color: #C6D2E2; }
+  .rail { height: 3px; display: flex; }
+  .rail i { flex: 1; }
+  .rail .a { background: var(--store); } .rail .b { background: var(--teal); }
+
+  /* ---------- linhas de recurso (rótulo mono = categoria real) ---------- */
+  .row { display: flex; gap: 13px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .row:last-of-type { border-bottom: 0; }
+  .row .tag {
+    width: 66px; flex-shrink: 0; text-align: right; padding-top: 3px;
+    font-family: "PlexMono", monospace; font-weight: 600; font-size: 8.5px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--teal);
+  }
+  .row p { font-size: 12.5px; line-height: 1.5; margin-top: 2px; }
+
+  /* ---------- mockup WhatsApp ---------- */
+  .wa { background: #EDE4DB; border-radius: 14px; padding: 11px 10px 12px; margin: 15px 0 3px; }
+  .wa-head {
+    display: flex; align-items: center; gap: 9px; background: #075E54;
+    margin: -11px -10px 11px; border-radius: 13px 13px 0 0; padding: 8px 12px; color: #fff;
+  }
+  .wa-ava {
+    width: 27px; height: 27px; border-radius: 50%; background: var(--teal); color: #052F2B;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Archivo", sans-serif; font-size: 13px; font-weight: 800;
+  }
+  .wa-head .nm { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
+  .wa-head .st { font-size: 9px; color: #A8D8D1; }
+  .bub {
+    max-width: 87%; border-radius: 9px; padding: 7px 10px; font-size: 11.8px; line-height: 1.45;
+    margin-bottom: 6px; box-shadow: 0 1px 1px rgba(0,0,0,.07); color: #111B21;
+  }
+  .in { background: #fff; margin-right: auto; }
+  .out { background: #D9FDD3; margin-left: auto; }
+  .bub b { font-weight: 600; }
+  .bub .t {
+    display: block; text-align: right; font-family: "PlexMono", monospace;
+    font-size: 8px; color: #8696A0; margin-top: 3px; letter-spacing: .04em;
+  }
+  .att { background: #fff; padding: 5px; border-radius: 9px; max-width: 60%; margin-bottom: 6px; }
+  .att.mine { margin-left: auto; background: #D9FDD3; }
+  .att .ph {
+    height: 70px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(155deg, #E8EDF3, #D6DEE8); color: #64748B;
+    font-family: "PlexMono", monospace; font-size: 8.5px; letter-spacing: .06em;
+    text-transform: uppercase; text-align: center; line-height: 1.5;
+  }
+  .voice { display: flex; align-items: center; gap: 8px; }
+  .voice .pl {
+    width: 22px; height: 22px; border-radius: 50%; background: #128C7E; flex-shrink: 0;
+    position: relative;
+  }
+  .voice .pl::after {
+    content: ""; position: absolute; left: 8px; top: 6px;
+    border-left: 7px solid #fff; border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+  }
+  .voice .wv { flex: 1; height: 14px; background: repeating-linear-gradient(90deg, #93A9A3 0 2px, transparent 2px 5px); opacity: .75; }
+  .voice .dur { font-family: "PlexMono", monospace; font-size: 8.5px; color: #667781; }
+  .cap { font-family: "PlexMono", monospace; font-size: 8px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-top: 7px; }
+
+  /* ---------- painel de números ---------- */
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 15px 0 4px; }
+  .stat { border: 1px solid var(--line); border-radius: 11px; padding: 11px 12px; }
+  .stat.wide { grid-column: 1 / -1; }
+  .stat .k {
+    font-family: "PlexMono", monospace; font-weight: 500; font-size: 8.5px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  }
+  .stat .v { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 22px; letter-spacing: -.02em; margin-top: 3px; }
+  .stat .v small { font-family: "Plex"; font-size: 11.5px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .stat .s { font-size: 10.5px; line-height: 1.4; color: var(--muted); margin-top: 3px; }
+  .stat .v.good { color: var(--teal); }
+
+  /* ---------- passos ---------- */
+  .step { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .step:last-of-type { border-bottom: 0; }
+  .step .n {
+    font-family: "Archivo", sans-serif; font-weight: 800; font-size: 19px; color: var(--teal);
+    width: 26px; flex-shrink: 0; line-height: 1.1;
+  }
+  .step p { font-size: 12.5px; margin-top: 2px; }
+
+  .note { background: var(--paper-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-top: 15px; }
+  .note h3 { font-size: 13px; margin-bottom: 6px; }
+  .note p { font-size: 11.8px; line-height: 1.55; }
+  .mono { font-family: "PlexMono", monospace; font-weight: 600; color: var(--ink); letter-spacing: .02em; white-space: nowrap; }
+  .big { font-family: "Archivo", sans-serif; font-weight: 800; color: var(--teal); letter-spacing: -.02em; }
+</style>
+</head>
+<body>
+
+<!-- ============ 1. CAPA ============ -->
+<div class="page cover">
+  <div class="hero"><div class="store">{{STORE_NAME}}</div></div>
+  <div class="cover-body">
+    <h1>Seu carro agora tem<br><em>um copiloto.</em></h1>
+    <p class="sub">A {{STORE_NAME}} incluiu na sua compra 1 ano do TotexCar Co-pilot: o assistente que cuida dos gastos, dos prazos e da papelada do seu veículo — dentro do seu WhatsApp.</p>
+
+    <div class="ficha">
+      <div class="hd">Ficha do benefício</div>
+      <div class="row"><div class="k">Benefício</div><div class="v"><b>TotexCar Co-pilot</b> — assistente do seu veículo</div></div>
+      <div class="row"><div class="k">Validade</div><div class="v">12 meses a partir da entrega do carro</div></div>
+      <div class="row"><div class="k">Você paga</div><div class="v"><span class="free">Nada.</span> O plano anual de <b>R$ 109,90</b> é cortesia da loja</div></div>
+      <div class="row"><div class="k">Como usar</div><div class="v">Responda a mensagem do Co-pilot no WhatsApp</div></div>
+    </div>
+
+    <div class="foot"><span>Kit de boas-vindas</span><span class="pg">Totexmotors</span></div>
+  </div>
+  <div class="rail"><i class="a"></i><i class="b"></i></div>
+</div>
+
+<!-- ============ 2. COMO FUNCIONA ============ -->
+<div class="page">
+  <div class="eyebrow">Como funciona</div>
+  <h2>Você fala, ele anota.<br>Sem app, sem planilha.</h2>
+  <p class="lede">O Co-pilot vive no seu WhatsApp. Mande a foto da nota, um áudio ou um texto: ele entende, organiza e guarda o histórico do seu carro.</p>
+
+  <div class="wa">
+    <div class="wa-head"><div class="wa-ava">T</div><div><div class="nm">TotexCar Co-pilot</div><div class="st">online</div></div></div>
+    <div class="att mine"><div class="ph">Foto do cupom<br>do posto</div></div>
+    <div class="bub in">⛽ <b>Abastecimento registrado.</b><br>R$ 250,00 · 38,4 L · Posto Shell<br>Consumo desde o último: <b>11,8 km/L</b><span class="t">18:42</span></div>
+    <div class="bub out voice"><span class="pl"></span><span class="wv"></span><span class="dur">0:07</span></div>
+    <div class="bub in">🛠️ Anotado: <b>troca de óleo, R$ 180</b>, no Zé Mecânico. A próxima cai em torno de 10.000 km — eu aviso quando estiver perto.<span class="t">18:45</span></div>
+  </div>
+  <div class="cap">Ilustração · valores de exemplo</div>
+
+  <div class="foot"><span>TotexCar Co-pilot</span><span class="pg">02</span></div>
+</div>
+
+<!-- ============ 3. BUROCRACIA / MULTAS ============ -->
+<div class="page">
+  <div class="eyebrow">Papelada e prazos</div>
+  <h2>Levou multa?<br>Ele monta o recurso.</h2>
+  <p class="lede">Mande a foto da notificação. O Co-pilot analisa a infração, verifica se há fundamento e escreve o recurso — você só protocola.</p>
+
+  <div class="wa">
+    <div class="wa-head"><div class="wa-ava">T</div><div><div class="nm">TotexCar Co-pilot</div><div class="st">online</div></div></div>
+    <div class="att mine"><div class="ph">Foto da<br>notificação</div></div>
+    <div class="bub in">⚖️ Analisei: <b>avanço de sinal · R$ 293,47</b>. Encontrei fundamento para recorrer e já montei seu <b>recurso pronto</b> — é só protocolar no <b>JARI</b> até <b>14/09</b>. Eu te lembro antes do prazo.<span class="t">09:10</span></div>
+  </div>
+
+  <div class="row"><div class="tag">Doc</div><div><h3>Transferência acompanhada</h3><p>Vistoria, ATPV, taxas: você vê cada etapa até o documento novo chegar na sua mão.</p></div></div>
+  <div class="row"><div class="tag">Agenda</div><div><h3>Calendário do carro</h3><p>Pergunte "o que vence?" e veja IPVA, licenciamento, seguro, CNH, parcelas e a próxima revisão.</p></div></div>
+
+  <div class="foot"><span>TotexCar Co-pilot</span><span class="pg">03</span></div>
+</div>
+
+<!-- ============ 4. NÚMEROS ============ -->
+<div class="page">
+  <div class="eyebrow">Seu carro em números</div>
+  <h2>Quanto seu carro custa<br>de verdade.</h2>
+  <p class="lede">Cada registro vira informação útil: gasto do mês, consumo real comparado ao oficial e o custo de cada quilômetro rodado.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Gastos do mês</div><div class="v">R$ 684</div><div class="s">Combustível 62% · manutenção 26%</div></div>
+    <div class="stat"><div class="k">Custo por km</div><div class="v">R$ 0,68</div><div class="s">Média dos últimos 90 dias</div></div>
+    <div class="stat wide"><div class="k">Consumo real × oficial</div><div class="v good">11,8 km/L <small>· oficial INMETRO 12,4</small></div><div class="s">Se o consumo cair de repente, ele percebe e avisa — costuma ser sintoma de manutenção.</div></div>
+  </div>
+
+  <div class="row"><div class="tag">App</div><div><h3>Motorista de aplicativo</h3><p>Resumo semanal de ganhos e gastos, e o relatório de IR/MEI pronto em PDF quando você pedir.</p></div></div>
+  <div class="row"><div class="tag">Radar</div><div><h3>Serviços perto de você</h3><p>Pneu furado, guincho, oficina, autoelétrica: ele encontra as opções próximas com telefone e endereço.</p></div></div>
+
+  <div class="foot"><span>TotexCar Co-pilot</span><span class="pg">04</span></div>
+</div>
+
+<!-- ============ 5. VALOR DO CARRO ============ -->
+<div class="page">
+  <div class="eyebrow">Valor e estrada</div>
+  <h2>Quanto vale hoje?<br>Ele responde na hora.</h2>
+
+  <div class="wa">
+    <div class="wa-head"><div class="wa-ava">T</div><div><div class="nm">TotexCar Co-pilot</div><div class="st">online</div></div></div>
+    <div class="bub out">Quanto vale meu carro hoje?<span class="t">14:03</span></div>
+    <div class="bub in">💰 Pela <b>tabela FIPE de agora</b>, seu carro está em <b>R$ 62.300</b>. Quer que eu peça uma proposta de recompra para a {{STORE_NAME}}?<span class="t">14:03</span></div>
+  </div>
+
+  <div class="row"><div class="tag">FIPE</div><div><h3>Avaliação ao vivo</h3><p>Consulte quando quiser. Na hora de trocar, a loja pode fazer uma proposta — e seu histórico de cuidado pesa a favor.</p></div></div>
+  <div class="row"><div class="tag">Viagem</div><div><h3>Roteiro com o seu consumo</h3><p>Diga "planejar viagem": pedágios, custo de combustível pelo consumo real do seu carro e paradas no caminho.</p></div></div>
+  <div class="row"><div class="tag">Ficha</div><div><h3>Conhece seu modelo</h3><p>Pneu, óleo, tanque, torque: pergunte qualquer detalhe técnico do seu carro e ele responde.</p></div></div>
+
+  <div class="foot"><span>TotexCar Co-pilot</span><span class="pg">05</span></div>
+</div>
+
+<!-- ============ 6. INDIQUE E GANHE ============ -->
+<div class="page">
+  <div class="eyebrow">Indique e ganhe</div>
+  <h2>Seu amigo ganha <span class="big">R$ 500</span>.<br>Você ganha comissão.</h2>
+  <p class="lede">Pergunte por um carro e o Co-pilot devolve a foto com o <b>seu link</b>, pronto para encaminhar. Fechou negócio pelo link, sua comissão cai no PIX.</p>
+
+  <div class="wa">
+    <div class="wa-head"><div class="wa-ava">T</div><div><div class="nm">TotexCar Co-pilot</div><div class="st">online</div></div></div>
+    <div class="bub out">A loja onde comprei meu carro tem um Corolla XEI?<span class="t">16:20</span></div>
+    <div class="att"><div class="ph">Foto do Corolla<br>na vitrine</div></div>
+    <div class="bub in">🚗 Tem sim. <b>Corolla XEI 2.0</b> 2022 · 38.000 km · <b>R$ 139.900</b><br>Seu link: totexmotors.com/veiculo/…<b>?ref=VOCÊ</b><br>É só encaminhar: pela sua indicação ele ganha <b>R$ 500 em créditos</b>.<span class="t">16:20</span></div>
+  </div>
+
+  <div class="row"><div class="tag">Voz</div><div><h3>Motorista de app indica sem digitar</h3><p>Mande um áudio — "me vê um carro para o meu passageiro" — e o link com foto volta pronto para encaminhar, entre uma corrida e outra.</p></div></div>
+
+  <div class="foot"><span>TotexCar Co-pilot</span><span class="pg">06</span></div>
+</div>
+
+<!-- ============ 7. COMECE ============ -->
+<div class="page">
+  <div class="eyebrow">Comece agora</div>
+  <h2>Três passos e pronto.</h2>
+
+  <div class="step"><div class="n">1</div><div><h3>Responda a mensagem de boas-vindas</h3><p>Sua conta já está ativa. Não precisa criar senha nem baixar aplicativo.</p></div></div>
+  <div class="step"><div class="n">2</div><div><h3>Mande o primeiro registro</h3><p>A foto da nota do posto, um áudio ou um "abasteci 250 reais". Ele cuida do resto.</p></div></div>
+  <div class="step"><div class="n">3</div><div><h3>Use como quiser</h3><p>"O que vence?", "quanto vale meu carro?", "planejar viagem". Para as telas no computador, peça "quero o painel".</p></div></div>
+
+  <div class="note">
+    <h3>Segurança</h3>
+    <p>O número oficial do Co-pilot é <span class="mono">+55 11 96378-6699</span>, com perfil verificado TotexCar Co-Pilot.<br><br>
+    Nós nunca pedimos senha, código de verificação ou dados de cartão pelo WhatsApp. Seus dados servem só para cuidar do seu carro, e você pode encerrar os envios quando quiser respondendo SAIR.</p>
+  </div>
+
+  <div class="foot"><span>{{STORE_NAME}} · Totexmotors</span><span class="pg">totexcarco-pilot.vercel.app</span></div>
+</div>
+
+</body>
+</html>
