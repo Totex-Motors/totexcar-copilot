@@ -4,9 +4,14 @@
 <meta charset="UTF-8">
 <title>Kit de boas-vindas — TotexCar Co-pilot</title>
 <style>
-  /* Fontes embutidas em base64 pelo scripts/build-kit.mjs (o PDF precisa ser autocontido) */
-  @font-face { font-family: "Archivo"; src: url({{FONT_ARCHIVO}}) format("woff2"); font-weight: 600 800; font-display: block; }
-  @font-face { font-family: "Plex"; src: url({{FONT_PLEX_SANS}}) format("woff2"); font-weight: 400 700; font-display: block; }
+  /* Fontes embutidas em base64 pelo scripts/build-kit.mjs (o PDF precisa ser autocontido).
+     ⚠️ Use SEMPRE instâncias ESTÁTICAS (1 arquivo por peso): o Chrome não embute fonte
+     variável no print-to-PDF — ele rasteriza o texto e o PDF perde nitidez e seleção. */
+  @font-face { font-family: "Archivo"; src: url({{FONT_ARCHIVO_700}}) format("woff2"); font-weight: 700; font-display: block; }
+  @font-face { font-family: "Archivo"; src: url({{FONT_ARCHIVO_800}}) format("woff2"); font-weight: 800; font-display: block; }
+  @font-face { font-family: "Plex"; src: url({{FONT_PLEX_400}}) format("woff2"); font-weight: 400; font-display: block; }
+  @font-face { font-family: "Plex"; src: url({{FONT_PLEX_500}}) format("woff2"); font-weight: 500; font-display: block; }
+  @font-face { font-family: "Plex"; src: url({{FONT_PLEX_600}}) format("woff2"); font-weight: 600; font-display: block; }
   @font-face { font-family: "PlexMono"; src: url({{FONT_PLEX_MONO_5}}) format("woff2"); font-weight: 500; font-display: block; }
   @font-face { font-family: "PlexMono"; src: url({{FONT_PLEX_MONO_6}}) format("woff2"); font-weight: 600; font-display: block; }
 

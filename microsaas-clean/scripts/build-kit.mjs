@@ -65,9 +65,13 @@ function render(html, outPdf) {
 }
 
 const template = readFileSync(join(KIT, "kit.template.html"), "utf8");
+// Instâncias ESTÁTICAS (uma por peso). Fonte variável faz o Chrome rasterizar o texto no PDF.
 const fonts = {
-  "{{FONT_ARCHIVO}}": b64(join(ASSETS, "fonts/archivo.woff2"), "font/woff2"),
-  "{{FONT_PLEX_SANS}}": b64(join(ASSETS, "fonts/plexsans.woff2"), "font/woff2"),
+  "{{FONT_ARCHIVO_700}}": b64(join(ASSETS, "fonts/archivo700.woff2"), "font/woff2"),
+  "{{FONT_ARCHIVO_800}}": b64(join(ASSETS, "fonts/archivo800.woff2"), "font/woff2"),
+  "{{FONT_PLEX_400}}": b64(join(ASSETS, "fonts/plexsans400.woff2"), "font/woff2"),
+  "{{FONT_PLEX_500}}": b64(join(ASSETS, "fonts/plexsans500.woff2"), "font/woff2"),
+  "{{FONT_PLEX_600}}": b64(join(ASSETS, "fonts/plexsans600.woff2"), "font/woff2"),
   "{{FONT_PLEX_MONO_5}}": b64(join(ASSETS, "fonts/plexmono5.woff2"), "font/woff2"),
   "{{FONT_PLEX_MONO_6}}": b64(join(ASSETS, "fonts/plexmono6.woff2"), "font/woff2"),
 };
