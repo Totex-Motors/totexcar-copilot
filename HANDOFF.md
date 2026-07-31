@@ -52,6 +52,33 @@
 - **Regra operacional multi-sessão:** SEMPRE git pull --rebase origin main antes de push; o CI
   (GitHub Actions) deploya front+edges a cada push — deploy manual só em emergência.
 
+## 0-AAAAAAA. ⭐ SESSÃO 2026-07-30/31 — Conversas do lojista, campanhas e KIT DE BOAS-VINDAS
+
+- **Aba CONVERSAS no /lojista (somente leitura).** Decisão de produto: **NÃO** fazer inbox de chat
+  livre (o número é do Co-pilot, a janela de 24h da Meta trava texto livre, e CRM é o TotexGest).
+  A loja vê ENGAJAMENTO por cliente (última resposta, interações 30d, falhas de entrega, boas-vindas,
+  cortesia, NPS) + linha do tempo. **Privacidade:** do cliente só aparece TIPO/AÇÃO — nunca o conteúdo
+  da conversa dele com a IA. Actions `conversas_list`/`conversa_timeline` no dealer-api (casa por
+  user_id OU telefone com/sem DDI). `send_campaign` e `postsale_create` passaram a LOGAR em
+  `whatsapp_events` (kind=campanha/boas_vindas) — antes não havia registro nenhum.
+- **Campanhas:** 7 presets de 1 toque (Indique e Ganhe, FIPE/Recompra, Radar, Viagem, Calendário,
+  Vitrine, IR/MEI) + público novo **"Escolher clientes"** com busca incremental e checkboxes
+  (`audience=selected` + `client_ids`, sempre filtrado por dealership no servidor).
+- **Atalho do CRM** no header do /lojista corrigido para `https://totexgest.vercel.app/`.
+- **⭐ KIT DE BOAS-VINDAS EM PDF (cliente cortesia)** — 7 páginas formato celular. `node
+  scripts/build-kit.mjs` gera `public/kit-boas-vindas-copilot.pdf` (genérico) e
+  `public/kit/<slug>.pdf` **por loja** (1ª: `cardoso-veiculos`, capa com a FACHADA da loja).
+  Entrega: template `boas_vindas_cortesia_pdf` (header DOCUMENT, criado por
+  `scripts/create-kit-template.mjs`) no postsale_create → fallback texto; e o webhook manda o PDF
+  na 1ª resposta (dedup `whatsapp_events kind=kit_pdf`). `_shared/kit.ts` resolve o kit da loja
+  (HEAD + fallback). Design v2 (a v1 foi reprovada por "cara de IA"): Archivo + IBM Plex Sans/Mono
+  embutidas, sem emoji em título, "ficha do benefício" no lugar do emoji de presente.
+  ⚠️ **Copy:** os R$ 500 são o crédito do AMIGO que compra (`app_settings.referral_buyer_offer`);
+  quem indica ganha comissão em PIX. NÃO prometer "indique e ganhe R$ 500".
+- **Pendências:** aprovação do template `boas_vindas_cortesia_pdf` na Meta (estava PENDING; o
+  fallback cobre); fachadas das demais lojas pra gerar os kits delas; validar a aba Conversas
+  logado como lojista.
+
 ## 0-AAAAA. ⭐ PLANO DE RETENÇÃO (2026-07-22, sessão 2) — LER PRIMEIRO
 
 ### 📋 5 SPECS NOVOS na raiz do repo (origem: análise externa Kimi, revisados pelo Claude Code)
