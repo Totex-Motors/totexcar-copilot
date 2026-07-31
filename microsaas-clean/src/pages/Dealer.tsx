@@ -198,7 +198,7 @@ export default function Dealer() {
           <div className="flex items-center gap-3">
             {/* CRM TotexGest (sistema irmão): acesso direto — SSO fica pra fase 2 */}
             <Button asChild variant="outline" size="sm" className="gap-1.5">
-              <a href="https://totexcrm.com.br" target="_blank" rel="noreferrer" title="Abrir o CRM TotexGest (seus leads)">
+              <a href="https://totexgest.vercel.app/" target="_blank" rel="noreferrer" title="Abrir o CRM TotexGest (seus leads)">
                 <KanbanSquare className="w-4 h-4" /> <span className="hidden sm:inline">CRM TotexGest</span><span className="sm:hidden">CRM</span> <ExternalLink className="w-3 h-3" />
               </a>
             </Button>
