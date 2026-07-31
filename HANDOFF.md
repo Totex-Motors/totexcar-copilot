@@ -29,6 +29,29 @@
   marketplace (foto/fachada no preview do link — é no repo do marketplace); Dependabot 53 vulns
   (21 high) pra triagem; voz do vídeo (amostras MiniMax/Vibe prontas OU Renata grava as 17 falas).
 
+
+### 🧭 FECHAMENTO DA SESSÃO 2026-07-25/30 (adenda)
+- **Guardrail de ESCOPO nos agentes** (commit 7a2072e): o Co-pilot respondia até receita de bolo.
+  Agora seção ESCOPO inviolável no prompt do whatsapp-webhook e do support-agent: só mundo do
+  carro/ecossistema; off-topic = recusa simpática de 1 frase + redirecionamento. Social breve ok;
+  Modo Viagem preservado (hospedagem/comida do destino = produto).
+- **Cortesia validada em produção:** cliente Kaiala Santos Barreto (30/07) — conta premium até
+  30/07/27, Citroën C3 pela placa, boas-vindas enviada sem status_fail. Fluxo: /lojista → Sucesso
+  do Cliente → registrar com WhatsApp + checkbox cortesia (+placa/valor) → resto é automático;
+  cliente não cria senha (responde a msg; painel via link mágico "quero o painel").
+- **VÍDEO DOS LOJISTAS (estado):** mp4 FINAL em C:\Users\marco\Downloads\TotexCar-Copilot-Lojistas.mp4
+  (17 cenas, ~3min, 9:16, narrativa cronológica, fotos novas do stand com rostos borrados, ato do
+  Selo como clímax). Fonte interativa COMPLETA (17 áudios e fotos EMBUTIDOS em base64):
+  artifact https://claude.ai/code/artifact/9bf4f065-a2e2-4504-80fc-73f450e39de4 — os arquivos-fonte
+  do scratchpad temp foram limpos; para iterar, baixar o artifact (WebFetch) e re-extrair os
+  data URIs, ou regerar os áudios (voz Julian/ElevenLabs via Higgsfield text2speech_v2,
+  voice_id 95429266-c0ac-4137-a209-63b8812b0f23). **Voz pendente de decisão:** dono achou
+  "meio mecânica"; clone da Renata (seed_audio zero-shot) reprovado; opções: amostras
+  MiniMax/Vibe já geradas OU Renata gravar as 17 falas (roteiro numerado 1-17 está na conversa
+  da sessão de 23/07).
+- **Regra operacional multi-sessão:** SEMPRE git pull --rebase origin main antes de push; o CI
+  (GitHub Actions) deploya front+edges a cada push — deploy manual só em emergência.
+
 ## 0-AAAAA. ⭐ PLANO DE RETENÇÃO (2026-07-22, sessão 2) — LER PRIMEIRO
 
 ### 📋 5 SPECS NOVOS na raiz do repo (origem: análise externa Kimi, revisados pelo Claude Code)
