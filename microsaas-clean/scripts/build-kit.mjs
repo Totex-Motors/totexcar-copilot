@@ -28,11 +28,8 @@ const ASSETS = join(KIT, "assets");
 // Registro de lojas com kit personalizado. `accent` = cor da marca da loja (usada só
 // como fio de assinatura na capa); `photo` = fachada em assets/lojas/.
 const LOJAS = [
-  { slug: "cardoso-veiculos", nome: "Cardoso Veículos", accent: "#1D3FD1", photo: "cardoso-veiculos.jpg" },
+  { slug: "cardoso-veiculos", nome: "Cardoso Veículos", photo: "cardoso-veiculos.jpg" },
 ];
-
-// Capa sem foto: degradê escuro (mantém a diagramação idêntica).
-const SEM_FOTO = "linear-gradient(155deg, #16233A 0%, #0A1424 70%), radial-gradient(120% 80% at 80% 0%, rgba(15,181,162,.35), transparent 60%)";
 
 const b64 = (p, mime) => `data:${mime};base64,${readFileSync(p).toString("base64")}`;
 
@@ -65,27 +62,16 @@ function render(html, outPdf) {
 }
 
 const template = readFileSync(join(KIT, "kit.template.html"), "utf8");
-// Instâncias ESTÁTICAS (uma por peso). Fonte variável faz o Chrome rasterizar o texto no PDF.
-const fonts = {
-  "{{FONT_ARCHIVO_700}}": b64(join(ASSETS, "fonts/archivo700.woff2"), "font/woff2"),
-  "{{FONT_ARCHIVO_800}}": b64(join(ASSETS, "fonts/archivo800.woff2"), "font/woff2"),
-  "{{FONT_PLEX_400}}": b64(join(ASSETS, "fonts/plexsans400.woff2"), "font/woff2"),
-  "{{FONT_PLEX_500}}": b64(join(ASSETS, "fonts/plexsans500.woff2"), "font/woff2"),
-  "{{FONT_PLEX_600}}": b64(join(ASSETS, "fonts/plexsans600.woff2"), "font/woff2"),
-  "{{FONT_PLEX_MONO_5}}": b64(join(ASSETS, "fonts/plexmono5.woff2"), "font/woff2"),
-  "{{FONT_PLEX_MONO_6}}": b64(join(ASSETS, "fonts/plexmono6.woff2"), "font/woff2"),
-};
+// Imagem do presente (fundo removido de Downloads/"presente png.jpg" via flood-fill).
+const giftImg = b64(join(ASSETS, "presente.png"), "image/png");
 
-function build({ slug, nome, accent, photo }) {
-  let html = template;
-  for (const [k, v] of Object.entries(fonts)) html = html.replaceAll(k, v);
-  const photoCss = photo
-    ? `url("${b64(join(ASSETS, "lojas", photo), photo.endsWith(".png") ? "image/png" : "image/jpeg")}")`
-    : SEM_FOTO;
-  html = html
-    .replaceAll("{{STORE_PHOTO_CSS}}", photoCss)
-    .replaceAll("{{STORE_NAME}}", nome)
-    .replaceAll("{{ACCENT}}", accent);
+function build({ slug, nome, photo }) {
+  let html = template.replaceAll("{{GIFT_IMG}}", giftImg);
+  // fachada + nome da loja na capa (só nos kits personalizados; genérico fica sem)
+  const storeBlock = photo
+    ? `<div class="storecard"><img src="${b64(join(ASSETS, "lojas", photo), photo.endsWith(".png") ? "image/png" : "image/jpeg")}" alt=""><div class="nm">${nome}</div></div>`
+    : "";
+  html = html.replaceAll("{{STORE_BLOCK}}", storeBlock);
 
   const out = slug ? join(ROOT, "public", "kit", `${slug}.pdf`) : join(ROOT, "public", "kit-boas-vindas-copilot.pdf");
   mkdirSync(dirname(out), { recursive: true });
@@ -96,8 +82,8 @@ function build({ slug, nome, accent, photo }) {
 
 const only = process.argv[2];
 if (!only || only === "geral") {
-  // genérico: sem foto, sem nome de loja ("sua loja"), acento na cor do produto
-  build({ slug: null, nome: "Sua loja parceira", accent: "#0FB5A2", photo: null });
+  // genérico: sem fachada (o texto já fala "da sua loja")
+  build({ slug: null, nome: "Sua loja parceira", photo: null });
 }
 for (const loja of LOJAS) {
   if (only && only !== loja.slug) continue;
