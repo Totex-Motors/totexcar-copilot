@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -607,15 +608,37 @@ function CampaignComposer({ fixedClient, dealership }: { fixedClient?: DealerCli
   const [message, setMessage] = useState("");
   const [brief, setBrief] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // seleção manual de clientes (audience === "selected")
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pickQ, setPickQ] = useState("");
 
-  const { data: rec, isLoading: loadingRec } = useCampaignRecipients(audience, fixedClient?.id ?? null, true, dealership);
+  // na seleção manual buscamos a base TODA da loja; a escolha é feita aqui no front
+  const fetchAudience: CampaignAudience = audience === "selected" ? "all" : audience;
+  const { data: rec, isLoading: loadingRec } = useCampaignRecipients(fetchAudience, fixedClient?.id ?? null, true, dealership);
   const draft = useDraftMessage();
   const send = useSendCampaign();
 
   const recipients = rec?.recipients || [];
-  const count = single ? 1 : (rec?.count || 0);
-  const previewClient = single ? fixedClient : recipients[0];
+  const chosen = audience === "selected" ? recipients.filter((r) => selectedIds.has(r.id)) : recipients;
+  const count = single ? 1 : (audience === "selected" ? chosen.length : (rec?.count || 0));
+  const previewClient = single ? fixedClient : (audience === "selected" ? chosen[0] : recipients[0]);
   const preview = message ? previewPersonalize(message, previewClient) : "";
+
+  const pickFiltered = useMemo(() => {
+    const term = pickQ.trim().toLowerCase();
+    if (!term) return recipients;
+    return recipients.filter((r) =>
+      [r.name, r.phone, r.vehicle?.marca, r.vehicle?.modelo, r.vehicle?.placa]
+        .filter(Boolean).some((v) => String(v).toLowerCase().includes(term)),
+    );
+  }, [recipients, pickQ]);
+
+  const togglePick = (id: string, on: boolean) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
 
   const insertVar = (v: string) => setMessage((m) => (m ? `${m} ${v}` : v));
 
@@ -630,7 +653,7 @@ function CampaignComposer({ fixedClient, dealership }: { fixedClient?: DealerCli
   };
 
   const handleSend = () => {
-    send.mutate({ audience, message, clientId: fixedClient?.id, dealership }, {
+    send.mutate({ audience, message, clientId: fixedClient?.id, clientIds: audience === "selected" ? [...selectedIds] : undefined, dealership }, {
       onSuccess: (r) => { toast({ title: "Campanha enviada ✅", description: `${r.sent} enviada(s)${r.failed ? `, ${r.failed} falhou(aram)` : ""}.` }); setConfirmOpen(false); },
       onError: (e: any) => { toast({ title: "Erro ao enviar", description: String(e?.message || e), variant: "destructive" }); setConfirmOpen(false); },
     });
@@ -642,7 +665,7 @@ function CampaignComposer({ fixedClient, dealership }: { fixedClient?: DealerCli
       {!single && (
         <div className="space-y-2">
           <Label>Para quem enviar</Label>
-          <RadioGroup value={audience} onValueChange={(v) => setAudience(v as CampaignAudience)} className="grid sm:grid-cols-2 gap-3">
+          <RadioGroup value={audience} onValueChange={(v) => setAudience(v as CampaignAudience)} className="grid sm:grid-cols-3 gap-3">
             <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
               <RadioGroupItem value="due_soon" className="mt-0.5" />
               <span><span className="font-medium block">Vencimento próximo</span><span className="text-xs text-muted-foreground">Quem tem licenciamento/IPVA/seguro/CNH vencendo em até 30 dias</span></span>
@@ -651,7 +674,52 @@ function CampaignComposer({ fixedClient, dealership }: { fixedClient?: DealerCli
               <RadioGroupItem value="all" className="mt-0.5" />
               <span><span className="font-medium block">Todos os clientes</span><span className="text-xs text-muted-foreground">Toda a base da loja com WhatsApp cadastrado</span></span>
             </label>
+            <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
+              <RadioGroupItem value="selected" className="mt-0.5" />
+              <span><span className="font-medium block">Escolher clientes</span><span className="text-xs text-muted-foreground">Busque pelo nome e marque quem vai receber</span></span>
+            </label>
           </RadioGroup>
+        </div>
+      )}
+
+      {/* Seletor de clientes (busca + marcação) */}
+      {!single && audience === "selected" && (
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-10" placeholder="Digite o nome, placa ou telefone..." value={pickQ} onChange={(e) => setPickQ(e.target.value)} />
+          </div>
+          <div className="max-h-60 overflow-y-auto rounded-lg border divide-y divide-border">
+            {loadingRec ? (
+              <p className="p-3 text-sm text-muted-foreground">Carregando clientes...</p>
+            ) : pickFiltered.length ? (
+              pickFiltered.map((r) => (
+                <label key={r.id} className="flex items-center gap-3 p-2.5 cursor-pointer hover:bg-muted/40 transition-colors">
+                  <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={(v) => togglePick(r.id, v === true)} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium truncate">{r.name || "Sem nome"}</span>
+                    <span className="block text-xs text-muted-foreground truncate">
+                      {[r.vehicle?.marca, r.vehicle?.modelo].filter(Boolean).join(" ") || "sem veículo"}{r.phone ? ` · ${r.phone}` : ""}
+                    </span>
+                  </span>
+                </label>
+              ))
+            ) : (
+              <p className="p-3 text-sm text-muted-foreground">Nenhum cliente encontrado{pickQ ? " para essa busca" : ""}.</p>
+            )}
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span><b className="text-foreground">{selectedIds.size}</b> selecionado(s)</span>
+            <span className="flex gap-3">
+              <button type="button" className="hover:text-foreground transition-colors"
+                onClick={() => setSelectedIds(new Set([...selectedIds, ...pickFiltered.map((r) => r.id)]))}>
+                Marcar {pickQ ? "os filtrados" : "todos"}
+              </button>
+              <button type="button" className="hover:text-foreground transition-colors" onClick={() => setSelectedIds(new Set())}>
+                Limpar
+              </button>
+            </span>
+          </div>
         </div>
       )}
 
@@ -660,7 +728,7 @@ function CampaignComposer({ fixedClient, dealership }: { fixedClient?: DealerCli
         {single ? (
           <>Enviando para <b className="text-foreground">{fixedClient?.name || "este cliente"}</b> ({fixedClient?.phone})</>
         ) : loadingRec ? "Calculando destinatários..." : (
-          <><b className="text-foreground">{count}</b> destinatário(s) com WhatsApp{count === 0 ? " — ninguém se encaixa nesse público." : "."}</>
+          <><b className="text-foreground">{count}</b> destinatário(s) com WhatsApp{count === 0 ? (audience === "selected" ? " — marque pelo menos 1 cliente acima." : " — ninguém se encaixa nesse público.") : "."}</>
         )}
       </div>
 

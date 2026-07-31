@@ -205,7 +205,7 @@ export const usePostsaleTransferSave = () =>
   });
 
 // ===== Campanhas (WhatsApp) =====
-export type CampaignAudience = "all" | "due_soon" | "single";
+export type CampaignAudience = "all" | "due_soon" | "single" | "selected";
 
 export interface CampaignRecipient {
   id: string;
@@ -235,8 +235,8 @@ export const useDraftMessage = () =>
 
 export const useSendCampaign = () =>
   useMutation({
-    mutationFn: async (p: { audience: CampaignAudience; message: string; clientId?: string; dealership?: string }) => {
-      const data = await callDealer("send_campaign", { audience: p.audience, message: p.message, client_id: p.clientId, dealership: p.dealership });
+    mutationFn: async (p: { audience: CampaignAudience; message: string; clientId?: string; clientIds?: string[]; dealership?: string }) => {
+      const data = await callDealer("send_campaign", { audience: p.audience, message: p.message, client_id: p.clientId, client_ids: p.clientIds, dealership: p.dealership });
       return data as { total: number; sent: number; failed: number; results: { name: string; phone: string; ok: boolean }[] };
     },
   });

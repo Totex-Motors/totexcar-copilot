@@ -109,12 +109,18 @@ async function aiDraft(settings: any, brief: string, storeName: string): Promise
 }
 
 // Monta a lista de destinatários (enriquecida) de uma loja, conforme o público escolhido
-async function recipientsFor(adminClient: any, dealership: string | null, audience: string, clientId?: string) {
+async function recipientsFor(adminClient: any, dealership: string | null, audience: string, clientId?: string, clientIds?: string[]) {
   let q = adminClient.from("users")
     .select("id, name, phone, dealership, cnh_vencimento, plan, subscription_status")
     .eq("role", "owner");
   if (dealership) q = q.eq("dealership", dealership);
   if (audience === "single" && clientId) q = q.eq("id", clientId);
+  if (audience === "selected") {
+    // seleção manual do lojista — o filtro de dealership acima continua valendo (não vaza outra loja)
+    const ids = (clientIds || []).map(String).filter(Boolean).slice(0, 500);
+    if (!ids.length) return [];
+    q = q.in("id", ids);
+  }
   const { data: owners } = await q.limit(1000);
   const ids = (owners || []).map((o: any) => o.id);
   if (!ids.length) return [];
@@ -484,7 +490,7 @@ Deno.serve(async (req) => {
       // Painel do Lojista — Campanhas (WhatsApp)
       case "campaign_recipients": {
         const audience = String(p.audience || "all");
-        const list = await recipientsFor(admin, isAdmin ? (p.dealership || null) : me.dealership, audience, p.client_id);
+        const list = await recipientsFor(admin, isAdmin ? (p.dealership || null) : me.dealership, audience, p.client_id, p.client_ids);
         return json({ ok: true, count: list.length, recipients: list });
       }
 
@@ -504,7 +510,7 @@ Deno.serve(async (req) => {
 
         const wa = await loadWaSettings(admin);
 
-        const list = await recipientsFor(admin, isAdmin ? (p.dealership || null) : me.dealership, audience, p.client_id);
+        const list = await recipientsFor(admin, isAdmin ? (p.dealership || null) : me.dealership, audience, p.client_id, p.client_ids);
         if (!list.length) return json({ ok: true, total: 0, sent: 0, failed: 0, results: [] });
 
         const results: any[] = [];
