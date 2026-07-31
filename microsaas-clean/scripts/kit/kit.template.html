@@ -45,7 +45,7 @@
     color: #fff; justify-content: space-between;
   }
   .cover .gift-img {
-    width: 92px; height: 92px; object-fit: contain; margin-bottom: 16px;
+    width: 78px; height: 78px; object-fit: contain; margin-bottom: 14px;
     filter: drop-shadow(0 10px 22px rgba(0,0,0,.45));
   }
   .cover h1 { font-size: 34px; color: #fff; }
@@ -53,20 +53,23 @@
   .cover .brand { font-weight: 800; font-size: 19px; letter-spacing: .01em; }
   .cover .brand span { color: #2dd4bf; }
   .valuebox {
-    margin-top: 26px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14);
+    margin-top: 20px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14);
     border-radius: 16px; padding: 16px 18px; font-size: 14px; color: #d7e0ee; line-height: 1.5;
   }
   .valuebox b { color: #2dd4bf; }
   .cover .foot { border-top-color: rgba(255,255,255,.14); color: #7e8ba1; }
   .cover .foot b { color: #e2e8f0; }
   /* fachada da loja (só nos kits personalizados; o genérico não mostra nada) */
-  .storecard { margin-top: 18px; border-radius: 16px; overflow: hidden; position: relative; height: 118px; border: 1px solid rgba(255,255,255,.16); }
+  .storecard { margin-top: 14px; border-radius: 16px; overflow: hidden; position: relative; height: 108px; border: 1px solid rgba(255,255,255,.16); }
   .storecard img { width: 100%; height: 100%; object-fit: cover; object-position: center 40%; display: block; }
   .storecard .nm {
     position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 14px 9px;
     background: linear-gradient(180deg, transparent, rgba(4,10,20,.85));
     color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .02em;
   }
+  /* loja ainda sem foto de fachada: card só com o nome */
+  .storecard.noimg { height: 64px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.05); }
+  .storecard .nm2 { color: #fff; font-size: 16px; font-weight: 800; letter-spacing: .01em; }
 
   /* ---------- mockup WhatsApp ---------- */
   .wa {
@@ -160,8 +163,8 @@
   <div>
     <img class="gift-img" src="{{GIFT_IMG}}" alt="">
     <h1>Você ganhou um assistente pessoal para o seu carro.</h1>
-    <p class="sub">Um presente da loja onde você comprou seu carro: <b style="color:#fff">1 ano de TotexCar Co-pilot</b>, o copiloto que cuida dos gastos, prazos e da saúde do seu veículo — direto no seu WhatsApp.</p>
-    <div class="valuebox">🤝 Este benefício é uma cortesia da sua loja: o plano anual de <b>R$&nbsp;109,90 já está pago</b> por ela. Você não paga nada para usar durante 1 ano.</div>
+    <p class="sub">Um presente {{PRESENTE_DA_LOJA}}: <b style="color:#fff">1 ano de TotexCar Co-pilot</b>, o copiloto que cuida dos gastos, prazos e da saúde do seu veículo — direto no seu WhatsApp.</p>
+    <div class="valuebox">🤝 Este benefício é uma cortesia da {{CORTESIA_DA_LOJA}}: o plano anual de <b>R$&nbsp;109,90 já está pago</b> por ela. Você não paga nada para usar durante 1 ano.</div>
     {{STORE_BLOCK}}
   </div>
   <div class="foot"><span>Kit de boas-vindas</span><span><b>Ecossistema Totexmotors</b></span></div>
@@ -280,7 +283,7 @@
     Nós <b>nunca pedimos senha, código ou dados de cartão</b> pelo WhatsApp. Seus dados são usados só para cuidar do seu carro — e você pode pedir pra sair quando quiser respondendo SAIR.</p>
   </div>
 
-  <div class="foot"><span>Um presente da sua loja · Ecossistema Totexmotors</span><span><b>totexcarco-pilot.vercel.app</b></span></div>
+  <div class="foot"><span>Um presente da {{FOOTER_LOJA}} · Ecossistema Totexmotors</span><span><b>totexcarco-pilot.vercel.app</b></span></div>
 </div>
 
 </body>

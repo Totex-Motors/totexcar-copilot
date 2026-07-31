@@ -67,11 +67,17 @@ const giftImg = b64(join(ASSETS, "presente.png"), "image/png");
 
 function build({ slug, nome, photo }) {
   let html = template.replaceAll("{{GIFT_IMG}}", giftImg);
-  // fachada + nome da loja na capa (só nos kits personalizados; genérico fica sem)
+  // personalização: o kit da loja traz o NOME dela no texto (capa, cortesia e rodapé final)
+  // e o card da FACHADA na capa; o genérico mantém o texto aprovado ("da sua loja").
+  const daLoja = slug ? `da <b style="color:#fff">${nome}</b>, a loja onde você comprou seu carro` : "da loja onde você comprou seu carro";
   const storeBlock = photo
     ? `<div class="storecard"><img src="${b64(join(ASSETS, "lojas", photo), photo.endsWith(".png") ? "image/png" : "image/jpeg")}" alt=""><div class="nm">${nome}</div></div>`
-    : "";
-  html = html.replaceAll("{{STORE_BLOCK}}", storeBlock);
+    : (slug ? `<div class="storecard noimg"><div class="nm2">${nome}</div></div>` : "");
+  html = html
+    .replaceAll("{{PRESENTE_DA_LOJA}}", daLoja)
+    .replaceAll("{{CORTESIA_DA_LOJA}}", slug ? nome : "sua loja")
+    .replaceAll("{{FOOTER_LOJA}}", slug ? nome : "sua loja")
+    .replaceAll("{{STORE_BLOCK}}", storeBlock);
 
   const out = slug ? join(ROOT, "public", "kit", `${slug}.pdf`) : join(ROOT, "public", "kit-boas-vindas-copilot.pdf");
   mkdirSync(dirname(out), { recursive: true });
