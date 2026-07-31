@@ -661,18 +661,34 @@ Deno.serve(async (req) => {
         const primeiro = name ? name.split(" ")[0] : "tudo bem";
         const wa = await loadWaSettings(admin);
         let welcome = false;
+        let kitEnviado = false;
         try {
-          welcome = cortesia
-            ? await waSendTemplate(wa, phone, "boas_vindas_cortesia", [primeiro, car || "carro", loja])
-            : await waSendTemplate(wa, phone, "convite_copilot_loja", [primeiro, car ? `seu ${car}` : "seu carro", loja, link]);
+          if (cortesia) {
+            // 1º tenta a boas-vindas com o KIT em PDF anexado (header DOCUMENT); se o template
+            // ainda não estiver aprovado (ou falhar), cai na versão texto — nada quebra.
+            const kitUrl = `${appUrl}/kit-boas-vindas-copilot.pdf`;
+            welcome = await waSendTemplate(wa, phone, "boas_vindas_cortesia_pdf", [primeiro, car || "carro", loja],
+              { documentUrl: kitUrl, documentFilename: "Kit-Boas-Vindas-Co-pilot.pdf" });
+            kitEnviado = welcome;
+            if (!welcome) welcome = await waSendTemplate(wa, phone, "boas_vindas_cortesia", [primeiro, car || "carro", loja]);
+          } else {
+            welcome = await waSendTemplate(wa, phone, "convite_copilot_loja", [primeiro, car ? `seu ${car}` : "seu carro", loja, link]);
+          }
         } catch { /* WhatsApp off: cria a jornada mesmo assim */ }
         if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
         await admin.from("whatsapp_events").insert({ // alimenta a aba Conversas
           from_phone: phone, user_id: provisionedUserId, kind: "boas_vindas",
           status: welcome ? "sent" : "error",
           raw: { postsale_journey: created.id, loja },
-          parsed: { cortesia, template: cortesia ? "boas_vindas_cortesia" : "convite_copilot_loja", carro: car },
+          parsed: { cortesia, template: cortesia ? (kitEnviado ? "boas_vindas_cortesia_pdf" : "boas_vindas_cortesia") : "convite_copilot_loja", carro: car },
         });
+        // se o kit PDF já foi junto, registra pro webhook não reenviar na 1ª resposta
+        if (kitEnviado) {
+          await admin.from("whatsapp_events").insert({
+            from_phone: phone, user_id: provisionedUserId, kind: "kit_pdf", status: "sent",
+            raw: { via: "postsale_create" }, parsed: { template: "boas_vindas_cortesia_pdf" },
+          });
+        }
         return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated });
       }
 

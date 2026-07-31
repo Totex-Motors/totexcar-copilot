@@ -74,22 +74,35 @@ export async function waSendMenu(s: WaSettings, phone: string, text: string, cho
 
 // ---------------- envio: TEMPLATE (mensagem iniciada pelo negócio) ----------------
 // No meta envia o template aprovado; no uazapi renderiza o texto equivalente (registry abaixo).
-export async function waSendTemplate(s: WaSettings, phone: string, name: string, params: any[]): Promise<boolean> {
+export async function waSendTemplate(
+  s: WaSettings, phone: string, name: string, params: any[],
+  opts?: { documentUrl?: string; documentFilename?: string },
+): Promise<boolean> {
   const to = onlyDigits(phone);
   if (!to) return false;
   const tpl = WA_TEMPLATES[name];
   if (!tpl) { console.error(`template desconhecido: ${name}`); return false; }
   const clean = params.map(cleanParam);
   if (waProvider(s) === "meta") {
+    const components: any[] = [];
+    // template com header DOCUMENT (ex.: kit de boas-vindas em PDF)
+    if (opts?.documentUrl) {
+      components.push({
+        type: "header",
+        parameters: [{ type: "document", document: { link: opts.documentUrl, filename: (opts.documentFilename || "documento.pdf").slice(0, 240) } }],
+      });
+    }
+    if (clean.length) components.push({ type: "body", parameters: clean.map((t) => ({ type: "text", text: t })) });
     return metaPost(s, {
       messaging_product: "whatsapp", to, type: "template",
-      template: {
-        name, language: { code: "pt_BR" },
-        components: clean.length ? [{ type: "body", parameters: clean.map((t) => ({ type: "text", text: t })) }] : [],
-      },
+      template: { name, language: { code: "pt_BR" }, components },
     });
   }
-  return uazapiPost(s, "/send/text", { number: to, text: tpl.render(clean) });
+  const ok = await uazapiPost(s, "/send/text", { number: to, text: tpl.render(clean) });
+  if (ok && opts?.documentUrl) {
+    await uazapiPost(s, "/send/media", { number: to, type: "document", file: opts.documentUrl, docName: opts.documentFilename || "documento.pdf", text: "" });
+  }
+  return ok;
 }
 
 // ---------------- envio: IMAGEM com legenda (vitrine de carros; janela de 24h) ----------------
@@ -353,6 +366,14 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
     category: "UTILITY",
     body: "Oi {{1}}! Aqui é da {{2}}. 🙂 Sua opinião vale muito pra gente: toque no botão abaixo e avalie sua experiência de compra em segundos. Obrigado! 🙏",
     render: (p) => `Oi ${p[0]}! Aqui é da ${p[1]}. 🙂\nDe 0 a 10, o quanto você recomendaria a *${p[1]}* a um amigo?\nResponda só com o número (0 a 10). Sua resposta ajuda demais! 🙏`,
+  },
+  boas_vindas_cortesia_pdf: {
+    // igual à boas_vindas_cortesia, mas com HEADER DOCUMENT (kit de boas-vindas em PDF anexado).
+    // Criada por scripts/create-kit-template.mjs (upload do PDF de exemplo via Graph). Enquanto não
+    // estiver APPROVED, o envio falha e o dealer-api cai na boas_vindas_cortesia de texto.
+    category: "MARKETING",
+    body: "Olá {{1}}! 🎉 Obrigado por comprar seu {{2}} na {{3}}. Sua conta no TotexCar Co-pilot foi ativada com 1 ANO DE CORTESIA da loja. No guia em anexo você vê tudo o que seu novo assistente faz: gastos, consumo, revisões, multas e mais, direto neste WhatsApp. Responda esta mensagem para começar. 🚗",
+    render: (p) => `Olá ${p[0]}! 🎉 Muito obrigado por comprar seu ${p[1]} na ${p[2]}!\n\nComo presente de boas-vindas, você ganhou *1 ANO GRÁTIS* do *TotexCar Co-pilot* — seu assistente do carro no WhatsApp. No guia em anexo você vê tudo o que ele faz. 🎁\n\nSua conta já está ativa. Responda esta mensagem para começar. 🚗`,
   },
   boas_vindas_cortesia: {
     // criada como UTILITY mas o Meta RECATEGORIZOU p/ MARKETING (linguagem de presente/1 ano grátis)

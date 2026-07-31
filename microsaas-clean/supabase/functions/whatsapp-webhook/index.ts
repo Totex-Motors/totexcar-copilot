@@ -2291,6 +2291,36 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     const provisioned = String(user.email || "").toLowerCase().endsWith("@totexcarfinance.app");
     const quickActions = provisioned ? QUICK_ACTIONS : QUICK_ACTIONS.filter((a) => a !== PAINEL_LABEL);
 
+    // KIT DE BOAS-VINDAS (PDF): cliente com cortesia da loja que ainda não recebeu o guia recebe
+    // na 1ª resposta — aqui a janela de 24h está aberta, então vai como documento livre (sem
+    // template). Cobre o caso do template boas_vindas_cortesia_pdf ainda não aprovado na Meta.
+    // Fire-and-forget: não atrasa a resposta do agente.
+    if (provisioned) {
+      const kitJob = (async () => {
+        try {
+          const { count: jaTem } = await supabase.from("whatsapp_events")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id).eq("kind", "kit_pdf");
+          if (jaTem) return;
+          const { count: patrocinado } = await supabase.from("postsale_journeys")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id).eq("sponsored", true);
+          if (!patrocinado) return;
+          // grava ANTES de enviar (dedup: retry do webhook não manda 2x)
+          await supabase.from("whatsapp_events").insert({
+            from_phone: msg.phone, user_id: user.id, kind: "kit_pdf", status: "sent",
+            raw: { via: "webhook_primeira_resposta" }, parsed: {},
+          });
+          const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+          const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+          await waSendDocument(await getSettings(), msg.phone,
+            `${appUrl}/kit-boas-vindas-copilot.pdf`, "Kit-Boas-Vindas-Co-pilot.pdf",
+            "🎁 Seu guia de boas-vindas: tudo o que eu faço pelo seu carro, em 6 páginas rápidas.");
+        } catch (e) { console.error("kit boas-vindas:", e); }
+      })();
+      (globalThis as any).EdgeRuntime?.waitUntil?.(kitJob) ?? kitJob.catch(() => {});
+    }
+
     const { data: vehicles } = await supabase
       .from("accounts").select("*").eq("user_id", user.id).eq("is_active", true).limit(1);
     const vehicle = vehicles && vehicles.length ? vehicles[0] : null;
