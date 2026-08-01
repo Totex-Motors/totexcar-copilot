@@ -230,6 +230,10 @@
           <button data-v="Passou em frente">Passou em frente</button>
         </div>
       </div>
+      <div class="campo">
+        <label for="f-obs">Observações</label>
+        <input id="f-obs" autocomplete="off" placeholder="Ex.: procura SUV até 80 mil, volta amanhã…">
+      </div>
       <p class="aviso" id="f-aviso"></p>
       <button class="acao" id="btnCadastrar" onclick="cadastrar()">Cadastrar e gerar voucher</button>
     </section>
@@ -369,7 +373,7 @@
           headers:{'Prefer':'return=representation'},
           body: JSON.stringify({
             loja:LOJA, voucher:p.voucher, nome:p.nome, zap:p.zap, zap_limpo:p.zap_limpo,
-            insta:p.insta, cliente:p.cliente, interesse:p.interesse, origem:p.origem, hora:p.hora
+            insta:p.insta, obs:p.obs, cliente:p.cliente, interesse:p.interesse, origem:p.origem, hora:p.hora
           })
         }).then(function(r){
           if(r.ok || r.status===409){ // 409 = já subiu por outro caminho
@@ -424,6 +428,7 @@
     var registro = {
       loja:LOJA, nome:nome, zap:zap, zap_limpo:zapLimpo,
       insta: document.getElementById('f-insta').value.trim(),
+      obs: document.getElementById('f-obs').value.trim(),
       cliente: chip('g-cliente'), interesse: chip('g-interesse'), origem: chip('g-origem'),
       hora: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
     };
@@ -479,7 +484,7 @@
 
   function fecharVoucher(){
     document.getElementById('veu').classList.remove('on');
-    ['f-nome','f-zap','f-insta'].forEach(function(id){ document.getElementById(id).value=''; });
+    ['f-nome','f-zap','f-insta','f-obs'].forEach(function(id){ document.getElementById(id).value=''; });
     ['g-cliente','g-interesse','g-origem'].forEach(limparChips);
     document.getElementById('f-nome').focus();
   }
@@ -501,7 +506,8 @@
         + '<div class="vnum">'+esc(p.voucher||'…')+'</div>'
         + '<div class="dados"><b>'+esc(p.nome)+(pendente?' ⏳':'')+'</b><span>'+esc(p.zap)
         + (p.insta ? ' · '+esc(p.insta) : '')
-        + (p.origem ? ' · '+esc(p.origem) : '') + (p.hora ? ' · '+esc(p.hora) : '') + '</span></div>'
+        + (p.origem ? ' · '+esc(p.origem) : '') + (p.hora ? ' · '+esc(p.hora) : '')
+        + (p.obs ? '<br>📝 '+esc(p.obs) : '') + '</span></div>'
         + '<button class="del" aria-label="Excluir '+esc(p.nome)+'" onclick="excluir(\''+esc(p.voucher)+'\')">✕</button>'
         + '</div>';
     }).join('');
@@ -532,9 +538,9 @@
   }
 
   function exportarCSV(){
-    var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Hora']];
+    var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Hora','Observações']];
     pessoas.forEach(function(p){
-      linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,p.hora]);
+      linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,p.hora,p.obs]);
     });
     var csv = '﻿' + linhas.map(function(l){
       return l.map(function(c){ return '"'+String(c||'').replace(/"/g,'""')+'"'; }).join(';');
