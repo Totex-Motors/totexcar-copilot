@@ -1,0 +1,461 @@
+<title>Feirão Cardoso Veículos — Sorteio TotexCar Co-pilot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<style>
+  :root{
+    --azul:#1436C7; --navy:#0A1B5C; --sky:#38B6E8; --ouro:#F5B301;
+    --ok:#1B9E4B; --erro:#C7332B;
+    --fundo:#F2F5FC; --card:#FFFFFF; --tinta:#141B3D; --tinta2:#5A6489;
+    --linha:#D9E0F2; --chip:#EAF0FF;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --azul:#4D6BFF; --navy:#0A1B5C; --sky:#38B6E8; --ouro:#F5B301;
+      --fundo:#0D1226; --card:#161D38; --tinta:#EDF1FF; --tinta2:#9AA5CC;
+      --linha:#2A3560; --chip:#1E2750;
+    }
+  }
+  :root[data-theme="dark"]{
+    --azul:#4D6BFF; --fundo:#0D1226; --card:#161D38; --tinta:#EDF1FF;
+    --tinta2:#9AA5CC; --linha:#2A3560; --chip:#1E2750;
+  }
+  :root[data-theme="light"]{
+    --azul:#1436C7; --fundo:#F2F5FC; --card:#FFFFFF; --tinta:#141B3D;
+    --tinta2:#5A6489; --linha:#D9E0F2; --chip:#EAF0FF;
+  }
+  *{box-sizing:border-box; margin:0}
+  html,body{background:var(--fundo)}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--tinta); -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column}
+
+  /* ---------- topo ---------- */
+  header{
+    background:linear-gradient(160deg,var(--navy) 0%, #1436C7 70%, #1E4FE0 100%);
+    color:#fff; padding:20px 20px 16px; border-radius:0 0 20px 20px;
+  }
+  header .marca{font-size:24px; font-weight:800; letter-spacing:-.5px}
+  header .marca em{font-style:italic; color:var(--sky); font-weight:700}
+  header .sub{font-size:13px; opacity:.85; margin-top:2px}
+  header .contagem{
+    margin-top:12px; display:flex; gap:10px; align-items:center;
+    background:rgba(255,255,255,.12); border-radius:12px; padding:10px 14px;
+  }
+  header .contagem b{font-size:26px; font-variant-numeric:tabular-nums}
+  header .contagem span{font-size:12px; opacity:.9; line-height:1.3}
+
+  /* ---------- abas ---------- */
+  nav{display:flex; gap:6px; padding:12px 16px 0}
+  nav button{
+    flex:1; border:0; background:transparent; color:var(--tinta2);
+    font-size:14px; font-weight:700; padding:10px 4px 12px; cursor:pointer;
+    border-bottom:3px solid transparent; font-family:inherit;
+  }
+  nav button.on{color:var(--azul); border-bottom-color:var(--azul)}
+  nav button:focus-visible{outline:2px solid var(--sky); outline-offset:2px; border-radius:6px}
+
+  main{padding:16px; flex:1}
+  .tela{display:none}
+  .tela.on{display:block}
+
+  /* ---------- formulário ---------- */
+  .campo{margin-bottom:16px}
+  .campo label{
+    display:block; font-size:11px; font-weight:700; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--tinta2); margin-bottom:6px;
+  }
+  .campo input{
+    width:100%; padding:13px 14px; font-size:16px; color:var(--tinta);
+    background:var(--card); border:1.5px solid var(--linha); border-radius:12px;
+    font-family:inherit;
+  }
+  .campo input:focus{outline:none; border-color:var(--azul)}
+  .chips{display:flex; flex-wrap:wrap; gap:8px}
+  .chips button{
+    padding:10px 16px; font-size:14px; font-weight:600; color:var(--tinta);
+    background:var(--chip); border:1.5px solid transparent; border-radius:999px;
+    cursor:pointer; font-family:inherit;
+  }
+  .chips button.sel{background:var(--azul); color:#fff; border-color:var(--azul)}
+  .chips button:focus-visible{outline:2px solid var(--sky); outline-offset:2px}
+
+  .acao{
+    width:100%; padding:16px; font-size:17px; font-weight:800; color:#fff;
+    background:var(--azul); border:0; border-radius:14px; cursor:pointer;
+    font-family:inherit; margin-top:4px;
+  }
+  .acao:active{transform:scale(.98)}
+  .acao.secundaria{background:transparent; color:var(--azul); border:1.5px solid var(--azul); font-weight:700}
+  .aviso{color:var(--erro); font-size:13px; font-weight:600; margin-top:8px; display:none}
+
+  /* ---------- voucher ---------- */
+  .veu{
+    position:fixed; inset:0; background:rgba(10,27,92,.75); display:none;
+    align-items:center; justify-content:center; padding:24px; z-index:50;
+  }
+  .veu.on{display:flex}
+  .ticket{
+    background:var(--card); border-radius:20px; width:100%; max-width:380px;
+    overflow:hidden; text-align:center;
+  }
+  .ticket .topo{background:var(--azul); color:#fff; padding:18px; font-weight:800; font-size:15px}
+  .ticket .corpo{padding:24px 20px}
+  .ticket .num{
+    font-size:52px; font-weight:800; color:var(--azul); letter-spacing:2px;
+    font-variant-numeric:tabular-nums;
+  }
+  .ticket .nome{font-size:18px; font-weight:700; margin-top:6px}
+  .ticket .info{font-size:13px; color:var(--tinta2); margin-top:10px; line-height:1.5}
+  .ticket .corpo .acao{margin-top:18px; background:var(--ok)}
+
+  /* ---------- lista ---------- */
+  .busca{margin-bottom:12px}
+  .busca input{
+    width:100%; padding:12px 14px; font-size:15px; color:var(--tinta);
+    background:var(--card); border:1.5px solid var(--linha); border-radius:12px; font-family:inherit;
+  }
+  .pessoa{
+    background:var(--card); border:1px solid var(--linha); border-radius:12px;
+    padding:12px 14px; margin-bottom:8px; display:flex; align-items:center; gap:12px;
+  }
+  .pessoa .vnum{
+    font-weight:800; color:var(--azul); font-size:15px; min-width:64px;
+    font-variant-numeric:tabular-nums;
+  }
+  .pessoa .dados{flex:1; min-width:0}
+  .pessoa .dados b{font-size:15px; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .pessoa .dados span{font-size:12px; color:var(--tinta2)}
+  .pessoa .del{
+    border:0; background:transparent; color:var(--tinta2); font-size:18px;
+    cursor:pointer; padding:6px; font-family:inherit;
+  }
+  .vazio{text-align:center; color:var(--tinta2); font-size:14px; padding:32px 16px; line-height:1.6}
+
+  /* ---------- sorteio ---------- */
+  .sorteio-capa{
+    background:linear-gradient(160deg,var(--navy),#1436C7); color:#fff;
+    border-radius:16px; padding:28px 20px; text-align:center; margin-bottom:16px;
+  }
+  .sorteio-capa .hora{font-size:13px; opacity:.85}
+  .sorteio-capa h2{font-size:22px; font-weight:800; margin-top:4px; text-wrap:balance}
+  .sorteio-capa .premio{
+    display:inline-block; margin-top:10px; background:var(--ouro); color:#3A2A00;
+    font-size:13px; font-weight:800; padding:6px 14px; border-radius:999px;
+  }
+  .rolando{
+    text-align:center; font-size:24px; font-weight:800; padding:20px 0;
+    min-height:70px; color:var(--azul);
+  }
+  .ganhador{
+    background:var(--card); border:1.5px solid var(--ouro); border-radius:12px;
+    padding:14px 16px; margin-bottom:8px; display:flex; gap:12px; align-items:center;
+  }
+  .ganhador .pos{
+    background:var(--ouro); color:#3A2A00; font-weight:800; width:34px; height:34px;
+    border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .ganhador b{font-size:16px; display:block}
+  .ganhador span{font-size:12px; color:var(--tinta2)}
+
+  footer{
+    text-align:center; font-size:11px; color:var(--tinta2); padding:12px 16px 20px;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .acao:active{transform:none}
+  }
+</style>
+
+<div class="app">
+  <header>
+    <div class="marca">CARDOSO <em>Veículos</em></div>
+    <div class="sub">Feirão · Sorteio TotexCar Co-pilot · desde 1999</div>
+    <div class="contagem">
+      <b id="total">0</b>
+      <span>clientes cadastrados<br>sorteio hoje às <b style="font-size:13px">18:00</b> · 5 ganham 1 ano grátis</span>
+    </div>
+  </header>
+
+  <nav>
+    <button id="ab-cad" class="on" onclick="aba('cad')">Cadastro</button>
+    <button id="ab-lis" onclick="aba('lis')">Participantes</button>
+    <button id="ab-sor" onclick="aba('sor')">Sorteio</button>
+  </nav>
+
+  <main>
+    <!-- CADASTRO -->
+    <section id="tela-cad" class="tela on">
+      <div class="campo">
+        <label for="f-nome">Nome completo *</label>
+        <input id="f-nome" autocomplete="off" placeholder="Nome do cliente">
+      </div>
+      <div class="campo">
+        <label for="f-zap">WhatsApp *</label>
+        <input id="f-zap" inputmode="tel" autocomplete="off" placeholder="(11) 99999-9999">
+      </div>
+      <div class="campo">
+        <label for="f-insta">@ Instagram</label>
+        <input id="f-insta" autocomplete="off" placeholder="@cliente">
+      </div>
+      <div class="campo">
+        <label>Já é cliente Cardoso?</label>
+        <div class="chips" id="g-cliente">
+          <button data-v="Sim">Sim</button><button data-v="Não">Não</button>
+        </div>
+      </div>
+      <div class="campo">
+        <label>O que procura hoje?</label>
+        <div class="chips" id="g-interesse">
+          <button data-v="Comprar">Comprar</button><button data-v="Trocar">Trocar</button>
+        </div>
+      </div>
+      <div class="campo">
+        <label>Onde viu o feirão?</label>
+        <div class="chips" id="g-origem">
+          <button data-v="Panfleto">Panfleto</button>
+          <button data-v="Instagram">Instagram</button>
+          <button data-v="WhatsApp">WhatsApp</button>
+          <button data-v="Facebook">Facebook</button>
+          <button data-v="Indicação">Indicação</button>
+          <button data-v="Portal Notícias Osasco">Portal Osasco</button>
+          <button data-v="Passou em frente">Passou em frente</button>
+        </div>
+      </div>
+      <p class="aviso" id="f-aviso"></p>
+      <button class="acao" onclick="cadastrar()">Cadastrar e gerar voucher</button>
+    </section>
+
+    <!-- LISTA -->
+    <section id="tela-lis" class="tela">
+      <div class="busca"><input id="f-busca" placeholder="Buscar por nome ou voucher…" oninput="lista()"></div>
+      <div id="listaBox"></div>
+      <button class="acao secundaria" onclick="exportarCSV()">Baixar planilha (CSV)</button>
+    </section>
+
+    <!-- SORTEIO -->
+    <section id="tela-sor" class="tela">
+      <div class="sorteio-capa">
+        <div class="hora">Hoje · 18:00</div>
+        <h2>Grande sorteio do Feirão</h2>
+        <div class="premio">5 × 1 ANO GRÁTIS DE TOTEXCAR CO-PILOT</div>
+      </div>
+      <div class="rolando" id="rolando"></div>
+      <div id="ganhadoresBox"></div>
+      <button class="acao" id="btnSortear" onclick="sortear()">🎉 Sortear os 5 ganhadores</button>
+    </section>
+  </main>
+
+  <footer>Cardoso Veículos · (11) 94957-1603 · @cardosoveiculos — app do feirão TotexCar Co-pilot</footer>
+</div>
+
+<!-- VOUCHER -->
+<div class="veu" id="veu">
+  <div class="ticket">
+    <div class="topo">🎟️ VOUCHER DO SORTEIO — FEIRÃO CARDOSO</div>
+    <div class="corpo">
+      <div class="num" id="v-num"></div>
+      <div class="nome" id="v-nome"></div>
+      <div class="info">Guarde este número! Sorteio hoje às <b>18:00</b>.<br>5 ganhadores levam 1 ano grátis do app TotexCar Co-pilot.</div>
+      <button class="acao" onclick="fecharVoucher()">✓ Cadastrado — próximo cliente</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  var CHAVE = 'feirao-cardoso-2026';
+  var dados = carregar();
+
+  function carregar(){
+    try{
+      var d = JSON.parse(localStorage.getItem(CHAVE)) || {};
+      return {pessoas:d.pessoas||[], ganhadores:d.ganhadores||[], seq:d.seq||((d.pessoas||[]).length)};
+    }
+    catch(e){ return {pessoas:[], ganhadores:[], seq:0}; }
+  }
+  function salvar(){ localStorage.setItem(CHAVE, JSON.stringify(dados)); }
+
+  // chips: seleção única por grupo
+  ['g-cliente','g-interesse','g-origem'].forEach(function(id){
+    document.getElementById(id).addEventListener('click', function(e){
+      if(e.target.tagName !== 'BUTTON') return;
+      this.querySelectorAll('button').forEach(function(b){ b.classList.remove('sel'); });
+      e.target.classList.add('sel');
+    });
+  });
+  function chip(id){
+    var b = document.getElementById(id).querySelector('.sel');
+    return b ? b.dataset.v : '';
+  }
+  function limparChips(id){
+    document.getElementById(id).querySelectorAll('button').forEach(function(b){ b.classList.remove('sel'); });
+  }
+
+  function aba(qual){
+    ['cad','lis','sor'].forEach(function(k){
+      document.getElementById('tela-'+k).classList.toggle('on', k===qual);
+      document.getElementById('ab-'+k).classList.toggle('on', k===qual);
+    });
+    if(qual==='lis') lista();
+    if(qual==='sor') mostrarGanhadores();
+  }
+
+  function cadastrar(){
+    var nome = document.getElementById('f-nome').value.trim();
+    var zap  = document.getElementById('f-zap').value.trim();
+    var aviso = document.getElementById('f-aviso');
+    aviso.style.display = 'none';
+    if(!nome || !zap){
+      aviso.textContent = 'Preencha pelo menos o nome e o WhatsApp.';
+      aviso.style.display = 'block'; return;
+    }
+    var zapLimpo = zap.replace(/\D/g,'');
+    var repetido = dados.pessoas.some(function(p){ return p.zap.replace(/\D/g,'') === zapLimpo; });
+    if(repetido){
+      aviso.textContent = 'Esse WhatsApp já está cadastrado no sorteio.';
+      aviso.style.display = 'block'; return;
+    }
+    dados.seq = (dados.seq || 0) + 1;
+    var voucher = 'CV-' + String(dados.seq).padStart(3,'0');
+    dados.pessoas.push({
+      voucher: voucher, nome: nome, zap: zap,
+      insta: document.getElementById('f-insta').value.trim(),
+      cliente: chip('g-cliente'), interesse: chip('g-interesse'), origem: chip('g-origem'),
+      hora: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+    });
+    salvar(); contar();
+    document.getElementById('v-num').textContent = voucher;
+    document.getElementById('v-nome').textContent = nome;
+    document.getElementById('veu').classList.add('on');
+  }
+
+  function fecharVoucher(){
+    document.getElementById('veu').classList.remove('on');
+    ['f-nome','f-zap','f-insta'].forEach(function(id){ document.getElementById(id).value=''; });
+    ['g-cliente','g-interesse','g-origem'].forEach(limparChips);
+    document.getElementById('f-nome').focus();
+  }
+
+  function contar(){ document.getElementById('total').textContent = dados.pessoas.length; }
+
+  function lista(){
+    var box = document.getElementById('listaBox');
+    var q = document.getElementById('f-busca').value.trim().toLowerCase();
+    var itens = dados.pessoas.filter(function(p){
+      return !q || p.nome.toLowerCase().indexOf(q)>=0 || p.voucher.toLowerCase().indexOf(q)>=0;
+    });
+    if(!itens.length){
+      box.innerHTML = '<div class="vazio">'+(dados.pessoas.length ? 'Ninguém encontrado nessa busca.' : 'Nenhum cliente cadastrado ainda.<br>Use a aba <b>Cadastro</b> para registrar o primeiro.')+'</div>';
+      return;
+    }
+    box.innerHTML = itens.slice().reverse().map(function(p){
+      return '<div class="pessoa">'
+        + '<div class="vnum">'+p.voucher+'</div>'
+        + '<div class="dados"><b>'+esc(p.nome)+'</b><span>'+esc(p.zap)
+        + (p.insta ? ' · '+esc(p.insta) : '')
+        + (p.origem ? ' · '+esc(p.origem) : '') + ' · '+p.hora+'</span></div>'
+        + '<button class="del" aria-label="Excluir '+esc(p.nome)+'" onclick="excluir(\''+p.voucher+'\')">✕</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  function excluir(v){
+    var p = dados.pessoas.find(function(x){ return x.voucher===v; });
+    if(!p) return;
+    if(!confirm('Excluir '+p.nome+' ('+v+') do sorteio?')) return;
+    dados.pessoas = dados.pessoas.filter(function(x){ return x.voucher!==v; });
+    salvar(); contar(); lista();
+  }
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function exportarCSV(){
+    var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Hora']];
+    dados.pessoas.forEach(function(p){
+      linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,p.hora]);
+    });
+    var csv = '﻿' + linhas.map(function(l){
+      return l.map(function(c){ return '"'+String(c||'').replace(/"/g,'""')+'"'; }).join(';');
+    }).join('\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    a.download = 'feirao-cardoso-cadastros.csv';
+    a.click();
+  }
+
+  function mostrarGanhadores(){
+    var box = document.getElementById('ganhadoresBox');
+    var btn = document.getElementById('btnSortear');
+    if(dados.ganhadores.length){
+      box.innerHTML = dados.ganhadores.map(function(p,i){ return cardGanhador(p,i); }).join('');
+      btn.textContent = 'Sortear novamente';
+    } else {
+      box.innerHTML = '';
+      btn.textContent = '🎉 Sortear os 5 ganhadores';
+    }
+  }
+
+  function cardGanhador(p,i){
+    return '<div class="ganhador"><div class="pos">'+(i+1)+'º</div>'
+      + '<div><b>'+esc(p.nome)+' — '+p.voucher+'</b>'
+      + '<span>'+esc(p.zap)+(p.insta ? ' · '+esc(p.insta) : '')+'</span></div></div>';
+  }
+
+  function sortear(){
+    if(dados.pessoas.length < 5){
+      alert('São necessários pelo menos 5 cadastrados. Hoje: '+dados.pessoas.length+'.');
+      return;
+    }
+    if(dados.ganhadores.length && !confirm('Já existe um resultado. Sortear de novo apaga o resultado atual. Continuar?')) return;
+
+    var btn = document.getElementById('btnSortear');
+    var rolando = document.getElementById('rolando');
+    var box = document.getElementById('ganhadoresBox');
+    btn.disabled = true; box.innerHTML = '';
+    dados.ganhadores = []; salvar();
+
+    // embaralha e pega 5
+    var pool = dados.pessoas.slice();
+    for(var i=pool.length-1; i>0; i--){
+      var j = Math.floor(Math.random()*(i+1));
+      var t = pool[i]; pool[i]=pool[j]; pool[j]=t;
+    }
+    var escolhidos = pool.slice(0,5);
+    var reduzir = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var idx = 0;
+    function proximo(){
+      if(idx >= 5){
+        rolando.textContent = '🏆 Parabéns aos 5 ganhadores!';
+        dados.ganhadores = escolhidos; salvar();
+        btn.disabled = false; btn.textContent = 'Sortear novamente';
+        return;
+      }
+      var alvo = escolhidos[idx];
+      if(reduzir){
+        box.innerHTML += cardGanhador(alvo, idx);
+        idx++; proximo(); return;
+      }
+      var voltas = 0;
+      var timer = setInterval(function(){
+        var aleatorio = dados.pessoas[Math.floor(Math.random()*dados.pessoas.length)];
+        rolando.textContent = aleatorio.voucher+' · '+aleatorio.nome;
+        voltas++;
+        if(voltas > 18){
+          clearInterval(timer);
+          rolando.textContent = '';
+          box.innerHTML += cardGanhador(alvo, idx);
+          idx++;
+          setTimeout(proximo, 700);
+        }
+      }, 90);
+    }
+    rolando.textContent = 'Sorteando…';
+    setTimeout(proximo, 600);
+  }
+
+  contar();
+</script>
