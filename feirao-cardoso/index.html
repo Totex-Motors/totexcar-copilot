@@ -1,3 +1,7 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
 <title>Feirão Cardoso Veículos — Sorteio TotexCar Co-pilot</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <style>
@@ -9,18 +13,9 @@
   }
   @media (prefers-color-scheme: dark){
     :root{
-      --azul:#4D6BFF; --navy:#0A1B5C; --sky:#38B6E8; --ouro:#F5B301;
-      --fundo:#0D1226; --card:#161D38; --tinta:#EDF1FF; --tinta2:#9AA5CC;
-      --linha:#2A3560; --chip:#1E2750;
+      --azul:#4D6BFF; --fundo:#0D1226; --card:#161D38; --tinta:#EDF1FF;
+      --tinta2:#9AA5CC; --linha:#2A3560; --chip:#1E2750;
     }
-  }
-  :root[data-theme="dark"]{
-    --azul:#4D6BFF; --fundo:#0D1226; --card:#161D38; --tinta:#EDF1FF;
-    --tinta2:#9AA5CC; --linha:#2A3560; --chip:#1E2750;
-  }
-  :root[data-theme="light"]{
-    --azul:#1436C7; --fundo:#F2F5FC; --card:#FFFFFF; --tinta:#141B3D;
-    --tinta2:#5A6489; --linha:#D9E0F2; --chip:#EAF0FF;
   }
   *{box-sizing:border-box; margin:0}
   html,body{background:var(--fundo)}
@@ -35,8 +30,15 @@
     background:linear-gradient(160deg,var(--navy) 0%, #1436C7 70%, #1E4FE0 100%);
     color:#fff; padding:20px 20px 16px; border-radius:0 0 20px 20px;
   }
+  header .linha1{display:flex; justify-content:space-between; align-items:flex-start; gap:8px}
   header .marca{font-size:24px; font-weight:800; letter-spacing:-.5px}
   header .marca em{font-style:italic; color:var(--sky); font-weight:700}
+  .status{
+    font-size:11px; font-weight:800; padding:5px 10px; border-radius:999px;
+    white-space:nowrap; margin-top:4px;
+  }
+  .status.nuvem{background:rgba(27,158,75,.9); color:#fff}
+  .status.local{background:var(--ouro); color:#3A2A00}
   header .sub{font-size:13px; opacity:.85; margin-top:2px}
   header .contagem{
     margin-top:12px; display:flex; gap:10px; align-items:center;
@@ -86,6 +88,7 @@
     font-family:inherit; margin-top:4px;
   }
   .acao:active{transform:scale(.98)}
+  .acao[disabled]{opacity:.6}
   .acao.secundaria{background:transparent; color:var(--azul); border:1.5px solid var(--azul); font-weight:700}
   .aviso{color:var(--erro); font-size:13px; font-weight:600; margin-top:8px; display:none}
 
@@ -165,10 +168,15 @@
     .acao:active{transform:none}
   }
 </style>
+</head>
+<body>
 
 <div class="app">
   <header>
-    <div class="marca">CARDOSO <em>Veículos</em></div>
+    <div class="linha1">
+      <div class="marca">CARDOSO <em>Veículos</em></div>
+      <div class="status local" id="status">conectando…</div>
+    </div>
     <div class="sub">Feirão · Sorteio TotexCar Co-pilot · desde 1999</div>
     <div class="contagem">
       <b id="total">0</b>
@@ -222,7 +230,7 @@
         </div>
       </div>
       <p class="aviso" id="f-aviso"></p>
-      <button class="acao" onclick="cadastrar()">Cadastrar e gerar voucher</button>
+      <button class="acao" id="btnCadastrar" onclick="cadastrar()">Cadastrar e gerar voucher</button>
     </section>
 
     <!-- LISTA -->
@@ -262,19 +270,87 @@
 </div>
 
 <script>
-  var CHAVE = 'feirao-cardoso-2026';
-  var dados = carregar();
+  // ---------- nuvem (Supabase) ----------
+  var SUPA_URL = 'https://fbgtqiqovwxccinbzvmx.supabase.co';
+  var SUPA_KEY = 'sb_publishable_7FBkjLTMpozEHHcgucNA1g_xTNWsrfp';
+  var nuvem = false;
+
+  function api(caminho, opcoes){
+    opcoes = opcoes || {};
+    var ctl = new AbortController();
+    var t = setTimeout(function(){ ctl.abort(); }, 6000);
+    opcoes.signal = ctl.signal;
+    opcoes.headers = Object.assign({
+      'apikey': SUPA_KEY,
+      'Authorization': 'Bearer ' + SUPA_KEY,
+      'Content-Type': 'application/json'
+    }, opcoes.headers || {});
+    return fetch(SUPA_URL + '/rest/v1/' + caminho, opcoes).finally(function(){ clearTimeout(t); });
+  }
+
+  // ---------- estado local (cache + fila offline) ----------
+  var CHAVE = 'feirao-cardoso-2026-v2';
+  var cache = carregar();
+  var pessoas = [];   // lista exibida: nuvem + pendentes offline
 
   function carregar(){
     try{
       var d = JSON.parse(localStorage.getItem(CHAVE)) || {};
-      return {pessoas:d.pessoas||[], ganhadores:d.ganhadores||[], seq:d.seq||((d.pessoas||[]).length)};
-    }
-    catch(e){ return {pessoas:[], ganhadores:[], seq:0}; }
+      return {copia:d.copia||[], pendentes:d.pendentes||[], ganhadores:d.ganhadores||[], seq:d.seq||0};
+    }catch(e){ return {copia:[], pendentes:[], ganhadores:[], seq:0}; }
   }
-  function salvar(){ localStorage.setItem(CHAVE, JSON.stringify(dados)); }
+  function salvar(){ localStorage.setItem(CHAVE, JSON.stringify(cache)); }
 
-  // chips: seleção única por grupo
+  function setStatus(on){
+    nuvem = on;
+    var s = document.getElementById('status');
+    if(on){ s.textContent='☁️ nuvem'; s.className='status nuvem'; }
+    else  { s.textContent='📴 só neste aparelho'; s.className='status local'; }
+  }
+
+  function montarLista(){
+    pessoas = cache.copia.concat(cache.pendentes);
+    document.getElementById('total').textContent = pessoas.length;
+  }
+
+  // ---------- sincronização ----------
+  function atualizar(){
+    return api('feirao_cadastros?select=*&order=criado_em.asc')
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+      .then(function(linhas){
+        setStatus(true);
+        cache.copia = linhas;
+        return enviarPendentes();
+      })
+      .then(function(){ salvar(); montarLista(); lista(); })
+      .catch(function(){ setStatus(false); montarLista(); });
+  }
+
+  function enviarPendentes(){
+    if(!cache.pendentes.length) return Promise.resolve();
+    var fila = cache.pendentes.slice();
+    var corrente = Promise.resolve();
+    fila.forEach(function(p){
+      corrente = corrente.then(function(){
+        return api('feirao_cadastros', {
+          method:'POST',
+          headers:{'Prefer':'return=representation'},
+          body: JSON.stringify({
+            voucher:p.voucher, nome:p.nome, zap:p.zap, zap_limpo:p.zap_limpo,
+            insta:p.insta, cliente:p.cliente, interesse:p.interesse, origem:p.origem, hora:p.hora
+          })
+        }).then(function(r){
+          if(r.ok || r.status===409){ // 409 = já subiu por outro caminho
+            cache.pendentes = cache.pendentes.filter(function(x){ return x.voucher!==p.voucher; });
+            if(r.ok) return r.json().then(function(js){ cache.copia.push(js[0]); });
+          }
+        }).catch(function(){});
+      });
+    });
+    return corrente;
+  }
+
+  // ---------- chips ----------
   ['g-cliente','g-interesse','g-origem'].forEach(function(id){
     document.getElementById(id).addEventListener('click', function(e){
       if(e.target.tagName !== 'BUTTON') return;
@@ -299,30 +375,61 @@
     if(qual==='sor') mostrarGanhadores();
   }
 
+  // ---------- cadastro ----------
   function cadastrar(){
     var nome = document.getElementById('f-nome').value.trim();
     var zap  = document.getElementById('f-zap').value.trim();
     var aviso = document.getElementById('f-aviso');
+    var btn = document.getElementById('btnCadastrar');
     aviso.style.display = 'none';
     if(!nome || !zap){
-      aviso.textContent = 'Preencha pelo menos o nome e o WhatsApp.';
-      aviso.style.display = 'block'; return;
+      return erroForm('Preencha pelo menos o nome e o WhatsApp.');
     }
     var zapLimpo = zap.replace(/\D/g,'');
-    var repetido = dados.pessoas.some(function(p){ return p.zap.replace(/\D/g,'') === zapLimpo; });
-    if(repetido){
-      aviso.textContent = 'Esse WhatsApp já está cadastrado no sorteio.';
-      aviso.style.display = 'block'; return;
+    if(pessoas.some(function(p){ return p.zap_limpo === zapLimpo; })){
+      return erroForm('Esse WhatsApp já está cadastrado no sorteio.');
     }
-    dados.seq = (dados.seq || 0) + 1;
-    var voucher = 'CV-' + String(dados.seq).padStart(3,'0');
-    dados.pessoas.push({
-      voucher: voucher, nome: nome, zap: zap,
+    var registro = {
+      nome:nome, zap:zap, zap_limpo:zapLimpo,
       insta: document.getElementById('f-insta').value.trim(),
       cliente: chip('g-cliente'), interesse: chip('g-interesse'), origem: chip('g-origem'),
       hora: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+    };
+    btn.disabled = true; btn.textContent = 'Salvando…';
+
+    api('feirao_cadastros', {
+      method:'POST',
+      headers:{'Prefer':'return=representation'},
+      body: JSON.stringify(registro)
+    }).then(function(r){
+      if(r.status===409) throw {dup:true};
+      if(!r.ok) throw 0;
+      return r.json();
+    }).then(function(js){
+      setStatus(true);
+      cache.copia.push(js[0]); salvar(); montarLista();
+      mostrarVoucher(js[0].voucher, nome);
+    }).catch(function(e){
+      if(e && e.dup) return erroForm('Esse WhatsApp já está cadastrado no sorteio.');
+      // sem internet: guarda no aparelho e sincroniza depois
+      setStatus(false);
+      cache.seq++;
+      registro.voucher = 'CV-L' + String(cache.seq).padStart(2,'0');
+      cache.pendentes.push(registro); salvar(); montarLista();
+      mostrarVoucher(registro.voucher, nome);
+    }).finally(function(){
+      btn.disabled = false; btn.textContent = 'Cadastrar e gerar voucher';
     });
-    salvar(); contar();
+  }
+
+  function erroForm(msg){
+    var aviso = document.getElementById('f-aviso');
+    var btn = document.getElementById('btnCadastrar');
+    aviso.textContent = msg; aviso.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Cadastrar e gerar voucher';
+  }
+
+  function mostrarVoucher(voucher, nome){
     document.getElementById('v-num').textContent = voucher;
     document.getElementById('v-nome').textContent = nome;
     document.getElementById('veu').classList.add('on');
@@ -335,46 +442,56 @@
     document.getElementById('f-nome').focus();
   }
 
-  function contar(){ document.getElementById('total').textContent = dados.pessoas.length; }
-
+  // ---------- lista ----------
   function lista(){
     var box = document.getElementById('listaBox');
     var q = document.getElementById('f-busca').value.trim().toLowerCase();
-    var itens = dados.pessoas.filter(function(p){
-      return !q || p.nome.toLowerCase().indexOf(q)>=0 || p.voucher.toLowerCase().indexOf(q)>=0;
+    var itens = pessoas.filter(function(p){
+      return !q || p.nome.toLowerCase().indexOf(q)>=0 || (p.voucher||'').toLowerCase().indexOf(q)>=0;
     });
     if(!itens.length){
-      box.innerHTML = '<div class="vazio">'+(dados.pessoas.length ? 'Ninguém encontrado nessa busca.' : 'Nenhum cliente cadastrado ainda.<br>Use a aba <b>Cadastro</b> para registrar o primeiro.')+'</div>';
+      box.innerHTML = '<div class="vazio">'+(pessoas.length ? 'Ninguém encontrado nessa busca.' : 'Nenhum cliente cadastrado ainda.<br>Use a aba <b>Cadastro</b> para registrar o primeiro.')+'</div>';
       return;
     }
     box.innerHTML = itens.slice().reverse().map(function(p){
+      var pendente = cache.pendentes.indexOf(p) >= 0;
       return '<div class="pessoa">'
-        + '<div class="vnum">'+p.voucher+'</div>'
-        + '<div class="dados"><b>'+esc(p.nome)+'</b><span>'+esc(p.zap)
+        + '<div class="vnum">'+esc(p.voucher||'…')+'</div>'
+        + '<div class="dados"><b>'+esc(p.nome)+(pendente?' ⏳':'')+'</b><span>'+esc(p.zap)
         + (p.insta ? ' · '+esc(p.insta) : '')
-        + (p.origem ? ' · '+esc(p.origem) : '') + ' · '+p.hora+'</span></div>'
-        + '<button class="del" aria-label="Excluir '+esc(p.nome)+'" onclick="excluir(\''+p.voucher+'\')">✕</button>'
+        + (p.origem ? ' · '+esc(p.origem) : '') + (p.hora ? ' · '+esc(p.hora) : '') + '</span></div>'
+        + '<button class="del" aria-label="Excluir '+esc(p.nome)+'" onclick="excluir(\''+esc(p.voucher)+'\')">✕</button>'
         + '</div>';
     }).join('');
   }
 
   function excluir(v){
-    var p = dados.pessoas.find(function(x){ return x.voucher===v; });
+    var p = pessoas.find(function(x){ return x.voucher===v; });
     if(!p) return;
     if(!confirm('Excluir '+p.nome+' ('+v+') do sorteio?')) return;
-    dados.pessoas = dados.pessoas.filter(function(x){ return x.voucher!==v; });
-    salvar(); contar(); lista();
+    var pend = cache.pendentes.some(function(x){ return x.voucher===v; });
+    if(pend){
+      cache.pendentes = cache.pendentes.filter(function(x){ return x.voucher!==v; });
+      salvar(); montarLista(); lista(); return;
+    }
+    api('feirao_cadastros?voucher=eq.'+encodeURIComponent(v), {method:'DELETE'})
+      .then(function(r){
+        if(!r.ok) throw 0;
+        cache.copia = cache.copia.filter(function(x){ return x.voucher!==v; });
+        salvar(); montarLista(); lista();
+      })
+      .catch(function(){ alert('Sem conexão agora — tente excluir de novo em instantes.'); });
   }
 
   function esc(s){
-    return String(s).replace(/[&<>"']/g, function(c){
+    return String(s==null?'':s).replace(/[&<>"']/g, function(c){
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
     });
   }
 
   function exportarCSV(){
     var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Hora']];
-    dados.pessoas.forEach(function(p){
+    pessoas.forEach(function(p){
       linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,p.hora]);
     });
     var csv = '﻿' + linhas.map(function(l){
@@ -386,51 +503,70 @@
     a.click();
   }
 
+  // ---------- sorteio ----------
   function mostrarGanhadores(){
-    var box = document.getElementById('ganhadoresBox');
-    var btn = document.getElementById('btnSortear');
-    if(dados.ganhadores.length){
-      box.innerHTML = dados.ganhadores.map(function(p,i){ return cardGanhador(p,i); }).join('');
-      btn.textContent = 'Sortear novamente';
-    } else {
-      box.innerHTML = '';
-      btn.textContent = '🎉 Sortear os 5 ganhadores';
-    }
+    var pinta = function(gs){
+      var box = document.getElementById('ganhadoresBox');
+      var btn = document.getElementById('btnSortear');
+      cache.ganhadores = gs; salvar();
+      if(gs.length){
+        box.innerHTML = gs.map(function(p,i){ return cardGanhador(p,i); }).join('');
+        btn.textContent = 'Sortear novamente';
+      } else {
+        box.innerHTML = '';
+        btn.textContent = '🎉 Sortear os 5 ganhadores';
+      }
+    };
+    api('feirao_ganhadores?select=*&order=posicao.asc')
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+      .then(pinta)
+      .catch(function(){ pinta(cache.ganhadores); });
   }
 
   function cardGanhador(p,i){
     return '<div class="ganhador"><div class="pos">'+(i+1)+'º</div>'
-      + '<div><b>'+esc(p.nome)+' — '+p.voucher+'</b>'
+      + '<div><b>'+esc(p.nome)+' — '+esc(p.voucher)+'</b>'
       + '<span>'+esc(p.zap)+(p.insta ? ' · '+esc(p.insta) : '')+'</span></div></div>';
   }
 
   function sortear(){
-    if(dados.pessoas.length < 5){
-      alert('São necessários pelo menos 5 cadastrados. Hoje: '+dados.pessoas.length+'.');
+    if(pessoas.length < 5){
+      alert('São necessários pelo menos 5 cadastrados. Hoje: '+pessoas.length+'.');
       return;
     }
-    if(dados.ganhadores.length && !confirm('Já existe um resultado. Sortear de novo apaga o resultado atual. Continuar?')) return;
+    if(cache.ganhadores.length && !confirm('Já existe um resultado. Sortear de novo apaga o resultado atual. Continuar?')) return;
 
     var btn = document.getElementById('btnSortear');
     var rolando = document.getElementById('rolando');
     var box = document.getElementById('ganhadoresBox');
     btn.disabled = true; box.innerHTML = '';
-    dados.ganhadores = []; salvar();
+    rolando.textContent = 'Sorteando…';
 
-    // embaralha e pega 5
-    var pool = dados.pessoas.slice();
-    for(var i=pool.length-1; i>0; i--){
-      var j = Math.floor(Math.random()*(i+1));
-      var t = pool[i]; pool[i]=pool[j]; pool[j]=t;
-    }
-    var escolhidos = pool.slice(0,5);
+    // busca a lista mais recente antes de sortear (todos os aparelhos contam)
+    var prontos = function(todos){
+      var pool = todos.slice();
+      for(var i=pool.length-1; i>0; i--){
+        var j = Math.floor(Math.random()*(i+1));
+        var t = pool[i]; pool[i]=pool[j]; pool[j]=t;
+      }
+      animar(todos, pool.slice(0,5));
+    };
+    api('feirao_cadastros?select=*')
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+      .then(function(linhas){ prontos(linhas.concat(cache.pendentes)); })
+      .catch(function(){ prontos(pessoas); });
+  }
+
+  function animar(todos, escolhidos){
+    var btn = document.getElementById('btnSortear');
+    var rolando = document.getElementById('rolando');
+    var box = document.getElementById('ganhadoresBox');
     var reduzir = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
     var idx = 0;
     function proximo(){
       if(idx >= 5){
         rolando.textContent = '🏆 Parabéns aos 5 ganhadores!';
-        dados.ganhadores = escolhidos; salvar();
+        gravarGanhadores(escolhidos);
         btn.disabled = false; btn.textContent = 'Sortear novamente';
         return;
       }
@@ -441,7 +577,7 @@
       }
       var voltas = 0;
       var timer = setInterval(function(){
-        var aleatorio = dados.pessoas[Math.floor(Math.random()*dados.pessoas.length)];
+        var aleatorio = todos[Math.floor(Math.random()*todos.length)];
         rolando.textContent = aleatorio.voucher+' · '+aleatorio.nome;
         voltas++;
         if(voltas > 18){
@@ -453,9 +589,27 @@
         }
       }, 90);
     }
-    rolando.textContent = 'Sorteando…';
     setTimeout(proximo, 600);
   }
 
-  contar();
+  function gravarGanhadores(escolhidos){
+    cache.ganhadores = escolhidos; salvar();
+    api('feirao_ganhadores?posicao=gte.0', {method:'DELETE'})
+      .then(function(){
+        return api('feirao_ganhadores', {
+          method:'POST',
+          body: JSON.stringify(escolhidos.map(function(p,i){
+            return {posicao:i+1, voucher:p.voucher, nome:p.nome, zap:p.zap, insta:p.insta||''};
+          }))
+        });
+      })
+      .catch(function(){ /* resultado fica salvo no aparelho */ });
+  }
+
+  // ---------- início + reconexão automática ----------
+  montarLista();
+  atualizar();
+  setInterval(atualizar, 12000);
 </script>
+</body>
+</html>
