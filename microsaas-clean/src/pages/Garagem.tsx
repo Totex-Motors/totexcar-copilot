@@ -175,6 +175,10 @@ export default function Garagem() {
   const [radarForm, setRadarForm] = useState({ brand: "", model: "", color: "", max_price: "", min_year: "", max_km: "", notes: "" });
   const [sellForm, setSellForm] = useState({ modo: "avaliar" as "vender" | "avaliar", data: "", horario: "10:00" });
   const [sellOk, setSellOk] = useState(false);
+  // Vitrine (carros de particular) — entra no topo da busca, com selo Particular.
+  // ⚠️ Hook: precisa vir ANTES do return de loading (regra dos hooks — chamada condicional
+  // mudava a ordem entre renders e derrubava a página inteira em tela branca).
+  const vitrine = useVitrineListings(!!userId);
 
   if (loading) {
     return <DashboardLayout><div className="flex items-center justify-center min-h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div></DashboardLayout>;
@@ -185,9 +189,6 @@ export default function Garagem() {
   const totalCars = search.data?.total ?? 0;
   const temMais = accumCars.length > 0 && accumCars.length < totalCars;
   const scope = search.data?.scope || oport.data?.scope || null; // loja do cliente (estoque exclusivo)
-
-  // Vitrine (carros de particular) — entra no topo da busca, com selo Particular.
-  const vitrine = useVitrineListings(!!userId);
   const vitrineFiltrados = (vitrine.data || []).filter((c) => {
     const q = (applied.search || "").toLowerCase().trim();
     if (q && !`${c.brand} ${c.model} ${c.version || ""} ${c.city || ""}`.toLowerCase().includes(q)) return false;
