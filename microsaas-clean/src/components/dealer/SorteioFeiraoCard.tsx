@@ -10,7 +10,7 @@ import { usePostsaleCreate, usePostsaleList, useDealerMe } from "@/hooks/useDeal
 // App do sorteio (feirao-cardoso/) — banco próprio no projeto TotexMotors OS, chave publishable (uso público).
 const FEIRAO_URL = "https://fbgtqiqovwxccinbzvmx.supabase.co";
 const FEIRAO_KEY = "sb_publishable_7FBkjLTMpozEHHcgucNA1g_xTNWsrfp";
-const FEIRAO_APP_URL = "https://totexcar-copilot.vercel.app";
+const FEIRAO_APP_URL = "https://totexcar-copilot-s5zs.vercel.app";
 
 interface Ganhador {
   posicao: number; voucher: string; nome: string; zap: string;
