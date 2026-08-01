@@ -270,7 +270,7 @@
       <div class="nome" id="v-nome"></div>
       <div class="info" id="v-info">Guarde este número! Sorteio hoje às <b>18:00</b>.<br>5 ganhadores levam 1 ano grátis do app TotexCar Co-pilot.</div>
       <a class="acao" id="v-zap" href="#" target="_blank" rel="noopener">📲 Enviar voucher no WhatsApp</a>
-      <button class="acao" onclick="fecharVoucher()">✓ Próximo cliente</button>
+      <button class="acao" id="v-fechar" onclick="fecharVoucher()">✓ Próximo cliente</button>
     </div>
   </div>
 </div>
@@ -282,9 +282,18 @@
   var nuvem = false;
 
   // multi-loja: cada loja parceira usa ?loja=slug (sem o parâmetro, é a Cardoso)
-  var LOJA = ((new URLSearchParams(location.search).get('loja')) || 'cardoso')
+  var PARAMS = new URLSearchParams(location.search);
+  var LOJA = (PARAMS.get('loja') || 'cardoso')
     .toLowerCase().replace(/[^a-z0-9-]/g, '') || 'cardoso';
   var FLOJA = '&loja=eq.' + encodeURIComponent(LOJA);
+
+  // modo público (?participar=1): o próprio cliente se cadastra — link compartilhado na live
+  // do Instagram ou em QR code no evento. Esconde as abas internas (lista e sorteio).
+  var PUBLICO = PARAMS.get('participar') === '1';
+  if(PUBLICO){
+    document.querySelector('nav').style.display = 'none';
+    document.getElementById('btnCadastrar').textContent = 'Quero participar do sorteio! 🎟️';
+  }
 
   // ação ativa da loja (data/hora do sorteio, prêmio, nº de ganhadores — configurada no painel do lojista)
   var EV = null;
@@ -309,8 +318,14 @@
     if(!EV) return;
     FEV = '&evento_id=eq.' + EV.id;
     var n = nGanhadores();
-    document.getElementById('hdr-sub').innerHTML = 'clientes cadastrados<br>sorteio '
-      + esc(quandoTxt()) + ' · <b style="font-size:13px">' + n + '</b> ganhador' + (n>1?'es':'');
+    var tipoTag = EV.tipo === 'live' ? '📱 Live no Instagram · ' : (EV.tipo === 'promocao' ? '🏷️ Promoção · ' : '');
+    document.getElementById('hdr-sub').innerHTML = (PUBLICO ? 'participantes' : 'clientes cadastrados') + '<br>'
+      + tipoTag + 'sorteio ' + esc(quandoTxt()) + ' · <b style="font-size:13px">' + n + '</b> ganhador' + (n>1?'es':'');
+    // na live, quem se cadastra pelo link já conta como origem "Live Instagram" — sem pergunta
+    if(PUBLICO && EV.tipo === 'live'){
+      var campoOrigem = document.getElementById('g-origem').closest('.campo');
+      if(campoOrigem) campoOrigem.style.display = 'none';
+    }
     var d = new Date(EV.sorteio_em);
     document.getElementById('cap-quando').textContent =
       (d.toDateString() === new Date().toDateString() ? 'Hoje' : d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}))
@@ -464,7 +479,8 @@
       loja:LOJA, evento_id: EV ? EV.id : null, nome:nome, zap:zap, zap_limpo:zapLimpo,
       insta: document.getElementById('f-insta').value.trim(),
       obs: document.getElementById('f-obs').value.trim(),
-      cliente: chip('g-cliente'), interesse: chip('g-interesse'), origem: chip('g-origem'),
+      cliente: chip('g-cliente'), interesse: chip('g-interesse'),
+      origem: (PUBLICO && EV && EV.tipo === 'live') ? 'Live Instagram' : (chip('g-origem') || (PUBLICO ? 'Link público' : '')),
       hora: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
     };
     btn.disabled = true; btn.textContent = 'Salvando…';
@@ -517,7 +533,15 @@
     var msg = 'Olá, ' + primeiro + '! 🎟️ Seu voucher do sorteio ' + (LOJA==='cardoso' ? 'do Feirão Cardoso Veículos' : 'de ' + nomeLoja) + ' é *' + voucher + '*.\n\n'
       + 'Sorteio ' + quandoTxt() + ' — ' + (n>1 ? n+' ganhadores levam' : 'o ganhador leva') + ' ' + premioTxt() + '!\n\n'
       + 'Veja seu voucher e conheça o app: ' + pagina;
-    document.getElementById('v-zap').href = 'https://wa.me/' + num + '?text=' + encodeURIComponent(msg);
+    var vz = document.getElementById('v-zap');
+    if(PUBLICO){
+      // quem se cadastrou é o próprio cliente: leva pra página do voucher dele
+      vz.textContent = '🎟️ Ver meu voucher';
+      vz.href = pagina;
+      document.getElementById('v-fechar').textContent = '✓ Pronto — boa sorte!';
+    } else {
+      vz.href = 'https://wa.me/' + num + '?text=' + encodeURIComponent(msg);
+    }
     document.getElementById('veu').classList.add('on');
   }
 

@@ -24,8 +24,14 @@ interface FeiraoLoja {
 }
 interface FeiraoEvento {
   id: string; loja: string; titulo: string; premio: string;
-  ganhadores: number; sorteio_em: string; ativo: boolean;
+  ganhadores: number; sorteio_em: string; ativo: boolean; tipo?: string;
 }
+
+const TIPOS: Record<string, { rotulo: string; icone: string }> = {
+  feirao: { rotulo: "Feirão na loja", icone: "🎪" },
+  live: { rotulo: "Live no Instagram", icone: "📱" },
+  promocao: { rotulo: "Promoção", icone: "🏷️" },
+};
 
 const HEADERS = { apikey: FEIRAO_KEY, Authorization: `Bearer ${FEIRAO_KEY}` };
 
@@ -135,7 +141,18 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   // Nova ação de feirão/sorteio: título, prêmio, nº de ganhadores e data/hora — o app se adapta sozinho.
   const [novaAcao, setNovaAcao] = useState(false);
   const [salvandoAcao, setSalvandoAcao] = useState(false);
-  const [acao, setAcao] = useState({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "" });
+  const [acao, setAcao] = useState({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao" });
+
+  // Link público de auto-cadastro: o cliente se inscreve sozinho (colar na bio/comentários da live ou virar QR no evento)
+  const linkParticipar = appLink.includes("?") ? `${appLink}&participar=1` : `${appLink}/?participar=1`;
+  const copiarLink = async () => {
+    try {
+      await navigator.clipboard.writeText(linkParticipar);
+      toast({ title: "Link copiado! 🔗", description: "Cole na live do Instagram ou gere um QR code para o evento." });
+    } catch {
+      toast({ title: "Copie manualmente", description: linkParticipar });
+    }
+  };
 
   const criarAcao = async () => {
     if (!acao.quando) {
@@ -155,7 +172,8 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
         headers: { ...HEADERS, "Content-Type": "application/json" },
         body: JSON.stringify({
           loja: slug,
-          titulo: acao.titulo.trim() || `Feirão ${lojaNome}`,
+          tipo: acao.tipo,
+          titulo: acao.titulo.trim() || `${TIPOS[acao.tipo]?.rotulo || "Feirão"} ${lojaNome}`,
           premio: acao.premio.trim() || "1 ano grátis do TotexCar Co-pilot",
           ganhadores: Math.min(100, Math.max(1, Number(acao.ganhadores) || 5)),
           sorteio_em: new Date(acao.quando).toISOString(),
@@ -224,7 +242,10 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
             <div className="min-w-0">
               {evento ? (
                 <>
-                  <p className="text-sm font-medium truncate">{evento.titulo}</p>
+                  <p className="text-sm font-medium truncate">
+                    {TIPOS[evento.tipo || "feirao"]?.icone} {evento.titulo}
+                    <Badge className="ml-2 bg-primary/15 text-primary align-middle">{TIPOS[evento.tipo || "feirao"]?.rotulo}</Badge>
+                  </p>
                   <p className="text-[12px] text-muted-foreground">
                     Sorteio {new Date(evento.sorteio_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     {" · "}{evento.ganhadores} ganhador{evento.ganhadores > 1 ? "es" : ""} · {evento.premio}
@@ -239,8 +260,32 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
             </Button>
           </div>
 
+          {/* Link público: o cliente se cadastra sozinho (live do Instagram ou QR no evento) */}
+          <div className="flex items-center gap-2 border-t pt-3">
+            <p className="text-[12px] text-muted-foreground min-w-0 flex-1 truncate">
+              🔗 Link de participação: <span className="font-mono">{linkParticipar}</span>
+            </p>
+            <Button variant="outline" size="sm" className="h-7 shrink-0" onClick={copiarLink}>Copiar</Button>
+          </div>
+
           {novaAcao && (
             <div className="grid grid-cols-2 gap-3 border-t pt-3">
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Tipo de ação</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {Object.entries(TIPOS).map(([k, t]) => (
+                    <Button key={k} type="button" size="sm" variant={acao.tipo === k ? "default" : "outline"}
+                      onClick={() => setAcao((p) => ({ ...p, tipo: k }))}>
+                      {t.icone} {t.rotulo}
+                    </Button>
+                  ))}
+                </div>
+                {acao.tipo === "live" && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Na live, compartilhe o link de participação acima — o espectador se cadastra sozinho e a origem já entra como "Live Instagram".
+                  </p>
+                )}
+              </div>
               <div className="space-y-1 col-span-2 md:col-span-1">
                 <Label className="text-xs">Nome da ação</Label>
                 <Input value={acao.titulo} onChange={(e) => setAcao((p) => ({ ...p, titulo: e.target.value }))} placeholder={`Ex.: Feirão ${lojaNome || "da loja"}`} />
