@@ -76,8 +76,9 @@
 </head>
 <body>
 <div class="pagina">
-  <div class="marca">CARDOSO <em>Veículos</em></div>
-  <div class="desde">desde 1999 · Feirão TotexCar Co-pilot</div>
+  <div class="marca" id="marca">CARDOSO <em>Veículos</em></div>
+  <div class="desde" id="desde">desde 1999 · Feirão TotexCar Co-pilot</div>
+  <img id="fachada" alt="" style="display:none; width:100%; border-radius:16px; margin-top:16px; max-height:180px; object-fit:cover; box-shadow:0 8px 30px rgba(0,0,0,.3)">
 
   <div class="ticket">
     <div class="faixa">🎟️ VOUCHER OFICIAL DO SORTEIO</div>
@@ -122,11 +123,11 @@
   </div>
 
   <div class="ctas">
-    <a class="cta insta" href="https://instagram.com/cardosoveiculos" target="_blank" rel="noopener">📸 Seguir @cardosoveiculos</a>
-    <a class="cta zap" href="https://wa.me/5511949571603" target="_blank" rel="noopener">💬 Falar com a Cardoso no WhatsApp</a>
+    <a class="cta insta" id="cta-insta" href="https://instagram.com/cardosoveiculos" target="_blank" rel="noopener">📸 Seguir @cardosoveiculos</a>
+    <a class="cta zap" id="cta-zap" href="https://wa.me/5511949571603" target="_blank" rel="noopener">💬 Falar com a Cardoso no WhatsApp</a>
   </div>
 
-  <footer>
+  <footer id="rodape">
     Cardoso Veículos · (11) 94957-1603 · desde 1999<br>
     Feirão com sorteio do app TotexCar Co-pilot
   </footer>
@@ -145,6 +146,37 @@
     ola.appendChild(b);
     ola.appendChild(document.createTextNode(', você está concorrendo!'));
   }
+
+  // multi-loja: personaliza nome, fachada e contatos da loja parceira
+  var LOJA = (p.get('loja')||'cardoso').toLowerCase().replace(/[^a-z0-9-]/g,'') || 'cardoso';
+  var SUPA_URL = 'https://fbgtqiqovwxccinbzvmx.supabase.co';
+  var SUPA_KEY = 'sb_publishable_7FBkjLTMpozEHHcgucNA1g_xTNWsrfp';
+  fetch(SUPA_URL + '/rest/v1/feirao_lojas?select=*&id=eq.' + encodeURIComponent(LOJA),
+    { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(ls){
+      var l = ls && ls[0]; if(!l) return;
+      if(LOJA !== 'cardoso'){
+        document.getElementById('marca').textContent = l.nome;
+        document.getElementById('desde').textContent = 'Feirão TotexCar Co-pilot';
+        document.getElementById('rodape').textContent = l.nome + ' — Feirão com sorteio do app TotexCar Co-pilot';
+        var ins = document.getElementById('cta-insta');
+        if(l.instagram){
+          ins.href = 'https://instagram.com/' + l.instagram.replace(/^@/,'');
+          ins.textContent = '📸 Seguir ' + l.instagram;
+        } else { ins.style.display = 'none'; }
+        var zapb = document.getElementById('cta-zap');
+        if(l.whatsapp){
+          zapb.href = 'https://wa.me/' + l.whatsapp.replace(/\D/g,'');
+          zapb.textContent = '💬 Falar com a ' + l.nome + ' no WhatsApp';
+        } else { zapb.style.display = 'none'; }
+      }
+      if(l.foto_url){
+        var img = document.getElementById('fachada');
+        img.src = l.foto_url; img.alt = 'Fachada ' + l.nome; img.style.display = 'block';
+      }
+    })
+    .catch(function(){});
 </script>
 </body>
 </html>
