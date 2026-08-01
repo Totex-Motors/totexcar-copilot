@@ -85,7 +85,7 @@
     <div class="corpo">
       <div class="ola" id="ola">Você está concorrendo!</div>
       <div class="num" id="num">—</div>
-      <div class="picote">
+      <div class="picote" id="picote">
         Sorteio <b>hoje às 18:00</b>, aqui no feirão.<br>
         <b>5 ganhadores</b> levam <b>1 ano grátis</b> do TotexCar Co-pilot.
         Guarde esta página — este número é seu!
@@ -117,8 +117,8 @@
     </div>
 
     <div class="premio">
-      <b>🏆 Prêmio do sorteio de hoje</b>
-      <div>1 ano de TotexCar Co-pilot grátis para 5 sorteados.<br>Resultado às 18:00 — fique por perto!</div>
+      <b>🏆 Prêmio do sorteio</b>
+      <div id="premio-txt">1 ano de TotexCar Co-pilot grátis para 5 sorteados.<br>Resultado às 18:00 — fique por perto!</div>
     </div>
   </div>
 
@@ -151,6 +151,30 @@
   var LOJA = (p.get('loja')||'cardoso').toLowerCase().replace(/[^a-z0-9-]/g,'') || 'cardoso';
   var SUPA_URL = 'https://fbgtqiqovwxccinbzvmx.supabase.co';
   var SUPA_KEY = 'sb_publishable_7FBkjLTMpozEHHcgucNA1g_xTNWsrfp';
+  // ação ativa: data/hora do sorteio, prêmio e nº de ganhadores configurados no painel do lojista
+  fetch(SUPA_URL + '/rest/v1/feirao_eventos?select=*&loja=eq.' + encodeURIComponent(LOJA) + '&ativo=eq.true&order=criado_em.desc&limit=1',
+    { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(es){
+      var ev = es && es[0]; if(!ev) return;
+      var d = new Date(ev.sorteio_em);
+      var dia = (d.toDateString() === new Date().toDateString())
+        ? 'hoje' : 'dia ' + d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
+      var quando = dia + ' às ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      var n = ev.ganhadores || 5;
+      var pic = document.getElementById('picote');
+      pic.innerHTML = '';
+      pic.appendChild(document.createTextNode('Sorteio '));
+      var b1 = document.createElement('b'); b1.textContent = quando; pic.appendChild(b1);
+      pic.appendChild(document.createTextNode('. '));
+      pic.appendChild(document.createElement('br'));
+      var b2 = document.createElement('b'); b2.textContent = (n>1 ? n + ' ganhadores levam' : 'O ganhador leva'); pic.appendChild(b2);
+      pic.appendChild(document.createTextNode(' ' + ev.premio + '. Guarde esta página — este número é seu!'));
+      document.getElementById('premio-txt').textContent =
+        ev.premio + (n>1 ? ' para ' + n + ' sorteados.' : '.') + ' Resultado ' + quando + ' — fique por perto!';
+    })
+    .catch(function(){});
+
   fetch(SUPA_URL + '/rest/v1/feirao_lojas?select=*&id=eq.' + encodeURIComponent(LOJA),
     { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } })
     .then(function(r){ return r.ok ? r.json() : []; })
