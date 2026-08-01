@@ -181,7 +181,7 @@
     <div class="sub">Feirão · Sorteio TotexCar Co-pilot · desde 1999</div>
     <div class="contagem">
       <b id="total">0</b>
-      <span>clientes cadastrados<br>sorteio hoje às <b style="font-size:13px">18:00</b> · 5 ganham 1 ano grátis</span>
+      <span id="hdr-sub">clientes cadastrados<br>sorteio hoje às <b style="font-size:13px">18:00</b> · 5 ganham 1 ano grátis</span>
     </div>
   </header>
 
@@ -248,9 +248,9 @@
     <!-- SORTEIO -->
     <section id="tela-sor" class="tela">
       <div class="sorteio-capa">
-        <div class="hora">Hoje · 18:00</div>
-        <h2>Grande sorteio do Feirão</h2>
-        <div class="premio">5 × 1 ANO GRÁTIS DE TOTEXCAR CO-PILOT</div>
+        <div class="hora" id="cap-quando">Hoje · 18:00</div>
+        <h2 id="cap-titulo">Grande sorteio do Feirão</h2>
+        <div class="premio" id="cap-premio">5 × 1 ANO GRÁTIS DE TOTEXCAR CO-PILOT</div>
       </div>
       <div class="rolando" id="rolando"></div>
       <div id="ganhadoresBox"></div>
@@ -268,7 +268,7 @@
     <div class="corpo">
       <div class="num" id="v-num"></div>
       <div class="nome" id="v-nome"></div>
-      <div class="info">Guarde este número! Sorteio hoje às <b>18:00</b>.<br>5 ganhadores levam 1 ano grátis do app TotexCar Co-pilot.</div>
+      <div class="info" id="v-info">Guarde este número! Sorteio hoje às <b>18:00</b>.<br>5 ganhadores levam 1 ano grátis do app TotexCar Co-pilot.</div>
       <a class="acao" id="v-zap" href="#" target="_blank" rel="noopener">📲 Enviar voucher no WhatsApp</a>
       <button class="acao" onclick="fecharVoucher()">✓ Próximo cliente</button>
     </div>
@@ -285,6 +285,41 @@
   var LOJA = ((new URLSearchParams(location.search).get('loja')) || 'cardoso')
     .toLowerCase().replace(/[^a-z0-9-]/g, '') || 'cardoso';
   var FLOJA = '&loja=eq.' + encodeURIComponent(LOJA);
+
+  // ação ativa da loja (data/hora do sorteio, prêmio, nº de ganhadores — configurada no painel do lojista)
+  var EV = null;
+  var FEV = '';
+  function nGanhadores(){ return (EV && EV.ganhadores) || 5; }
+  function premioTxt(){ return (EV && EV.premio) || '1 ano grátis do TotexCar Co-pilot'; }
+  function quandoTxt(){
+    if(!EV) return 'hoje às 18:00';
+    var d = new Date(EV.sorteio_em);
+    var dia = (d.toDateString() === new Date().toDateString())
+      ? 'hoje' : 'dia ' + d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
+    return dia + ' às ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  }
+  function carregarEvento(){
+    return api('feirao_eventos?select=*&loja=eq.' + encodeURIComponent(LOJA) + '&ativo=eq.true&order=criado_em.desc&limit=1')
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(es){ if(es && es[0]){ EV = es[0]; cache.evento = EV; salvar(); } })
+      .catch(function(){})
+      .then(function(){ if(!EV && cache.evento) EV = cache.evento; aplicarEvento(); });
+  }
+  function aplicarEvento(){
+    if(!EV) return;
+    FEV = '&evento_id=eq.' + EV.id;
+    var n = nGanhadores();
+    document.getElementById('hdr-sub').innerHTML = 'clientes cadastrados<br>sorteio '
+      + esc(quandoTxt()) + ' · <b style="font-size:13px">' + n + '</b> ganhador' + (n>1?'es':'');
+    var d = new Date(EV.sorteio_em);
+    document.getElementById('cap-quando').textContent =
+      (d.toDateString() === new Date().toDateString() ? 'Hoje' : d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}))
+      + ' · ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+    document.getElementById('cap-titulo').textContent = EV.titulo || 'Grande sorteio do Feirão';
+    document.getElementById('cap-premio').textContent = n + ' × ' + premioTxt().toUpperCase();
+    if(!dados_ganhadores_na_tela()) document.getElementById('btnSortear').textContent = '🎉 Sortear os ' + n + ' ganhadores';
+  }
+  function dados_ganhadores_na_tela(){ return !!(cache.ganhadores && cache.ganhadores.length); }
 
   // personalização da loja (nome, foto da fachada, contatos)
   function aplicarLoja(){
@@ -332,8 +367,8 @@
   function carregar(){
     try{
       var d = JSON.parse(localStorage.getItem(CHAVE)) || {};
-      return {copia:d.copia||[], pendentes:d.pendentes||[], ganhadores:d.ganhadores||[], seq:d.seq||0};
-    }catch(e){ return {copia:[], pendentes:[], ganhadores:[], seq:0}; }
+      return {copia:d.copia||[], pendentes:d.pendentes||[], ganhadores:d.ganhadores||[], seq:d.seq||0, evento:d.evento||null};
+    }catch(e){ return {copia:[], pendentes:[], ganhadores:[], seq:0, evento:null}; }
   }
   function salvar(){ localStorage.setItem(CHAVE, JSON.stringify(cache)); }
 
@@ -351,7 +386,7 @@
 
   // ---------- sincronização ----------
   function atualizar(){
-    return api('feirao_cadastros?select=*&order=criado_em.asc' + FLOJA)
+    return api('feirao_cadastros?select=*&order=criado_em.asc' + FLOJA + FEV)
       .then(function(r){ if(!r.ok) throw 0; return r.json(); })
       .then(function(linhas){
         setStatus(true);
@@ -372,7 +407,7 @@
           method:'POST',
           headers:{'Prefer':'return=representation'},
           body: JSON.stringify({
-            loja:LOJA, voucher:p.voucher, nome:p.nome, zap:p.zap, zap_limpo:p.zap_limpo,
+            loja:LOJA, evento_id:p.evento_id||null, voucher:p.voucher, nome:p.nome, zap:p.zap, zap_limpo:p.zap_limpo,
             insta:p.insta, obs:p.obs, cliente:p.cliente, interesse:p.interesse, origem:p.origem, hora:p.hora
           })
         }).then(function(r){
@@ -426,7 +461,7 @@
       return erroForm('Esse WhatsApp já está cadastrado no sorteio.');
     }
     var registro = {
-      loja:LOJA, nome:nome, zap:zap, zap_limpo:zapLimpo,
+      loja:LOJA, evento_id: EV ? EV.id : null, nome:nome, zap:zap, zap_limpo:zapLimpo,
       insta: document.getElementById('f-insta').value.trim(),
       obs: document.getElementById('f-obs').value.trim(),
       cliente: chip('g-cliente'), interesse: chip('g-interesse'), origem: chip('g-origem'),
@@ -469,14 +504,18 @@
   function mostrarVoucher(voucher, nome, zap){
     document.getElementById('v-num').textContent = voucher;
     document.getElementById('v-nome').textContent = nome;
+    document.getElementById('v-info').innerHTML = 'Guarde este número! Sorteio <b>' + esc(quandoTxt()) + '</b>.<br>'
+      + (nGanhadores()>1 ? nGanhadores()+' ganhadores levam ' : 'O ganhador leva ') + esc(premioTxt()) + '.';
     var num = String(zap||'').replace(/\D/g,'');
     if(num && num.length <= 11) num = '55' + num;
     var primeiro = nome.split(' ')[0];
     var pagina = location.origin + location.pathname.replace(/[^\/]*$/,'') + 'voucher.html'
       + '?v=' + encodeURIComponent(voucher) + '&n=' + encodeURIComponent(primeiro)
       + (LOJA !== 'cardoso' ? '&loja=' + encodeURIComponent(LOJA) : '');
-    var msg = 'Olá, ' + primeiro + '! 🎟️ Seu voucher do sorteio do Feirão Cardoso Veículos é *' + voucher + '*.\n\n'
-      + 'Sorteio hoje às 18h — 5 ganhadores levam 1 ANO GRÁTIS do TotexCar Co-pilot!\n\n'
+    var nomeLoja = document.querySelector('header .marca').textContent.replace(/\s+/g,' ').trim();
+    var n = nGanhadores();
+    var msg = 'Olá, ' + primeiro + '! 🎟️ Seu voucher do sorteio ' + (LOJA==='cardoso' ? 'do Feirão Cardoso Veículos' : 'de ' + nomeLoja) + ' é *' + voucher + '*.\n\n'
+      + 'Sorteio ' + quandoTxt() + ' — ' + (n>1 ? n+' ganhadores levam' : 'o ganhador leva') + ' ' + premioTxt() + '!\n\n'
       + 'Veja seu voucher e conheça o app: ' + pagina;
     document.getElementById('v-zap').href = 'https://wa.me/' + num + '?text=' + encodeURIComponent(msg);
     document.getElementById('veu').classList.add('on');
@@ -562,10 +601,10 @@
         btn.textContent = 'Sortear novamente';
       } else {
         box.innerHTML = '';
-        btn.textContent = '🎉 Sortear os 5 ganhadores';
+        btn.textContent = '🎉 Sortear os ' + nGanhadores() + ' ganhadores';
       }
     };
-    api('feirao_ganhadores?select=*&order=posicao.asc' + FLOJA)
+    api('feirao_ganhadores?select=*&order=posicao.asc' + FLOJA + FEV)
       .then(function(r){ if(!r.ok) throw 0; return r.json(); })
       .then(pinta)
       .catch(function(){ pinta(cache.ganhadores); });
@@ -578,10 +617,13 @@
   }
 
   function sortear(){
-    if(pessoas.length < 5){
-      alert('São necessários pelo menos 5 cadastrados. Hoje: '+pessoas.length+'.');
+    var n = nGanhadores();
+    if(pessoas.length < n){
+      alert('São necessários pelo menos '+n+' cadastrados. Hoje: '+pessoas.length+'.');
       return;
     }
+    if(EV && new Date() < new Date(EV.sorteio_em)
+      && !confirm('O sorteio está marcado para '+quandoTxt()+'. Sortear agora mesmo assim?')) return;
     if(cache.ganhadores.length && !confirm('Já existe um resultado. Sortear de novo apaga o resultado atual. Continuar?')) return;
 
     var btn = document.getElementById('btnSortear');
@@ -597,7 +639,7 @@
         var j = Math.floor(Math.random()*(i+1));
         var t = pool[i]; pool[i]=pool[j]; pool[j]=t;
       }
-      animar(todos, pool.slice(0,5));
+      animar(todos, pool.slice(0, n));
     };
     api('feirao_cadastros?select=*' + FLOJA)
       .then(function(r){ if(!r.ok) throw 0; return r.json(); })
@@ -612,8 +654,8 @@
     var reduzir = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var idx = 0;
     function proximo(){
-      if(idx >= 5){
-        rolando.textContent = '🏆 Parabéns aos 5 ganhadores!';
+      if(idx >= escolhidos.length){
+        rolando.textContent = '🏆 Parabéns ' + (escolhidos.length>1 ? 'aos '+escolhidos.length+' ganhadores!' : 'ao ganhador!');
         gravarGanhadores(escolhidos);
         btn.disabled = false; btn.textContent = 'Sortear novamente';
         return;
@@ -642,12 +684,12 @@
 
   function gravarGanhadores(escolhidos){
     cache.ganhadores = escolhidos; salvar();
-    api('feirao_ganhadores?posicao=gte.0' + FLOJA, {method:'DELETE'})
+    api('feirao_ganhadores?posicao=gte.0' + FLOJA + FEV, {method:'DELETE'})
       .then(function(){
         return api('feirao_ganhadores', {
           method:'POST',
           body: JSON.stringify(escolhidos.map(function(p,i){
-            return {loja:LOJA, posicao:i+1, voucher:p.voucher, nome:p.nome, zap:p.zap, insta:p.insta||''};
+            return {loja:LOJA, evento_id: EV ? EV.id : null, posicao:i+1, voucher:p.voucher, nome:p.nome, zap:p.zap, insta:p.insta||''};
           }))
         });
       })
@@ -657,8 +699,9 @@
   // ---------- início + reconexão automática ----------
   montarLista();
   aplicarLoja();
-  atualizar();
+  carregarEvento().then(atualizar);
   setInterval(atualizar, 12000);
+  setInterval(carregarEvento, 60000); // pega mudanças de config da ação feitas no painel
 </script>
 </body>
 </html>

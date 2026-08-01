@@ -2,9 +2,11 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Gift, Trophy, ExternalLink, CheckCircle2, Camera, Store } from "lucide-react";
+import { Loader2, Gift, Trophy, ExternalLink, CheckCircle2, Camera, Store, CalendarPlus } from "lucide-react";
 import { usePostsaleCreate, usePostsaleList, useDealerMe } from "@/hooks/useDealer";
 
 // App do sorteio (feirao-cardoso/) — banco próprio no projeto TotexMotors OS, chave publishable (uso público).
@@ -19,6 +21,10 @@ interface Ganhador {
 interface FeiraoLoja {
   id: string; nome: string; foto_url: string | null;
   whatsapp: string | null; instagram: string | null;
+}
+interface FeiraoEvento {
+  id: string; loja: string; titulo: string; premio: string;
+  ganhadores: number; sorteio_em: string; ativo: boolean;
 }
 
 const HEADERS = { apikey: FEIRAO_KEY, Authorization: `Bearer ${FEIRAO_KEY}` };
@@ -56,15 +62,24 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const slug = /cardoso/i.test(lojaNome) ? "cardoso" : slugify(lojaNome);
   const appLink = slug === "cardoso" ? FEIRAO_APP_URL : `${FEIRAO_APP_URL}/?loja=${slug}`;
 
+  // ação ativa da loja — os cadastros/ganhadores exibidos são sempre os dela
+  const { data: evento } = useQuery({
+    queryKey: ["feirao-evento", slug],
+    queryFn: async () =>
+      (await feirao<FeiraoEvento[]>(`feirao_eventos?select=*&loja=eq.${slug}&ativo=eq.true&order=criado_em.desc&limit=1`))[0] || null,
+    enabled: !!lojaNome,
+  });
+  const fEvento = evento ? `&evento_id=eq.${evento.id}` : "";
+
   const { data: ganhadores, isLoading } = useQuery({
-    queryKey: ["feirao-ganhadores", slug],
-    queryFn: () => feirao<Ganhador[]>(`feirao_ganhadores?select=*&order=posicao.asc&loja=eq.${slug}`),
+    queryKey: ["feirao-ganhadores", slug, evento?.id || null],
+    queryFn: () => feirao<Ganhador[]>(`feirao_ganhadores?select=*&order=posicao.asc&loja=eq.${slug}${fEvento}`),
     refetchInterval: 60_000,
     enabled: !!lojaNome,
   });
   const { data: cadastros } = useQuery({
-    queryKey: ["feirao-total", slug],
-    queryFn: () => feirao<{ id: string }[]>(`feirao_cadastros?select=id&loja=eq.${slug}`),
+    queryKey: ["feirao-total", slug, evento?.id || null],
+    queryFn: () => feirao<{ id: string }[]>(`feirao_cadastros?select=id&loja=eq.${slug}${fEvento}`),
     enabled: !!lojaNome,
   });
   const { data: lojaCfg } = useQuery({
@@ -117,6 +132,50 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
     setAtivando(null);
   };
 
+  // Nova ação de feirão/sorteio: título, prêmio, nº de ganhadores e data/hora — o app se adapta sozinho.
+  const [novaAcao, setNovaAcao] = useState(false);
+  const [salvandoAcao, setSalvandoAcao] = useState(false);
+  const [acao, setAcao] = useState({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "" });
+
+  const criarAcao = async () => {
+    if (!acao.quando) {
+      toast({ title: "Informe a data e hora do sorteio", variant: "destructive" });
+      return;
+    }
+    setSalvandoAcao(true);
+    try {
+      // encerra a ação ativa anterior (o histórico fica guardado no banco)
+      await fetch(`${FEIRAO_URL}/rest/v1/feirao_eventos?loja=eq.${slug}&ativo=eq.true`, {
+        method: "PATCH",
+        headers: { ...HEADERS, "Content-Type": "application/json" },
+        body: JSON.stringify({ ativo: false }),
+      });
+      const r = await fetch(`${FEIRAO_URL}/rest/v1/feirao_eventos`, {
+        method: "POST",
+        headers: { ...HEADERS, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loja: slug,
+          titulo: acao.titulo.trim() || `Feirão ${lojaNome}`,
+          premio: acao.premio.trim() || "1 ano grátis do TotexCar Co-pilot",
+          ganhadores: Math.min(100, Math.max(1, Number(acao.ganhadores) || 5)),
+          sorteio_em: new Date(acao.quando).toISOString(),
+          ativo: true,
+        }),
+      });
+      if (!r.ok) throw new Error("Não foi possível criar a ação.");
+      toast({ title: "Nova ação criada! 🎪", description: "O app do sorteio já está mostrando a nova data, prêmio e contagem zerada." });
+      setNovaAcao(false);
+      setAcao({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "" });
+      qc.invalidateQueries({ queryKey: ["feirao-evento", slug] });
+      qc.invalidateQueries({ queryKey: ["feirao-ganhadores", slug] });
+      qc.invalidateQueries({ queryKey: ["feirao-total", slug] });
+    } catch (e: any) {
+      toast({ title: "Erro ao criar a ação", description: String(e?.message || e), variant: "destructive" });
+    } finally {
+      setSalvandoAcao(false);
+    }
+  };
+
   // Foto da fachada: sobe pro storage público do app de sorteio e grava na config da loja.
   const subirFachada = async (file: File) => {
     setSubindo(true);
@@ -159,6 +218,55 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Ação atual + criar nova ação (data/hora, prêmio e nº de ganhadores) */}
+        <div className="rounded-lg border p-3 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              {evento ? (
+                <>
+                  <p className="text-sm font-medium truncate">{evento.titulo}</p>
+                  <p className="text-[12px] text-muted-foreground">
+                    Sorteio {new Date(evento.sorteio_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    {" · "}{evento.ganhadores} ganhador{evento.ganhadores > 1 ? "es" : ""} · {evento.premio}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhuma ação configurada — o app usa o padrão (hoje 18:00, 5 ganhadores).</p>
+              )}
+            </div>
+            <Button variant="outline" size="sm" className="gap-1.5 h-8 shrink-0" onClick={() => setNovaAcao((v) => !v)}>
+              <CalendarPlus className="w-3.5 h-3.5" /> Nova ação
+            </Button>
+          </div>
+
+          {novaAcao && (
+            <div className="grid grid-cols-2 gap-3 border-t pt-3">
+              <div className="space-y-1 col-span-2 md:col-span-1">
+                <Label className="text-xs">Nome da ação</Label>
+                <Input value={acao.titulo} onChange={(e) => setAcao((p) => ({ ...p, titulo: e.target.value }))} placeholder={`Ex.: Feirão ${lojaNome || "da loja"}`} />
+              </div>
+              <div className="space-y-1 col-span-2 md:col-span-1">
+                <Label className="text-xs">Data e hora do sorteio</Label>
+                <Input type="datetime-local" value={acao.quando} onChange={(e) => setAcao((p) => ({ ...p, quando: e.target.value }))} />
+              </div>
+              <div className="space-y-1 col-span-2 md:col-span-1">
+                <Label className="text-xs">Prêmio</Label>
+                <Input value={acao.premio} onChange={(e) => setAcao((p) => ({ ...p, premio: e.target.value }))} placeholder="1 ano grátis do TotexCar Co-pilot" />
+              </div>
+              <div className="space-y-1 max-w-[140px]">
+                <Label className="text-xs">Nº de ganhadores</Label>
+                <Input type="number" min={1} max={100} value={acao.ganhadores} onChange={(e) => setAcao((p) => ({ ...p, ganhadores: e.target.value }))} />
+              </div>
+              <div className="col-span-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">Criar uma nova ação zera a lista do app (os dados das ações anteriores ficam guardados no banco).</p>
+                <Button size="sm" className="gap-1.5 shrink-0" disabled={salvandoAcao} onClick={criarAcao}>
+                  {salvandoAcao ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarPlus className="w-3.5 h-3.5" />} Criar ação
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Personalização: foto da fachada da loja no app e no voucher do cliente */}
         <div className="flex items-center gap-3 rounded-lg border border-dashed p-3">
           {lojaCfg?.foto_url ? (
