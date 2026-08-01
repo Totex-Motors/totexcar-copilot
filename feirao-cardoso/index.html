@@ -110,7 +110,8 @@
   }
   .ticket .nome{font-size:18px; font-weight:700; margin-top:6px}
   .ticket .info{font-size:13px; color:var(--tinta2); margin-top:10px; line-height:1.5}
-  .ticket .corpo .acao{margin-top:18px; background:var(--ok)}
+  .ticket .corpo .acao{margin-top:10px}
+  .ticket .corpo a.acao{display:block; text-decoration:none; background:#25D366; margin-top:18px}
 
   /* ---------- lista ---------- */
   .busca{margin-bottom:12px}
@@ -264,7 +265,8 @@
       <div class="num" id="v-num"></div>
       <div class="nome" id="v-nome"></div>
       <div class="info">Guarde este número! Sorteio hoje às <b>18:00</b>.<br>5 ganhadores levam 1 ano grátis do app TotexCar Co-pilot.</div>
-      <button class="acao" onclick="fecharVoucher()">✓ Cadastrado — próximo cliente</button>
+      <a class="acao" id="v-zap" href="#" target="_blank" rel="noopener">📲 Enviar voucher no WhatsApp</a>
+      <button class="acao" onclick="fecharVoucher()">✓ Próximo cliente</button>
     </div>
   </div>
 </div>
@@ -408,7 +410,7 @@
     }).then(function(js){
       setStatus(true);
       cache.copia.push(js[0]); salvar(); montarLista();
-      mostrarVoucher(js[0].voucher, nome);
+      mostrarVoucher(js[0].voucher, nome, zap);
     }).catch(function(e){
       if(e && e.dup) return erroForm('Esse WhatsApp já está cadastrado no sorteio.');
       // sem internet: guarda no aparelho e sincroniza depois
@@ -416,7 +418,7 @@
       cache.seq++;
       registro.voucher = 'CV-L' + String(cache.seq).padStart(2,'0');
       cache.pendentes.push(registro); salvar(); montarLista();
-      mostrarVoucher(registro.voucher, nome);
+      mostrarVoucher(registro.voucher, nome, zap);
     }).finally(function(){
       btn.disabled = false; btn.textContent = 'Cadastrar e gerar voucher';
     });
@@ -429,9 +431,18 @@
     btn.disabled = false; btn.textContent = 'Cadastrar e gerar voucher';
   }
 
-  function mostrarVoucher(voucher, nome){
+  function mostrarVoucher(voucher, nome, zap){
     document.getElementById('v-num').textContent = voucher;
     document.getElementById('v-nome').textContent = nome;
+    var num = String(zap||'').replace(/\D/g,'');
+    if(num && num.length <= 11) num = '55' + num;
+    var primeiro = nome.split(' ')[0];
+    var pagina = location.origin + location.pathname.replace(/[^\/]*$/,'') + 'voucher.html'
+      + '?v=' + encodeURIComponent(voucher) + '&n=' + encodeURIComponent(primeiro);
+    var msg = 'Olá, ' + primeiro + '! 🎟️ Seu voucher do sorteio do Feirão Cardoso Veículos é *' + voucher + '*.\n\n'
+      + 'Sorteio hoje às 18h — 5 ganhadores levam 1 ANO GRÁTIS do TotexCar Co-pilot!\n\n'
+      + 'Veja seu voucher e conheça o app: ' + pagina;
+    document.getElementById('v-zap').href = 'https://wa.me/' + num + '?text=' + encodeURIComponent(msg);
     document.getElementById('veu').classList.add('on');
   }
 

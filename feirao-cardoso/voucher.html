@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Seu voucher do Feirão — Cardoso Veículos</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --azul:#1436C7; --navy:#0A1B5C; --sky:#38B6E8; --ouro:#F5B301;
+    --fundo:#0A1B5C; --card:#FFFFFF; --tinta:#141B3D; --tinta2:#5A6489; --verde:#1B9E4B;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:linear-gradient(170deg,#0A1B5C 0%, #1436C7 60%, #1E4FE0 100%);
+    color:#fff; min-height:100vh; -webkit-font-smoothing:antialiased;
+  }
+  .pagina{max-width:440px; margin:0 auto; padding:28px 20px 40px}
+
+  .marca{text-align:center; font-size:26px; font-weight:800; letter-spacing:-.5px}
+  .marca em{font-style:italic; color:var(--sky); font-weight:700}
+  .desde{text-align:center; font-size:12px; opacity:.8; margin-top:2px}
+
+  /* ---------- ticket ---------- */
+  .ticket{
+    background:var(--card); color:var(--tinta); border-radius:20px; margin-top:22px;
+    overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.35);
+  }
+  .ticket .faixa{background:var(--ouro); color:#3A2A00; font-weight:800; font-size:13px;
+    text-align:center; padding:10px; letter-spacing:.05em}
+  .ticket .corpo{padding:26px 22px; text-align:center}
+  .ticket .ola{font-size:15px; color:var(--tinta2)}
+  .ticket .ola b{color:var(--tinta)}
+  .ticket .num{
+    font-size:56px; font-weight:800; color:var(--azul); letter-spacing:3px;
+    font-variant-numeric:tabular-nums; margin-top:8px;
+  }
+  .ticket .picote{
+    border-top:2px dashed #D9E0F2; margin:20px -22px 0; padding:14px 22px 0;
+    font-size:13px; color:var(--tinta2); line-height:1.6;
+  }
+  .ticket .picote b{color:var(--tinta)}
+
+  /* ---------- pitch ---------- */
+  .pitch{margin-top:30px}
+  .pitch h1{font-size:24px; font-weight:800; text-align:center; line-height:1.25; text-wrap:balance}
+  .pitch h1 em{font-style:normal; color:var(--sky)}
+  .pitch .sub{text-align:center; font-size:14px; opacity:.9; margin-top:10px; line-height:1.5}
+  .beneficios{margin-top:22px; display:flex; flex-direction:column; gap:10px}
+  .b{
+    display:flex; gap:14px; align-items:flex-start;
+    background:rgba(255,255,255,.10); border-radius:14px; padding:14px 16px;
+  }
+  .b .ico{font-size:22px; flex-shrink:0}
+  .b b{font-size:15px; display:block}
+  .b span{font-size:13px; opacity:.85; line-height:1.45}
+
+  .premio{
+    margin-top:24px; background:rgba(245,179,1,.15); border:1.5px solid var(--ouro);
+    border-radius:14px; padding:16px; text-align:center;
+  }
+  .premio b{color:var(--ouro); font-size:15px}
+  .premio div{font-size:13px; opacity:.9; margin-top:4px; line-height:1.5}
+
+  /* ---------- CTAs ---------- */
+  .ctas{margin-top:24px; display:flex; flex-direction:column; gap:10px}
+  .cta{
+    display:block; text-align:center; text-decoration:none; font-weight:800;
+    font-size:16px; padding:15px; border-radius:14px; color:#fff;
+  }
+  .cta.insta{background:linear-gradient(45deg,#F58529,#DD2A7B,#8134AF)}
+  .cta.zap{background:var(--verde)}
+
+  footer{text-align:center; font-size:11px; opacity:.75; margin-top:28px; line-height:1.6}
+</style>
+</head>
+<body>
+<div class="pagina">
+  <div class="marca">CARDOSO <em>Veículos</em></div>
+  <div class="desde">desde 1999 · Feirão TotexCar Co-pilot</div>
+
+  <div class="ticket">
+    <div class="faixa">🎟️ VOUCHER OFICIAL DO SORTEIO</div>
+    <div class="corpo">
+      <div class="ola" id="ola">Você está concorrendo!</div>
+      <div class="num" id="num">—</div>
+      <div class="picote">
+        Sorteio <b>hoje às 18:00</b>, aqui no feirão.<br>
+        <b>5 ganhadores</b> levam <b>1 ano grátis</b> do TotexCar Co-pilot.
+        Guarde esta página — este número é seu!
+      </div>
+    </div>
+  </div>
+
+  <div class="pitch">
+    <h1>Imagine seu carro com um <em>co-piloto inteligente</em></h1>
+    <p class="sub">O TotexCar Co-pilot é uma IA no seu WhatsApp que cuida do seu carro por você — sem baixar nada, sem complicação.</p>
+
+    <div class="beneficios">
+      <div class="b"><div class="ico">🔔</div>
+        <div><b>Nunca mais esqueça um vencimento</b>
+        <span>IPVA, licenciamento, seguro e troca de óleo — ele te avisa antes, na hora certa.</span></div>
+      </div>
+      <div class="b"><div class="ico">⛽</div>
+        <div><b>Saiba quanto seu carro custa de verdade</b>
+        <span>Manda a foto do comprovante e pronto: gasto registrado, custo por km na palma da mão.</span></div>
+      </div>
+      <div class="b"><div class="ico">📍</div>
+        <div><b>Seu carro, sempre no seu radar</b>
+        <span>Com o rastreador Totex, pergunte "onde está meu carro?" e receba a localização na hora.</span></div>
+      </div>
+      <div class="b"><div class="ico">💰</div>
+        <div><b>Valorize na hora de trocar</b>
+        <span>Acompanhe a tabela FIPE e receba ofertas de recompra da Cardoso pelo seu usado.</span></div>
+      </div>
+    </div>
+
+    <div class="premio">
+      <b>🏆 Prêmio do sorteio de hoje</b>
+      <div>1 ano de TotexCar Co-pilot grátis para 5 sorteados.<br>Resultado às 18:00 — fique por perto!</div>
+    </div>
+  </div>
+
+  <div class="ctas">
+    <a class="cta insta" href="https://instagram.com/cardosoveiculos" target="_blank" rel="noopener">📸 Seguir @cardosoveiculos</a>
+    <a class="cta zap" href="https://wa.me/5511949571603" target="_blank" rel="noopener">💬 Falar com a Cardoso no WhatsApp</a>
+  </div>
+
+  <footer>
+    Cardoso Veículos · (11) 94957-1603 · desde 1999<br>
+    Feirão com sorteio do app TotexCar Co-pilot
+  </footer>
+</div>
+
+<script>
+  var p = new URLSearchParams(location.search);
+  var v = (p.get('v')||'').replace(/[^A-Za-z0-9-]/g,'');
+  var n = (p.get('n')||'').slice(0,40);
+  if(v) document.getElementById('num').textContent = v;
+  if(n){
+    var ola = document.getElementById('ola');
+    ola.textContent = '';
+    var b = document.createElement('b');
+    b.textContent = n;
+    ola.appendChild(b);
+    ola.appendChild(document.createTextNode(', você está concorrendo!'));
+  }
+</script>
+</body>
+</html>
