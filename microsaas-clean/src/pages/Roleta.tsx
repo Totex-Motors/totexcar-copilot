@@ -122,8 +122,17 @@ export default function Roleta() {
               >
                 {fatias.map((f, i) => (
                   <span key={i}
-                    className="absolute left-1/2 top-1/2 text-[11px] font-bold text-white drop-shadow whitespace-nowrap max-w-[110px] overflow-hidden text-ellipsis"
-                    style={{ transform: `rotate(${i * passo + passo / 2 - 90}deg) translate(58px, -50%)`, transformOrigin: "0 50%" }}>
+                    className="absolute left-1/2 top-1/2 text-[10px] font-bold text-white drop-shadow leading-[1.15]"
+                    style={{
+                      transform: `rotate(${i * passo + passo / 2 - 90}deg) translate(42px, -50%)`,
+                      transformOrigin: "0 50%",
+                      width: 84,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                      wordBreak: "break-word",
+                    }}>
                     {f.rotulo}
                   </span>
                 ))}
