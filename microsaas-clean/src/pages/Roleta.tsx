@@ -120,22 +120,30 @@ export default function Roleta() {
                 className="w-full h-full rounded-full border-8 border-white shadow-2xl relative"
                 style={{ background: grad, transform: `rotate(${rotacao}deg)`, transition: girando ? "transform 4s cubic-bezier(.15,.9,.25,1)" : undefined }}
               >
-                {fatias.map((f, i) => (
-                  <span key={i}
-                    className="absolute left-1/2 top-1/2 text-[10px] font-bold text-white drop-shadow leading-[1.15]"
-                    style={{
-                      transform: `rotate(${i * passo + passo / 2 - 90}deg) translate(42px, -50%)`,
-                      transformOrigin: "0 50%",
-                      width: 84,
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                      wordBreak: "break-word",
-                    }}>
-                    {f.rotulo}
-                  </span>
-                ))}
+                {fatias.map((f, i) => {
+                  // fatias do lado esquerdo ficariam de cabeça pra baixo — inverte a rotação
+                  // pra ler sempre "em pé", com o texto centralizado na fatia
+                  const ang = ((i * passo + passo / 2 - 90) % 360 + 360) % 360;
+                  const flip = ang > 90 && ang < 270;
+                  return (
+                    <span key={i}
+                      className="absolute left-1/2 top-1/2 text-[10px] font-bold text-white drop-shadow leading-[1.15] text-center"
+                      style={{
+                        transform: flip
+                          ? `rotate(${ang + 180}deg) translate(-126px, -50%)`
+                          : `rotate(${ang}deg) translate(42px, -50%)`,
+                        transformOrigin: "0 50%",
+                        width: 84,
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                        wordBreak: "break-word",
+                      }}>
+                      {f.rotulo}
+                    </span>
+                  );
+                })}
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-white shadow flex items-center justify-center text-xl">🎡</div>
               </div>
             </div>
