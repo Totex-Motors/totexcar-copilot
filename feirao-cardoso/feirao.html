@@ -141,6 +141,15 @@
     <small>cadastro em 1 minuto · voucher na hora</small>
   </a>
 
+  <!-- modo TOTEM (?totem=1): a tela fica no shopping e a pessoa escaneia o QR com o celular -->
+  <div id="qr-box" style="display:none; margin-top:20px; text-align:center">
+    <div style="background:#fff; border-radius:22px; padding:22px; display:inline-block; box-shadow:0 16px 50px rgba(0,0,0,.5)">
+      <div id="qr-alvo"><img id="qr-img" src="qr-participar.png" alt="QR code para participar" style="width:290px; height:290px; display:block"></div>
+    </div>
+    <div style="font-size:19px; font-weight:900; margin-top:14px">📱 Aponte a câmera do celular</div>
+    <div style="font-size:14px; opacity:.85; margin-top:2px">cadastre-se em 1 minuto e receba seu voucher na hora</div>
+  </div>
+
   <p class="endereco">
     📍 Av. Desembargador Doutor Eduardo Cunha de Abreu, 131<br>
     Vila Municipal · Carapicuíba/SP · CEP 06328-330<br>
@@ -154,9 +163,28 @@
 
 <script>
   // canal do totem/mídia: ?canal=shopping (padrão) é repassado ao cadastro
-  var canal = (new URLSearchParams(location.search).get('canal') || 'shopping')
-    .toLowerCase().replace(/[^a-z0-9-]/g, '') || 'shopping';
+  var params = new URLSearchParams(location.search);
+  var canal = (params.get('canal') || 'shopping').toLowerCase().replace(/[^a-z0-9-]/g, '') || 'shopping';
   document.getElementById('cta').href = './?participar=1&canal=' + canal;
+
+  // MODO TOTEM (?totem=1): esconde o botão (a tela fica longe da mão) e mostra o QR gigante.
+  // Canal diferente de "shopping"? Gera o QR na hora (lib via CDN); se falhar, usa a imagem padrão.
+  if(params.get('totem') === '1'){
+    document.getElementById('cta').style.display = 'none';
+    document.getElementById('qr-box').style.display = 'block';
+    var alvoUrl = location.origin + location.pathname.replace(/[^\/]*$/, '') + '?participar=1&canal=' + canal;
+    if(canal !== 'shopping'){
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+      s.onload = function(){
+        var alvo = document.getElementById('qr-alvo');
+        alvo.innerHTML = '';
+        new QRCode(alvo, { text: alvoUrl, width: 290, height: 290,
+          colorDark: '#0A1B5C', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.H });
+      };
+      document.body.appendChild(s); // s.onerror: mantém a imagem padrão (canal shopping)
+    }
+  }
 
   // fachada da loja (mesma foto configurada no painel)
   fetch('https://fbgtqiqovwxccinbzvmx.supabase.co/rest/v1/feirao_lojas?select=foto_url&id=eq.cardoso',
