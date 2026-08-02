@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useDealer";
 import { SeloLojaCard } from "./SeloLojaCard";
 import { SorteioFeiraoCard } from "./SorteioFeiraoCard";
+import { RoletaLojaCard } from "./RoletaLojaCard";
 
 const TRANSFER_STEPS: Array<[string, string]> = [
   ["vistoria", "Vistoria (se exigida)"],
@@ -105,6 +106,9 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
 
       {/* Sorteio do Feirão — ganhadores viram cortesia de 1 ano + personalização do app de sorteio */}
       <SorteioFeiraoCard dealership={dealership} />
+
+      {/* Roleta Totex — giros conquistados por missões que geram valor pra loja */}
+      <RoletaLojaCard dealership={dealership} />
 
       {/* KPIs de NPS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -16,6 +16,7 @@ import {
   Plane,
   Radar,
   Award,
+  Disc3,
   Megaphone,
   LogOut
 } from "lucide-react";
@@ -50,6 +51,7 @@ const navigation = [
   { title: "Multas", url: "/multas", icon: ShieldAlert },
   { title: "Financiamento", url: "/financiamento", icon: Landmark },
   { title: "Selo Totex", url: "/selo", icon: Award },
+  { title: "Roleta de Prêmios", url: "/roleta", icon: Disc3 },
   { title: "Indique e Ganhe", url: "/indique", icon: Gift },
   { title: "Vender meu carro", url: "/recompra", icon: Banknote },
   { title: "Suporte", url: "/suporte", icon: LifeBuoy },
