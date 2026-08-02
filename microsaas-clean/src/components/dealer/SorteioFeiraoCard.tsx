@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Gift, Trophy, ExternalLink, CheckCircle2, Camera, Store, CalendarPlus } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Gift, Trophy, ExternalLink, CheckCircle2, Camera, Store, CalendarPlus, Zap, BarChart3 } from "lucide-react";
 import { usePostsaleCreate, usePostsaleList, useDealerMe } from "@/hooks/useDealer";
 
 // App do sorteio (feirao-cardoso/) — banco próprio no projeto TotexMotors OS, chave publishable (uso público).
@@ -18,10 +20,20 @@ interface Ganhador {
   posicao: number; voucher: string; nome: string; zap: string;
   insta: string | null; sorteado_em: string;
 }
+interface AutoEtapa { on: boolean; dias?: number; msg: string }
+interface AutoCfg { pos1: AutoEtapa; pos2: AutoEtapa; vip: AutoEtapa }
 interface FeiraoLoja {
   id: string; nome: string; foto_url: string | null;
   whatsapp: string | null; instagram: string | null;
+  automacao?: Partial<AutoCfg> | null;
 }
+
+// Defaults das automações — cada loja ajusta prazos e textos do seu jeito ({nome}, {acao}, {quando})
+const AUTO_DEFAULT: AutoCfg = {
+  pos1: { on: false, dias: 1, msg: "Você participou do nosso sorteio e não foi sorteado dessa vez… mas tem prêmio de consolação: condição especial esta semana no carro que você procura. Responda esta mensagem que te atendo agora! 🚗" },
+  pos2: { on: false, dias: 7, msg: "Ainda procurando seu próximo carro? Chegaram novidades no estoque — me conta o que você procura que eu te mando as melhores opções. 😉" },
+  vip: { on: false, msg: "Você é cliente especial da loja e já está convidado para {acao}! Sorteio {quando}. Vem participar! 🎉" },
+};
 interface FeiraoEvento {
   id: string; loja: string; titulo: string; premio: string;
   ganhadores: number; sorteio_em: string; ativo: boolean; tipo?: string;
@@ -192,6 +204,53 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
     } finally {
       setSalvandoAcao(false);
     }
+  };
+
+  // Automações configuráveis (pós-ação + convite VIP) — o cron diário feirao-automacao lê essa config
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [autoCfg, setAutoCfg] = useState<AutoCfg>(AUTO_DEFAULT);
+  const [salvandoAuto, setSalvandoAuto] = useState(false);
+  useEffect(() => {
+    const a = lojaCfg?.automacao;
+    if (a) setAutoCfg({
+      pos1: { ...AUTO_DEFAULT.pos1, ...(a.pos1 || {}) },
+      pos2: { ...AUTO_DEFAULT.pos2, ...(a.pos2 || {}) },
+      vip: { ...AUTO_DEFAULT.vip, ...(a.vip || {}) },
+    });
+  }, [lojaCfg]);
+
+  const salvarAuto = async () => {
+    setSalvandoAuto(true);
+    try {
+      const r = await fetch(`${FEIRAO_URL}/rest/v1/feirao_lojas`, {
+        method: "POST",
+        headers: { ...HEADERS, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify({ id: slug, nome: lojaNome, automacao: autoCfg }),
+      });
+      if (!r.ok) throw new Error("Não foi possível salvar.");
+      toast({ title: "Automações salvas ⚡", description: "O robô roda todo dia às 11:00 e segue exatamente esta configuração." });
+      qc.invalidateQueries({ queryKey: ["feirao-loja", slug] });
+    } catch (e: any) {
+      toast({ title: "Erro ao salvar automações", description: String(e?.message || e), variant: "destructive" });
+    } finally {
+      setSalvandoAuto(false);
+    }
+  };
+
+  const setEtapa = (k: keyof AutoCfg, patch: Partial<AutoEtapa>) =>
+    setAutoCfg((p) => ({ ...p, [k]: { ...p[k], ...patch } }));
+
+  // Relatório da ação: de onde vieram os participantes e o que procuram
+  const { data: relatorio } = useQuery({
+    queryKey: ["feirao-relatorio", slug, evento?.id || null],
+    queryFn: () => feirao<{ origem: string | null; interesse: string | null; cliente: string | null }[]>(
+      `feirao_cadastros?select=origem,interesse,cliente&loja=eq.${slug}${fEvento}`),
+    enabled: !!lojaNome && !!(cadastros?.length),
+  });
+  const contagem = (campo: "origem" | "interesse" | "cliente") => {
+    const m: Record<string, number> = {};
+    (relatorio || []).forEach((r) => { const v = r[campo] || "—"; m[v] = (m[v] || 0) + 1; });
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
   };
 
   // Foto da fachada: sobe pro storage público do app de sorteio e grava na config da loja.
@@ -378,6 +437,84 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
             )}
           </>
         )}
+
+        {/* Relatório da ação: qual canal trouxe gente e o que o público procura */}
+        {!!relatorio?.length && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <p className="text-sm font-medium flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-primary" /> Relatório da ação · {relatorio.length} participantes</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[12px]">
+              <div>
+                <p className="font-medium text-muted-foreground mb-1">Onde viu</p>
+                {contagem("origem").map(([k, n]) => (
+                  <div key={k} className="flex items-center gap-2 py-0.5">
+                    <span className="w-28 truncate">{k}</span>
+                    <div className="flex-1 h-2 rounded bg-muted overflow-hidden"><div className="h-full bg-primary" style={{ width: `${Math.round((n / relatorio.length) * 100)}%` }} /></div>
+                    <span className="w-8 text-right font-medium">{n}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <p className="font-medium text-muted-foreground mb-1">Interesse</p>
+                {contagem("interesse").map(([k, n]) => <p key={k} className="py-0.5">{k}: <strong>{n}</strong></p>)}
+              </div>
+              <div>
+                <p className="font-medium text-muted-foreground mb-1">Já é cliente</p>
+                {contagem("cliente").map(([k, n]) => <p key={k} className="py-0.5">{k}: <strong>{n}</strong></p>)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Automações configuráveis por loja (cron diário 11:00) */}
+        <div className="rounded-lg border p-3 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium flex items-center gap-1.5"><Zap className="w-4 h-4 text-primary" /> Automações da ação</p>
+              <p className="text-[12px] text-muted-foreground">
+                Mensagens automáticas no WhatsApp: consolação pra quem não ganhou e convite VIP.
+                {" "}{(autoCfg.pos1.on || autoCfg.pos2.on || autoCfg.vip.on) ? "Ativas ✅" : "Desligadas"}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="h-8 shrink-0" onClick={() => setAutoOpen((v) => !v)}>
+              {autoOpen ? "Fechar" : "Configurar"}
+            </Button>
+          </div>
+
+          {autoOpen && (
+            <div className="space-y-3 border-t pt-3">
+              {([
+                ["pos1", "1ª mensagem pós-sorteio (quem não ganhou)", true],
+                ["pos2", "2ª mensagem de follow-up", true],
+                ["vip", "Convite VIP da próxima ação (clientes Selo Prata/Ouro)", false],
+              ] as Array<[keyof AutoCfg, string, boolean]>).map(([k, titulo, temDias]) => (
+                <div key={k} className="rounded-lg border border-dashed p-3 space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox checked={autoCfg[k].on} onCheckedChange={(v) => setEtapa(k, { on: v === true })} />
+                    <span className="text-sm font-medium">{titulo}</span>
+                    {temDias && (
+                      <span className="ml-auto flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                        enviar <Input type="number" min={0} max={30} className="w-16 h-7 text-center"
+                          value={String(autoCfg[k].dias ?? 1)}
+                          onChange={(e) => setEtapa(k, { dias: Number(e.target.value) })} /> dia(s) após o sorteio
+                      </span>
+                    )}
+                  </label>
+                  <Textarea rows={2} value={autoCfg[k].msg} onChange={(e) => setEtapa(k, { msg: e.target.value })} />
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Variáveis: {"{nome}"} — e no convite VIP também {"{acao}"} e {"{quando}"}. O robô roda todo dia às 11:00,
+                  nunca envia duas vezes pra mesma pessoa e quem responder SAIR deixa de receber.
+                  A renovação da cortesia (30/15/7/1 dias antes de vencer) já é automática pra todas as lojas.
+                </p>
+                <Button size="sm" className="gap-1.5 shrink-0" disabled={salvandoAuto} onClick={salvarAuto}>
+                  {salvandoAuto ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Salvar automações
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
