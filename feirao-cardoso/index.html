@@ -298,6 +298,10 @@
   // modo público (?participar=1): o próprio cliente se cadastra — link compartilhado na live
   // do Instagram ou em QR code no evento. Esconde as abas internas (lista e sorteio).
   var PUBLICO = PARAMS.get('participar') === '1';
+  // canal de origem: balcão = 'loja'; link público = etiqueta do link (?canal=lista|bio|live...)
+  var CANAL = PUBLICO
+    ? ((PARAMS.get('canal') || 'link').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30) || 'link')
+    : 'loja';
   if(PUBLICO){
     document.querySelector('nav').style.display = 'none';
     document.getElementById('btn-guia').style.display = 'none';
@@ -433,7 +437,7 @@
           method:'POST',
           headers:{'Prefer':'return=representation'},
           body: JSON.stringify({
-            loja:LOJA, evento_id:p.evento_id||null, voucher:p.voucher, nome:p.nome, zap:p.zap, zap_limpo:p.zap_limpo,
+            loja:LOJA, evento_id:p.evento_id||null, canal:p.canal||'loja', voucher:p.voucher, nome:p.nome, zap:p.zap, zap_limpo:p.zap_limpo,
             insta:p.insta, obs:p.obs, cliente:p.cliente, interesse:p.interesse, origem:p.origem, hora:p.hora
           })
         }).then(function(r){
@@ -561,7 +565,7 @@
       return erroForm('Esse WhatsApp já está cadastrado no sorteio.');
     }
     var registro = {
-      loja:LOJA, evento_id: EV ? EV.id : null, nome:nome, zap:zap, zap_limpo:zapLimpo,
+      loja:LOJA, evento_id: EV ? EV.id : null, canal:CANAL, nome:nome, zap:zap, zap_limpo:zapLimpo,
       insta: document.getElementById('f-insta').value.trim(),
       obs: document.getElementById('f-obs').value.trim(),
       cliente: chip('g-cliente'), interesse: chip('g-interesse'),
@@ -652,13 +656,29 @@
       box.innerHTML = '<div class="vazio">'+(pessoas.length ? 'Ninguém encontrado nessa busca.' : 'Nenhum cliente cadastrado ainda.<br>Use a aba <b>Cadastro</b> para registrar o primeiro.')+'</div>';
       return;
     }
-    box.innerHTML = itens.slice().reverse().map(function(p){
+    // resumo: separa quem foi cadastrado NA LOJA de quem veio PELO LINK (e quantos do link já vieram)
+    var naLoja = 0, peloLink = 0, vieram = 0;
+    pessoas.forEach(function(p){
+      if(!p.canal || p.canal === 'loja') naLoja++;
+      else { peloLink++; if(p.chegou_em) vieram++; }
+    });
+    var resumo = peloLink
+      ? '<div style="font-size:13px; color:var(--tinta2); font-weight:600; margin-bottom:10px">🏬 Na loja: <b style="color:var(--tinta)">'+naLoja+'</b>'
+        + ' · 🔗 Pelo link: <b style="color:var(--tinta)">'+peloLink+'</b>'
+        + ' · ✓ do link que vieram: <b style="color:var(--ok)">'+vieram+'</b></div>'
+      : '';
+    box.innerHTML = resumo + itens.slice().reverse().map(function(p){
       var pendente = cache.pendentes.indexOf(p) >= 0;
       return '<div class="pessoa">'
         + '<div class="vnum">'+esc(p.voucher||'…')+'</div>'
         + '<div class="dados"><b>'+esc(p.nome)+(pendente?' ⏳':'')+'</b><span>'+esc(p.zap)
         + (p.insta ? ' · '+esc(p.insta) : '')
         + (p.origem ? ' · '+esc(p.origem) : '') + (p.hora ? ' · '+esc(p.hora) : '')
+        + (p.canal && p.canal !== 'loja'
+            ? '<br>🔗 '+esc(p.canal) + (p.chegou_em
+                ? ' · <b style="color:var(--ok)">🏬 veio à loja</b>'
+                : ' · <button onclick="chegou(\''+esc(p.voucher)+'\')" style="border:1.5px solid var(--ok); background:transparent; color:var(--ok); border-radius:999px; padding:1px 10px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit">✓ Chegou na loja</button>')
+            : '')
         + (p.obs ? '<br>📝 '+esc(p.obs) : '') + '</span></div>'
         + '<button class="del" aria-label="Editar '+esc(p.nome)+'" onclick="editar(\''+esc(p.voucher)+'\')">✎</button>'
         + '<button class="del" aria-label="Excluir '+esc(p.nome)+'" onclick="excluir(\''+esc(p.voucher)+'\')">✕</button>'
@@ -684,6 +704,19 @@
       .catch(function(){ alert('Sem conexão agora — tente excluir de novo em instantes.'); });
   }
 
+  // check-in: cliente que se cadastrou pelo link apareceu na loja — métrica de conversão do marketing
+  function chegou(v){
+    var p = pessoas.find(function(x){ return x.voucher===v; });
+    if(!p) return;
+    api('feirao_cadastros?voucher=eq.'+encodeURIComponent(v)+FLOJA, {
+      method:'PATCH', body: JSON.stringify({ chegou_em: new Date().toISOString() })
+    }).then(function(r){
+      if(!r.ok) throw 0;
+      p.chegou_em = new Date().toISOString();
+      salvar(); lista();
+    }).catch(function(){ alert('Sem conexão agora — tente de novo em instantes.'); });
+  }
+
   function esc(s){
     return String(s==null?'':s).replace(/[&<>"']/g, function(c){
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -691,9 +724,10 @@
   }
 
   function exportarCSV(){
-    var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Hora','Observações']];
+    var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Canal','Chegou na loja','Hora','Observações']];
     pessoas.forEach(function(p){
-      linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,p.hora,p.obs]);
+      linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,
+        p.canal||'loja', (!p.canal||p.canal==='loja') ? 'sim' : (p.chegou_em ? 'sim' : 'não'), p.hora,p.obs]);
     });
     var csv = '﻿' + linhas.map(function(l){
       return l.map(function(c){ return '"'+String(c||'').replace(/"/g,'""')+'"'; }).join(';');
