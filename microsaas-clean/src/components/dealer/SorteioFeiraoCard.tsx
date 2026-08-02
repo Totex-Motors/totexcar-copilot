@@ -155,12 +155,16 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const [salvandoAcao, setSalvandoAcao] = useState(false);
   const [acao, setAcao] = useState({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao" });
 
-  // Link público de auto-cadastro: o cliente se inscreve sozinho (colar na bio/comentários da live ou virar QR no evento)
-  const linkParticipar = appLink.includes("?") ? `${appLink}&participar=1` : `${appLink}/?participar=1`;
+  // Link público de auto-cadastro, ETIQUETADO POR CANAL: cada mídia usa seu link
+  // (lista de marketing, bio, live...) e os cadastros não se misturam com os do balcão.
+  const [canalLink, setCanalLink] = useState("lista");
+  const canalSlug = canalLink.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30) || "link";
+  const linkParticipar = (appLink.includes("?") ? `${appLink}&participar=1` : `${appLink}/?participar=1`)
+    + `&canal=${canalSlug}`;
   const copiarLink = async () => {
     try {
       await navigator.clipboard.writeText(linkParticipar);
-      toast({ title: "Link copiado! 🔗", description: "Cole na live do Instagram ou gere um QR code para o evento." });
+      toast({ title: `Link do canal "${canalSlug}" copiado! 🔗`, description: "Cada canal com seu link — o relatório separa tudo." });
     } catch {
       toast({ title: "Copie manualmente", description: linkParticipar });
     }
@@ -243,8 +247,8 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   // Relatório da ação: de onde vieram os participantes e o que procuram
   const { data: relatorio } = useQuery({
     queryKey: ["feirao-relatorio", slug, evento?.id || null],
-    queryFn: () => feirao<{ origem: string | null; interesse: string | null; cliente: string | null }[]>(
-      `feirao_cadastros?select=origem,interesse,cliente&loja=eq.${slug}${fEvento}`),
+    queryFn: () => feirao<{ origem: string | null; interesse: string | null; cliente: string | null; canal: string | null; chegou_em: string | null }[]>(
+      `feirao_cadastros?select=origem,interesse,cliente,canal,chegou_em&loja=eq.${slug}${fEvento}`),
     enabled: !!lojaNome && !!(cadastros?.length),
   });
   const contagem = (campo: "origem" | "interesse" | "cliente") => {
@@ -324,12 +328,23 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
             </Button>
           </div>
 
-          {/* Link público: o cliente se cadastra sozinho (live do Instagram ou QR no evento) */}
-          <div className="flex items-center gap-2 border-t pt-3">
-            <p className="text-[12px] text-muted-foreground min-w-0 flex-1 truncate">
-              🔗 Link de participação: <span className="font-mono">{linkParticipar}</span>
+          {/* Link público etiquetado: um link por canal (lista de marketing, bio, live...) */}
+          <div className="border-t pt-3 space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[12px] font-medium">🔗 Link de participação — canal:</span>
+              {["lista", "bio", "live", "facebook"].map((c) => (
+                <Button key={c} type="button" size="sm" variant={canalSlug === c ? "default" : "outline"}
+                  className="h-6 px-2 text-[11px]" onClick={() => setCanalLink(c)}>{c}</Button>
+              ))}
+              <Input className="w-24 h-6 text-[11px]" placeholder="outro…" value={canalLink}
+                onChange={(e) => setCanalLink(e.target.value)} />
+              <Button variant="outline" size="sm" className="h-7 shrink-0 ml-auto" onClick={copiarLink}>Copiar</Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground truncate font-mono">{linkParticipar}</p>
+            <p className="text-[11px] text-muted-foreground">
+              Cadastros do balcão entram como <b>loja</b>; cada link marca seu canal — o relatório e a planilha separam tudo,
+              e a promotora confirma com "✓ Chegou na loja" quem veio por causa do link.
             </p>
-            <Button variant="outline" size="sm" className="h-7 shrink-0" onClick={copiarLink}>Copiar</Button>
           </div>
 
           {novaAcao && (
@@ -447,6 +462,22 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
         {!!relatorio?.length && (
           <div className="rounded-lg border p-3 space-y-2">
             <p className="text-sm font-medium flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-primary" /> Relatório da ação · {relatorio.length} participantes</p>
+            {(() => {
+              const remotos = relatorio.filter((r) => r.canal && r.canal !== "loja");
+              if (!remotos.length) return null;
+              const naLoja = relatorio.length - remotos.length;
+              const vieram = remotos.filter((r) => r.chegou_em).length;
+              const porCanal: Record<string, number> = {};
+              remotos.forEach((r) => { porCanal[r.canal!] = (porCanal[r.canal!] || 0) + 1; });
+              return (
+                <div className="rounded-md bg-primary/5 border border-primary/20 p-2.5 text-[12px] space-y-0.5">
+                  <p>🏬 Cadastrados <b>na loja</b>: <b>{naLoja}</b> · 🔗 <b>pelo link</b>: <b>{remotos.length}</b>
+                    {" "}({Object.entries(porCanal).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c}: ${n}`).join(" · ")})</p>
+                  <p>✓ Do link que <b>vieram à loja</b>: <b className="text-green-600">{vieram}</b>
+                    {remotos.length ? <span className="text-muted-foreground"> — conversão de {Math.round((vieram / remotos.length) * 100)}% da campanha</span> : null}</p>
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[12px]">
               <div>
                 <p className="font-medium text-muted-foreground mb-1">Onde viu</p>
