@@ -202,9 +202,9 @@
       O cadastro garante o seu voucher, mas o sorteio vale para quem <b>visitar a loja</b>.
       Chegando lá, <b>procure a promotora</b> e diga: <i>"vim visitar a loja e quero participar do sorteio"</i>. Pronto — participação confirmada! 🎟️
     </div>
-    <div id="beneficios-box" style="display:none; background:var(--card); border:1.5px solid var(--linha); border-radius:14px; padding:14px 16px; margin-bottom:16px">
-      <b id="beneficios-titulo" style="font-size:15px">🎁 Benefícios do feirão</b>
-      <ol id="beneficios-lista" style="margin:8px 0 0 20px; font-size:14px; color:var(--tinta2); display:flex; flex-direction:column; gap:4px"></ol>
+    <div id="beneficios-box" style="display:none; background:var(--card); border:1.5px solid var(--linha); border-radius:14px; padding:14px 16px; margin-bottom:16px; text-align:center">
+      <b id="beneficios-titulo" style="font-size:15px">🎁 9 benefícios exclusivos do feirão</b>
+      <div style="font-size:13.5px; color:var(--tinta2); margin-top:4px">te esperam na loja — venha descobrir pessoalmente!</div>
     </div>
 
     <!-- CADASTRO -->
@@ -350,22 +350,13 @@
       var campoOrigem = document.getElementById('g-origem').closest('.campo');
       if(campoOrigem) campoOrigem.style.display = 'none';
     }
-    // link público: comunicado da validação presencial + benefícios do feirão
+    // link público: comunicado da validação presencial + teaser dos benefícios (sem revelar a lista)
     if(PUBLICO){
       document.getElementById('aviso-visita').style.display = 'block';
-      var bens = EV.beneficios || [];
-      if(bens.length){
-        document.getElementById('beneficios-titulo').textContent =
-          '🎁 Os ' + bens.length + ' benefícios do feirão';
-        var ol = document.getElementById('beneficios-lista');
-        ol.innerHTML = '';
-        bens.forEach(function(b){
-          var li = document.createElement('li');
-          li.textContent = String(b);
-          ol.appendChild(li);
-        });
-        document.getElementById('beneficios-box').style.display = 'block';
-      }
+      var qtd = (EV.beneficios && EV.beneficios.length) || 9;
+      document.getElementById('beneficios-titulo').textContent =
+        '🎁 ' + qtd + ' benefícios exclusivos do feirão';
+      document.getElementById('beneficios-box').style.display = 'block';
     }
     var d = new Date(EV.sorteio_em);
     document.getElementById('cap-quando').textContent =
