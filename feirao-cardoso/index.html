@@ -234,6 +234,10 @@
         <label for="f-obs">Observações</label>
         <input id="f-obs" autocomplete="off" placeholder="Ex.: procura SUV até 80 mil, volta amanhã…">
       </div>
+      <div id="edit-banner" style="display:none; background:var(--chip); border:1.5px solid var(--azul); border-radius:12px; padding:10px 14px; margin-bottom:16px; font-size:14px; font-weight:600; color:var(--azul)">
+        ✎ Editando <span id="edit-voucher"></span>
+        <button onclick="cancelarEdicao()" style="float:right; border:0; background:transparent; color:var(--erro); font-weight:700; cursor:pointer; font-family:inherit; font-size:13px">cancelar</button>
+      </div>
       <p class="aviso" id="f-aviso"></p>
       <button class="acao" id="btnCadastrar" onclick="cadastrar()">Cadastrar e gerar voucher</button>
     </section>
@@ -448,6 +452,11 @@
     var b = document.getElementById(id).querySelector('.sel');
     return b ? b.dataset.v : '';
   }
+  function marcarChip(id, valor){
+    document.getElementById(id).querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('sel', b.dataset.v === valor);
+    });
+  }
   function limparChips(id){
     document.getElementById(id).querySelectorAll('button').forEach(function(b){ b.classList.remove('sel'); });
   }
@@ -461,8 +470,77 @@
     if(qual==='sor') mostrarGanhadores();
   }
 
+  // ---------- edição de participante ----------
+  var EDITANDO = null; // voucher do cadastro em edição
+
+  function editar(v){
+    var p = pessoas.find(function(x){ return x.voucher===v; });
+    if(!p) return;
+    EDITANDO = v;
+    document.getElementById('f-nome').value = p.nome || '';
+    document.getElementById('f-zap').value = p.zap || '';
+    document.getElementById('f-insta').value = p.insta || '';
+    document.getElementById('f-obs').value = p.obs || '';
+    marcarChip('g-cliente', p.cliente || '');
+    marcarChip('g-interesse', p.interesse || '');
+    marcarChip('g-origem', p.origem || '');
+    document.getElementById('edit-voucher').textContent = v + ' — ' + (p.nome || '');
+    document.getElementById('edit-banner').style.display = 'block';
+    document.getElementById('btnCadastrar').textContent = '💾 Salvar alterações';
+    aba('cad');
+    document.getElementById('f-nome').focus();
+  }
+
+  function cancelarEdicao(){
+    EDITANDO = null;
+    document.getElementById('edit-banner').style.display = 'none';
+    document.getElementById('btnCadastrar').textContent = PUBLICO ? 'Quero participar do sorteio! 🎟️' : 'Cadastrar e gerar voucher';
+    document.getElementById('f-aviso').style.display = 'none';
+    ['f-nome','f-zap','f-insta','f-obs'].forEach(function(id){ document.getElementById(id).value=''; });
+    ['g-cliente','g-interesse','g-origem'].forEach(limparChips);
+  }
+
+  function salvarEdicao(){
+    var v = EDITANDO;
+    var nome = document.getElementById('f-nome').value.trim();
+    var zap  = document.getElementById('f-zap').value.trim();
+    if(!nome || !zap) return erroForm('Preencha pelo menos o nome e o WhatsApp.');
+    var zapLimpo = zap.replace(/\D/g,'');
+    if(pessoas.some(function(p){ return p.voucher!==v && p.zap_limpo === zapLimpo; })){
+      return erroForm('Esse WhatsApp já está em outro cadastro.');
+    }
+    var mud = {
+      nome:nome, zap:zap, zap_limpo:zapLimpo,
+      insta: document.getElementById('f-insta').value.trim(),
+      obs: document.getElementById('f-obs').value.trim(),
+      cliente: chip('g-cliente'), interesse: chip('g-interesse'), origem: chip('g-origem')
+    };
+    var btn = document.getElementById('btnCadastrar');
+    btn.disabled = true; btn.textContent = 'Salvando…';
+    var fim = function(){ btn.disabled = false; cancelarEdicao(); aba('lis'); lista(); };
+
+    var idxPend = cache.pendentes.findIndex(function(x){ return x.voucher===v; });
+    if(idxPend >= 0){ // ainda não subiu pra nuvem: corrige direto no aparelho
+      Object.keys(mud).forEach(function(k){ cache.pendentes[idxPend][k] = mud[k]; });
+      salvar(); montarLista(); fim(); return;
+    }
+    api('feirao_cadastros?voucher=eq.'+encodeURIComponent(v)+FLOJA, {
+      method:'PATCH', body: JSON.stringify(mud)
+    }).then(function(r){
+      if(r.status===409) throw {dup:true};
+      if(!r.ok) throw 0;
+      var p = cache.copia.find(function(x){ return x.voucher===v; });
+      if(p) Object.keys(mud).forEach(function(k){ p[k] = mud[k]; });
+      salvar(); montarLista(); fim();
+    }).catch(function(e){
+      btn.disabled = false; btn.textContent = '💾 Salvar alterações';
+      erroForm(e && e.dup ? 'Esse WhatsApp já está em outro cadastro.' : 'Sem conexão agora — tente salvar de novo em instantes.');
+    });
+  }
+
   // ---------- cadastro ----------
   function cadastrar(){
+    if(EDITANDO) return salvarEdicao();
     var nome = document.getElementById('f-nome').value.trim();
     var zap  = document.getElementById('f-zap').value.trim();
     var aviso = document.getElementById('f-aviso');
@@ -506,15 +584,19 @@
       cache.pendentes.push(registro); salvar(); montarLista();
       mostrarVoucher(registro.voucher, nome, zap);
     }).finally(function(){
-      btn.disabled = false; btn.textContent = 'Cadastrar e gerar voucher';
+      btn.disabled = false; btn.textContent = rotuloBtn();
     });
   }
 
+  function rotuloBtn(){
+    if(EDITANDO) return '💾 Salvar alterações';
+    return PUBLICO ? 'Quero participar do sorteio! 🎟️' : 'Cadastrar e gerar voucher';
+  }
   function erroForm(msg){
     var aviso = document.getElementById('f-aviso');
     var btn = document.getElementById('btnCadastrar');
     aviso.textContent = msg; aviso.style.display = 'block';
-    btn.disabled = false; btn.textContent = 'Cadastrar e gerar voucher';
+    btn.disabled = false; btn.textContent = rotuloBtn();
   }
 
   function mostrarVoucher(voucher, nome, zap){
@@ -571,6 +653,7 @@
         + (p.insta ? ' · '+esc(p.insta) : '')
         + (p.origem ? ' · '+esc(p.origem) : '') + (p.hora ? ' · '+esc(p.hora) : '')
         + (p.obs ? '<br>📝 '+esc(p.obs) : '') + '</span></div>'
+        + '<button class="del" aria-label="Editar '+esc(p.nome)+'" onclick="editar(\''+esc(p.voucher)+'\')">✎</button>'
         + '<button class="del" aria-label="Excluir '+esc(p.nome)+'" onclick="excluir(\''+esc(p.voucher)+'\')">✕</button>'
         + '</div>';
     }).join('');
