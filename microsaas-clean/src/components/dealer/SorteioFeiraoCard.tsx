@@ -287,11 +287,16 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center justify-between gap-2">
           <span className="flex items-center gap-2"><Trophy className="w-4 h-4 text-primary" /> Sorteio do Feirão — TotexCar Co-pilot</span>
-          <Button variant="outline" size="sm" className="gap-1.5 h-8" asChild>
-            <a href={appLink} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="w-3.5 h-3.5" /> Abrir app do sorteio
-            </a>
-          </Button>
+          <span className="flex gap-2">
+            <Button variant="ghost" size="sm" className="gap-1.5 h-8" asChild>
+              <a href={`${FEIRAO_APP_URL}/guia.html`} target="_blank" rel="noopener noreferrer">📖 Guia</a>
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5 h-8" asChild>
+              <a href={appLink} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-3.5 h-3.5" /> Abrir app do sorteio
+              </a>
+            </Button>
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Guia rápido — App de Ações & Sorteios · TotexCar Co-pilot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --azul:#1436C7; --navy:#0A1B5C; --sky:#38B6E8; --ouro:#F5B301;
+    --fundo:#F2F5FC; --card:#FFFFFF; --tinta:#141B3D; --tinta2:#5A6489; --linha:#D9E0F2;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--fundo); color:var(--tinta); -webkit-font-smoothing:antialiased; line-height:1.5;
+  }
+  .pagina{max-width:900px; margin:0 auto; padding:0 20px 60px}
+
+  /* ---------- capa ---------- */
+  .capa{
+    background:linear-gradient(160deg,var(--navy) 0%, #1436C7 70%, #1E4FE0 100%);
+    color:#fff; border-radius:0 0 24px 24px; padding:40px 24px 32px; text-align:center;
+    margin:0 -20px 32px;
+  }
+  .capa h1{font-size:30px; font-weight:800; letter-spacing:-.5px; text-wrap:balance}
+  .capa h1 em{font-style:italic; color:var(--sky)}
+  .capa p{font-size:16px; opacity:.9; max-width:560px; margin:10px auto 0}
+  .fluxo{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:22px}
+  .fluxo span{
+    background:rgba(255,255,255,.14); border-radius:999px; padding:9px 16px;
+    font-size:14px; font-weight:700;
+  }
+
+  h2{
+    font-size:22px; font-weight:800; margin:44px 0 6px; letter-spacing:-.3px;
+    display:flex; align-items:center; gap:10px;
+  }
+  h2 .num{
+    background:var(--azul); color:#fff; width:32px; height:32px; border-radius:50%;
+    display:inline-flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;
+  }
+  .sub{color:var(--tinta2); font-size:15px; margin-bottom:18px}
+
+  /* ---------- módulo: print + passos ---------- */
+  .modulo{display:grid; grid-template-columns:minmax(240px,300px) 1fr; gap:26px; align-items:start}
+  @media (max-width:640px){ .modulo{grid-template-columns:1fr} }
+  .tela{
+    position:relative; border-radius:22px; overflow:hidden;
+    box-shadow:0 14px 40px rgba(10,27,92,.22); border:1px solid var(--linha);
+  }
+  .tela img{width:100%; display:block}
+  .pin{
+    position:absolute; width:28px; height:28px; border-radius:50%;
+    background:var(--ouro); color:#3A2A00; font-weight:800; font-size:14px;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 3px #fff, 0 4px 12px rgba(0,0,0,.35);
+    transform:translate(-50%,-50%);
+  }
+  .passos{display:flex; flex-direction:column; gap:12px}
+  .passo{
+    background:var(--card); border:1px solid var(--linha); border-radius:14px;
+    padding:14px 16px; display:flex; gap:12px; align-items:flex-start;
+  }
+  .passo .p{
+    background:var(--ouro); color:#3A2A00; font-weight:800; width:26px; height:26px;
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; font-size:13px;
+  }
+  .passo b{display:block; font-size:15px}
+  .passo span{font-size:13.5px; color:var(--tinta2)}
+  .dica{
+    background:#FFF7E0; border:1.5px solid var(--ouro); border-radius:14px;
+    padding:12px 16px; font-size:14px; margin-top:12px;
+  }
+
+  /* ---------- painel (sem print: cards) ---------- */
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px}
+  .cardp{background:var(--card); border:1px solid var(--linha); border-radius:14px; padding:16px}
+  .cardp b{display:block; font-size:15px; margin-bottom:4px}
+  .cardp span{font-size:13.5px; color:var(--tinta2)}
+
+  /* ---------- faq ---------- */
+  details{
+    background:var(--card); border:1px solid var(--linha); border-radius:12px;
+    padding:12px 16px; margin-bottom:8px;
+  }
+  summary{font-weight:700; font-size:15px; cursor:pointer}
+  details p{font-size:14px; color:var(--tinta2); margin-top:8px}
+
+  .imprimir{
+    position:fixed; right:18px; bottom:18px; background:var(--azul); color:#fff;
+    border:0; border-radius:999px; padding:13px 20px; font-size:15px; font-weight:800;
+    cursor:pointer; font-family:inherit; box-shadow:0 8px 24px rgba(20,54,199,.4); z-index:10;
+  }
+  footer{text-align:center; color:var(--tinta2); font-size:12px; margin-top:52px; line-height:1.7}
+
+  @media print{
+    .imprimir{display:none}
+    .capa{border-radius:0; margin:0 0 24px}
+    .modulo{break-inside:avoid}
+    body{background:#fff}
+  }
+</style>
+</head>
+<body>
+<div class="pagina">
+
+  <div class="capa">
+    <h1>App de Ações & Sorteios<br><em>TotexCar Co-pilot</em></h1>
+    <p>Transforme feirões, lives e promoções em uma lista de clientes qualificados — com sorteio, voucher no WhatsApp e prêmio ativado em 1 clique.</p>
+    <div class="fluxo">
+      <span>📝 1. Cadastre o cliente</span>
+      <span>🎟️ 2. Voucher no WhatsApp</span>
+      <span>🏆 3. Sorteio na hora marcada</span>
+      <span>🚗 4. Prêmio ativado no Co-pilot</span>
+    </div>
+  </div>
+
+  <h2><span class="num">1</span> Cadastro — a tela da promotora</h2>
+  <p class="sub">Cada cliente que chega é registrado em menos de 1 minuto. Tudo o que a promotora precisa está numa tela só.</p>
+  <div class="modulo">
+    <div class="tela">
+      <img src="guia/tela-cadastro.png" alt="Tela de cadastro do app">
+      <span class="pin" style="left:86%; top:3.6%">1</span>
+      <span class="pin" style="left:50%; top:26%">2</span>
+      <span class="pin" style="left:30%; top:65%">3</span>
+      <span class="pin" style="left:50%; top:89.5%">4</span>
+    </div>
+    <div class="passos">
+      <div class="passo"><span class="p">1</span><div><b>Selo de conexão</b><span>"☁️ nuvem" verde = tudo salvo na hora. Se a internet cair, vira "📴 só neste aparelho" — pode continuar cadastrando, sincroniza sozinho depois.</span></div></div>
+      <div class="passo"><span class="p">2</span><div><b>Só nome e WhatsApp são obrigatórios</b><span>Instagram, observações e as demais respostas são opcionais — não trave a fila por causa delas.</span></div></div>
+      <div class="passo"><span class="p">3</span><div><b>Toque nas opções</b><span>Já é cliente? Comprar ou trocar? Onde viu a ação? Um toque em cada — isso vira o relatório do lojista no fim do dia.</span></div></div>
+      <div class="passo"><span class="p">4</span><div><b>Cadastrar e gerar voucher</b><span>Toque e pronto: o número da sorte (CV-001, CV-002…) aparece na tela. WhatsApp repetido é bloqueado — ninguém concorre duas vezes.</span></div></div>
+    </div>
+  </div>
+
+  <h2><span class="num">2</span> Voucher — o cliente sai com o número na mão</h2>
+  <p class="sub">Ao salvar, o ticket aparece na tela. Dali mesmo a promotora envia o voucher para o WhatsApp do cliente.</p>
+  <div class="modulo">
+    <div class="tela">
+      <img src="guia/tela-voucher.png" alt="Ticket do voucher gerado">
+      <span class="pin" style="left:50%; top:39%">1</span>
+      <span class="pin" style="left:50%; top:61.5%">2</span>
+      <span class="pin" style="left:50%; top:69.7%">3</span>
+    </div>
+    <div class="passos">
+      <div class="passo"><span class="p">1</span><div><b>Número da sorte</b><span>Mostre ao cliente — é o número dele no sorteio. A numeração nunca se repete, mesmo com vários celulares cadastrando ao mesmo tempo.</span></div></div>
+      <div class="passo"><span class="p">2</span><div><b>Enviar voucher no WhatsApp</b><span>Abre a conversa com o cliente já com a mensagem pronta: número, hora do sorteio e o link da página do voucher (que também apresenta o Co-pilot). Só apertar enviar.</span></div></div>
+      <div class="passo"><span class="p">3</span><div><b>Próximo cliente</b><span>Limpa o formulário e volta pro cadastro. Fila andando.</span></div></div>
+    </div>
+  </div>
+
+  <h2><span class="num">3</span> Participantes — a lista viva do evento</h2>
+  <p class="sub">Todo mundo que foi cadastrado, atualizado em tempo real em qualquer aparelho que abrir o app.</p>
+  <div class="modulo">
+    <div class="tela">
+      <img src="guia/tela-lista.png" alt="Lista de participantes">
+      <span class="pin" style="left:50%; top:24%">1</span>
+      <span class="pin" style="left:79%; top:32.5%">2</span>
+      <span class="pin" style="left:88.5%; top:32.5%">3</span>
+      <span class="pin" style="left:50%; top:89.8%">4</span>
+    </div>
+    <div class="passos">
+      <div class="passo"><span class="p">1</span><div><b>Busca rápida</b><span>Por nome ou número do voucher — útil quando o cliente volta ao estande.</span></div></div>
+      <div class="passo"><span class="p">2</span><div><b>✎ Editar</b><span>Digitou errado? Toque no lápis: os dados voltam pro formulário, corrija e salve. O número do voucher não muda.</span></div></div>
+      <div class="passo"><span class="p">3</span><div><b>✕ Excluir</b><span>Remove do sorteio (pede confirmação antes).</span></div></div>
+      <div class="passo"><span class="p">4</span><div><b>Baixar planilha (CSV)</b><span>Todos os cadastros do dia em Excel — os leads prontos para a equipe de vendas trabalhar.</span></div></div>
+    </div>
+  </div>
+
+  <h2><span class="num">4</span> Sorteio — o momento do show</h2>
+  <p class="sub">Na hora marcada (configurada pelo lojista no painel), um toque roda o sorteio com animação de suspense — perfeito pra filmar ou transmitir na live.</p>
+  <div class="modulo">
+    <div class="tela">
+      <img src="guia/tela-sorteio.png" alt="Tela do sorteio com ganhadores">
+      <span class="pin" style="left:50%; top:39%">1</span>
+      <span class="pin" style="left:50%; top:60%">2</span>
+      <span class="pin" style="left:50%; top:87.5%">3</span>
+    </div>
+    <div class="passos">
+      <div class="passo"><span class="p">1</span><div><b>Dados da ação</b><span>Nome, data/hora e prêmio aparecem automaticamente como o lojista configurou no painel.</span></div></div>
+      <div class="passo"><span class="p">2</span><div><b>Ganhadores revelados um a um</b><span>Animação embaralha os nomes e revela cada ganhador, com voucher e WhatsApp para chamar na hora.</span></div></div>
+      <div class="passo"><span class="p">3</span><div><b>Botão do sorteio</b><span>Se tocar antes da hora marcada, o app avisa e pede confirmação. O resultado fica salvo na nuvem — e aparece no painel do lojista para ativar os prêmios.</span></div></div>
+    </div>
+  </div>
+
+  <h2><span class="num">5</span> Link público — o cliente se cadastra sozinho</h2>
+  <p class="sub">Para lives no Instagram e QR code no estande: compartilhe o link de participação (está no painel do lojista, botão "Copiar") e o próprio cliente preenche.</p>
+  <div class="modulo">
+    <div class="tela">
+      <img src="guia/tela-publico.png" alt="Modo público de participação">
+      <span class="pin" style="left:50%; top:13%">1</span>
+      <span class="pin" style="left:50%; top:52%">2</span>
+    </div>
+    <div class="passos">
+      <div class="passo"><span class="p">1</span><div><b>Sem telas internas</b><span>Quem abre o link vê só o formulário — participantes e sorteio ficam ocultos, é seguro compartilhar com todo mundo.</span></div></div>
+      <div class="passo"><span class="p">2</span><div><b>Preencheu, concorreu</b><span>O voucher aparece na tela do próprio cliente. Em ações do tipo "Live", a origem já entra como "Live Instagram" automaticamente — sem pergunta.</span></div></div>
+    </div>
+  </div>
+  <div class="dica">💡 <b>Na live:</b> fale "o link tá na bio!", solte o link nos comentários e acompanhe o contador de participantes subindo em tempo real. Na hora do sorteio, aponte a câmera para a tela do sorteio e revele os ganhadores ao vivo.</div>
+
+  <h2><span class="num">6</span> A página que o cliente recebe</h2>
+  <p class="sub">O link enviado no WhatsApp abre esta página: o voucher digital dele + a apresentação do TotexCar Co-pilot — cada participante conhece o produto antes mesmo do sorteio.</p>
+  <div class="modulo">
+    <div class="tela">
+      <img src="guia/tela-voucher-page.png" alt="Página do voucher do cliente">
+      <span class="pin" style="left:50%; top:13%">1</span>
+      <span class="pin" style="left:50%; top:46%">2</span>
+      <span class="pin" style="left:50%; top:70%">3</span>
+    </div>
+    <div class="passos">
+      <div class="passo"><span class="p">1</span><div><b>Voucher digital personalizado</b><span>Nome do cliente, número da sorte, hora do sorteio e prêmio — com a marca e a fachada da loja.</span></div></div>
+      <div class="passo"><span class="p">2</span><div><b>Pitch do Co-pilot</b><span>Os 4 benefícios que vendem o app: vencimentos, custo por km, localização e recompra FIPE.</span></div></div>
+      <div class="passo"><span class="p">3</span><div><b>Dois botões que geram negócio</b><span>Seguir a loja no Instagram + abrir conversa no WhatsApp da loja. Cada voucher enviado é um seguidor e um canal de venda a mais.</span></div></div>
+    </div>
+  </div>
+
+  <h2><span class="num">7</span> Painel do lojista — onde tudo se configura</h2>
+  <p class="sub">No Painel do Lojista do Co-pilot, aba <b>Sucesso do Cliente</b>, card <b>"🏆 Sorteio do Feirão"</b>:</p>
+  <div class="cards">
+    <div class="cardp">📅 <b>Nova ação</b><span>Crie feirão, live ou promoção com nome, data/hora do sorteio, prêmio e nº de ganhadores. O app se adapta sozinho e começa do zero (o histórico fica guardado).</span></div>
+    <div class="cardp">📸 <b>Foto da fachada</b><span>Suba a foto da loja — ela aparece no app e no voucher do cliente. Cada loja parceira tem seu app personalizado.</span></div>
+    <div class="cardp">🔗 <b>Link de participação</b><span>Botão "Copiar" para compartilhar na live ou virar QR code no estande.</span></div>
+    <div class="cardp">🎁 <b>Ativar prêmio dos ganhadores</b><span>Depois do sorteio, os ganhadores aparecem no card. Um clique cria a conta premium de 1 ano e envia as boas-vindas com o kit no WhatsApp — mesmo fluxo da cortesia.</span></div>
+    <div class="cardp">📊 <b>Relatório da ação</b><span>Quantos participaram, por qual canal chegaram (Instagram, panfleto, live…), quem quer comprar × trocar, novos × já clientes.</span></div>
+    <div class="cardp">⚡ <b>Automações</b><span>Mensagens automáticas configuráveis: consolação pra quem não ganhou (D+1, D+7 — prazos e textos do seu jeito) e convite VIP para clientes Selo Prata/Ouro na próxima ação.</span></div>
+  </div>
+
+  <h2 style="margin-top:48px">Perguntas rápidas</h2>
+  <details><summary>E se a internet do evento cair?</summary><p>O app continua funcionando no aparelho ("📴 só neste aparelho") e sincroniza tudo sozinho quando a conexão voltar. Nenhum cadastro se perde.</p></details>
+  <details><summary>Posso usar mais de um celular cadastrando ao mesmo tempo?</summary><p>Sim! Todos os aparelhos com o link veem a mesma lista, e os números de voucher nunca se repetem — o banco de dados garante.</p></details>
+  <details><summary>Cadastrei errado, e agora?</summary><p>Aba Participantes → lápis ✎ → corrija → salvar. O voucher do cliente continua o mesmo.</p></details>
+  <details><summary>O mesmo cliente pode participar de outra ação depois?</summary><p>Pode. O bloqueio de WhatsApp repetido vale só dentro da mesma ação — na próxima live ou feirão ele concorre de novo.</p></details>
+  <details><summary>Quem não ganhou recebe alguma coisa?</summary><p>Se o lojista ativar as Automações no painel, sim: mensagem de consolação no dia seguinte e follow-up depois, com textos e prazos que a própria loja define.</p></details>
+
+  <footer>
+    App de Ações & Sorteios · TotexCar Co-pilot — Totex Motors<br>
+    Guia sempre atualizado neste link · para versão em papel, use o botão "Salvar em PDF"
+  </footer>
+</div>
+<button class="imprimir" onclick="window.print()">🖨️ Salvar em PDF</button>
+</body>
+</html>
