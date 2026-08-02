@@ -112,7 +112,7 @@
       </div>
       <div class="b"><div class="ico">💰</div>
         <div><b>Valorize na hora de trocar</b>
-        <span>Acompanhe a tabela FIPE e receba ofertas de recompra da Cardoso pelo seu usado.</span></div>
+        <span id="b-recompra">Acompanhe a tabela FIPE e receba ofertas de recompra da Cardoso pelo seu usado.</span></div>
       </div>
     </div>
 
@@ -182,6 +182,8 @@
       var l = ls && ls[0]; if(!l) return;
       if(LOJA !== 'cardoso'){
         document.getElementById('marca').textContent = l.nome;
+        document.getElementById('b-recompra').textContent =
+          'Acompanhe a tabela FIPE e receba ofertas de recompra da ' + l.nome + ' pelo seu usado.';
         document.getElementById('desde').textContent = 'Feirão TotexCar Co-pilot';
         document.getElementById('rodape').textContent = l.nome + ' — Feirão com sorteio do app TotexCar Co-pilot';
         var ins = document.getElementById('cta-insta');

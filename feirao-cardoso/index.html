@@ -176,7 +176,11 @@
   <header>
     <div class="linha1">
       <div class="marca">CARDOSO <em>Veículos</em></div>
-      <div class="status local" id="status">conectando…</div>
+      <div style="display:flex; gap:8px; align-items:center">
+        <div class="status local" id="status">conectando…</div>
+        <a id="btn-guia" href="guia.html" aria-label="Como usar o app"
+          style="background:rgba(255,255,255,.16); color:#fff; text-decoration:none; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; margin-top:4px">?</a>
+      </div>
     </div>
     <div class="sub">Feirão · Sorteio TotexCar Co-pilot · desde 1999</div>
     <div class="contagem">
@@ -207,7 +211,7 @@
         <input id="f-insta" autocomplete="off" placeholder="@cliente">
       </div>
       <div class="campo">
-        <label>Já é cliente Cardoso?</label>
+        <label id="lbl-cliente">Já é cliente Cardoso?</label>
         <div class="chips" id="g-cliente">
           <button data-v="Sim">Sim</button><button data-v="Não">Não</button>
         </div>
@@ -268,7 +272,7 @@
 <!-- VOUCHER -->
 <div class="veu" id="veu">
   <div class="ticket">
-    <div class="topo">🎟️ VOUCHER DO SORTEIO — FEIRÃO CARDOSO</div>
+    <div class="topo" id="v-topo">🎟️ VOUCHER DO SORTEIO — FEIRÃO CARDOSO</div>
     <div class="corpo">
       <div class="num" id="v-num"></div>
       <div class="nome" id="v-nome"></div>
@@ -296,6 +300,7 @@
   var PUBLICO = PARAMS.get('participar') === '1';
   if(PUBLICO){
     document.querySelector('nav').style.display = 'none';
+    document.getElementById('btn-guia').style.display = 'none';
     document.getElementById('btnCadastrar').textContent = 'Quero participar do sorteio! 🎟️';
   }
 
@@ -349,6 +354,8 @@
         if(LOJA !== 'cardoso'){
           var m = document.querySelector('header .marca');
           m.textContent = l.nome;
+          document.getElementById('lbl-cliente').textContent = 'Já é cliente da ' + l.nome + '?';
+          document.getElementById('v-topo').textContent = '🎟️ VOUCHER DO SORTEIO — ' + l.nome.toUpperCase();
           var rodape = document.querySelector('footer');
           rodape.textContent = l.nome
             + (l.whatsapp ? ' · WhatsApp ' + l.whatsapp.replace(/^55/, '') : '')
