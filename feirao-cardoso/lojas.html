@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Para Lojas — Ações, Sorteios e Pós-venda com o TotexCar Co-pilot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --azul:#1436C7; --navy:#0A1B5C; --sky:#38B6E8; --ouro:#F5B301;
+    --fundo:#F2F5FC; --card:#FFFFFF; --tinta:#141B3D; --tinta2:#5A6489; --linha:#D9E0F2; --verde:#1B9E4B;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--fundo); color:var(--tinta); -webkit-font-smoothing:antialiased; line-height:1.55;
+  }
+  .pagina{max-width:900px; margin:0 auto; padding:0 20px 60px}
+
+  .capa{
+    background:linear-gradient(160deg,var(--navy) 0%, #1436C7 70%, #1E4FE0 100%);
+    color:#fff; border-radius:0 0 24px 24px; padding:48px 24px 40px; text-align:center; margin:0 -20px 36px;
+  }
+  .capa .tag{display:inline-block; background:var(--ouro); color:#3A2A00; font-size:13px; font-weight:800;
+    padding:6px 16px; border-radius:999px; margin-bottom:16px; letter-spacing:.04em}
+  .capa h1{font-size:32px; font-weight:800; letter-spacing:-.5px; text-wrap:balance; max-width:640px; margin:0 auto}
+  .capa h1 em{font-style:normal; color:var(--sky)}
+  .capa p{font-size:17px; opacity:.92; max-width:600px; margin:14px auto 0}
+
+  h2{font-size:23px; font-weight:800; margin:44px 0 8px; letter-spacing:-.3px}
+  .sub{color:var(--tinta2); font-size:15px; margin-bottom:18px}
+
+  .dor{
+    background:var(--card); border-left:4px solid var(--ouro); border-radius:12px;
+    padding:18px 20px; margin-bottom:10px;
+  }
+  .dor b{font-size:16px}
+  .dor p{font-size:14.5px; color:var(--tinta2); margin-top:4px}
+
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px}
+  .card{background:var(--card); border:1px solid var(--linha); border-radius:16px; padding:20px}
+  .card .ico{font-size:26px}
+  .card b{display:block; font-size:16px; margin:8px 0 4px}
+  .card span{font-size:14px; color:var(--tinta2)}
+
+  .ciclo{
+    background:linear-gradient(160deg,var(--navy),#1436C7); color:#fff; border-radius:18px;
+    padding:28px 24px; margin-top:16px;
+  }
+  .ciclo h3{font-size:19px; font-weight:800; margin-bottom:14px}
+  .ciclo ol{margin-left:20px; display:flex; flex-direction:column; gap:8px; font-size:15px}
+  .ciclo li b{color:var(--sky)}
+
+  .preco{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin-top:16px;
+  }
+  .preco .box{background:var(--card); border:1.5px solid var(--linha); border-radius:16px; padding:22px; text-align:center}
+  .preco .box.destaque{border-color:var(--azul); box-shadow:0 10px 30px rgba(20,54,199,.15)}
+  .preco .rotulo{font-size:12px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--tinta2)}
+  .preco .valor{font-size:30px; font-weight:800; color:var(--azul); margin:8px 0 2px}
+  .preco .det{font-size:13.5px; color:var(--tinta2); line-height:1.6}
+
+  .passos{counter-reset:p; display:flex; flex-direction:column; gap:10px; margin-top:14px}
+  .passos div{
+    background:var(--card); border:1px solid var(--linha); border-radius:12px; padding:14px 16px;
+    font-size:15px; display:flex; gap:12px; align-items:center;
+  }
+  .passos div::before{
+    counter-increment:p; content:counter(p);
+    background:var(--azul); color:#fff; min-width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px;
+  }
+
+  .cta{
+    text-align:center; margin-top:44px; background:var(--card); border:1.5px solid var(--linha);
+    border-radius:20px; padding:32px 24px;
+  }
+  .cta h2{margin-top:0}
+  .cta a{
+    display:inline-block; background:var(--verde); color:#fff; text-decoration:none;
+    font-weight:800; font-size:17px; padding:15px 32px; border-radius:14px; margin-top:12px;
+  }
+  .cta .alt{display:block; margin-top:12px; font-size:13.5px}
+  .cta .alt a{all:unset; color:var(--azul); font-weight:700; cursor:pointer; text-decoration:underline}
+
+  .print{border-radius:18px; overflow:hidden; border:1px solid var(--linha);
+    box-shadow:0 14px 40px rgba(10,27,92,.18); max-width:280px; margin:0 auto}
+  .print img{width:100%; display:block}
+  .duo{display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:center; margin-top:16px}
+  @media (max-width:640px){ .duo{grid-template-columns:1fr} }
+
+  footer{text-align:center; color:var(--tinta2); font-size:12px; margin-top:52px; line-height:1.7}
+  footer a{color:var(--azul)}
+  @media print{ .cta a{background:var(--verde) !important} body{background:#fff} }
+</style>
+</head>
+<body>
+<div class="pagina">
+
+  <div class="capa">
+    <div class="tag">PARA LOJAS DE VEÍCULOS</div>
+    <h1>Seu feirão termina às 18h.<br><em>Seus clientes ficam para sempre.</em></h1>
+    <p>O TotexCar Co-pilot transforma cada ação da sua loja — feirão, live no Instagram, promoção — em uma base de clientes que compra, indica e volta para trocar.</p>
+  </div>
+
+  <h2>O problema de todo feirão</h2>
+  <div class="dor"><b>O movimento é ótimo. O aproveitamento, não.</b><p>Dezenas de pessoas passam pela loja, meia dúzia compra no dia — e o resto vai embora sem deixar nem o nome. A verba do panfleto, da live e do portal se perde sem você saber qual canal trouxe gente de verdade.</p></div>
+  <div class="dor"><b>E depois da venda, silêncio.</b><p>O cliente sai com o carro e a loja só volta a falar com ele por acaso. Na hora de trocar, ele compra de quem aparecer primeiro.</p></div>
+
+  <h2>A solução: sua loja com uma máquina de ações</h2>
+  <p class="sub">Tudo com a sua marca, sua fachada e seu WhatsApp — pronto em minutos, sem instalar nada.</p>
+  <div class="cards">
+    <div class="card"><div class="ico">🎪</div><b>App de sorteio personalizado</b><span>Sua promotora cadastra cada visitante em 1 minuto: nome, WhatsApp, o que procura, onde viu a ação. Cada cliente recebe um voucher digital com a sua marca.</span></div>
+    <div class="card"><div class="ico">📱</div><b>Lives com participação ao vivo</b><span>Link público na bio: o espectador se cadastra sozinho de casa e você sorteia na câmera, com animação de suspense. Cada live vira uma lista de leads.</span></div>
+    <div class="card"><div class="ico">📊</div><b>Relatório que ninguém te dá</b><span>Quantos vieram do Instagram, do panfleto, da indicação. Quem quer comprar × trocar. Você descobre onde investir a verba da próxima ação.</span></div>
+    <div class="card"><div class="ico">⚡</div><b>Nenhum lead esquecido</b><span>Quem não ganhou o sorteio recebe automaticamente sua oferta de consolação no WhatsApp — no prazo e com o texto que você definir. Lead de feirão virando venda na semana seguinte.</span></div>
+    <div class="card"><div class="ico">🎁</div><b>Prêmio que fideliza</b><span>O ganhador leva 1 ano do Co-pilot por sua conta — e passa o ano inteiro com a sua loja no bolso: cada aviso de IPVA, revisão e multa chega em seu nome.</span></div>
+    <div class="card"><div class="ico">🔁</div><b>O cliente volta para trocar com você</b><span>O Co-pilot acompanha a FIPE do carro do seu cliente e oferece a SUA recompra na hora certa. Clientes com Selo de cuidado alto = usados bons entrando no seu estoque.</span></div>
+  </div>
+
+  <div class="duo">
+    <div class="ciclo">
+      <h3>O ciclo completo que a adesão destrava</h3>
+      <ol>
+        <li><b>Ação</b> — feirão, live ou promoção com o app de sorteio da sua loja</li>
+        <li><b>Leads qualificados</b> — nome, WhatsApp, interesse e origem de cada visitante</li>
+        <li><b>Venda</b> — automação pós-ação + sua equipe com a planilha na mão</li>
+        <li><b>Pós-venda que encanta</b> — boas-vindas com kit, NPS, transferência acompanhada</li>
+        <li><b>1 ano de presença</b> — o Co-pilot cuida do carro do cliente em nome da sua loja</li>
+        <li><b>Recompra</b> — avaliação FIPE + oferta sua quando ele pensar em trocar</li>
+      </ol>
+    </div>
+    <div class="print"><img src="guia/tela-sorteio.png" alt="Tela do sorteio do app da loja"></div>
+  </div>
+
+  <h2>Quanto custa</h2>
+  <p class="sub">Você não paga mensalidade pela plataforma de ações — paga apenas pelos clientes que decidir presentear.</p>
+  <div class="preco">
+    <div class="box destaque">
+      <div class="rotulo">Cortesia da loja (pós-pago)</div>
+      <div class="valor">R$ 109,90<span style="font-size:14px">/ano</span></div>
+      <div class="det">por cliente presenteado com 1 ano de Co-pilot premium.<br>Você só acerta depois — e escolhe quem presentear (compradores, ganhadores de sorteio).</div>
+    </div>
+    <div class="box">
+      <div class="rotulo">Para o seu cliente depois</div>
+      <div class="valor">R$ 10,99<span style="font-size:14px">/mês</span></div>
+      <div class="det">preço de membro com o cupom da sua loja — 10× mais barato que o preço avulso (R$ 109,90/mês).<br>Ser seu cliente vale a pena, e ele sabe disso.</div>
+    </div>
+  </div>
+
+  <h2>Como aderir</h2>
+  <div class="passos">
+    <div>A Totex cria o seu acesso ao <b>Painel do Lojista</b> e o cupom da sua loja</div>
+    <div>Você sobe a <b>foto da fachada</b> e cria sua primeira ação (2 minutos, sem técnico)</div>
+    <div>Sua equipe recebe o <b>guia visual</b> do app — a promotora aprende em 5 minutos</div>
+    <div>Feirão no fim de semana, live na quinta — e os leads chegando na sua planilha</div>
+  </div>
+
+  <div class="cta">
+    <h2>Faça a próxima ação da sua loja com o Co-pilot</h2>
+    <p class="sub" style="margin-bottom:0">Adesão sem mensalidade fixa · setup em 1 dia · treinamento incluído</p>
+    <a href="https://totexmotors.com" target="_blank" rel="noopener">Quero aderir — falar com a Totex</a>
+    <span class="alt">Quer ver funcionando antes? <a href="guia.html">Veja o guia visual do app de ações</a></span>
+  </div>
+
+  <footer>
+    Totex Motors · TotexCar Co-pilot — o assistente de carro no WhatsApp<br>
+    <a href="guia.html">Guia do app de ações</a> · <a href="modulos.html">Módulos do Co-pilot</a> · <a href="motorista.html">Para o motorista</a>
+  </footer>
+</div>
+</body>
+</html>
