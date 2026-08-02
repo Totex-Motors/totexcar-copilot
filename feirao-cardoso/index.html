@@ -196,6 +196,17 @@
   </nav>
 
   <main>
+    <!-- comunicado do link público: sorteio se valida NA VISITA à loja -->
+    <div id="aviso-visita" style="display:none; background:#FFF7E0; border:2px solid var(--ouro); border-radius:14px; padding:14px 16px; margin-bottom:14px; font-size:14px; line-height:1.55">
+      <b>📢 Importante — como validar sua participação:</b><br>
+      O cadastro garante o seu voucher, mas o sorteio vale para quem <b>visitar a loja</b>.
+      Chegando lá, <b>procure a promotora</b> e diga: <i>"vim visitar a loja e quero participar do sorteio"</i>. Pronto — participação confirmada! 🎟️
+    </div>
+    <div id="beneficios-box" style="display:none; background:var(--card); border:1.5px solid var(--linha); border-radius:14px; padding:14px 16px; margin-bottom:16px">
+      <b id="beneficios-titulo" style="font-size:15px">🎁 Benefícios do feirão</b>
+      <ol id="beneficios-lista" style="margin:8px 0 0 20px; font-size:14px; color:var(--tinta2); display:flex; flex-direction:column; gap:4px"></ol>
+    </div>
+
     <!-- CADASTRO -->
     <section id="tela-cad" class="tela on">
       <div class="campo">
@@ -338,6 +349,23 @@
     if(PUBLICO && EV.tipo === 'live'){
       var campoOrigem = document.getElementById('g-origem').closest('.campo');
       if(campoOrigem) campoOrigem.style.display = 'none';
+    }
+    // link público: comunicado da validação presencial + benefícios do feirão
+    if(PUBLICO){
+      document.getElementById('aviso-visita').style.display = 'block';
+      var bens = EV.beneficios || [];
+      if(bens.length){
+        document.getElementById('beneficios-titulo').textContent =
+          '🎁 Os ' + bens.length + ' benefícios do feirão';
+        var ol = document.getElementById('beneficios-lista');
+        ol.innerHTML = '';
+        bens.forEach(function(b){
+          var li = document.createElement('li');
+          li.textContent = String(b);
+          ol.appendChild(li);
+        });
+        document.getElementById('beneficios-box').style.display = 'block';
+      }
     }
     var d = new Date(EV.sorteio_em);
     document.getElementById('cap-quando').textContent =
@@ -614,7 +642,8 @@
     document.getElementById('v-num').textContent = voucher;
     document.getElementById('v-nome').textContent = nome;
     document.getElementById('v-info').innerHTML = 'Guarde este número! Sorteio <b>' + esc(quandoTxt()) + '</b>.<br>'
-      + (nGanhadores()>1 ? nGanhadores()+' ganhadores levam ' : 'O ganhador leva ') + esc(premioTxt()) + '.';
+      + (nGanhadores()>1 ? nGanhadores()+' ganhadores levam ' : 'O ganhador leva ') + esc(premioTxt()) + '.'
+      + (PUBLICO ? '<br><b>Valide sua participação:</b> visite a loja, procure a promotora e diga que veio pelo link e quer participar do sorteio.' : '');
     var num = String(zap||'').replace(/\D/g,'');
     if(num && num.length <= 11) num = '55' + num;
     var primeiro = nome.split(' ')[0];

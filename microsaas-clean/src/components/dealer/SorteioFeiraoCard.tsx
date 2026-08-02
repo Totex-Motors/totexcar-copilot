@@ -153,7 +153,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   // Nova ação de feirão/sorteio: título, prêmio, nº de ganhadores e data/hora — o app se adapta sozinho.
   const [novaAcao, setNovaAcao] = useState(false);
   const [salvandoAcao, setSalvandoAcao] = useState(false);
-  const [acao, setAcao] = useState({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao" });
+  const [acao, setAcao] = useState({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao", beneficios: "" });
 
   // Link público de auto-cadastro, ETIQUETADO POR CANAL: cada mídia usa seu link
   // (lista de marketing, bio, live...) e os cadastros não se misturam com os do balcão.
@@ -193,6 +193,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
           premio: acao.premio.trim() || "1 ano grátis do TotexCar Co-pilot",
           ganhadores: Math.min(100, Math.max(1, Number(acao.ganhadores) || 5)),
           sorteio_em: new Date(acao.quando).toISOString(),
+          beneficios: acao.beneficios.split("\n").map((b) => b.trim()).filter(Boolean).slice(0, 12),
           ativo: true,
         }),
       });
@@ -380,6 +381,15 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
               <div className="space-y-1 max-w-[140px]">
                 <Label className="text-xs">Nº de ganhadores</Label>
                 <Input type="number" min={1} max={100} value={acao.ganhadores} onChange={(e) => setAcao((p) => ({ ...p, ganhadores: e.target.value }))} />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Benefícios do feirão (um por linha — aparecem no link público como a lista da ação)</Label>
+                <textarea
+                  className="w-full border rounded-md p-2 text-sm bg-background min-h-[90px]"
+                  placeholder={"Taxa zero no financiamento\nAvaliação acima da FIPE\nPrimeira parcela para 90 dias\n…"}
+                  value={acao.beneficios}
+                  onChange={(e) => setAcao((p) => ({ ...p, beneficios: e.target.value }))}
+                />
               </div>
               <div className="col-span-2 flex items-center justify-between gap-2">
                 <p className="text-[11px] text-muted-foreground">Criar uma nova ação zera a lista do app (os dados das ações anteriores ficam guardados no banco).</p>
