@@ -309,6 +309,8 @@
   // modo público (?participar=1): o próprio cliente se cadastra — link compartilhado na live
   // do Instagram ou em QR code no evento. Esconde as abas internas (lista e sorteio).
   var PUBLICO = PARAMS.get('participar') === '1';
+  // ?evento=<id>: abre uma ação específica do HISTÓRICO (vinda do painel do lojista)
+  var EVID = (PARAMS.get('evento') || '').replace(/[^0-9a-fA-F-]/g, '');
   // canal de origem: balcão = 'loja'; link público = etiqueta do link (?canal=lista|bio|live...)
   var CANAL = PUBLICO
     ? ((PARAMS.get('canal') || 'link').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30) || 'link')
@@ -332,7 +334,10 @@
     return dia + ' às ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
   }
   function carregarEvento(){
-    return api('feirao_eventos?select=*&loja=eq.' + encodeURIComponent(LOJA) + '&ativo=eq.true&order=criado_em.desc&limit=1')
+    var q = EVID
+      ? 'feirao_eventos?select=*&id=eq.' + encodeURIComponent(EVID) + '&loja=eq.' + encodeURIComponent(LOJA) + '&limit=1'
+      : 'feirao_eventos?select=*&loja=eq.' + encodeURIComponent(LOJA) + '&ativo=eq.true&order=criado_em.desc&limit=1';
+    return api(q)
       .then(function(r){ return r.ok ? r.json() : []; })
       .then(function(es){ if(es && es[0]){ EV = es[0]; cache.evento = EV; salvar(); } })
       .catch(function(){})
@@ -350,6 +355,21 @@
       var campoOrigem = document.getElementById('g-origem').closest('.campo');
       if(campoOrigem) campoOrigem.style.display = 'none';
     }
+    // MODO HISTÓRICO (?evento= de ação encerrada): só consulta — sem cadastro novo nem novo sorteio
+    if(EVID && EV && !EV.ativo){
+      document.getElementById('ab-cad').style.display = 'none';
+      document.getElementById('btnSortear').style.display = 'none';
+      var faixa = document.getElementById('faixa-historico');
+      if(!faixa){
+        faixa = document.createElement('div');
+        faixa.id = 'faixa-historico';
+        faixa.style.cssText = 'background:#FFF7E0; color:#3A2A00; border:2px solid var(--ouro); border-radius:12px; padding:10px 14px; margin:0 0 14px; font-size:13.5px; font-weight:600';
+        faixa.textContent = '📚 Você está vendo o histórico da ação "' + (EV.titulo || '') + '" (encerrada). Cadastro e sorteio desativados.';
+        document.querySelector('main').prepend(faixa);
+      }
+      if(document.getElementById('tela-cad').classList.contains('on')) aba('lis');
+    }
+
     // link público: comunicado da validação presencial + teaser dos benefícios (sem revelar a lista)
     if(PUBLICO){
       document.getElementById('aviso-visita').style.display = 'block';
@@ -409,7 +429,8 @@
   }
 
   // ---------- estado local (cache + fila offline) ----------
-  var CHAVE = LOJA === 'cardoso' ? 'feirao-cardoso-2026-v2' : 'feirao-2026:' + LOJA;
+  var CHAVE = (LOJA === 'cardoso' ? 'feirao-cardoso-2026-v2' : 'feirao-2026:' + LOJA)
+    + (EVID ? ':h:' + EVID : '');
   var cache = carregar();
   var pessoas = [];   // lista exibida: nuvem + pendentes offline
 

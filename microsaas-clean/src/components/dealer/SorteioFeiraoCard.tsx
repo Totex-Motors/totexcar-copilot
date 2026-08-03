@@ -78,7 +78,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const lojaNome = dealership || meData?.dealership || "";
   // A Cardoso é a loja original do app (dados antigos sem coluna loja) — slug fixo pra casar com o histórico.
   const slug = /cardoso/i.test(lojaNome) ? "cardoso" : slugify(lojaNome);
-  const appLink = slug === "cardoso" ? FEIRAO_APP_URL : `${FEIRAO_APP_URL}/?loja=${slug}`;
+  const baseApp = slug === "cardoso" ? FEIRAO_APP_URL : `${FEIRAO_APP_URL}/?loja=${slug}`;
 
   // TODAS as ações da loja (histórico preservado) — a exibida por padrão é a ativa,
   // mas o lojista pode navegar pelas anteriores sem perder nada
@@ -91,6 +91,10 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const [eventoSelId, setEventoSelId] = useState<string | null>(null);
   const evento = (eventos || []).find((e) => e.id === eventoSelId) || eventoAtivo;
   const fEvento = evento ? `&evento_id=eq.${evento.id}` : "";
+  // "Abrir app" segue a ação SELECIONADA: histórico abre no app em modo consulta (?evento=)
+  const appLink = evento && !evento.ativo
+    ? `${baseApp}${baseApp.includes("?") ? "&" : "/?"}evento=${evento.id}`
+    : baseApp;
 
   const { data: ganhadores, isLoading } = useQuery({
     queryKey: ["feirao-ganhadores", slug, evento?.id || null],
@@ -162,7 +166,8 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   // (lista de marketing, bio, live...) e os cadastros não se misturam com os do balcão.
   const [canalLink, setCanalLink] = useState("lista");
   const canalSlug = canalLink.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30) || "link";
-  const linkParticipar = (appLink.includes("?") ? `${appLink}&participar=1` : `${appLink}/?participar=1`)
+  // participação SEMPRE aponta pra ação ativa (nunca pro histórico)
+  const linkParticipar = (baseApp.includes("?") ? `${baseApp}&participar=1` : `${baseApp}/?participar=1`)
     + `&canal=${canalSlug}`;
   const copiarLink = async () => {
     try {
@@ -324,7 +329,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
             </Button>
             <Button variant="outline" size="sm" className="gap-1.5 h-8" asChild>
               <a href={appLink} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="w-3.5 h-3.5" /> Abrir app do sorteio
+                <ExternalLink className="w-3.5 h-3.5" /> {evento && !evento.ativo ? "Abrir esta ação no app" : "Abrir app do sorteio"}
               </a>
             </Button>
           </span>
