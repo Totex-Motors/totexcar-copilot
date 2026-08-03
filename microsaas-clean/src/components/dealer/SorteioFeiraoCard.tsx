@@ -250,6 +250,27 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const setEtapa = (k: keyof AutoCfg, patch: Partial<AutoEtapa>) =>
     setAutoCfg((p) => ({ ...p, [k]: { ...p[k], ...patch } }));
 
+  // Lista completa de participantes da ação selecionada (histórico incluso) + planilha
+  const [verParticipantes, setVerParticipantes] = useState(false);
+  const { data: participantes } = useQuery({
+    queryKey: ["feirao-participantes", slug, evento?.id || null],
+    queryFn: () => feirao<any[]>(`feirao_cadastros?select=*&loja=eq.${slug}${fEvento}&order=criado_em.asc`),
+    enabled: !!lojaNome && verParticipantes,
+  });
+
+  const baixarCSV = () => {
+    const linhas = [["Voucher", "Nome", "WhatsApp", "Instagram", "Já é cliente", "Interesse", "Onde viu", "Canal", "Chegou na loja", "Hora", "Observações"]];
+    (participantes || []).forEach((p) => linhas.push([
+      p.voucher, p.nome, p.zap, p.insta, p.cliente, p.interesse, p.origem,
+      p.canal || "loja", (!p.canal || p.canal === "loja") ? "sim" : (p.chegou_em ? "sim" : "não"), p.hora, p.obs,
+    ]));
+    const csv = "﻿" + linhas.map((l) => l.map((c) => `"${String(c || "").replace(/"/g, '""')}"`).join(";")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `acao-${(evento?.titulo || "feirao").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.csv`;
+    a.click();
+  };
+
   // Relatório da ação: de onde vieram os participantes e o que procuram
   const { data: relatorio } = useQuery({
     queryKey: ["feirao-relatorio", slug, evento?.id || null],
@@ -532,6 +553,42 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
                 {contagem("cliente").map(([k, n]) => <p key={k} className="py-0.5">{k}: <strong>{n}</strong></p>)}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Participantes da ação selecionada (vale para o histórico) + planilha */}
+        {!!cadastros?.length && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">👥 Participantes desta ação · {cadastros.length}</p>
+              <span className="flex gap-2">
+                <Button variant="outline" size="sm" className="h-7" onClick={() => setVerParticipantes((v) => !v)}>
+                  {verParticipantes ? "Ocultar" : "Ver participantes"}
+                </Button>
+                {verParticipantes && !!participantes?.length && (
+                  <Button variant="outline" size="sm" className="h-7" onClick={baixarCSV}>Baixar planilha</Button>
+                )}
+              </span>
+            </div>
+            {verParticipantes && (
+              <div className="max-h-72 overflow-y-auto divide-y divide-border">
+                {(participantes || []).map((p) => (
+                  <div key={p.voucher} className="py-2 text-sm flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">
+                        <span className="text-primary font-bold">{p.voucher}</span> · {p.nome}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {[p.zap, p.insta, p.origem, p.obs && `📝 ${p.obs}`].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                      {(!p.canal || p.canal === "loja") ? "🏬 loja" : p.chegou_em ? `🔗 ${p.canal} · ✓ veio` : `🔗 ${p.canal}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
