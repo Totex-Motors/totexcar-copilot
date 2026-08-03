@@ -80,13 +80,16 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const slug = /cardoso/i.test(lojaNome) ? "cardoso" : slugify(lojaNome);
   const appLink = slug === "cardoso" ? FEIRAO_APP_URL : `${FEIRAO_APP_URL}/?loja=${slug}`;
 
-  // ação ativa da loja — os cadastros/ganhadores exibidos são sempre os dela
-  const { data: evento } = useQuery({
-    queryKey: ["feirao-evento", slug],
-    queryFn: async () =>
-      (await feirao<FeiraoEvento[]>(`feirao_eventos?select=*&loja=eq.${slug}&ativo=eq.true&order=criado_em.desc&limit=1`))[0] || null,
+  // TODAS as ações da loja (histórico preservado) — a exibida por padrão é a ativa,
+  // mas o lojista pode navegar pelas anteriores sem perder nada
+  const { data: eventos } = useQuery({
+    queryKey: ["feirao-eventos", slug],
+    queryFn: () => feirao<FeiraoEvento[]>(`feirao_eventos?select=*&loja=eq.${slug}&order=criado_em.desc&limit=20`),
     enabled: !!lojaNome,
   });
+  const eventoAtivo = (eventos || []).find((e) => e.ativo) || null;
+  const [eventoSelId, setEventoSelId] = useState<string | null>(null);
+  const evento = (eventos || []).find((e) => e.id === eventoSelId) || eventoAtivo;
   const fEvento = evento ? `&evento_id=eq.${evento.id}` : "";
 
   const { data: ganhadores, isLoading } = useQuery({
@@ -198,12 +201,14 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
         }),
       });
       if (!r.ok) throw new Error("Não foi possível criar a ação.");
-      toast({ title: "Nova ação criada! 🎪", description: "O app do sorteio já está mostrando a nova data, prêmio e contagem zerada." });
+      toast({ title: "Nova ação criada! 🎪", description: "O app já mostra a nova ação — as anteriores ficam no Histórico deste card." });
       setNovaAcao(false);
-      setAcao({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "" });
-      qc.invalidateQueries({ queryKey: ["feirao-evento", slug] });
+      setEventoSelId(null);
+      setAcao({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao", beneficios: "" });
+      qc.invalidateQueries({ queryKey: ["feirao-eventos", slug] });
       qc.invalidateQueries({ queryKey: ["feirao-ganhadores", slug] });
       qc.invalidateQueries({ queryKey: ["feirao-total", slug] });
+      qc.invalidateQueries({ queryKey: ["feirao-relatorio", slug] });
     } catch (e: any) {
       toast({ title: "Erro ao criar a ação", description: String(e?.message || e), variant: "destructive" });
     } finally {
@@ -314,6 +319,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
                   <p className="text-sm font-medium truncate">
                     {TIPOS[evento.tipo || "feirao"]?.icone} {evento.titulo}
                     <Badge className="ml-2 bg-primary/15 text-primary align-middle">{TIPOS[evento.tipo || "feirao"]?.rotulo}</Badge>
+                    {!evento.ativo && <Badge className="ml-1.5 bg-amber-500/15 text-amber-600 align-middle">Encerrada — histórico</Badge>}
                   </p>
                   <p className="text-[12px] text-muted-foreground">
                     Sorteio {new Date(evento.sorteio_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
@@ -328,6 +334,24 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
               <CalendarPlus className="w-3.5 h-3.5" /> Nova ação
             </Button>
           </div>
+
+          {/* Histórico: nenhuma ação se perde — navegue pelas anteriores (participantes, relatório e ganhadores) */}
+          {(eventos?.length || 0) > 1 && (
+            <div className="flex items-center gap-2 border-t pt-2">
+              <span className="text-[11px] font-medium text-muted-foreground shrink-0">📚 Histórico de ações:</span>
+              <select
+                className="border rounded-md px-2 py-1 text-xs bg-background flex-1 min-w-0"
+                value={evento?.id || ""}
+                onChange={(e) => setEventoSelId(e.target.value)}
+              >
+                {eventos!.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {TIPOS[e.tipo || "feirao"]?.icone} {e.titulo} · {new Date(e.sorteio_em).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}{e.ativo ? " (ativa)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Link público etiquetado: um link por canal (lista de marketing, bio, live...) */}
           <div className="border-t pt-3 space-y-1.5">
