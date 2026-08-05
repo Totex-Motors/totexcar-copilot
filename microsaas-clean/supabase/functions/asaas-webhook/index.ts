@@ -46,8 +46,17 @@ Deno.serve(async (req) => {
   const event = body?.event || "";
   const payment = body?.payment || {};
   const checkout = body?.checkout || {};
-  const userId = payment.externalReference || checkout.externalReference || "";
+  let userId = payment.externalReference || checkout.externalReference || "";
   const value = payment.value ?? checkout.value;
+
+  // ⚠️ O Asaas NÃO propaga o externalReference do checkout pro payment (vem null nos eventos
+  // PAYMENT_*). Pra consulta veicular, o vínculo confiável é payment.checkoutSession →
+  // vehicle_queries.asaas_checkout_id. Sem isso, o evento seria ignorado e a entrega travava.
+  if (!userId && payment.checkoutSession) {
+    const { data: vq } = await admin.from("vehicle_queries")
+      .select("id").eq("asaas_checkout_id", String(payment.checkoutSession)).limit(1);
+    if (vq?.[0]) userId = `vq:${vq[0].id}`;
+  }
 
   try {
     // -------- Consulta veicular paga (avulsa): "vq:{queryId}" --------

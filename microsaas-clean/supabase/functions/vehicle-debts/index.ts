@@ -126,10 +126,16 @@ Deno.serve(async (req) => {
           const base = cfg.asaas_sandbox ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
           const hd = { access_token: cfg.asaas_api_key };
           try {
-            // 1º: o PAGAMENTO pela externalReference (permanente — o checkout expira, o pagamento não)
-            const pr = await fetch(`${base}/payments?externalReference=${encodeURIComponent(`vq:${row.id}`)}&limit=10`, { headers: hd });
+            // Procura o PAGAMENTO do checkout desta consulta. ⚠️ Constatado em produção
+            // (2026-08-05): o Asaas NÃO propaga o externalReference do checkout pro payment
+            // (vem null) — o vínculo confiável é payment.checkoutSession. Mantemos a
+            // externalReference como critério extra caso o Asaas passe a preenchê-la.
+            const pr = await fetch(`${base}/payments?limit=100`, { headers: hd });
             const pj = await pr.json().catch(() => ({}));
-            const pago = pr.ok && (pj?.data || []).some((pay: any) => /RECEIVED|CONFIRMED/.test(String(pay?.status || "").toUpperCase()));
+            const pago = pr.ok && (pj?.data || []).some((pay: any) =>
+              /RECEIVED|CONFIRMED/.test(String(pay?.status || "").toUpperCase()) &&
+              (String(pay?.checkoutSession || "") === String(row.asaas_checkout_id || "x") ||
+               String(pay?.externalReference || "") === `vq:${row.id}`));
             if (pago) {
               await admin.from("vehicle_queries").update({ status: "paid", paid_at: new Date().toISOString() })
                 .eq("id", row.id).eq("status", "pending");
