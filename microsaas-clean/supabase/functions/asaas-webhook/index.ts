@@ -54,6 +54,11 @@ Deno.serve(async (req) => {
     if (String(userId).startsWith("vq:")) {
       const queryId = String(userId).slice(3);
       if (ACTIVATE.has(event) && isUuid(queryId)) {
+        // se o self-heal do app já concluiu, não roda nem notifica de novo
+        const { data: pre } = await admin.from("vehicle_queries").select("status").eq("id", queryId).single();
+        if (pre?.status === "done") {
+          return new Response(JSON.stringify({ ok: true, vq: true, ja_concluida: true }), { headers: { "Content-Type": "application/json" } });
+        }
         await admin.from("vehicle_queries").update({ status: "paid", paid_at: new Date().toISOString() })
           .eq("id", queryId).eq("status", "pending");
         const r = await runVehicleQuery(admin, queryId);

@@ -31,22 +31,43 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
   const [polling, setPolling] = useState(voltouDoPagamento);
 
   const quote = useQuery({ queryKey: ["vq-quote"], queryFn: () => callDebts("quote"), staleTime: 60_000 });
+  // o "result" tem SELF-HEAL no servidor: confere o pagamento direto no Asaas e conclui a
+  // consulta mesmo se o webhook atrasar — cada refetch é uma verificação real.
   const result = useQuery({
     queryKey: ["vq-result"],
     queryFn: () => callDebts("result"),
-    refetchInterval: polling ? 4000 : false,
+    refetchInterval: polling ? 5000 : false,
   });
 
   const row = result.data?.query;
   const resumo = result.data?.resumo;
 
-  // voltou do checkout: faz polling até a consulta concluir (webhook roda em segundos)
+  // com consulta em aberto (pending/paid), verifica sozinho por até 5 min
+  useEffect(() => {
+    if (row?.status === "pending" || row?.status === "paid") setPolling(true);
+    if (row?.status === "done" && polling) {
+      setPolling(false);
+      toast({ title: "Consulta concluída ✅", description: "O relatório do seu veículo está pronto." });
+    }
+  }, [row?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!polling) return;
-    if (row?.status === "done") { setPolling(false); toast({ title: "Consulta concluída ✅", description: "O relatório do seu veículo está pronto." }); }
-    const t = setTimeout(() => setPolling(false), 180_000); // desiste após 3 min
+    const t = setTimeout(() => setPolling(false), 300_000);
     return () => clearTimeout(t);
-  }, [polling, row?.status]);
+  }, [polling]);
+
+  const verificarAgora = async () => {
+    const r = await result.refetch();
+    const st = r.data?.query?.status;
+    if (st === "done") return; // o efeito acima avisa
+    toast({
+      title: st === "pending" ? "Pagamento ainda não confirmado" : "Verificando…",
+      description: st === "pending"
+        ? "O PIX pode levar alguns instantes pra compensar. Vou continuar verificando automaticamente."
+        : "Pagamento confirmado — buscando os dados do veículo.",
+    });
+    setPolling(true);
+  };
 
   const consultar = async () => {
     setStarting(true);
@@ -145,24 +166,63 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
           </div>
         )}
 
-        {/* Aguardando pagamento/processamento */}
-        {polling && row?.status !== "done" && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> Pagamento confirmado? Processando sua consulta…
+        {/* Estados em aberto — SEMPRE explícitos (dinheiro envolvido, zero ambiguidade) */}
+        {row?.status === "pending" && (
+          <div className="rounded-xl border border-warning/40 bg-warning/[0.07] p-3 space-y-2">
+            <p className="text-sm font-medium flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-warning" /> Aguardando a confirmação do pagamento…
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Pagou agora? O PIX compensa em instantes e eu verifico sozinho. Se preferir, confira já:
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={verificarAgora} disabled={result.isFetching}>
+                {result.isFetching ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />} Já paguei — verificar agora
+              </Button>
+              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={consultar} disabled={starting}>
+                Abrir o pagamento de novo
+              </Button>
+            </div>
+          </div>
+        )}
+        {row?.status === "paid" && (
+          <div className="rounded-xl border border-primary/30 bg-primary/[0.06] p-3 flex items-center gap-2 text-sm font-medium">
+            <Loader2 className="w-4 h-4 animate-spin text-primary" /> Pagamento confirmado! Buscando os dados do seu veículo…
+          </div>
+        )}
+        {row?.status === "error" && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/[0.06] p-3 space-y-2">
+            <p className="text-sm font-medium text-destructive">
+              {row.error === "checkout_expirado"
+                ? "O pagamento não foi concluído e o link expirou — nada foi cobrado."
+                : "Tivemos um problema ao processar sua consulta."}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {row.error === "checkout_expirado"
+                ? "É só iniciar uma nova consulta quando quiser."
+                : "Se o pagamento foi feito, toque em verificar — nós concluímos sem cobrar de novo."}
+            </p>
+            {row.error !== "checkout_expirado" && (
+              <Button size="sm" variant="outline" onClick={verificarAgora} disabled={result.isFetching}>
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Verificar de novo
+              </Button>
+            )}
           </div>
         )}
 
         {/* CTA */}
-        <div className="flex items-center justify-between gap-3 pt-1">
-          <div className="text-sm">
-            <span className="text-2xl font-bold text-primary">{brl(price)}</span>
-            <span className="text-muted-foreground"> · PIX ou cartão</span>
+        {row?.status !== "pending" && row?.status !== "paid" && (
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <div className="text-sm">
+              <span className="text-2xl font-bold text-primary">{brl(price)}</span>
+              <span className="text-muted-foreground"> · PIX ou cartão</span>
+            </div>
+            <Button className="bg-gradient-primary" disabled={starting || quote.isLoading || !placa} onClick={consultar}>
+              {starting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : temResultado ? <RefreshCw className="w-4 h-4 mr-2" /> : <SearchCheck className="w-4 h-4 mr-2" />}
+              {temResultado ? "Consultar novamente" : "Consultar meu veículo"}
+            </Button>
           </div>
-          <Button className="bg-gradient-primary" disabled={starting || quote.isLoading || !placa} onClick={consultar}>
-            {starting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : temResultado ? <RefreshCw className="w-4 h-4 mr-2" /> : <SearchCheck className="w-4 h-4 mr-2" />}
-            {temResultado ? "Consultar novamente" : "Consultar meu veículo"}
-          </Button>
-        </div>
+        )}
         {!placa && !quote.isLoading && (
           <p className="text-xs text-warning">Cadastre a placa do seu veículo acima para liberar a consulta.</p>
         )}

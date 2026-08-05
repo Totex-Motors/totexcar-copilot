@@ -109,14 +109,44 @@ Deno.serve(async (req) => {
       });
     }
 
-    // -------- result: resultado de uma consulta (própria) --------
+    // -------- result: última consulta (própria), com SELF-HEAL --------
+    // Não dependemos só do webhook: se a consulta está "pending", conferimos o checkout
+    // direto no Asaas; pago → marca e RODA na hora. "paid" travado → roda de novo.
     if (action === "result") {
-      let q = admin.from("vehicle_queries").select("id, placa, status, result, error, created_at, paid_at")
+      let q = admin.from("vehicle_queries")
+        .select("id, placa, status, result, error, created_at, paid_at, asaas_checkout_id, checkout_url")
         .eq("user_id", userId);
-      q = p.query_id ? q.eq("id", String(p.query_id)) : q.eq("status", "done");
+      if (p.query_id) q = q.eq("id", String(p.query_id));
       const { data } = await q.order("created_at", { ascending: false }).limit(1);
-      const row = data?.[0] || null;
-      return json({ ok: true, query: row, resumo: row?.result ? resumoDebitos(row.result) : null });
+      let row = data?.[0] || null;
+
+      if (row && row.status === "pending" && row.asaas_checkout_id) {
+        const { data: cfg } = await admin.from("app_settings").select("asaas_api_key, asaas_sandbox").eq("id", 1).single();
+        if (cfg?.asaas_api_key) {
+          const base = cfg.asaas_sandbox ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
+          try {
+            const cr = await fetch(`${base}/checkouts/${row.asaas_checkout_id}`, { headers: { access_token: cfg.asaas_api_key } });
+            const cj = await cr.json().catch(() => ({}));
+            const st = String(cj?.status || "").toUpperCase();
+            if (cr.ok && /PAID|CONFIRMED|RECEIVED/.test(st)) {
+              await admin.from("vehicle_queries").update({ status: "paid", paid_at: new Date().toISOString() })
+                .eq("id", row.id).eq("status", "pending");
+              row = { ...row, status: "paid" };
+            } else if (cr.ok && /EXPIRED|CANCEL/.test(st)) {
+              await admin.from("vehicle_queries").update({ status: "error", error: "checkout_expirado" })
+                .eq("id", row.id).eq("status", "pending");
+              row = { ...row, status: "error", error: "checkout_expirado" };
+            }
+          } catch (e) { console.error("self-heal asaas:", e); }
+        }
+      }
+      if (row && row.status === "paid") {
+        const r = await runVehicleQuery(admin, row.id);
+        if (r.ok) row = { ...row, status: "done", result: r.result };
+        else row = { ...row, status: "error", error: r.error };
+      }
+      const { asaas_checkout_id: _a, ...pub } = row || ({} as any);
+      return json({ ok: true, query: row ? pub : null, resumo: row?.result ? resumoDebitos(row.result) : null });
     }
 
     // -------- start: cria consulta + checkout (ou serve o cache de graça) --------
@@ -134,12 +164,16 @@ Deno.serve(async (req) => {
         return json({ ok: true, cached: true, query_id: row?.id, resumo: resumoDebitos(cached.result) });
       }
 
-      // rate-limit: 3 consultas pendentes/h por usuário
-      const desde1h = new Date(Date.now() - 3600_000).toISOString();
-      const { count: pend } = await admin.from("vehicle_queries")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId).eq("status", "pending").gte("created_at", desde1h);
-      if ((pend || 0) >= 3) return json({ error: "muitas_consultas", detail: "Você já tem consultas aguardando pagamento. Conclua o PIX ou aguarde alguns minutos." }, 200);
+      // IDEMPOTENTE: já existe consulta desta placa aguardando pagamento (checkout expira em 60min)?
+      // Devolve o MESMO link — clicar de novo NUNCA cria consulta/cobrança duplicada.
+      const desde55m = new Date(Date.now() - 55 * 60_000).toISOString();
+      const { data: pendRows } = await admin.from("vehicle_queries")
+        .select("id, checkout_url, created_at").eq("user_id", userId).eq("placa", placa)
+        .eq("status", "pending").not("checkout_url", "is", null).gte("created_at", desde55m)
+        .order("created_at", { ascending: false }).limit(1);
+      if (pendRows?.[0]) {
+        return json({ ok: true, url: pendRows[0].checkout_url, query_id: pendRows[0].id, price: s.price, reused: true });
+      }
 
       const { data: cfg } = await admin.from("app_settings").select("asaas_api_key, asaas_sandbox, app_url").eq("id", 1).single();
       if (!cfg?.asaas_api_key) return json({ error: "asaas_nao_configurado" }, 400);
@@ -173,8 +207,8 @@ Deno.serve(async (req) => {
         await admin.from("vehicle_queries").update({ status: "error", error: `asaas_${res.status}: ${String(desc).slice(0, 250)}` }).eq("id", created.id);
         return json({ error: desc }, 200); // 200 + error: o front mostra a mensagem real no toast
       }
-      await admin.from("vehicle_queries").update({ asaas_checkout_id: data.id || null }).eq("id", created.id);
       const url = data.link || data.url || (data.id ? `${base.replace("/v3", "")}/checkoutSession/show/${data.id}` : null);
+      await admin.from("vehicle_queries").update({ asaas_checkout_id: data.id || null, checkout_url: url }).eq("id", created.id);
       return json({ ok: true, url, query_id: created.id, price: s.price });
     }
 
