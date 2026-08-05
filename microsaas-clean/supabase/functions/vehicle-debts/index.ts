@@ -120,22 +120,33 @@ Deno.serve(async (req) => {
       const { data } = await q.order("created_at", { ascending: false }).limit(1);
       let row = data?.[0] || null;
 
-      if (row && row.status === "pending" && row.asaas_checkout_id) {
+      if (row && row.status === "pending") {
         const { data: cfg } = await admin.from("app_settings").select("asaas_api_key, asaas_sandbox").eq("id", 1).single();
         if (cfg?.asaas_api_key) {
           const base = cfg.asaas_sandbox ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
+          const hd = { access_token: cfg.asaas_api_key };
           try {
-            const cr = await fetch(`${base}/checkouts/${row.asaas_checkout_id}`, { headers: { access_token: cfg.asaas_api_key } });
-            const cj = await cr.json().catch(() => ({}));
-            const st = String(cj?.status || "").toUpperCase();
-            if (cr.ok && /PAID|CONFIRMED|RECEIVED/.test(st)) {
+            // 1º: o PAGAMENTO pela externalReference (permanente — o checkout expira, o pagamento não)
+            const pr = await fetch(`${base}/payments?externalReference=${encodeURIComponent(`vq:${row.id}`)}&limit=10`, { headers: hd });
+            const pj = await pr.json().catch(() => ({}));
+            const pago = pr.ok && (pj?.data || []).some((pay: any) => /RECEIVED|CONFIRMED/.test(String(pay?.status || "").toUpperCase()));
+            if (pago) {
               await admin.from("vehicle_queries").update({ status: "paid", paid_at: new Date().toISOString() })
                 .eq("id", row.id).eq("status", "pending");
               row = { ...row, status: "paid" };
-            } else if (cr.ok && /EXPIRED|CANCEL/.test(st)) {
-              await admin.from("vehicle_queries").update({ status: "error", error: "checkout_expirado" })
-                .eq("id", row.id).eq("status", "pending");
-              row = { ...row, status: "error", error: "checkout_expirado" };
+            } else if (pr.ok) {
+              // sem pagamento: só declara expirado se o CHECKOUT confirma e já passou da validade (60min)
+              const velho = Date.now() - new Date(row.created_at).getTime() > 70 * 60_000;
+              if (velho && row.asaas_checkout_id) {
+                const cr = await fetch(`${base}/checkouts/${row.asaas_checkout_id}`, { headers: hd });
+                const cj = await cr.json().catch(() => ({}));
+                const st = String(cj?.status || "").toUpperCase();
+                if (cr.ok && /EXPIRED|CANCEL|INACTIVE/.test(st)) {
+                  await admin.from("vehicle_queries").update({ status: "error", error: "checkout_expirado" })
+                    .eq("id", row.id).eq("status", "pending");
+                  row = { ...row, status: "error", error: "checkout_expirado" };
+                }
+              }
             }
           } catch (e) { console.error("self-heal asaas:", e); }
         }
