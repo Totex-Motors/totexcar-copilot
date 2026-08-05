@@ -165,7 +165,31 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
             {/* Relatório completo — todos os campos retornados pelas bases (sem dados pessoais) */}
             {ficha && ficha.length > 0 && (
               <div className="space-y-3 pt-1">
-                <p className="text-sm font-semibold flex items-center gap-1.5"><FileText className="w-4 h-4 text-primary" /> Relatório completo</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold flex items-center gap-1.5"><FileText className="w-4 h-4 text-primary" /> Relatório completo</p>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    // versão para impressão: o "Salvar como PDF" do navegador gera o arquivo
+                    const win = window.open("", "_blank");
+                    if (!win) return;
+                    const secs = ficha.map((s) =>
+                      `<h2>${s.titulo}</h2><table>${s.campos.map((c) => `<tr><td>${c.k}</td><td><b>${c.v}</b></td></tr>`).join("")}</table>`
+                    ).join("");
+                    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consulta Veicular — ${row.placa}</title>
+                      <style>body{font-family:Segoe UI,Arial,sans-serif;color:#0f172a;padding:28px;max-width:720px;margin:auto}
+                      h1{font-size:20px;margin-bottom:2px} .sub{color:#64748b;font-size:12px;margin-bottom:18px}
+                      h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#0d9488;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin:18px 0 6px}
+                      table{width:100%;border-collapse:collapse;font-size:13px} td{padding:4px 6px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+                      td:first-child{color:#64748b;width:42%} .foot{margin-top:22px;font-size:10px;color:#94a3b8}</style></head><body>
+                      <h1>Consulta Veicular Completa — placa ${row.placa}</h1>
+                      <div class="sub">Emitida em ${new Date(row.created_at).toLocaleString("pt-BR")} · TotexCar Co-pilot · Ecossistema Totexmotors</div>
+                      ${secs}
+                      <div class="foot">Dados retornados pelas bases oficiais no momento da consulta. Documento sem dados pessoais de terceiros (LGPD).</div>
+                      <script>window.onload=()=>window.print()</script></body></html>`);
+                    win.document.close();
+                  }}>
+                    <FileText className="w-3.5 h-3.5 mr-1.5" /> Imprimir / PDF
+                  </Button>
+                </div>
                 {ficha.map((sec) => (
                   <div key={sec.titulo} className="rounded-xl border overflow-hidden">
                     <p className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{sec.titulo}</p>

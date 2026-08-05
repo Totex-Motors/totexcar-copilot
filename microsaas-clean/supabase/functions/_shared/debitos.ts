@@ -51,13 +51,27 @@ export function sanitizeDebitos(v: any): any {
 function flatten(obj: any, out: Record<string, any> = {}): Record<string, any> {
   if (!obj || typeof obj !== "object") return out;
   for (const [k, v] of Object.entries(obj)) {
-    if (v && typeof v === "object" && !Array.isArray(v)) flatten(v, out);
-    else {
+    if (v && typeof v === "object") {
+      // desce TAMBÉM em arrays (os dados do veículo vêm em dados.dados[0])
+      if (Array.isArray(v)) v.forEach((item) => { if (item && typeof item === "object") flatten(item, out); });
+      else flatten(v, out);
+    } else {
       const key = k.toLowerCase().replace(/[^a-z0-9_]/g, "");
       if (out[key] == null && v != null && v !== "") out[key] = v;
     }
   }
   return out;
+}
+// acha um array de objetos por nome de chave em qualquer nível
+function findArr(v: any, re: RegExp): any[] {
+  if (Array.isArray(v)) return [];
+  if (v && typeof v === "object") {
+    for (const [k, val] of Object.entries(v)) {
+      if (re.test(k) && Array.isArray(val) && val.length) return val;
+      const sub = findArr(val, re); if (sub.length) return sub;
+    }
+  }
+  return [];
 }
 
 // Resumo estruturado pro card do app e pra mensagem do WhatsApp
@@ -126,7 +140,13 @@ const LABELS: Record<string, string> = {
   anofabricacao: "Ano de fabricação", anomodelo: "Ano do modelo",
   cor: "Cor", combustivel: "Combustível", tipo: "Tipo de veículo", especie: "Espécie",
   categoria: "Categoria", lotacao: "Lotação", potencia: "Potência", cilindradas: "Cilindradas",
-  municipio: "Município", uf: "UF", situacao: "Situação", procedencia: "Procedência",
+  municipio: "Município", uf: "UF", municipiouf: "Município/UF", situacao: "Situação", procedencia: "Procedência",
+  numeromotor: "Nº do motor", anoultimolicenciamento: "Último licenciamento", possuimulta: "Consta multa",
+  possuirestricaojudicial: "Restrição judicial", possuiocorrenciaroubofurto: "Roubo/furto",
+  tipoplaca: "Tipo de placa", carroceria: "Carroceria", capacidadecarga: "Capacidade de carga",
+  codigosegurancacrv: "Cód. segurança CRV", identificacaounica: "Identificação única",
+  serialplaca: "Serial da placa", placapremercosul: "Placa padrão Mercosul", ufestampador: "UF de estampagem",
+  datahoraregistroestampagem: "Estampagem da placa", ostentapiv: "Ostenta PIV", foiemplacado: "Emplacamento registrado",
   licenciamento: "Licenciamento", ultimolicenciamento: "Último licenciamento",
   comunicacaovenda: "Comunicação de venda", recall: "Recall",
   restricao1: "Restrição 1", restricao2: "Restrição 2", restricao3: "Restrição 3", restricao4: "Restrição 4",
@@ -146,13 +166,34 @@ export function fichaDebitos(result: any): { titulo: string; campos: { k: string
     .map((k) => { usado.add(k); return { k: LABELS[k] || k, v: fmtVal(f[k]) }; });
 
   const secoes = [
-    { titulo: "Identificação", campos: pick(["placa", "renavam", "chassi", "motor", "marca", "modelo", "marcamodelo"]) },
-    { titulo: "Características", campos: pick(["anofabricacao", "anomodelo", "cor", "combustivel", "tipo", "especie", "categoria", "lotacao", "potencia", "cilindradas", "municipio", "uf"]) },
-    { titulo: "Situação e restrições", campos: pick(["situacao", "procedencia", "licenciamento", "ultimolicenciamento", "restricao1", "restricao2", "restricao3", "restricao4", "restricaojudicial", "roubofurto", "comunicacaovenda", "recall"]) },
-    { titulo: "Débitos e multas", campos: pick(["totalmultas", "valortotal", "pontostotal"]) },
+    { titulo: "Identificação", campos: pick(["placa", "renavam", "chassi", "motor", "numeromotor", "marca", "modelo", "marcamodelo"]) },
+    { titulo: "Características", campos: pick(["anofabricacao", "anomodelo", "cor", "combustivel", "tipo", "especie", "categoria", "carroceria", "lotacao", "capacidadecarga", "potencia", "cilindradas", "municipio", "uf", "municipiouf"]) },
+    { titulo: "Situação e restrições", campos: pick(["situacao", "procedencia", "licenciamento", "ultimolicenciamento", "anoultimolicenciamento", "restricao1", "restricao2", "restricao3", "restricao4", "restricaojudicial", "possuirestricaojudicial", "roubofurto", "possuiocorrenciaroubofurto", "comunicacaovenda", "recall"]) },
+    { titulo: "Débitos e multas", campos: pick(["possuimulta", "totalmultas", "valortotal", "pontostotal"]) },
+    { titulo: "Placa e emplacamento", campos: pick(["tipoplaca", "placapremercosul", "serialplaca", "ufestampador", "datahoraregistroestampagem", "codigosegurancacrv", "identificacaounica", "ostentapiv", "foiemplacado"]) },
   ];
+  // MULTAS detalhadas (quando a base retornar): uma linha por multa com os campos dela
+  const multas = findArr(result, /multas?/i);
+  if (multas.length) {
+    secoes.splice(4, 0, {
+      titulo: `Multas registradas (${multas.length})`,
+      campos: multas.map((m: any, i: number) => ({
+        k: `Multa ${i + 1}`,
+        v: Object.entries(m).filter(([, v]) => v != null && typeof v !== "object" && String(v).trim() !== "")
+          .map(([k2, v2]) => `${k2}: ${v2}`).join(" · ").slice(0, 400),
+      })),
+    });
+  }
+  // OBSERVAÇÕES do registro (ex.: alienação fiduciária com CNPJ do banco)
+  const obs = findArr(result, /observacoes/i);
+  if (obs.length) {
+    secoes.push({
+      titulo: "Observações do registro",
+      campos: obs.map((o: any) => ({ k: String(o?.dataHora || o?.data || "—"), v: String(o?.descricao || JSON.stringify(o)).slice(0, 300) })),
+    });
+  }
   // campos restantes que não mapeamos (novos do fornecedor) entram numa seção extra
-  const IGNORAR = /^(status|timestamp|tipo)$/;
+  const IGNORAR = /^(status|timestamp|tipo|tempoms|tempo_ms|datahora|descricao|mostraralertaobservacoes|mensagemalertaobservacoes|nome.*|.*fabricante)$/;
   const extras = Object.keys(f)
     .filter((k) => !usado.has(k) && !IGNORAR.test(k) && String(f[k]).trim() !== "")
     .slice(0, 12)
