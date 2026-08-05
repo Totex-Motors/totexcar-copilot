@@ -117,8 +117,18 @@ Deno.serve(async (req) => {
         .select("id, placa, status, result, error, created_at, paid_at, asaas_checkout_id, checkout_url")
         .eq("user_id", userId);
       if (p.query_id) q = q.eq("id", String(p.query_id));
-      const { data } = await q.order("created_at", { ascending: false }).limit(1);
-      let row = data?.[0] || null;
+      const { data } = await q.order("created_at", { ascending: false }).limit(10);
+      const rows = data || [];
+      // PRIORIDADE (não simplesmente "a mais recente"): paga-e-não-entregue > pendente
+      // recente (checkout ainda válido) > concluída > resto. Sem isso, um clique que cria
+      // pendente nova ESCONDIA a consulta paga que ainda precisava ser entregue.
+      const fresca = (r: any) => Date.now() - new Date(r.created_at).getTime() < 70 * 60_000;
+      let row = p.query_id
+        ? (rows[0] || null)
+        : (rows.find((r: any) => r.status === "paid")
+          || rows.find((r: any) => r.status === "pending" && fresca(r))
+          || rows.find((r: any) => r.status === "done")
+          || rows[0] || null);
 
       if (row && row.status === "pending") {
         const { data: cfg } = await admin.from("app_settings").select("asaas_api_key, asaas_sandbox").eq("id", 1).single();
