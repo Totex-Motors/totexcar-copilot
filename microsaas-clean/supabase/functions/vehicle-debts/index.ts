@@ -19,7 +19,8 @@ const cors = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
-const PIXEL = "iVBORw0KGgoAAAABAAAAAQCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+// mesmo pixel 1x1 do create-checkout (o Asaas exige imageBase64 VÁLIDA no item — base64 corrompida = 400)
+const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const normPlaca = (p: any) => String(p || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 Deno.serve(async (req) => {
@@ -84,7 +85,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!s || !s.enabled) return json({ error: "consulta_indisponivel" }, 400);
+    // erros de negócio saem com HTTP 200 + {error}: o supabase.functions.invoke do front só
+    // entrega o corpo em 2xx (senão vira o genérico "non-2xx status code" no toast)
+    if (!s || !s.enabled) return json({ error: "Consulta temporariamente indisponível. Tente de novo em instantes." }, 200);
 
     // placa SEMPRE do veículo do próprio usuário (LGPD: consulta é do carro dele)
     const { data: accs } = await admin.from("accounts")
@@ -118,7 +121,7 @@ Deno.serve(async (req) => {
 
     // -------- start: cria consulta + checkout (ou serve o cache de graça) --------
     if (action === "start") {
-      if (!placa) return json({ error: "sem_placa", detail: "Cadastre a placa do seu veículo em Meu Veículo antes de consultar." }, 400);
+      if (!placa) return json({ error: "sem_placa", detail: "Cadastre a placa do seu veículo em Meu Veículo antes de consultar." }, 200);
 
       // cache dentro da janela: entrega sem cobrar (mesma placa, dado ainda fresco)
       const cached = await cachedDebitos(admin, placa, s.cacheDays);
@@ -136,7 +139,7 @@ Deno.serve(async (req) => {
       const { count: pend } = await admin.from("vehicle_queries")
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId).eq("status", "pending").gte("created_at", desde1h);
-      if ((pend || 0) >= 3) return json({ error: "muitas_consultas", detail: "Você já tem consultas aguardando pagamento. Conclua o PIX ou aguarde alguns minutos." }, 429);
+      if ((pend || 0) >= 3) return json({ error: "muitas_consultas", detail: "Você já tem consultas aguardando pagamento. Conclua o PIX ou aguarde alguns minutos." }, 200);
 
       const { data: cfg } = await admin.from("app_settings").select("asaas_api_key, asaas_sandbox, app_url").eq("id", 1).single();
       if (!cfg?.asaas_api_key) return json({ error: "asaas_nao_configurado" }, 400);
@@ -166,8 +169,9 @@ Deno.serve(async (req) => {
       });
       const data = await res.json();
       if (!res.ok) {
-        await admin.from("vehicle_queries").update({ status: "error", error: `asaas_${res.status}` }).eq("id", created.id);
-        return json({ error: data?.errors?.[0]?.description || `Asaas ${res.status}` }, 400);
+        const desc = data?.errors?.[0]?.description || `Asaas ${res.status}`;
+        await admin.from("vehicle_queries").update({ status: "error", error: `asaas_${res.status}: ${String(desc).slice(0, 250)}` }).eq("id", created.id);
+        return json({ error: desc }, 200); // 200 + error: o front mostra a mensagem real no toast
       }
       await admin.from("vehicle_queries").update({ asaas_checkout_id: data.id || null }).eq("id", created.id);
       const url = data.link || data.url || (data.id ? `${base.replace("/v3", "")}/checkoutSession/show/${data.id}` : null);
