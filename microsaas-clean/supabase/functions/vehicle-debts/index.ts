@@ -5,7 +5,7 @@
 // Segurança: token do fornecedor NUNCA sai do servidor; consulta só da placa do próprio
 // usuário (LGPD); cache de N dias não consome crédito pré-pago.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { loadDebitosSettings, cachedDebitos, runVehicleQuery, resumoDebitos } from "../_shared/debitos.ts";
+import { loadDebitosSettings, cachedDebitos, runVehicleQuery, resumoDebitos, fichaDebitos, temDados } from "../_shared/debitos.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -173,7 +173,12 @@ Deno.serve(async (req) => {
         else row = { ...row, status: "error", error: r.error };
       }
       const { asaas_checkout_id: _a, ...pub } = row || ({} as any);
-      return json({ ok: true, query: row ? pub : null, resumo: row?.result ? resumoDebitos(row.result) : null });
+      const valido = row?.result && temDados(row.result);
+      return json({
+        ok: true, query: row ? pub : null,
+        resumo: valido ? resumoDebitos(row.result) : null,
+        ficha: valido ? fichaDebitos(row.result) : null,
+      });
     }
 
     // -------- start: cria consulta + checkout (ou serve o cache de graça) --------
@@ -242,12 +247,19 @@ Deno.serve(async (req) => {
     // -------- run: reprocessa uma consulta paga que falhou (própria) --------
     if (action === "run") {
       const id = String(p.query_id || "");
-      const { data: rows } = await admin.from("vehicle_queries").select("id, user_id, status, paid_at").eq("id", id).limit(1);
+      const { data: rows } = await admin.from("vehicle_queries").select("id, user_id, status, paid_at, placa").eq("id", id).limit(1);
       const q0 = rows?.[0];
       if (!q0 || q0.user_id !== userId) return json({ error: "consulta_nao_encontrada" }, 404);
       if (!q0.paid_at && q0.status !== "paid") return json({ error: "aguardando_pagamento" }, 400);
+      // se o cliente corrigiu a placa no cadastro depois de "placa_nao_encontrada",
+      // refazemos a MESMA consulta paga com a placa nova (sem nova cobrança)
+      if (placa && placa !== q0.placa) {
+        await admin.from("vehicle_queries").update({ placa, status: "paid", result: null }).eq("id", id);
+      } else if (q0.status === "error") {
+        await admin.from("vehicle_queries").update({ status: "paid" }).eq("id", id);
+      }
       const r = await runVehicleQuery(admin, id);
-      return json(r.ok ? { ok: true, resumo: resumoDebitos(r.result) } : { error: r.error }, r.ok ? 200 : 400);
+      return json(r.ok ? { ok: true, resumo: resumoDebitos(r.result) } : { error: r.error }, 200);
     }
 
     return json({ error: "unknown_action" }, 400);

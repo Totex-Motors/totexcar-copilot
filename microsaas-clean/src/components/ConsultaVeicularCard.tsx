@@ -41,6 +41,7 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
 
   const row = result.data?.query;
   const resumo = result.data?.resumo;
+  const ficha = result.data?.ficha as { titulo: string; campos: { k: string; v: string }[] }[] | null;
 
   // com consulta em aberto (pending/paid), verifica sozinho por até 5 min
   useEffect(() => {
@@ -160,6 +161,26 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
                 <ShieldCheck className="w-4 h-4 text-primary" /> Último licenciamento: <b className="text-foreground">{resumo.licenciamento}</b>
               </p>
             )}
+
+            {/* Relatório completo — todos os campos retornados pelas bases (sem dados pessoais) */}
+            {ficha && ficha.length > 0 && (
+              <div className="space-y-3 pt-1">
+                <p className="text-sm font-semibold flex items-center gap-1.5"><FileText className="w-4 h-4 text-primary" /> Relatório completo</p>
+                {ficha.map((sec) => (
+                  <div key={sec.titulo} className="rounded-xl border overflow-hidden">
+                    <p className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{sec.titulo}</p>
+                    <div className="divide-y divide-border">
+                      {sec.campos.map((c) => (
+                        <div key={c.k} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                          <span className="text-muted-foreground">{c.k}</span>
+                          <span className="font-medium text-right break-all">{c.v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <p className="text-[11px] text-muted-foreground/80">
               Dados retornados pelas bases oficiais no momento da consulta. Guarde este relatório — ele também vale como conferência antes de vender ou transferir.
             </p>
@@ -190,7 +211,27 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
             <Loader2 className="w-4 h-4 animate-spin text-primary" /> Pagamento confirmado! Buscando os dados do seu veículo…
           </div>
         )}
-        {row?.status === "error" && (
+        {row?.status === "error" && row.error === "placa_nao_encontrada" && (
+          <div className="rounded-xl border border-warning/40 bg-warning/[0.07] p-3 space-y-2">
+            <p className="text-sm font-medium">A base nacional não retornou dados para a placa <b>{row.placa}</b>.</p>
+            <p className="text-xs text-muted-foreground">
+              Confira se a placa está correta no seu cadastro (logo acima). Corrigiu? Toque abaixo que
+              refazemos a sua consulta <b>sem nova cobrança</b>.
+            </p>
+            <Button size="sm" variant="outline" disabled={result.isFetching || starting} onClick={async () => {
+              setStarting(true);
+              try {
+                await callDebts("run", { query_id: row.id });
+                await result.refetch();
+              } catch (e: any) {
+                toast({ title: "Ainda sem dados", description: String(e?.message || e), variant: "destructive" });
+              } finally { setStarting(false); }
+            }}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refazer com a placa do cadastro
+            </Button>
+          </div>
+        )}
+        {row?.status === "error" && row.error !== "placa_nao_encontrada" && (
           <div className="rounded-xl border border-destructive/40 bg-destructive/[0.06] p-3 space-y-2">
             <p className="text-sm font-medium text-destructive">
               {row.error === "checkout_expirado"

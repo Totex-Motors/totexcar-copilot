@@ -96,15 +96,69 @@ export function resumoDebitos(result: any): {
   };
 }
 
-// Cache: última consulta CONCLUÍDA da mesma placa dentro da janela
+// O retorno realmente tem dados do veículo? (fornecedor devolve status "sucesso" no envelope
+// mesmo quando a placa NÃO foi encontrada — dados.status = "nao_encontrado" e lista vazia)
+export function temDados(result: any): boolean {
+  const inner = result?.dados ?? result;
+  const st = String(inner?.status || "").toLowerCase();
+  if (st.includes("nao_encontrado") || st.includes("não_encontrado")) return false;
+  const lista = inner?.dados;
+  if (Array.isArray(lista) && lista.length === 0) return false;
+  return true;
+}
+
+// Cache: última consulta CONCLUÍDA (e COM dados) da mesma placa dentro da janela
 export async function cachedDebitos(admin: any, placa: string, cacheDays: number) {
   const desde = new Date(Date.now() - cacheDays * 86400000).toISOString();
   const { data } = await admin.from("vehicle_queries")
     .select("id, result, created_at")
     .eq("placa", placa).eq("status", "done").not("result", "is", null)
     .gte("created_at", desde)
-    .order("created_at", { ascending: false }).limit(1);
-  return data?.[0] || null;
+    .order("created_at", { ascending: false }).limit(3);
+  return (data || []).find((r: any) => temDados(r.result)) || null;
+}
+
+// Ficha COMPLETA pro card/WhatsApp: todos os campos úteis, agrupados e com rótulo amigável.
+// (PII já foi removida na sanitização — aqui só organizamos o que sobrou.)
+const LABELS: Record<string, string> = {
+  placa: "Placa", renavam: "RENAVAM", chassi: "Chassi", motor: "Nº do motor",
+  marca: "Marca", modelo: "Modelo", marcamodelo: "Marca/Modelo",
+  anofabricacao: "Ano de fabricação", anomodelo: "Ano do modelo",
+  cor: "Cor", combustivel: "Combustível", tipo: "Tipo de veículo", especie: "Espécie",
+  categoria: "Categoria", lotacao: "Lotação", potencia: "Potência", cilindradas: "Cilindradas",
+  municipio: "Município", uf: "UF", situacao: "Situação", procedencia: "Procedência",
+  licenciamento: "Licenciamento", ultimolicenciamento: "Último licenciamento",
+  comunicacaovenda: "Comunicação de venda", recall: "Recall",
+  restricao1: "Restrição 1", restricao2: "Restrição 2", restricao3: "Restrição 3", restricao4: "Restrição 4",
+  restricaojudicial: "Restrição judicial", roubofurto: "Roubo/furto",
+  totalmultas: "Total de multas", valortotal: "Valor total (R$)", pontostotal: "Pontos",
+};
+const fmtVal = (v: any): string => {
+  if (v === true) return "Sim";
+  if (v === false) return "Nada consta";
+  return String(v);
+};
+export function fichaDebitos(result: any): { titulo: string; campos: { k: string; v: string }[] }[] {
+  const f = flatten(result);
+  const usado = new Set<string>();
+  const pick = (keys: string[]) => keys
+    .filter((k) => f[k] != null && String(f[k]).trim() !== "" && !usado.has(k))
+    .map((k) => { usado.add(k); return { k: LABELS[k] || k, v: fmtVal(f[k]) }; });
+
+  const secoes = [
+    { titulo: "Identificação", campos: pick(["placa", "renavam", "chassi", "motor", "marca", "modelo", "marcamodelo"]) },
+    { titulo: "Características", campos: pick(["anofabricacao", "anomodelo", "cor", "combustivel", "tipo", "especie", "categoria", "lotacao", "potencia", "cilindradas", "municipio", "uf"]) },
+    { titulo: "Situação e restrições", campos: pick(["situacao", "procedencia", "licenciamento", "ultimolicenciamento", "restricao1", "restricao2", "restricao3", "restricao4", "restricaojudicial", "roubofurto", "comunicacaovenda", "recall"]) },
+    { titulo: "Débitos e multas", campos: pick(["totalmultas", "valortotal", "pontostotal"]) },
+  ];
+  // campos restantes que não mapeamos (novos do fornecedor) entram numa seção extra
+  const IGNORAR = /^(status|timestamp|tipo)$/;
+  const extras = Object.keys(f)
+    .filter((k) => !usado.has(k) && !IGNORAR.test(k) && String(f[k]).trim() !== "")
+    .slice(0, 12)
+    .map((k) => ({ k: LABELS[k] || k.replace(/_/g, " "), v: fmtVal(f[k]) }));
+  if (extras.length) secoes.push({ titulo: "Outras informações", campos: extras });
+  return secoes.filter((s) => s.campos.length > 0);
 }
 
 // Executa a consulta de uma linha vehicle_queries (chamada após o PIX confirmar, ou em cache-hit).
@@ -145,6 +199,15 @@ export async function runVehicleQuery(admin: any, queryId: string): Promise<{ ok
       return { ok: false, error: msg };
     }
     const clean = sanitizeDebitos(raw);
+    // fornecedor respondeu "sucesso" mas SEM achar a placa → NÃO é relatório válido.
+    // Nunca mostrar "tudo certo" em cima de vazio (crédito foi consumido: fica registrado).
+    if (!temDados(clean)) {
+      await admin.from("vehicle_queries").update({
+        status: "error", error: "placa_nao_encontrada", result: clean,
+        supplier_hit: true, supplier_cost: s.cost,
+      }).eq("id", queryId);
+      return { ok: false, error: "placa_nao_encontrada" };
+    }
     await admin.from("vehicle_queries").update({
       status: "done", result: clean, supplier_hit: true, supplier_cost: s.cost,
       paid_at: q.paid_at || new Date().toISOString(), error: null,
