@@ -11,6 +11,7 @@ import { useCurrentUser } from "@/hooks/useAuth";
 import { useUserProfile, useUpdateUserProfile } from "@/hooks/useUserProfile";
 import { useVehicle, useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
 import { FichaTecnicaCard } from "@/components/FichaTecnicaCard";
+import { ConsultaVeicularCard } from "@/components/ConsultaVeicularCard";
 import { supabase } from "@/integrations/supabase/client";
 import React, { useState } from "react";
 import { toast } from "@/hooks/use-toast";
@@ -452,6 +453,9 @@ const Settings = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Consulta veicular paga (débitos, multas RENAINF, restrições — fornecedor parceiro) */}
+      {vehicle && <ConsultaVeicularCard vehicle={vehicle} />}
 
       {/* Ficha técnica gerada por IA (mesma base do concierge no WhatsApp) */}
       {vehicle && <FichaTecnicaCard vehicle={vehicle} />}

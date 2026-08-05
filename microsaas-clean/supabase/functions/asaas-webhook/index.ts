@@ -1,5 +1,9 @@
 // TotexCar Co-pilot — Webhook do Asaas: ativa/desativa assinatura, conta cupom e notifica o Totexmotors OS
+// Também liquida a CONSULTA VEICULAR paga (externalReference "vq:{id}") — roda a consulta no
+// fornecedor e manda o resumo no WhatsApp do cliente.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { runVehicleQuery, resumoDebitos } from "../_shared/debitos.ts";
+import { loadWaSettings, waSendText } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -46,6 +50,40 @@ Deno.serve(async (req) => {
   const value = payment.value ?? checkout.value;
 
   try {
+    // -------- Consulta veicular paga (avulsa): "vq:{queryId}" --------
+    if (String(userId).startsWith("vq:")) {
+      const queryId = String(userId).slice(3);
+      if (ACTIVATE.has(event) && isUuid(queryId)) {
+        await admin.from("vehicle_queries").update({ status: "paid", paid_at: new Date().toISOString() })
+          .eq("id", queryId).eq("status", "pending");
+        const r = await runVehicleQuery(admin, queryId);
+        // avisa no WhatsApp (best-effort; se estiver fora da janela de 24h, o app mostra o resultado)
+        try {
+          const { data: qrow } = await admin.from("vehicle_queries").select("user_id, placa").eq("id", queryId).single();
+          if (r.ok && qrow?.user_id) {
+            const { data: u } = await admin.from("users").select("phone, name").eq("id", qrow.user_id).single();
+            if (u?.phone) {
+              const rs = resumoDebitos(r.result);
+              const linhas = [
+                `✅ Consulta do seu veículo (placa ${qrow.placa}) concluída!`,
+                rs.multas_qtd > 0
+                  ? `🚨 ${rs.multas_qtd} multa(s) — total R$ ${rs.multas_valor.toFixed(2).replace(".", ",")}${rs.pontos ? ` · ${rs.pontos} ponto(s)` : ""}`
+                  : "🟢 Nenhuma multa encontrada",
+                rs.roubo_furto === false ? "🟢 Sem registro de roubo/furto" : rs.roubo_furto === true ? "🚨 ATENÇÃO: registro de roubo/furto!" : null,
+                rs.restricoes.length ? `⚠️ Restrições: ${rs.restricoes.join("; ")}` : "🟢 Sem restrições",
+                `O relatório completo está no app, em Meu Veículo.`,
+              ].filter(Boolean).join("\n");
+              await waSendText(await loadWaSettings(admin), u.phone, linhas);
+            }
+          }
+        } catch (e) { console.error("aviso consulta veicular:", e); }
+      } else if (DEACTIVATE.has(event) && isUuid(queryId)) {
+        await admin.from("vehicle_queries").update({ status: "error", error: `pagamento_${event}` })
+          .eq("id", queryId).eq("status", "pending");
+      }
+      return new Response(JSON.stringify({ ok: true, vq: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
     if (!isUuid(userId)) {
       return new Response(JSON.stringify({ ok: true, ignored: true }), { headers: { "Content-Type": "application/json" } });
     }

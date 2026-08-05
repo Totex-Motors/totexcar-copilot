@@ -25,7 +25,8 @@ import {
   useStores,
 } from "@/hooks/useAdmin";
 import { useSponsorBalance, useSponsorSettle } from "@/hooks/useDealer";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 // Seletor de loja: escolhe da lista oficial do marketplace (evita divergência de nome)
 function StoreField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -848,6 +849,8 @@ function SubscriptionsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Consulta veicular paga: créditos pré-pagos do fornecedor + receita */}
+      <ConsultaCreditosCard />
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
@@ -920,3 +923,76 @@ function SubscriptionsTab() {
 }
 
 export default Admin;
+
+// Consulta veicular paga: relatório consolidado de requisições e créditos PRÉ-PAGOS do fornecedor
+// (o dono compra créditos; cada consulta que bate no fornecedor consome 1; cache não consome)
+function ConsultaCreditosCard() {
+  const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+  const { data, isLoading } = useQuery({
+    queryKey: ["vq-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("vehicle-debts", { body: { action: "report" } });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data as any;
+    },
+  });
+
+  if (isLoading) return <Card className="border-0 shadow-premium-md"><CardContent className="p-6 text-center text-muted-foreground">Carregando consultas veiculares...</CardContent></Card>;
+  if (!data) return null;
+  const c = data.creditos, q = data.consultas, f = data.financeiro;
+  const baixo = c.saldo <= 15;
+
+  return (
+    <Card className="border-0 shadow-premium-md">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center justify-between">
+          <span className="flex items-center gap-2"><Car className="w-5 h-5 text-primary" /> Consulta Veicular (créditos pré-pagos)</span>
+          <Badge className={`border-0 ${baixo ? "bg-destructive/15 text-destructive" : "bg-green-500/15 text-green-600"}`}>
+            saldo: {c.saldo} crédito(s)
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Créditos comprados</p>
+            <p className="text-2xl font-bold">{c.comprados}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Usados (sistema + fora)</p>
+            <p className="text-2xl font-bold">{c.usados_total}</p>
+            <p className="text-xs text-muted-foreground">{c.usados_sistema} pelo app · {c.usados_fora} fora</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Consultas concluídas</p>
+            <p className="text-2xl font-bold">{q.concluidas}</p>
+            <p className="text-xs text-muted-foreground">{q.cache_hits} via cache (sem custo)</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Receita × custo</p>
+            <p className="text-2xl font-bold text-primary">{brl(f.receita)}</p>
+            <p className="text-xs text-muted-foreground">custo {brl(f.custo)} · margem <b className="text-foreground">{brl(f.margem)}</b></p>
+          </div>
+        </div>
+        {baixo && (
+          <p className="text-sm text-destructive">⚠️ Créditos acabando — combine a recarga com o fornecedor pra consulta não sair do ar.</p>
+        )}
+        {data.ultimas?.length > 0 && (
+          <div className="divide-y divide-border rounded-lg border">
+            {data.ultimas.slice(0, 8).map((u: any, i: number) => (
+              <div key={i} className="flex items-center justify-between p-2.5 text-sm">
+                <span className="font-mono font-medium">{u.placa}</span>
+                <span className="text-muted-foreground truncate mx-2 flex-1">{u.cliente || "—"}</span>
+                <span className="text-xs text-muted-foreground">{new Date(u.created_at).toLocaleDateString("pt-BR")}</span>
+                <Badge variant="secondary" className={`ml-2 ${u.status === "done" ? "" : u.status === "error" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning"}`}>
+                  {u.status === "done" ? (u.supplier_hit ? "1 crédito" : "cache") : u.status}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
