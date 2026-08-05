@@ -123,12 +123,19 @@ Deno.serve(async (req) => {
       // recente (checkout ainda válido) > concluída > resto. Sem isso, um clique que cria
       // pendente nova ESCONDIA a consulta paga que ainda precisava ser entregue.
       const fresca = (r: any) => Date.now() - new Date(r.created_at).getTime() < 70 * 60_000;
-      let row = p.query_id
-        ? (rows[0] || null)
-        : (rows.find((r: any) => r.status === "paid")
-          || rows.find((r: any) => r.status === "pending" && fresca(r))
-          || rows.find((r: any) => r.status === "done")
-          || rows[0] || null);
+      let row: any = null;
+      if (p.query_id) row = rows[0] || null;
+      else {
+        const paga = rows.find((r: any) => r.status === "paid");
+        const pend = rows.find((r: any) => r.status === "pending" && fresca(r));
+        const done = rows.find((r: any) => r.status === "done");
+        // pendente só vence a concluída se for MAIS NOVA (compra nova de fato);
+        // senão uma pendente abandonada esconderia o relatório já entregue
+        const pendOuDone = pend && done
+          ? (new Date(pend.created_at) > new Date(done.created_at) ? pend : done)
+          : (pend || done);
+        row = paga || pendOuDone || rows[0] || null;
+      }
 
       if (row && row.status === "pending") {
         const { data: cfg } = await admin.from("app_settings").select("asaas_api_key, asaas_sandbox").eq("id", 1).single();
