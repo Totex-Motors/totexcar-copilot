@@ -887,7 +887,8 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
   // Template pendente/erro → cai nas fotos individuais abaixo. Sem quebra de linha nos textos (regra de template).
   const cards = cars.slice(0, 10).map((v) => {
     const img = carImg(v);
-    if (!img) return null;
+    // carrossel e tudo-ou-nada: 1 imagem invalida derruba a mensagem inteira — so https limpo
+    if (!img || !/^https:\/\//i.test(img)) return null;
     const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
     const km = Number(v.mileage) > 0 ? ` · ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
     const fipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 abaixo da FIPE" : "";
@@ -898,7 +899,11 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
       urlSuffix: `${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
     };
   }).filter(Boolean) as { imageUrl: string; texto: string; urlSuffix: string }[];
-  if (cards.length >= 2 && await waSendCarousel(s, phone, cards)) return cards.length;
+  if (cards.length >= 2) {
+    if (await waSendCarousel(s, phone, cards)) return cards.length;
+    // falhou com o lote cheio? tenta com 5 (imagem/limite de algum card pode ter derrubado)
+    if (cards.length > 5 && await waSendCarousel(s, phone, cards.slice(0, 5))) return 5;
+  }
 
   let sent = 0;
   for (const v of cars.slice(0, 5)) {
