@@ -6,6 +6,7 @@
 // usuário (LGPD); cache de N dias não consome crédito pré-pago.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadDebitosSettings, cachedDebitos, runVehicleQuery, resumoDebitos, fichaDebitos, temDados } from "../_shared/debitos.ts";
+import { afBalance } from "../_shared/apifull.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -45,8 +46,9 @@ Deno.serve(async (req) => {
       if (me?.role !== "admin") return json({ error: "forbidden" }, 403);
       const { data: cfg } = await admin.from("app_settings")
         .select("debitos_credits_purchased, debitos_credits_offset").eq("id", 1).single();
+      const apifullSaldo = await afBalance(admin); // saldo real da conta API Full (2º fornecedor)
       const { data: qs } = await admin.from("vehicle_queries")
-        .select("id, placa, status, price, supplier_cost, supplier_hit, source, created_at, paid_at, user_id")
+        .select("id, placa, product, status, price, supplier_cost, supplier_hit, source, created_at, paid_at, user_id")
         .order("created_at", { ascending: false }).limit(500);
       const rows = qs || [];
       const done = rows.filter((r: any) => r.status === "done");
@@ -68,6 +70,7 @@ Deno.serve(async (req) => {
         creditos: {
           comprados, usados_fora: offset, usados_sistema: usadosSistema,
           usados_total: offset + usadosSistema, saldo: comprados - offset - usadosSistema,
+          apifull_saldo: apifullSaldo,
         },
         consultas: {
           total: rows.length, concluidas: done.length, cache_hits: done.length - hits.length,
@@ -79,7 +82,7 @@ Deno.serve(async (req) => {
           margem: Number((receita - custo).toFixed(2)),
         },
         ultimas: rows.slice(0, 30).map((r: any) => ({
-          placa: r.placa, status: r.status, price: r.price, supplier_hit: r.supplier_hit,
+          placa: r.placa, product: r.product, status: r.status, price: r.price, supplier_hit: r.supplier_hit,
           source: r.source, created_at: r.created_at, cliente: nomes[r.user_id] || null,
         })),
       });
@@ -102,7 +105,7 @@ Deno.serve(async (req) => {
         .select("id, status, result, created_at").eq("user_id", userId)
         .order("created_at", { ascending: false }).limit(1);
       return json({
-        ok: true, price: s.price, placa: placa || null,
+        ok: true, price: s.price, premium_price: s.premiumPrice, placa: placa || null,
         veiculo: veh ? [veh.marca, veh.modelo].filter(Boolean).join(" ") : null,
         cached: cached ? { consultado_em: cached.created_at } : null,
         last: last?.[0] ? { id: last[0].id, status: last[0].status, created_at: last[0].created_at, has_result: !!last[0].result } : null,
@@ -114,7 +117,7 @@ Deno.serve(async (req) => {
     // direto no Asaas; pago → marca e RODA na hora. "paid" travado → roda de novo.
     if (action === "result") {
       let q = admin.from("vehicle_queries")
-        .select("id, placa, status, result, error, created_at, paid_at, asaas_checkout_id, checkout_url")
+        .select("id, placa, product, status, result, error, created_at, paid_at, asaas_checkout_id, checkout_url")
         .eq("user_id", userId);
       if (p.query_id) q = q.eq("id", String(p.query_id));
       const { data } = await q.order("created_at", { ascending: false }).limit(10);
@@ -190,35 +193,42 @@ Deno.serve(async (req) => {
 
     // -------- start: cria consulta + checkout (ou serve o cache de graça) --------
     if (action === "start") {
-      if (!placa) return json({ error: "sem_placa", detail: "Cadastre a placa do seu veículo em Meu Veículo antes de consultar." }, 200);
+      const product = p.product === "premium" ? "premium" : "completa";
+      // completa = SEMPRE a placa do próprio veículo; premium (pré-compra) aceita a placa
+      // que o cliente quer AVALIAR (dado veicular de mercado, PII sempre sanitizada)
+      const placaAlvo = product === "premium" ? normPlaca(p.placa || placa) : placa;
+      const preco = product === "premium" ? s.premiumPrice : s.price;
+      if (!placaAlvo || placaAlvo.length < 7) {
+        return json({ error: "sem_placa", detail: product === "premium" ? "Informe a placa do veículo que você quer avaliar." : "Cadastre a placa do seu veículo em Meu Veículo antes de consultar." }, 200);
+      }
 
-      // cache dentro da janela: entrega sem cobrar (mesma placa, dado ainda fresco)
-      const cached = await cachedDebitos(admin, placa, s.cacheDays);
+      // cache dentro da janela: entrega sem cobrar (mesma placa/produto, dado ainda fresco)
+      const cached = await cachedDebitos(admin, placaAlvo, s.cacheDays, product);
       if (cached) {
         const { data: row } = await admin.from("vehicle_queries").insert({
-          user_id: userId, placa, status: "done", price: 0, supplier_cost: 0,
+          user_id: userId, placa: placaAlvo, product, status: "done", price: 0, supplier_cost: 0,
           supplier_hit: false, result: cached.result, paid_at: new Date().toISOString(),
           source: String(p.source || "app"),
         }).select("id").single();
         return json({ ok: true, cached: true, query_id: row?.id, resumo: resumoDebitos(cached.result) });
       }
 
-      // IDEMPOTENTE: já existe consulta desta placa aguardando pagamento (checkout expira em 60min)?
+      // IDEMPOTENTE: já existe consulta desta placa/produto aguardando pagamento?
       // Devolve o MESMO link — clicar de novo NUNCA cria consulta/cobrança duplicada.
       const desde55m = new Date(Date.now() - 55 * 60_000).toISOString();
       const { data: pendRows } = await admin.from("vehicle_queries")
-        .select("id, checkout_url, created_at").eq("user_id", userId).eq("placa", placa)
-        .eq("status", "pending").not("checkout_url", "is", null).gte("created_at", desde55m)
+        .select("id, checkout_url, created_at").eq("user_id", userId).eq("placa", placaAlvo)
+        .eq("product", product).eq("status", "pending").not("checkout_url", "is", null).gte("created_at", desde55m)
         .order("created_at", { ascending: false }).limit(1);
       if (pendRows?.[0]) {
-        return json({ ok: true, url: pendRows[0].checkout_url, query_id: pendRows[0].id, price: s.price, reused: true });
+        return json({ ok: true, url: pendRows[0].checkout_url, query_id: pendRows[0].id, price: preco, reused: true });
       }
 
       const { data: cfg } = await admin.from("app_settings").select("asaas_api_key, asaas_sandbox, app_url").eq("id", 1).single();
       if (!cfg?.asaas_api_key) return json({ error: "asaas_nao_configurado" }, 400);
 
       const { data: created, error: insErr } = await admin.from("vehicle_queries").insert({
-        user_id: userId, placa, price: s.price, supplier_cost: s.cost, source: String(p.source || "app"),
+        user_id: userId, placa: placaAlvo, product, price: preco, supplier_cost: product === "premium" ? s.premiumCost : s.cost, source: String(p.source || "app"),
       }).select("id").single();
       if (insErr || !created) return json({ error: insErr?.message || "erro_criar_consulta" }, 400);
 
@@ -233,9 +243,11 @@ Deno.serve(async (req) => {
           minutesToExpire: 60,
           callback: { successUrl: `${appUrl}/settings?consulta=ok`, cancelUrl: `${appUrl}/settings?consulta=cancel` },
           items: [{
-            name: "Consulta Veicular Completa".slice(0, 30),
-            description: `Débitos, multas (RENAINF), restrições e situação do veículo placa ${placa}`,
-            quantity: 1, value: s.price, imageBase64: PIXEL,
+            name: (product === "premium" ? "Consulta Veicular Premium" : "Consulta Veicular Completa").slice(0, 30),
+            description: product === "premium"
+              ? `Leilão, roubo/furto, gravame e restrições do veículo placa ${placaAlvo}`
+              : `Débitos, multas (estaduais + RENAINF), restrições e situação do veículo placa ${placaAlvo}`,
+            quantity: 1, value: preco, imageBase64: PIXEL,
           }],
           externalReference: `vq:${created.id}`, // o asaas-webhook roteia por este prefixo
         }),
@@ -248,19 +260,20 @@ Deno.serve(async (req) => {
       }
       const url = data.link || data.url || (data.id ? `${base.replace("/v3", "")}/checkoutSession/show/${data.id}` : null);
       await admin.from("vehicle_queries").update({ asaas_checkout_id: data.id || null, checkout_url: url }).eq("id", created.id);
-      return json({ ok: true, url, query_id: created.id, price: s.price });
+      return json({ ok: true, url, query_id: created.id, price: preco });
     }
 
     // -------- run: reprocessa uma consulta paga que falhou (própria) --------
     if (action === "run") {
       const id = String(p.query_id || "");
-      const { data: rows } = await admin.from("vehicle_queries").select("id, user_id, status, paid_at, placa").eq("id", id).limit(1);
+      const { data: rows } = await admin.from("vehicle_queries").select("id, user_id, status, paid_at, placa, product").eq("id", id).limit(1);
       const q0 = rows?.[0];
       if (!q0 || q0.user_id !== userId) return json({ error: "consulta_nao_encontrada" }, 404);
       if (!q0.paid_at && q0.status !== "paid") return json({ error: "aguardando_pagamento" }, 400);
       // se o cliente corrigiu a placa no cadastro depois de "placa_nao_encontrada",
-      // refazemos a MESMA consulta paga com a placa nova (sem nova cobrança)
-      if (placa && placa !== q0.placa) {
+      // refazemos a MESMA consulta paga com a placa nova (sem nova cobrança).
+      // Só no produto "completa": no premium a placa é a do carro AVALIADO, não a do dele.
+      if (q0.product !== "premium" && placa && placa !== q0.placa) {
         await admin.from("vehicle_queries").update({ placa, status: "paid", result: null }).eq("id", id);
       } else if (q0.status === "error") {
         await admin.from("vehicle_queries").update({ status: "paid" }).eq("id", id);

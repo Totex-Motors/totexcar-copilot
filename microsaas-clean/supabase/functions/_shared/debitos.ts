@@ -6,26 +6,32 @@
 //     pessoais (LGPD) — removemos qualquer chave de identificação de pessoa.
 //  3. Cache: resultado de até N dias para a MESMA placa não consome crédito de novo.
 
+import { afCall, afToken } from "./apifull.ts";
+
 export interface DebitosSettings {
   url: string;
   token: string;
   enabled: boolean;
   price: number;
   cost: number;
+  premiumPrice: number;
+  premiumCost: number;
   cacheDays: number;
 }
 
 export async function loadDebitosSettings(admin: any): Promise<DebitosSettings | null> {
   const { data: s } = await admin.from("app_settings")
-    .select("debitos_api_url, debitos_api_token, consulta_veicular_enabled, consulta_veicular_price, consulta_veicular_cost, consulta_veicular_cache_days")
+    .select("debitos_api_url, debitos_api_token, consulta_veicular_enabled, consulta_veicular_price, consulta_veicular_cost, consulta_premium_price, consulta_premium_cost, consulta_veicular_cache_days")
     .eq("id", 1).single();
   if (!s?.debitos_api_url || !s?.debitos_api_token) return null;
   return {
     url: String(s.debitos_api_url),
     token: String(s.debitos_api_token),
     enabled: s.consulta_veicular_enabled !== false,
-    price: Number(s.consulta_veicular_price) || 5.9,
-    cost: Number(s.consulta_veicular_cost) || 2.6,
+    price: Number(s.consulta_veicular_price) || 9.9,
+    cost: Number(s.consulta_veicular_cost) || 5.57,
+    premiumPrice: Number(s.consulta_premium_price) || 34.9,
+    premiumCost: Number(s.consulta_premium_cost) || 23.3,
     cacheDays: Number(s.consulta_veicular_cache_days) || 7,
   };
 }
@@ -121,12 +127,12 @@ export function temDados(result: any): boolean {
   return true;
 }
 
-// Cache: última consulta CONCLUÍDA (e COM dados) da mesma placa dentro da janela
-export async function cachedDebitos(admin: any, placa: string, cacheDays: number) {
+// Cache: última consulta CONCLUÍDA (e COM dados) da mesma placa/produto dentro da janela
+export async function cachedDebitos(admin: any, placa: string, cacheDays: number, product = "completa") {
   const desde = new Date(Date.now() - cacheDays * 86400000).toISOString();
   const { data } = await admin.from("vehicle_queries")
     .select("id, result, created_at")
-    .eq("placa", placa).eq("status", "done").not("result", "is", null)
+    .eq("placa", placa).eq("status", "done").eq("product", product).not("result", "is", null)
     .gte("created_at", desde)
     .order("created_at", { ascending: false }).limit(3);
   return (data || []).find((r: any) => temDados(r.result)) || null;
@@ -216,8 +222,10 @@ export async function runVehicleQuery(admin: any, queryId: string): Promise<{ ok
     return { ok: false, error: "fornecedor_nao_configurado" };
   }
 
-  // cache primeiro: mesma placa consultada há pouco = não gasta crédito
-  const cached = await cachedDebitos(admin, q.placa, s.cacheDays);
+  const product = String(q.product || "completa");
+
+  // cache primeiro: mesma placa/produto consultado há pouco = não gasta crédito
+  const cached = await cachedDebitos(admin, q.placa, s.cacheDays, product);
   if (cached && cached.id !== queryId) {
     await admin.from("vehicle_queries").update({
       status: "done", result: cached.result, supplier_hit: false, supplier_cost: 0,
@@ -226,31 +234,65 @@ export async function runVehicleQuery(admin: any, queryId: string): Promise<{ ok
     return { ok: true, result: cached.result };
   }
 
+  // fonte 1: fornecedor parceiro (base cadastral + RENAINF)
+  const fetchAmigo = async (): Promise<any | null> => {
+    try {
+      const sep = s.url.includes("?") ? "&" : "?";
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 25000);
+      const res = await fetch(`${s.url}${sep}token=${encodeURIComponent(s.token)}&placa=${encodeURIComponent(q.placa)}`, { signal: ctrl.signal });
+      clearTimeout(t);
+      const raw = await res.json().catch(() => null);
+      const st = String(raw?.status || "").toLowerCase();
+      if (!res.ok || !raw || (st && st !== "sucesso" && st !== "success")) return null;
+      return raw;
+    } catch { return null; }
+  };
+
   try {
-    const sep = s.url.includes("?") ? "&" : "?";
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 25000);
-    const res = await fetch(`${s.url}${sep}token=${encodeURIComponent(s.token)}&placa=${encodeURIComponent(q.placa)}`, { signal: ctrl.signal });
-    clearTimeout(t);
-    const raw = await res.json().catch(() => null);
-    const status = String(raw?.status || "").toLowerCase();
-    if (!res.ok || !raw || (status && status !== "sucesso" && status !== "success")) {
-      const msg = `fornecedor_${res.status}${raw?.mensagem ? `: ${String(raw.mensagem).slice(0, 200)}` : ""}`;
-      await admin.from("vehicle_queries").update({ status: "error", error: msg }).eq("id", queryId);
-      return { ok: false, error: msg };
+    const token = await afToken(admin);
+    let combined: Record<string, any> = {};
+    let custo = 0;
+
+    if (product === "premium") {
+      // dossiê pré-compra: leilão + roubo/furto + restrição judicial + BIN nacional (+ gravame por chassi)
+      if (!token) {
+        await admin.from("vehicle_queries").update({ status: "error", error: "apifull_nao_configurado" }).eq("id", queryId);
+        return { ok: false, error: "apifull_nao_configurado" };
+      }
+      const [bin, leilao, roubo, renajud] = await Promise.all([
+        afCall(token, "ic-bin-nacional", { placa: q.placa }),
+        afCall(token, "leilao", { placa: q.placa }),
+        afCall(token, "ic-historico-roubo-furto", { placa: q.placa }),
+        afCall(token, "renajud", { placa: q.placa }),
+      ]);
+      combined = { bin_nacional: bin, leilao, roubo_furto: roubo, restricao_judicial_renajud: renajud };
+      // gravame precisa do CHASSI — extraído do BIN quando veio
+      const chassi = String(flatten(bin || {}).chassi || "").trim();
+      if (chassi.length >= 17) combined.gravame = await afCall(token, "gravame", { chassi });
+      custo = Number(s.premiumCost) || 23.3;
+    } else {
+      // completa: base do parceiro + débitos/multas estaduais da API Full (com código de barras)
+      const [amigo, debitos] = await Promise.all([
+        fetchAmigo(),
+        token ? afCall(token, "debitos-veicular", { placa: q.placa }) : Promise.resolve(null),
+      ]);
+      combined = { veiculo: amigo, debitos_estaduais: debitos };
+      custo = s.cost + (token && debitos ? 2.97 : 0);
     }
-    const clean = sanitizeDebitos(raw);
-    // fornecedor respondeu "sucesso" mas SEM achar a placa → NÃO é relatório válido.
-    // Nunca mostrar "tudo certo" em cima de vazio (crédito foi consumido: fica registrado).
-    if (!temDados(clean)) {
+
+    const clean = sanitizeDebitos(combined);
+    const partes = Object.values(clean).filter((v: any) => v && temDados(v));
+    if (partes.length === 0) {
+      // NENHUMA fonte achou a placa → não é relatório válido (nunca aprovar vazio)
       await admin.from("vehicle_queries").update({
         status: "error", error: "placa_nao_encontrada", result: clean,
-        supplier_hit: true, supplier_cost: s.cost,
+        supplier_hit: true, supplier_cost: custo,
       }).eq("id", queryId);
       return { ok: false, error: "placa_nao_encontrada" };
     }
     await admin.from("vehicle_queries").update({
-      status: "done", result: clean, supplier_hit: true, supplier_cost: s.cost,
+      status: "done", result: clean, supplier_hit: true, supplier_cost: custo,
       paid_at: q.paid_at || new Date().toISOString(), error: null,
     }).eq("id", queryId);
     return { ok: true, result: clean };

@@ -477,7 +477,7 @@ function ConfigTab() {
     asaas_api_key: "", asaas_sandbox: true, asaas_webhook_token: "",
     plan_monthly_price: "19.90", plan_annual_price: "200.00", app_url: "",
     buyback_fipe_pct: "90",
-    placa_bearer: "", placa_device: "", placa_url: "",
+    placa_bearer: "", placa_device: "", placa_url: "", apifull_token: "",
     referral_buyer_offer: "Transferência grátis",
     support_owner_phone: "",
     wa_provider: "uazapi", meta_wa_token: "", meta_wa_phone_id: "", meta_wa_verify_token: "", meta_waba_id: "",
@@ -502,6 +502,7 @@ function ConfigTab() {
         app_url: settings.app_url || "",
         buyback_fipe_pct: (settings.buyback_fipe_pct ?? 90).toString(),
         placa_bearer: settings.placa_api_bearer || "",
+        apifull_token: (settings as any).apifull_token || "",
         placa_device: settings.placa_api_device || "",
         placa_url: settings.placa_api_url || "",
         referral_buyer_offer: settings.referral_buyer_offer || "Transferência grátis",
@@ -536,6 +537,7 @@ function ConfigTab() {
         app_url: f.app_url || null,
         buyback_fipe_pct: Number(f.buyback_fipe_pct) || 90,
         placa_api_bearer: f.placa_bearer || null,
+        apifull_token: f.apifull_token || null,
         placa_api_device: f.placa_device || null,
         placa_api_url: f.placa_url || null,
         referral_buyer_offer: f.referral_buyer_offer || null,
@@ -674,6 +676,7 @@ function ConfigTab() {
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2"><Label>Token PuxaPlaca</Label><Input type="password" value={f.placa_bearer} onChange={(e) => set("placa_bearer", e.target.value)} placeholder="seu token da PuxaPlaca" /></div>
+            <div className="space-y-2"><Label>Token API Full (consulta veicular)</Label><Input type="password" value={f.apifull_token} onChange={(e) => set("apifull_token", e.target.value)} placeholder="Bearer token da app.apifull.com.br" /></div>
             <div className="space-y-2"><Label>URL (avançado — deixe em branco p/ PuxaPlaca)</Label><Input value={f.placa_url} onChange={(e) => set("placa_url", e.target.value)} placeholder="https://api.puxaplaca.app" /></div>
           </div>
         </CardContent>
@@ -958,6 +961,7 @@ function ConsultaCreditosCard() {
           <div className="rounded-lg border p-3">
             <p className="text-xs text-muted-foreground">Créditos comprados</p>
             <p className="text-2xl font-bold">{c.comprados}</p>
+            {c.apifull_saldo != null && <p className="text-xs text-muted-foreground">API Full: <b className="text-foreground">{brl(c.apifull_saldo)}</b></p>}
           </div>
           <div className="rounded-lg border p-3">
             <p className="text-xs text-muted-foreground">Usados (sistema + fora)</p>

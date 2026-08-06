@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -70,10 +71,12 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
     setPolling(true);
   };
 
-  const consultar = async () => {
+  const [placaPremium, setPlacaPremium] = useState("");
+
+  const consultar = async (product: "completa" | "premium" = "completa") => {
     setStarting(true);
     try {
-      const r = await callDebts("start");
+      const r = await callDebts("start", product === "premium" ? { product, placa: placaPremium } : {});
       if (r.cached) {
         // dado fresco em cache: entra de graça, sem checkout
         qc.invalidateQueries({ queryKey: ["vq-result"] });
@@ -100,7 +103,7 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
         </CardTitle>
         {temResultado && (
           <Badge variant="secondary" className="font-normal">
-            {new Date(row.created_at).toLocaleDateString("pt-BR")}
+            {row.product === "premium" ? "Premium · " : ""}{new Date(row.created_at).toLocaleDateString("pt-BR")}
           </Badge>
         )}
       </CardHeader>
@@ -224,7 +227,7 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
               <Button size="sm" variant="outline" onClick={verificarAgora} disabled={result.isFetching}>
                 {result.isFetching ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />} Já paguei — verificar agora
               </Button>
-              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={consultar} disabled={starting}>
+              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => consultar()} disabled={starting}>
                 Abrir o pagamento de novo
               </Button>
             </div>
@@ -282,7 +285,7 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
               <span className="text-2xl font-bold text-primary">{brl(price)}</span>
               <span className="text-muted-foreground"> · PIX ou cartão</span>
             </div>
-            <Button className="bg-gradient-primary" disabled={starting || quote.isLoading || !placa} onClick={consultar}>
+            <Button className="bg-gradient-primary" disabled={starting || quote.isLoading || !placa} onClick={() => consultar()}>
               {starting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : temResultado ? <RefreshCw className="w-4 h-4 mr-2" /> : <SearchCheck className="w-4 h-4 mr-2" />}
               {temResultado ? "Consultar novamente" : "Consultar meu veículo"}
             </Button>
@@ -290,6 +293,26 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
         )}
         {!placa && !quote.isLoading && (
           <p className="text-xs text-warning">Cadastre a placa do seu veículo acima para liberar a consulta.</p>
+        )}
+
+        {/* ===== Consulta Premium pré-compra: dossiê de QUALQUER placa antes de fechar negócio ===== */}
+        {row?.status !== "pending" && row?.status !== "paid" && (
+          <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3 space-y-2">
+            <p className="text-sm font-semibold flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-primary" /> Vai comprar um usado? Consulta Premium
+            </p>
+            <p className="text-xs text-muted-foreground">
+              <b>Leilão</b>, <b>roubo/furto</b>, <b>gravame</b> (financiamento em aberto) e <b>restrição judicial</b> de
+              qualquer placa — o dossiê que evita comprar dor de cabeça. <b className="text-foreground">{brl(Number(quote.data?.premium_price) || 34.9)}</b>
+            </p>
+            <div className="flex gap-2">
+              <Input value={placaPremium} maxLength={8} placeholder="Placa do carro avaliado"
+                className="uppercase" onChange={(e) => setPlacaPremium(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} />
+              <Button className="bg-gradient-primary flex-shrink-0" disabled={starting || placaPremium.length < 7} onClick={() => consultar("premium")}>
+                {starting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <SearchCheck className="w-4 h-4 mr-2" />} Avaliar
+              </Button>
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>
