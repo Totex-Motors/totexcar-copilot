@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
         .eq("user_id", userId);
       if (p.query_id) q = q.eq("id", String(p.query_id));
       const { data } = await q.order("created_at", { ascending: false }).limit(10);
-      const rows = data || [];
+      const rows = (data || []).filter((r: any) => p.query_id || r.product !== "premium"); // premium desativado
       // PRIORIDADE (não simplesmente "a mais recente"): paga-e-não-entregue > pendente
       // recente (checkout ainda válido) > concluída > resto. Sem isso, um clique que cria
       // pendente nova ESCONDIA a consulta paga que ainda precisava ser entregue.
@@ -194,7 +194,7 @@ Deno.serve(async (req) => {
 
     // -------- start: cria consulta + checkout (ou serve o cache de graça) --------
     if (action === "start") {
-      const product = p.product === "premium" ? "premium" : "completa";
+      const product = "completa"; // produto Premium DESATIVADO a pedido do dono (2026-08-06)
       // completa = SEMPRE a placa do próprio veículo; premium (pré-compra) aceita a placa
       // que o cliente quer AVALIAR (dado veicular de mercado, PII sempre sanitizada)
       const placaAlvo = product === "premium" ? normPlaca(p.placa || placa) : placa;
