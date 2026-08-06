@@ -5,7 +5,7 @@
 // Segurança: token do fornecedor NUNCA sai do servidor; consulta só da placa do próprio
 // usuário (LGPD); cache de N dias não consome crédito pré-pago.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { loadDebitosSettings, cachedDebitos, runVehicleQuery, resumoDebitos, fichaDebitos, temDados } from "../_shared/debitos.ts";
+import { loadDebitosSettings, cachedDebitos, runVehicleQuery, resumoDebitos, fichaDebitos, temDados, veredictoPremium } from "../_shared/debitos.ts";
 import { afBalance } from "../_shared/apifull.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -188,6 +188,7 @@ Deno.serve(async (req) => {
         ok: true, query: row ? pub : null,
         resumo: valido ? resumoDebitos(row.result) : null,
         ficha: valido ? fichaDebitos(row.result) : null,
+        veredito: valido && row.product === "premium" ? veredictoPremium(row.result) : null,
       });
     }
 

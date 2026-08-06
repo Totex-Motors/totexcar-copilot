@@ -43,6 +43,7 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
   const row = result.data?.query;
   const resumo = result.data?.resumo;
   const ficha = result.data?.ficha as { titulo: string; campos: { k: string; v: string }[] }[] | null;
+  const veredito = result.data?.veredito as { nome: string; status: string; detalhe: string | null }[] | null;
 
   // com consulta em aberto (pending/paid), verifica sozinho por até 5 min
   useEffect(() => {
@@ -132,8 +133,26 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
           </>
         )}
 
-        {/* Resultado */}
-        {temResultado && resumo && (
+        {/* Resultado PREMIUM: veredito por bloco, estilo relatório de mercado */}
+        {temResultado && row.product === "premium" && veredito && (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">Dossiê da placa {row.placa}</p>
+            {veredito.map((v: any) => (
+              <div key={v.nome} className={`rounded-lg border p-2.5 flex items-center justify-between gap-2 ${v.status === "consta" ? "border-destructive/40 bg-destructive/[0.06]" : v.status === "nada_consta" ? "border-green-500/30 bg-green-500/[0.05]" : "border-border bg-muted/30"}`}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{v.nome}</p>
+                  {v.detalhe && <p className="text-xs text-muted-foreground">{v.detalhe}</p>}
+                </div>
+                <Badge className={`border-0 shrink-0 ${v.status === "consta" ? "bg-destructive/15 text-destructive" : v.status === "nada_consta" ? "bg-green-500/15 text-green-600" : "bg-muted text-muted-foreground"}`}>
+                  {v.status === "consta" ? "CONSTA" : v.status === "nada_consta" ? "Nada consta" : "Indisponível"}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Resultado COMPLETA: destaque de multas/roubo */}
+        {temResultado && resumo && row.product !== "premium" && (
           <div className="space-y-3">
             <div className={`rounded-xl border p-3 flex items-center gap-2 ${resumo.ok ? "border-green-500/30 bg-green-500/[0.06]" : "border-warning/40 bg-warning/[0.07]"}`}>
               {resumo.ok
@@ -165,7 +184,12 @@ export function ConsultaVeicularCard({ vehicle }: { vehicle: any }) {
               </p>
             )}
 
-            {/* Relatório completo — todos os campos retornados pelas bases (sem dados pessoais) */}
+          </div>
+        )}
+
+        {/* Relatório completo (Completa e Premium) — todos os campos, sem dados pessoais */}
+        {temResultado && (
+          <div className="space-y-3">
             {ficha && ficha.length > 0 && (
               <div className="space-y-3 pt-1">
                 <div className="flex items-center justify-between">

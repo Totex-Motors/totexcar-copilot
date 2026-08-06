@@ -130,6 +130,25 @@ export function temDados(result: any): boolean {
   return true;
 }
 
+// Veredito por bloco do dossiê PREMIUM (estilo relatório de mercado: NADA CONSTA / CONSTA)
+export function veredictoPremium(result: any): { nome: string; status: "consta" | "nada_consta" | "indisponivel"; detalhe: string | null }[] {
+  const item = (nome: string, v: any, chaves: RegExp) => {
+    if (!v) return { nome, status: "indisponivel" as const, detalhe: "Fonte não retornou nesta consulta" };
+    const f = flatten(v);
+    const qtd = Number(f.quantidadeocorrencias ?? f.totalocorrencias ?? f.total ?? 0) || 0;
+    const flag = Object.entries(f).some(([k, val]) =>
+      chaves.test(k) && (val === true || /^(sim|consta|ativo)$/i.test(String(val))));
+    const consta = qtd > 0 || flag;
+    return { nome, status: consta ? ("consta" as const) : ("nada_consta" as const), detalhe: consta ? `${qtd || 1} registro(s) — veja o relatório completo` : null };
+  };
+  return [
+    item("Leilão", result?.leilao, /possuileilao|registroleilao/),
+    item("Roubo / Furto", result?.roubo_furto, /roubo|furto/),
+    item("Gravame / Financiamento em aberto", result?.gravame, /gravame|alienacao|financiamento/),
+    item("Restrição judicial (RENAJUD)", result?.restricao_judicial_renajud, /renajud|bloqueio|restricaojudicial/),
+  ];
+}
+
 // Cache: última consulta CONCLUÍDA (e COM dados) da mesma placa/produto dentro da janela
 export async function cachedDebitos(admin: any, placa: string, cacheDays: number, product = "completa") {
   const desde = new Date(Date.now() - cacheDays * 86400000).toISOString();
@@ -202,7 +221,7 @@ export function fichaDebitos(result: any): { titulo: string; campos: { k: string
     });
   }
   // campos restantes que não mapeamos (novos do fornecedor) entram numa seção extra
-  const IGNORAR = /^(status|timestamp|tipo|tempoms|tempo_ms|datahora|descricao|mostraralertaobservacoes|mensagemalertaobservacoes|nome.*|.*fabricante)$/;
+  const IGNORAR = /^(status|timestamp|tipo|tempoms|tempo_ms|datahora|descricao|mostraralertaobservacoes|mensagemalertaobservacoes|nome.*|.*fabricante|link|type|.*base64|fonte|conteudo|header|message|msg|code|sucesso|erro|cnh|cpr|csv|criv|atpve|quantidadeocorrencias)$/;
   const extras = Object.keys(f)
     .filter((k) => !usado.has(k) && !IGNORAR.test(k) && String(f[k]).trim() !== "")
     .slice(0, 12)
