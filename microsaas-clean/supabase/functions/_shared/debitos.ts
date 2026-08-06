@@ -50,6 +50,9 @@ export function sanitizeDebitos(v: any): any {
     }
     return out;
   }
+  // blobs (PDF/base64 embutidos no retorno da API Full) estouravam o resultado p/ ~7,5MB
+  // e derrubavam a entrega no card — dados ficam, arquivo não (relatório é nosso).
+  if (typeof v === "string" && v.length > 2000) return "[arquivo removido]";
   return v;
 }
 
