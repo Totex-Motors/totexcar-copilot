@@ -37,7 +37,7 @@ console.log("upload ok, header_handle obtido");
 const card = {
   components: [
     { type: "HEADER", format: "IMAGE", example: { header_handle: [upJ.h] } },
-    { type: "BODY", text: "{{1}}", example: { body_text: [["Corolla XEI 2.0 2022 · R$ 139.900 · 38.000 km · 📍 Cardoso Veículos"]] } },
+    { type: "BODY", text: "🚗 {{1}} — toque em Ver carro para fotos, ficha completa e contato com a loja.", example: { body_text: [["Corolla XEI 2.0 2022 · R$ 139.900 · 38.000 km · 📍 Cardoso Veículos"]] } },
     {
       type: "BUTTONS",
       buttons: [{ type: "URL", text: "Ver carro", url: "https://totexmotors.com/veiculo/{{1}}", example: ["https://totexmotors.com/veiculo/abc123?ref=XYZ"] }],
