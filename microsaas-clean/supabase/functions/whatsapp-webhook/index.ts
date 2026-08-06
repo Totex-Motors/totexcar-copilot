@@ -884,8 +884,7 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
   const s = await getSettings();
   const brl = (v: any) => v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "consulte";
   // CATÁLOGO DESLIZÁVEL primeiro: 1 mensagem com até 10 cards (foto + botão "Ver carro" com ?ref).
-  // Template pendente/erro → cai nas fotos individuais abaixo. Sem 
- nos textos (regra de template).
+  // Template pendente/erro → cai nas fotos individuais abaixo. Sem quebra de linha nos textos (regra de template).
   const cards = cars.slice(0, 10).map((v) => {
     const img = carImg(v);
     if (!img) return null;
