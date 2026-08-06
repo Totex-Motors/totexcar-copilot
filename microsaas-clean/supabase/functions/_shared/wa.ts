@@ -119,6 +119,32 @@ export async function waSendImage(s: WaSettings, phone: string, imageUrl: string
   return uazapiPost(s, "/send/media", { number: to, type: "image", file: imageUrl, text: caption || "" });
 }
 
+// ---------------- envio: CARROSSEL de cards (vitrine deslizável; template aprovado) ----------------
+// UMA mensagem com até 10 cards (foto + legenda + botão "Ver carro"). Exige o template
+// `vitrine_carros` APROVADO na WABA (scripts/create-carousel-template.mjs). Sem aprovação/erro
+// → retorna false e o chamador cai nas fotos individuais (nada quebra).
+export async function waSendCarousel(s: WaSettings, phone: string, cards: { imageUrl: string; texto: string; urlSuffix: string }[]): Promise<boolean> {
+  const to = onlyDigits(phone);
+  if (!to || !cards.length || waProvider(s) !== "meta") return false;
+  return metaPost(s, {
+    messaging_product: "whatsapp", to, type: "template",
+    template: {
+      name: "vitrine_carros", language: { code: "pt_BR" },
+      components: [{
+        type: "carousel",
+        cards: cards.slice(0, 10).map((c, i) => ({
+          card_index: i,
+          components: [
+            { type: "header", parameters: [{ type: "image", image: { link: c.imageUrl } }] },
+            { type: "body", parameters: [{ type: "text", text: cleanParam(c.texto) }] },
+            { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: c.urlSuffix }] },
+          ],
+        })),
+      }],
+    },
+  });
+}
+
 // ---------------- envio: DOCUMENTO (PDF de relatório etc.; janela de 24h) ----------------
 export async function waSendDocument(s: WaSettings, phone: string, docUrl: string, filename: string, caption?: string): Promise<boolean> {
   const to = onlyDigits(phone);

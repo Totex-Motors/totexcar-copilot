@@ -5,7 +5,7 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
 import { loadDossier, runExtractor } from "../_shared/proactive.ts";
@@ -883,6 +883,24 @@ const normCategoria = (c: any): string | null => {
 async function sendCarShowcase(phone: string, cars: any[], refCode?: string | null): Promise<number> {
   const s = await getSettings();
   const brl = (v: any) => v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "consulte";
+  // CATÁLOGO DESLIZÁVEL primeiro: 1 mensagem com até 10 cards (foto + botão "Ver carro" com ?ref).
+  // Template pendente/erro → cai nas fotos individuais abaixo. Sem 
+ nos textos (regra de template).
+  const cards = cars.slice(0, 10).map((v) => {
+    const img = carImg(v);
+    if (!img) return null;
+    const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+    const km = Number(v.mileage) > 0 ? ` · ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
+    const fipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 abaixo da FIPE" : "";
+    const loja = v.dealership?.name ? ` · 📍 ${v.dealership.name}` : "";
+    return {
+      imageUrl: img,
+      texto: `${titulo} ${v.year || ""} · ${brl(v.price)}${km}${fipe}${loja}`,
+      urlSuffix: `${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
+    };
+  }).filter(Boolean) as { imageUrl: string; texto: string; urlSuffix: string }[];
+  if (cards.length >= 2 && await waSendCarousel(s, phone, cards)) return cards.length;
+
   let sent = 0;
   for (const v of cars.slice(0, 5)) {
     const img = carImg(v);
