@@ -1,10 +1,15 @@
-// Cria o template CARROSSEL `vitrine_carros` na WABA (catálogo deslizável da Garagem Totex).
-// Card: foto do carro (header IMAGE) + legenda {{1}} + botão URL "Ver carro" → totexmotors.com/veiculo/{{1}}.
-// A foto/legenda/link são DINÂMICOS a cada envio; a Meta aprova a estrutura uma vez.
+// Cria os templates CARROSSEL `vitrine_carros_2` … `vitrine_carros_10` na WABA (catálogo
+// deslizável da Garagem Totex). Card: foto do carro (header IMAGE) + legenda {{1}} + botão URL
+// "Ver carro" → totexmotors.com/veiculo/{{1}}.
+//
+// ⚠️ REGRA DA META (por isso são 9 templates): o carrossel é criado com um número FIXO de cards
+// (mín. 2, máx. 10) e o envio SÓ pode ter exatamente essa quantidade. O vitrine_carros original
+// foi criado com 1 card e a Meta renderizava 1 card por mensagem (sem deslizar) — aprovou fora
+// de spec mas não funcionava. waSendCarousel escolhe `vitrine_carros_{n}` pelo nº de cards.
 //
 // USO: node scripts/create-carousel-template.mjs <WABA_ID> <TOKEN> [urlImagemExemplo]
-//   (mesmo WABA_ID/token do create-wa-templates.mjs; a imagem de exemplo padrão baixa
-//    uma foto de carro pública só para a aprovação — não aparece nos envios reais)
+//   (a imagem de exemplo padrão baixa uma foto de carro pública só para a aprovação —
+//    não aparece nos envios reais; o mesmo upload é reutilizado em todos os cards)
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const WABA_ID = process.argv[2] || process.env.WABA_ID;
@@ -33,7 +38,8 @@ const upJ = await upRes.json();
 if (!upRes.ok || !upJ.h) { console.error("falha no upload:", JSON.stringify(upJ?.error || upJ)); process.exit(2); }
 console.log("upload ok, header_handle obtido");
 
-// 2) cria o template carrossel (1 card de estrutura; os envios mandam até 10 cards iguais em formato)
+// 2) cria um template por quantidade de cards (2..10), todos com a MESMA estrutura de card
+// ⚠️ body do card: 72 chars fixos + variável — o webhook limita a variável a 88 (limite Meta: 160)
 const card = {
   components: [
     { type: "HEADER", format: "IMAGE", example: { header_handle: [upJ.h] } },
@@ -44,21 +50,24 @@ const card = {
     },
   ],
 };
-const body = {
-  name: "vitrine_carros",
-  language: "pt_BR",
-  category: "MARKETING",
-  allow_category_change: true,
-  components: [
-    { type: "BODY", text: "Encontrei estas opções na Garagem Totex pra você 👇 Deslize pro lado e toque em Ver carro no que curtir. 🚗" },
-    { type: "CAROUSEL", cards: [card] },
-  ],
-};
-const res = await fetch(`${GRAPH}/${WABA_ID}/message_templates`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
-  body: JSON.stringify(body),
-});
-const j = await res.json();
-if (res.ok) console.log(`✅ vitrine_carros criado (status inicial: ${j.status}, categoria: ${j.category})`);
-else console.error("❌ falhou:", JSON.stringify(j?.error || j));
+
+for (let n = 2; n <= 10; n++) {
+  const body = {
+    name: `vitrine_carros_${n}`,
+    language: "pt_BR",
+    category: "MARKETING",
+    allow_category_change: true,
+    components: [
+      { type: "BODY", text: "Encontrei estas opções na Garagem Totex pra você 👇 Deslize pro lado e toque em Ver carro no que curtir. 🚗" },
+      { type: "CAROUSEL", cards: Array.from({ length: n }, () => card) },
+    ],
+  };
+  const res = await fetch(`${GRAPH}/${WABA_ID}/message_templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+    body: JSON.stringify(body),
+  });
+  const j = await res.json();
+  if (res.ok) console.log(`✅ vitrine_carros_${n} criado (status inicial: ${j.status}, categoria: ${j.category})`);
+  else console.error(`❌ vitrine_carros_${n} falhou:`, JSON.stringify(j?.error || j));
+}
