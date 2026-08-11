@@ -854,13 +854,18 @@ const MODEL_CLASS: Array<[string, string[]]> = [
   ["sedan", ["onix plus", "hb20s", "civic", "corolla", "sentra", "versa", "virtus", "jetta", "passat", "cruze", "prisma", "cronos", "siena", "logan", "fluence", "cerato", "elantra", "azera", "camry", "accord", "voyage", "cobalt", "classic", "a3 sedan", "a4", "a5", "c180", "c200", "c250", "c300", "320i", "330i", "m3"]],
   ["hatch", ["onix", "hb20", "gol", "up!", "up ", "polo", "fox", "golf", "argo", "mobi", "uno", "palio", "punto", "208", "207", "c3", "kwid", "sandero", "march", "picanto", "i30", "etios", "yaris", "500", "fit", "dolphin", "mini cooper", "a1", "a3", "118i", "clio", "ka ", "fiesta", "focus"]],
 ];
+// termo tem que casar em FRONTEIRA de palavra, não substring solta: "x4"/"x2" (BMW) casavam
+// dentro de "4x4"/"4x2" das versões e a Toro (picape) virava SUV; "500" casava em "1500" etc.
+const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const temTermo = (nome: string, t: string) =>
+  new RegExp(`(^|[^a-z0-9])${escRe(t.trim())}($|[^a-z0-9])`).test(nome);
 function carClass(v: any): string | null {
   const nome = ` ${String(v.model || "")} ${String(v.version || "")} `.toLowerCase();
   // "fastback" é ambíguo: Fiat Fastback = SUV, mas Ford Focus Fastback = sedan.
   // Só é SUV quando o MODELO em si é Fastback (Fiat).
   if (/^\s*fastback/.test(String(v.model || "").toLowerCase())) return "suv";
   for (const [cls, termos] of MODEL_CLASS) {
-    if (termos.some((t) => nome.includes(t))) return cls;
+    if (termos.some((t) => temTermo(nome, t))) return cls;
   }
   const bt = String(v.bodyType || "").toLowerCase();
   if (/suv|utilit[aá]rio esportivo/.test(bt)) return "suv";
@@ -1611,7 +1616,9 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       // cliente de loja (cortesia/bônus) vê SÓ o estoque da loja dele; demais veem tudo
       const scopeId = await garagemDealerId(user.dealership).catch(() => null);
       // categoria de carroceria: o filtro é NOSSO (a API do marketplace não filtra por categoria
-      // e o bodyType vem sujo) — busca um lote maior e classifica com carClass()
+      // e o bodyType vem sujo) — busca um lote maior e classifica com carClass().
+      // Lote de 120: uma loja sozinha já passa de 50 carros (Cardoso tem 94) — com 40, parte do
+      // estoque nunca entrava no funil e SUVs reais sumiam da vitrine.
       const catFiltro = normCategoria(args?.categoria);
       let cars = await mktVehicles({
         search: args?.busca, brand: args?.marca,
@@ -1619,9 +1626,11 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         minYear: Number(args?.ano_min) > 0 ? Number(args.ano_min) : undefined,
         maxMileage: Number(args?.km_max) > 0 ? Number(args.km_max) : undefined,
         dealershipId: scopeId || undefined,
-        limit: catFiltro ? 40 : 6,
+        limit: catFiltro ? 120 : 10,
       });
-      if (catFiltro) cars = cars.filter((c: any) => carClass(c) === catFiltro).slice(0, 6);
+      // até 10: é o máximo de cards do carrossel — vitrine cheia em vez de 6
+      if (catFiltro) cars = cars.filter((c: any) => carClass(c) === catFiltro);
+      cars = cars.slice(0, 10);
       if (!cars.length) return { ok: true, total: 0, categoria: catFiltro || undefined, message: `Nada no estoque com esses critérios${catFiltro ? ` na categoria ${catFiltro}` : ""}. Ofereça criar_radar pro usuário ser avisado quando aparecer.` };
       // VITRINE: manda as fotos dos carros direto no chat
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;

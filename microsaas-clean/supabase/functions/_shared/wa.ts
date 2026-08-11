@@ -120,19 +120,23 @@ export async function waSendImage(s: WaSettings, phone: string, imageUrl: string
 }
 
 // ---------------- envio: CARROSSEL de cards (vitrine deslizável; template aprovado) ----------------
-// UMA mensagem com até 10 cards (foto + legenda + botão "Ver carro"). Exige o template
-// `vitrine_carros` APROVADO na WABA (scripts/create-carousel-template.mjs). Sem aprovação/erro
-// → retorna false e o chamador cai nas fotos individuais (nada quebra).
+// UMA mensagem com 2 a 10 cards (foto + legenda + botão "Ver carro"). Regra da Meta: o template
+// de carrossel é aprovado com um número FIXO de cards e o envio deve ter EXATAMENTE essa
+// quantidade (enviar N≠aprovado renderiza só o 1º card, sem deslizar). Por isso existe um
+// template por tamanho — `vitrine_carros_2`…`vitrine_carros_10` (scripts/create-carousel-template.mjs)
+// — e aqui escolhemos pelo nº de cards. Template pendente/erro → retorna false e o chamador
+// cai nas fotos individuais (nada quebra).
 export async function waSendCarousel(s: WaSettings, phone: string, cards: { imageUrl: string; texto: string; urlSuffix: string }[]): Promise<boolean> {
   const to = onlyDigits(phone);
-  if (!to || !cards.length || waProvider(s) !== "meta") return false;
+  if (!to || cards.length < 2 || waProvider(s) !== "meta") return false;
+  const n = Math.min(cards.length, 10);
   return metaPost(s, {
     messaging_product: "whatsapp", to, type: "template",
     template: {
-      name: "vitrine_carros", language: { code: "pt_BR" },
+      name: `vitrine_carros_${n}`, language: { code: "pt_BR" },
       components: [{
         type: "carousel",
-        cards: cards.slice(0, 10).map((c, i) => ({
+        cards: cards.slice(0, n).map((c, i) => ({
           card_index: i,
           components: [
             { type: "header", parameters: [{ type: "image", image: { link: c.imageUrl } }] },
