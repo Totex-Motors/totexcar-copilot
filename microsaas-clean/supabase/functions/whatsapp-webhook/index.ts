@@ -880,6 +880,38 @@ const normCategoria = (c: any): string | null => {
 
 // VITRINE: envia cada carro como uma FOTO com legenda (modelo, ano, km, preço, link) direto no chat.
 // Retorna quantos foram enviados (o agente comenta os porquês SEM repetir a lista).
+
+// Body de card de carrossel: a Meta limita o texto HIDRATADO (fixo + variável) a 160 chars por card;
+// o texto fixo do template vitrine_carros ocupa 72 → sobram 88 pra variável. Estourou em QUALQUER card
+// = erro 132018 e a mensagem inteira não sai (era por isso que o estoque real, com versões longas tipo
+// "COMPASS LONG. T270 1.3 TB 4x2 Flex Aut.", nunca chegava). A Meta conta CODE POINTS (emoji = 1),
+// por isso [...s].length e não s.length.
+const CARD_PARAM_MAX = 88;
+const cpLen = (t: string) => [...t].length;
+function cardTexto(v: any, brl: (x: any) => string): string {
+  // o importador repete o modelo dentro da versão ("COMPASS COMPASS LONG. …") — remove o eco
+  const modelo = String(v.model || "").trim();
+  let versao = String(v.version || "").trim();
+  if (modelo && versao.toUpperCase().startsWith(modelo.toUpperCase())) versao = versao.slice(modelo.length).trim();
+  const tituloCompleto = [v.brand, modelo, versao].filter(Boolean).join(" ");
+  const tituloCurto = [v.brand, modelo].filter(Boolean).join(" ");
+  const kmTxt = Number(v.mileage) > 0 ? `${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
+  const fipeTxt = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? "🔥 abaixo da FIPE" : "";
+  const lojaTxt = v.dealership?.name ? `📍 ${v.dealership.name}` : "";
+  const monta = (titulo: string, extras: string[]) =>
+    [`${titulo} ${v.year || ""}`.trim(), brl(v.price), ...extras.filter(Boolean)].join(" · ");
+  // degrada por prioridade: versão → FIPE → loja → km, até caber no orçamento
+  const tentativas = [
+    monta(tituloCompleto, [kmTxt, fipeTxt, lojaTxt]),
+    monta(tituloCurto, [kmTxt, fipeTxt, lojaTxt]),
+    monta(tituloCurto, [kmTxt, lojaTxt]),
+    monta(tituloCurto, [kmTxt]),
+    monta(tituloCurto, []),
+  ];
+  const ok = tentativas.find((t) => cpLen(t) <= CARD_PARAM_MAX);
+  return ok ?? [...tentativas[tentativas.length - 1]].slice(0, CARD_PARAM_MAX - 1).join("") + "…";
+}
+
 async function sendCarShowcase(phone: string, cars: any[], refCode?: string | null): Promise<number> {
   const s = await getSettings();
   const brl = (v: any) => v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "consulte";
@@ -889,13 +921,9 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
     const img = carImg(v);
     // carrossel e tudo-ou-nada: 1 imagem invalida derruba a mensagem inteira — so https limpo
     if (!img || !/^https:\/\//i.test(img)) return null;
-    const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
-    const km = Number(v.mileage) > 0 ? ` · ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
-    const fipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 abaixo da FIPE" : "";
-    const loja = v.dealership?.name ? ` · 📍 ${v.dealership.name}` : "";
     return {
       imageUrl: img,
-      texto: `${titulo} ${v.year || ""} · ${brl(v.price)}${km}${fipe}${loja}`,
+      texto: cardTexto(v, brl),
       urlSuffix: `${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
     };
   }).filter(Boolean) as { imageUrl: string; texto: string; urlSuffix: string }[];
