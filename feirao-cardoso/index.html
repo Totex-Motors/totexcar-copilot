@@ -233,7 +233,11 @@
           <button data-v="Comprar">Comprar</button><button data-v="Trocar">Trocar</button>
         </div>
       </div>
-      <div class="campo">
+      <div class="campo" id="campo-promotora" style="display:none">
+        <label>Quem está te atendendo?</label>
+        <div class="chips" id="g-promotora"></div>
+      </div>
+      <div class="campo" id="campo-origem">
         <label>Onde viu o feirão?</label>
         <div class="chips" id="g-origem">
           <button data-v="Panfleto">Panfleto</button>
@@ -411,6 +415,19 @@
           img.style.cssText = 'width:100%;border-radius:12px;margin-top:12px;display:block;max-height:140px;object-fit:cover';
           document.querySelector('header').appendChild(img);
         }
+        // link público: cliente escolhe a PROMOTORA que o atendeu (o canal já diz onde viu)
+        if(PUBLICO && l.promotoras && l.promotoras.length){
+          var gp = document.getElementById('g-promotora');
+          gp.innerHTML = '';
+          l.promotoras.forEach(function(nome){
+            var b = document.createElement('button');
+            b.dataset.v = String(nome);
+            b.textContent = String(nome);
+            gp.appendChild(b);
+          });
+          document.getElementById('campo-promotora').style.display = 'block';
+          document.getElementById('campo-origem').style.display = 'none';
+        }
       })
       .catch(function(){});
   }
@@ -478,7 +495,7 @@
           headers:{'Prefer':'return=representation'},
           body: JSON.stringify({
             loja:LOJA, evento_id:p.evento_id||null, canal:p.canal||'loja', voucher:p.voucher, nome:p.nome, zap:p.zap, zap_limpo:p.zap_limpo,
-            insta:p.insta, obs:p.obs, cliente:p.cliente, interesse:p.interesse, origem:p.origem, hora:p.hora
+            insta:p.insta, obs:p.obs, cliente:p.cliente, interesse:p.interesse, origem:p.origem, promotora:p.promotora||null, hora:p.hora
           })
         }).then(function(r){
           if(r.ok || r.status===409){ // 409 = já subiu por outro caminho
@@ -492,7 +509,7 @@
   }
 
   // ---------- chips ----------
-  ['g-cliente','g-interesse','g-origem'].forEach(function(id){
+  ['g-cliente','g-interesse','g-origem','g-promotora'].forEach(function(id){
     document.getElementById(id).addEventListener('click', function(e){
       if(e.target.tagName !== 'BUTTON') return;
       this.querySelectorAll('button').forEach(function(b){ b.classList.remove('sel'); });
@@ -535,6 +552,7 @@
     marcarChip('g-cliente', p.cliente || '');
     marcarChip('g-interesse', p.interesse || '');
     marcarChip('g-origem', p.origem || '');
+    marcarChip('g-promotora', p.promotora || '');
     document.getElementById('edit-voucher').textContent = v + ' — ' + (p.nome || '');
     document.getElementById('edit-banner').style.display = 'block';
     document.getElementById('btnCadastrar').textContent = '💾 Salvar alterações';
@@ -548,7 +566,7 @@
     document.getElementById('btnCadastrar').textContent = PUBLICO ? 'Quero participar do sorteio! 🎟️' : 'Cadastrar e gerar voucher';
     document.getElementById('f-aviso').style.display = 'none';
     ['f-nome','f-zap','f-insta','f-obs'].forEach(function(id){ document.getElementById(id).value=''; });
-    ['g-cliente','g-interesse','g-origem'].forEach(limparChips);
+    ['g-cliente','g-interesse','g-origem','g-promotora'].forEach(limparChips);
   }
 
   function salvarEdicao(){
@@ -566,6 +584,7 @@
       obs: document.getElementById('f-obs').value.trim(),
       cliente: chip('g-cliente'), interesse: chip('g-interesse'), origem: chip('g-origem')
     };
+    if(document.getElementById('g-promotora').children.length) mud.promotora = chip('g-promotora') || null;
     var btn = document.getElementById('btnCadastrar');
     btn.disabled = true; btn.textContent = 'Salvando…';
     var fim = function(){ btn.disabled = false; cancelarEdicao(); aba('lis'); lista(); };
@@ -609,6 +628,7 @@
       insta: document.getElementById('f-insta').value.trim(),
       obs: document.getElementById('f-obs').value.trim(),
       cliente: chip('g-cliente'), interesse: chip('g-interesse'),
+      promotora: chip('g-promotora') || null,
       origem: (PUBLICO && EV && EV.tipo === 'live') ? 'Live Instagram' : (chip('g-origem') || (PUBLICO ? 'Link público' : '')),
       hora: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
     };
@@ -682,7 +702,7 @@
   function fecharVoucher(){
     document.getElementById('veu').classList.remove('on');
     ['f-nome','f-zap','f-insta','f-obs'].forEach(function(id){ document.getElementById(id).value=''; });
-    ['g-cliente','g-interesse','g-origem'].forEach(limparChips);
+    ['g-cliente','g-interesse','g-origem','g-promotora'].forEach(limparChips);
     document.getElementById('f-nome').focus();
   }
 
@@ -715,6 +735,7 @@
         + '<div class="dados"><b>'+esc(p.nome)+(pendente?' ⏳':'')+'</b><span>'+esc(p.zap)
         + (p.insta ? ' · '+esc(p.insta) : '')
         + (p.origem ? ' · '+esc(p.origem) : '') + (p.hora ? ' · '+esc(p.hora) : '')
+        + (p.promotora ? ' · 👩 '+esc(p.promotora) : '')
         + (p.canal && p.canal !== 'loja'
             ? '<br>🔗 '+esc(p.canal) + (p.chegou_em
                 ? ' · <b style="color:var(--ok)">🏬 veio à loja</b>'
@@ -765,9 +786,9 @@
   }
 
   function exportarCSV(){
-    var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Canal','Chegou na loja','Hora','Observações']];
+    var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Promotora','Canal','Chegou na loja','Hora','Observações']];
     pessoas.forEach(function(p){
-      linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,
+      linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,p.promotora,
         p.canal||'loja', (!p.canal||p.canal==='loja') ? 'sim' : (p.chegou_em ? 'sim' : 'não'), p.hora,p.obs]);
     });
     var csv = '﻿' + linhas.map(function(l){

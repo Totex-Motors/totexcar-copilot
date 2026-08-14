@@ -264,9 +264,9 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   });
 
   const baixarCSV = () => {
-    const linhas = [["Voucher", "Nome", "WhatsApp", "Instagram", "Já é cliente", "Interesse", "Onde viu", "Canal", "Chegou na loja", "Hora", "Observações"]];
+    const linhas = [["Voucher", "Nome", "WhatsApp", "Instagram", "Já é cliente", "Interesse", "Onde viu", "Promotora", "Canal", "Chegou na loja", "Hora", "Observações"]];
     (participantes || []).forEach((p) => linhas.push([
-      p.voucher, p.nome, p.zap, p.insta, p.cliente, p.interesse, p.origem,
+      p.voucher, p.nome, p.zap, p.insta, p.cliente, p.interesse, p.origem, p.promotora,
       p.canal || "loja", (!p.canal || p.canal === "loja") ? "sim" : (p.chegou_em ? "sim" : "não"), p.hora, p.obs,
     ]));
     const csv = "﻿" + linhas.map((l) => l.map((c) => `"${String(c || "").replace(/"/g, '""')}"`).join(";")).join("\n");
@@ -584,7 +584,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
                         <span className="text-primary font-bold">{p.voucher}</span> · {p.nome}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {[p.zap, p.insta, p.origem, p.obs && `📝 ${p.obs}`].filter(Boolean).join(" · ")}
+                        {[p.zap, p.insta, p.origem, p.promotora && `👩 ${p.promotora}`, p.obs && `📝 ${p.obs}`].filter(Boolean).join(" · ")}
                       </p>
                     </div>
                     <span className="shrink-0 text-[11px] text-muted-foreground">
