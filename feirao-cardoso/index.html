@@ -384,7 +384,11 @@
     // link público: comunicado da validação presencial + teaser dos benefícios (sem revelar a lista)
     if(PUBLICO){
       document.getElementById('aviso-visita').style.display = 'block';
-      var qtd = (EV.beneficios && EV.beneficios.length) || 9;
+      // conta só o que é benefício de verdade: ignora avisos (*) e, se houver linhas com ✅,
+      // considera apenas elas (frases de abertura ficam de fora)
+      var linhas = (EV.beneficios || []).filter(function(b){ return !/^\s*\*/.test(String(b)); });
+      var comCheck = linhas.filter(function(b){ return String(b).indexOf('✅') >= 0; });
+      var qtd = (comCheck.length || linhas.length) || 9;
       document.getElementById('beneficios-titulo').textContent =
         '🎁 ' + qtd + ' benefícios exclusivos do feirão';
       document.getElementById('beneficios-box').style.display = 'block';
