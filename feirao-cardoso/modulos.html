@@ -16,6 +16,15 @@
   }
   .pagina{max-width:820px; margin:0 auto; padding:0 20px 60px}
 
+  /* marca d'água: pessoa + carro + celular (10% de opacidade, acompanha a rolagem) */
+  .fundo-marca{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:url('fundo-lineart.png') center 58% / min(96vw, 880px) auto no-repeat;
+    opacity:.10;
+  }
+  .pagina{position:relative; z-index:1}
+
+
   .capa{
     background:linear-gradient(160deg,var(--navy) 0%, #1436C7 70%, #1E4FE0 100%);
     color:#fff; border-radius:0 0 24px 24px; padding:44px 24px 36px; text-align:center; margin:0 -20px 32px;
@@ -101,10 +110,11 @@
     .cta-sorteio, .flutuante{animation:none}
     .cta-sorteio::after{display:none}
   }
-  @media print{ .imprimir,.flutuante,.cta-sorteio{display:none} .mod{break-inside:avoid} body{background:#fff} }
+  @media print{ .imprimir,.flutuante,.cta-sorteio,.fundo-marca{display:none} .mod{break-inside:avoid} body{background:#fff} }
 </style>
 </head>
 <body>
+<div class="fundo-marca"></div>
 <div class="pagina">
 
   <div class="capa">
