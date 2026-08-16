@@ -2125,6 +2125,98 @@ async function handleCtwaReferral(msg: any) {
   } catch (e) { console.error("handleCtwaReferral:", e); }
 }
 
+// ---------- STAND FÍSICO (shopping): QR do totem → wa.me com código #stand ----------
+// O QR pré-preenche a mensagem com "#stand <loja|geral> <promotor> [<idDoCarro>]" na última linha.
+// Funciona ANTES do cadastro (visitante de shopping raramente é usuário): grava o lead com a
+// atribuição (loja/promotor/carro) em whatsapp_events kind=stand_lead e responde NA HORA com a
+// vitrine em carrossel. Métricas do dia de stand:
+//   SELECT parsed->>'promotor', count(*) FROM whatsapp_events WHERE kind='stand_lead' GROUP BY 1;
+const STAND_RE = /#stand\s+([a-z0-9-]+)(?:\s+([a-z0-9-]+))?(?:\s+([a-z0-9]{16,}))?/i;
+
+// escopo do stand: "geral" = marketplace inteiro; senão casa com o slug da loja (ex.: "cardoso")
+async function standScopeId(loja: string): Promise<string | undefined> {
+  if (!loja || loja === "geral") return undefined;
+  try {
+    const res = await fetch(`${MARKETPLACE_URL}/api/dealerships`, { headers: { Accept: "application/json" } });
+    const d = await res.json();
+    const list = Array.isArray(d) ? d : (d?.data || []);
+    return list.find((x: any) => String(x.slug || "").toLowerCase().includes(loja))?.id;
+  } catch { return undefined; }
+}
+
+async function handleStandLead(phone: string, text: string, contactName?: string): Promise<boolean> {
+  const m = String(text || "").match(STAND_RE);
+  if (!m) return false;
+  const loja = (m[1] || "geral").toLowerCase();
+  let promotor = (m[2] || "").toLowerCase() || null;
+  let carroId = m[3] || null;
+  // QR por carro sem promotor ("#stand geral <id>"): o id cai no 2º token — desambigua pelo tamanho
+  if (!carroId && promotor && promotor.length >= 16) { carroId = promotor; promotor = null; }
+  try {
+    // o lead é gravado ANTES de responder — mesmo se o envio falhar, a atribuição fica
+    await supabase.from("whatsapp_events").insert({
+      from_phone: phone, kind: "stand_lead", status: "processed",
+      raw: { text }, parsed: { loja, promotor, carro: carroId, nome: contactName || null },
+    });
+    await sendText(phone, `Que bom te ver por aqui${contactName ? `, ${contactName.split(" ")[0]}` : ""}! 👋 Sou o Co-pilot da Totex Motors. Já te mostro a vitrine — desliza pro lado e toca em *Ver carro* no que curtir.\n\nMe diz o que você procura (ex.: "SUV até 80 mil", "picape automática") que eu filtro na hora. 🚗`);
+    // o carro do QR (exposto no stand) vai primeiro, com destaque
+    if (carroId) {
+      try {
+        const res = await fetch(`${MARKETPLACE_URL}/api/vehicles/${encodeURIComponent(carroId)}`, { headers: { Accept: "application/json" } });
+        if (res.ok) {
+          const v = await res.json();
+          const img = carImg(v);
+          if (img) {
+            const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+            const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
+            await waSendImage(await getSettings(), phone, img,
+              `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o que você viu no stand — fotos e ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`);
+          }
+        }
+      } catch { /* segue pra vitrine */ }
+    }
+    const dealershipId = await standScopeId(loja);
+    const cars = await mktVehicles({ dealershipId, limit: 10 }).catch(() => [] as any[]);
+    if (cars.length) await sendCarShowcase(phone, cars, null);
+    return true;
+  } catch (e) { console.error("handleStandLead:", e); return true; } // código presente = já tratamos
+}
+
+// Visitante do stand SEM cadastro continuando a conversa: o agente completo exige usuário, mas
+// matar o papo com "cadastre-se" no meio do shopping perde a venda. Busca leve por categoria e
+// faixa de preço mantém a vitrine viva; o convite pro app vai junto, sem bloquear.
+async function handleStandFollowup(phone: string, text: string): Promise<boolean> {
+  const desde = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+  const { data: lead } = await supabase.from("whatsapp_events")
+    .select("parsed").eq("from_phone", phone).eq("kind", "stand_lead")
+    .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+  if (!lead?.length) return false;
+  const t = String(text || "").toLowerCase();
+  const categoria = normCategoria(t);
+  let precoMax: number | undefined;
+  const mMil = t.match(/(\d{1,3})\s*mil/);
+  const mNum = t.replace(/\./g, "").match(/\b(\d{5,7})\b/);
+  if (mMil) precoMax = Number(mMil[1]) * 1000;
+  else if (mNum) precoMax = Number(mNum[1]);
+  const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+  const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+  if (!categoria && !precoMax) {
+    await sendText(phone, `Posso te mostrar carros por tipo e faixa de preço — ex.: "SUV até 80 mil", "sedan até 120 mil". 🚗\n\nPra atendimento completo (avaliar seu carro na troca, financiamento, test drive), toca em *Ver carro* num card que a loja te atende. E se quiser que eu cuide do SEU carro (gastos, revisões, multas, FIPE), cadastre este número no app: ${appUrl}`);
+    return true;
+  }
+  const loja = String(lead[0].parsed?.loja || "geral").toLowerCase();
+  const dealershipId = await standScopeId(loja);
+  let cars = await mktVehicles({ maxPrice: precoMax, dealershipId, limit: categoria ? 120 : 10 }).catch(() => [] as any[]);
+  if (categoria) cars = cars.filter((c: any) => carClass(c) === categoria);
+  cars = cars.slice(0, 10);
+  if (!cars.length) {
+    await sendText(phone, "Não achei nada com esses critérios no estoque agora 😕 Me fala outro tipo ou faixa de preço que eu procuro de novo.");
+    return true;
+  }
+  await sendCarShowcase(phone, cars, null);
+  return true;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   _settings = null; // recarrega configs a cada requisição
@@ -2269,6 +2361,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     // Pós-venda (antes do cadastro, funciona p/ quem ainda não é usuário):
     if (msg.kind !== "image") {
       const psText = msg.text || msg.transcription || "";
+      // QR do stand físico (shopping) — código #stand na mensagem pré-preenchida
+      if (await handleStandLead(msg.phone, psText, msg.contactName)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_qr" } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, stand: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       // resposta de NPS (número 0–10)
       if (await handlePostsaleNps(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "nps" } }).eq("id", eventId);
@@ -2283,6 +2380,12 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
 
     const user = await findUserByPhone(msg.phone);
     if (!user) {
+      // Visitante do STAND (shopping) sem cadastro: mantém a conversa viva com busca leve
+      // por categoria/preço em vez do "cadastre-se" seco (o lead #stand tem até 7 dias).
+      if (msg.kind !== "image" && await handleStandFollowup(msg.phone, msg.text || msg.transcription || "")) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_followup", input: msg.text } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, stand_followup: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       // Mesma proteção do aviso de paywall (abaixo): sem cooldown, um número
       // desconhecido com auto-resposta vira ping-pong infinito e queima o
       // número na Meta. Aqui não dá pra usar notification_log (não há user_id),
