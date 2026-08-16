@@ -550,6 +550,79 @@ async function runPostsale(): Promise<number> {
   return sent;
 }
 
+// ---- ABONO POR INDICAÇÃO DO CO-PILOT (indique → +30 dias) ----
+// Regras: a indicação vale quando o INDICADO (users.referred_by = referral_code de quem indicou)
+// (a) tem ≥7 dias de casa, (b) tem telefone, (c) cadastrou um carro (accounts ativo).
+// Crédito: 1 por indicado (unique em referral_signup_bonuses), teto de 12/ano por indicador,
+// anti-autoindicação (mesmo id ou mesmo telefone por sufixo de 8 dígitos).
+// Como a cobrança é AVULSA (sem recorrência no Asaas), o abono é só empurrar a data:
+//   premium com plan_expires_at → +30d · trial → trial_ends_at +30d · premium sem vencimento → registra sem crédito.
+async function runReferralBonuses(): Promise<number> {
+  let credited = 0;
+  const seteDias = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+  const { data: indicados } = await supabase
+    .from("users")
+    .select("id, name, phone, referred_by, created_at")
+    .not("referred_by", "is", null)
+    .lte("created_at", seteDias)
+    .gte("created_at", new Date(Date.now() - 120 * 24 * 3600_000).toISOString());
+  for (const ind of indicados || []) {
+    try {
+      if (!onlyDigits(ind.phone || "")) continue;
+      const { count: jaCreditado } = await supabase.from("referral_signup_bonuses")
+        .select("id", { count: "exact", head: true }).eq("referred_user_id", ind.id);
+      if (jaCreditado) continue;
+      const { count: temCarro } = await supabase.from("accounts")
+        .select("id", { count: "exact", head: true }).eq("user_id", ind.id).eq("is_active", true);
+      if (!temCarro) continue;
+      const { data: refs } = await supabase.from("users")
+        .select("id, name, phone, plan, plan_expires_at, trial_ends_at")
+        .ilike("referral_code", String(ind.referred_by)).limit(1);
+      const referrer = refs?.[0];
+      if (!referrer || referrer.id === ind.id) continue;
+      // anti-autoindicação com 2ª conta: mesmo telefone (sufixo de 8 dígitos)
+      const suf = (p: string) => onlyDigits(p || "").slice(-8);
+      if (suf(referrer.phone) && suf(referrer.phone) === suf(ind.phone)) continue;
+      // teto: 12 abonos por ano por indicador
+      const { count: noAno } = await supabase.from("referral_signup_bonuses")
+        .select("id", { count: "exact", head: true })
+        .eq("referrer_user_id", referrer.id)
+        .gte("created_at", new Date(Date.now() - 365 * 24 * 3600_000).toISOString());
+      if ((noAno || 0) >= 12) continue;
+      // grava ANTES de creditar (unique no indicado = retry do cron não credita 2x)
+      const dias30 = 30 * 24 * 3600_000;
+      const premium = referrer.plan === "premium";
+      const semVencimento = premium && !referrer.plan_expires_at;
+      const { error: insErr } = await supabase.from("referral_signup_bonuses").insert({
+        referrer_user_id: referrer.id, referred_user_id: ind.id,
+        days: semVencimento ? 0 : 30,
+        note: semVencimento ? "premium sem vencimento (nada a estender)" : null,
+      });
+      if (insErr) continue; // conflito = outra rodada já creditou
+      if (!semVencimento) {
+        if (premium) {
+          const base = Math.max(Date.parse(referrer.plan_expires_at) || 0, Date.now());
+          await supabase.from("users").update({ plan_expires_at: new Date(base + dias30).toISOString() }).eq("id", referrer.id);
+        } else {
+          const base = Math.max(Date.parse(referrer.trial_ends_at || "") || 0, Date.now());
+          await supabase.from("users").update({ trial_ends_at: new Date(base + dias30).toISOString() }).eq("id", referrer.id);
+        }
+      }
+      credited++;
+      const phone = onlyDigits(referrer.phone || "");
+      if (phone) {
+        const nomeInd = String(ind.name || "sua indicação").split(" ")[0];
+        await sendTpl(phone, "copilot_msg", [
+          semVencimento
+            ? `${nomeInd} entrou no Co-pilot pela sua indicação — valeu! Sua conta já não tem vencimento, então esse abono não foi necessário. 🙌`
+            : `${nomeInd} entrou no Co-pilot pela sua indicação e você GANHOU +30 dias no seu plano. Indique mais e pague menos! 🎁`,
+        ]);
+      }
+    } catch (e) { console.error("referral bonus:", e); }
+  }
+  return credited;
+}
+
 Deno.serve(async (req) => {
   _wa = null;
   _ai = null;
@@ -759,6 +832,9 @@ Deno.serve(async (req) => {
 
     // Pós-venda / Sucesso do Cliente (NPS + aniversário) — independente dos usuários do app
     try { sent += await runPostsale(); } catch (e) { console.error("erro postsale:", e); }
+
+    // Abono por indicação do Co-pilot (indique → +30 dias no plano)
+    try { sent += await runReferralBonuses(); } catch (e) { console.error("erro referral bonuses:", e); }
 
     return new Response(JSON.stringify({ ok: true, sent }), { headers: { "Content-Type": "application/json" } });
   } catch (e) {

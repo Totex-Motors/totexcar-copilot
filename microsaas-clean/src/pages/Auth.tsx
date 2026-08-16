@@ -23,6 +23,9 @@ export function AuthPage() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const defaultTab = searchParams.get("tab") === "register" ? "register" : "login";
+  // Indicação do Co-pilot: ?ref=<código de quem indicou> — guarda até o submit do cadastro
+  const refParam = searchParams.get("ref");
+  if (refParam) { try { localStorage.setItem("copilot_ref", refParam); } catch { /* privado */ } }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
