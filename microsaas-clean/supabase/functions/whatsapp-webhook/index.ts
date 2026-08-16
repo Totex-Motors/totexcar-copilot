@@ -828,9 +828,20 @@ async function mktVehicles(params: Record<string, string | number | undefined>):
   return Array.isArray(d?.data) ? d.data : [];
 }
 
+// Meta NÃO aceita WebP por link: o envio volta "accepted" mas a ENTREGA falha com 131053
+// ("WebP image uploads are not currently supported") — e no carrossel a mensagem inteira morre
+// em silêncio. Estoques do ERP BNDV (ex.: Julio Multimarcas) servem .webp do Azure; roteia
+// pelo conversor wsrv.nl (JPEG). JPEG/PNG (autoconf etc.) passam direto, sem proxy.
+const waCompatImg = (url: string): string => {
+  if (!url) return "";
+  if (!/\.webp$/.test(url.toLowerCase().split("?")[0])) return url;
+  // output=png (e não jpg): com jpg a Meta enxergou mime "image/jpg" e recusou (131053);
+  // png devolve image/png determinístico e passa. ~400KB/foto, folga no limite de 5MB.
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png`;
+};
 const carImg = (v: any) => {
   const imgs = Array.isArray(v?.images) ? v.images : [];
-  return (imgs.find((i: any) => i?.isPrimary) || imgs[0])?.url || "";
+  return waCompatImg((imgs.find((i: any) => i?.isPrimary) || imgs[0])?.url || "");
 };
 
 // resumo compacto de um carro pro chat (com link rastreável ?ref do dono → comissão do Indique)
