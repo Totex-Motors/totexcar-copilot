@@ -5,7 +5,7 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
 import { loadDossier, runExtractor } from "../_shared/proactive.ts";
@@ -828,21 +828,49 @@ async function mktVehicles(params: Record<string, string | number | undefined>):
   return Array.isArray(d?.data) ? d.data : [];
 }
 
-// Meta NÃO aceita WebP por link: o envio volta "accepted" mas a ENTREGA falha com 131053
-// ("WebP image uploads are not currently supported") — e no carrossel a mensagem inteira morre
-// em silêncio. Estoques do ERP BNDV (ex.: Julio Multimarcas) servem .webp do Azure; roteia
-// pelo conversor wsrv.nl (JPEG). JPEG/PNG (autoconf etc.) passam direto, sem proxy.
-const waCompatImg = (url: string): string => {
-  if (!url) return "";
-  if (!/\.webp$/.test(url.toLowerCase().split("?")[0])) return url;
-  // output=png (e não jpg): com jpg a Meta enxergou mime "image/jpg" e recusou (131053);
-  // png devolve image/png determinístico e passa. ~400KB/foto, folga no limite de 5MB.
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png`;
-};
 const carImg = (v: any) => {
   const imgs = Array.isArray(v?.images) ? v.images : [];
-  return waCompatImg((imgs.find((i: any) => i?.isPrimary) || imgs[0])?.url || "");
+  return (imgs.find((i: any) => i?.isPrimary) || imgs[0])?.url || "";
 };
+
+// ---- FOTO WebP NA VITRINE: converter e hospedar na Meta ----
+// A Meta rejeita WebP em header de card em TODAS as vias (link E media id: erro 131053 na
+// ENTREGA, depois do "accepted" — a vitrine morre em silêncio). Proxies públicos de conversão
+// também falham: a Meta cacheia mídia por host+path e o wsrv.nl usa o MESMO path pra tudo.
+// Caminho validado em produção: baixar o .webp, converter pra PNG (wasm) e subir na API de
+// mídia da Meta → card usa image.id. O media id vale ~30 dias; cache em wa_media_cache (25d)
+// pra converter cada foto uma vez só. Estoques BNDV (Julio Multimarcas) são o caso real.
+const isWebpUrl = (url: string) => /\.webp$/.test(String(url || "").toLowerCase().split("?")[0]);
+
+async function webpToPng(bytes: ArrayBuffer): Promise<Uint8Array | null> {
+  try {
+    // imports dinâmicos: se o wasm falhar, a vitrine degrada (card sai) mas o webhook NÃO cai no boot
+    const [webp, png] = await Promise.all([
+      import("https://esm.sh/@jsquash/webp@1.5.0?target=denonext"),
+      import("https://esm.sh/@jsquash/png@3.1.1?target=denonext"),
+    ]);
+    const img = await webp.decode(bytes);
+    const out = await png.encode(img);
+    return new Uint8Array(out);
+  } catch (e) { console.error("webpToPng:", e); return null; }
+}
+
+async function webpMediaId(s: any, url: string): Promise<string | null> {
+  try {
+    const cacheOk = new Date(Date.now() - 25 * 24 * 3600_000).toISOString();
+    const { data: hit } = await supabase.from("wa_media_cache")
+      .select("media_id, created_at").eq("url", url).gte("created_at", cacheOk).maybeSingle();
+    if (hit?.media_id) return hit.media_id;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const pngBytes = await webpToPng(await res.arrayBuffer());
+    if (!pngBytes) return null;
+    const id = await waUploadMedia(s, pngBytes, "image/png", "foto.png");
+    if (!id) return null;
+    await supabase.from("wa_media_cache").upsert({ url, media_id: id, created_at: new Date().toISOString() });
+    return id;
+  } catch (e) { console.error("webpMediaId:", e); return null; }
+}
 
 // resumo compacto de um carro pro chat (com link rastreável ?ref do dono → comissão do Indique)
 function mktResumo(v: any, refCode?: string | null) {
@@ -933,16 +961,24 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
   const brl = (v: any) => v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "consulte";
   // CATÁLOGO DESLIZÁVEL primeiro: 1 mensagem com até 10 cards (foto + botão "Ver carro" com ?ref).
   // Template pendente/erro → cai nas fotos individuais abaixo. Sem quebra de linha nos textos (regra de template).
-  const cards = cars.slice(0, 10).map((v) => {
+  const cards: { imageUrl: string; imageId?: string; texto: string; urlSuffix: string }[] = [];
+  for (const v of cars.slice(0, 10)) {
     const img = carImg(v);
     // carrossel e tudo-ou-nada: 1 imagem invalida derruba a mensagem inteira — so https limpo
-    if (!img || !/^https:\/\//i.test(img)) return null;
-    return {
-      imageUrl: img,
+    if (!img || !/^https:\/\//i.test(img)) continue;
+    // foto WebP (BNDV): converte e hospeda na Meta; sem conversão o card fica FORA
+    // (melhor 8 cards entregues do que a vitrine inteira morta no 131053)
+    let imageId: string | undefined;
+    if (isWebpUrl(img)) {
+      imageId = (await webpMediaId(s, img)) || undefined;
+      if (!imageId) continue;
+    }
+    cards.push({
+      imageUrl: img, imageId,
       texto: cardTexto(v, brl),
       urlSuffix: `${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
-    };
-  }).filter(Boolean) as { imageUrl: string; texto: string; urlSuffix: string }[];
+    });
+  }
   if (cards.length >= 2) {
     if (await waSendCarousel(s, phone, cards)) return cards.length;
     // falhou com o lote cheio? tenta com 5 (imagem/limite de algum card pode ter derrubado)
@@ -953,6 +989,8 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
   for (const v of cars.slice(0, 5)) {
     const img = carImg(v);
     if (!img) continue;
+    const mediaId = isWebpUrl(img) ? (await webpMediaId(s, img)) || undefined : undefined;
+    if (isWebpUrl(img) && !mediaId) continue; // WebP sem conversão não entrega — pula
     const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
     const km = Number(v.mileage) > 0 ? ` · ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
     const fipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 abaixo da FIPE" : "";
@@ -960,7 +998,7 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
     // legenda pensada TAMBÉM pra ser ENCAMINHADA (Modo Indicador: motorista manda pro passageiro)
     const loja = v.dealership?.name ? `\n📍 ${v.dealership.name}` : "";
     const caption = `🚗 *${titulo}* ${v.year || ""}\n${brl(v.price)}${km}${fipe}${loja}\n\nFotos e detalhes: ${link}`;
-    if (await waSendImage(s, phone, img, caption)) sent++;
+    if (await waSendImage(s, phone, img, caption, mediaId)) sent++;
   }
   return sent;
 }
@@ -2178,10 +2216,12 @@ async function handleStandLead(phone: string, text: string, contactName?: string
           const v = await res.json();
           const img = carImg(v);
           if (img) {
+            const sHl = await getSettings();
+            const mediaId = isWebpUrl(img) ? (await webpMediaId(sHl, img)) || undefined : undefined;
             const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
             const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
-            await waSendImage(await getSettings(), phone, img,
-              `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o que você viu no stand — fotos e ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`);
+            if (!isWebpUrl(img) || mediaId) await waSendImage(sHl, phone, img,
+              `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o que você viu no stand — fotos e ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`, mediaId);
           }
         }
       } catch { /* segue pra vitrine */ }
