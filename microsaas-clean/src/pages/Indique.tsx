@@ -92,6 +92,29 @@ export default function Indique() {
         </CardContent></Card>
       </div>
 
+      {/* Indique o CO-PILOT (app): amigo se cadastra pelo seu link → você ganha +30 dias no plano */}
+      <Card className="border-0 shadow-premium-md">
+        <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <div className="font-semibold flex items-center gap-2"><Gift className="w-5 h-5 text-primary" /> Indique o Co-pilot e ganhe +30 dias</div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Amigo, familiar ou colega se cadastra pelo seu link e registra o carro → depois de 7 dias de uso,
+              <strong className="text-foreground"> você ganha 30 dias grátis no seu plano</strong> (vale até 12 vezes por ano; no plano anual vira um mês a mais).
+            </p>
+          </div>
+          <Button
+            disabled={!code}
+            onClick={() => {
+              const link = `${window.location.origin}/auth?tab=register&ref=${encodeURIComponent(code || "")}`;
+              // SEM emojis no texto do wa.me (viram "�" em vários Androids)
+              shareToFriend(link, "Estou usando o TotexCar Co-pilot pra cuidar do meu carro pelo WhatsApp (gastos, revisao, multas, FIPE). Cadastre-se pelo meu link:");
+            }}
+          >
+            <Share2 className="w-4 h-4 mr-2" /> Indicar pelo WhatsApp
+          </Button>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chave PIX + link da loja */}
         <Card className="border-0 shadow-premium-md lg:col-span-1 h-fit">

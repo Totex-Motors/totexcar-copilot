@@ -48,6 +48,10 @@ export const useAuth = () => {
   const signUpWithEmail = async (email: string, password: string, name?: string, phone?: string) => {
     const phoneNormalized = normalizePhone(phone);
     console.log('🔐 signUpWithEmail - params:', { email, name, phone });
+    // Indicação do Co-pilot: código capturado do ?ref= (Auth.tsx) vai no metadata e o
+    // trigger handle_new_user grava em users.referred_by (abono validado depois pelo cron)
+    let referredBy: string | null = null;
+    try { referredBy = localStorage.getItem("copilot_ref"); } catch { /* privado */ }
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -55,10 +59,12 @@ export const useAuth = () => {
         data: {
           phone: phoneNormalized,
           name,
-          email
+          email,
+          ...(referredBy ? { referred_by: referredBy.toUpperCase() } : {})
         }
       }
     });
+    if (!error) { try { localStorage.removeItem("copilot_ref"); } catch { /* ok */ } }
     console.log('🔐 signUpWithEmail - response:', { data, error });
 
     if (error) {
