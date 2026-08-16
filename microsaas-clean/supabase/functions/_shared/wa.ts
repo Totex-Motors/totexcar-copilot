@@ -106,17 +106,37 @@ export async function waSendTemplate(
 }
 
 // ---------------- envio: IMAGEM com legenda (vitrine de carros; janela de 24h) ----------------
-export async function waSendImage(s: WaSettings, phone: string, imageUrl: string, caption?: string): Promise<boolean> {
+export async function waSendImage(s: WaSettings, phone: string, imageUrl: string, caption?: string, mediaId?: string): Promise<boolean> {
   const to = onlyDigits(phone);
-  if (!to || !imageUrl) return false;
+  if (!to || (!imageUrl && !mediaId)) return false;
   if (waProvider(s) === "meta") {
     return metaPost(s, {
       messaging_product: "whatsapp", to, type: "image",
-      image: { link: imageUrl, ...(caption ? { caption: caption.slice(0, 1024) } : {}) },
+      image: { ...(mediaId ? { id: mediaId } : { link: imageUrl }), ...(caption ? { caption: caption.slice(0, 1024) } : {}) },
     });
   }
   // uazapi: /send/media (type image) — best-effort
   return uazapiPost(s, "/send/media", { number: to, type: "image", file: imageUrl, text: caption || "" });
+}
+
+// ---------------- upload de MÍDIA (media id da Meta; vale ~30 dias) ----------------
+// Usado pela vitrine quando a foto do estoque é WebP: a Meta rejeita WebP em header de card
+// tanto por link quanto por media id — o chamador converte pra PNG e sobe os bytes aqui.
+export async function waUploadMedia(s: WaSettings, bytes: Uint8Array, mime: string, filename: string): Promise<string | null> {
+  const token = s.meta_wa_token || "";
+  const phoneId = s.meta_wa_phone_id || "";
+  if (!token || !phoneId) return null;
+  try {
+    const fd = new FormData();
+    fd.append("messaging_product", "whatsapp");
+    fd.append("file", new Blob([bytes.buffer as ArrayBuffer], { type: mime }), filename);
+    const res = await fetch(`${GRAPH}/${phoneId}/media`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd,
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.id) { console.error("waUploadMedia falhou:", res.status, JSON.stringify(j?.error || j)); return null; }
+    return String(j.id);
+  } catch (e) { console.error("waUploadMedia:", e); return null; }
 }
 
 // ---------------- envio: CARROSSEL de cards (vitrine deslizável; template aprovado) ----------------
@@ -126,7 +146,7 @@ export async function waSendImage(s: WaSettings, phone: string, imageUrl: string
 // template por tamanho — `vitrine_carros_2`…`vitrine_carros_10` (scripts/create-carousel-template.mjs)
 // — e aqui escolhemos pelo nº de cards. Template pendente/erro → retorna false e o chamador
 // cai nas fotos individuais (nada quebra).
-export async function waSendCarousel(s: WaSettings, phone: string, cards: { imageUrl: string; texto: string; urlSuffix: string }[]): Promise<boolean> {
+export async function waSendCarousel(s: WaSettings, phone: string, cards: { imageUrl: string; imageId?: string; texto: string; urlSuffix: string }[]): Promise<boolean> {
   const to = onlyDigits(phone);
   if (!to || cards.length < 2 || waProvider(s) !== "meta") return false;
   const n = Math.min(cards.length, 10);
@@ -139,7 +159,8 @@ export async function waSendCarousel(s: WaSettings, phone: string, cards: { imag
         cards: cards.slice(0, n).map((c, i) => ({
           card_index: i,
           components: [
-            { type: "header", parameters: [{ type: "image", image: { link: c.imageUrl } }] },
+            // imageId (media já hospedada na Meta) tem prioridade — usado p/ fotos WebP convertidas
+            { type: "header", parameters: [{ type: "image", image: c.imageId ? { id: c.imageId } : { link: c.imageUrl } }] },
             { type: "body", parameters: [{ type: "text", text: cleanParam(c.texto) }] },
             { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: c.urlSuffix }] },
           ],
