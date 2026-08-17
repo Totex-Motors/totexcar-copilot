@@ -66,6 +66,21 @@ Deno.serve(async (req) => {
         return json({ ok: true, rows });
       }
 
+      // LISTA de leads individuais (nome + contato) pra exportar/campanha — todas as lojas
+      case "stand_leads": {
+        const { data, error } = await admin.rpc("stand_leads", { p_loja: null });
+        if (error) throw error;
+        let nomes: Record<string, string> = {};
+        try {
+          const res = await fetch(`${Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com"}/api/dealerships`, { headers: { Accept: "application/json" } });
+          const d = await res.json();
+          const list = Array.isArray(d) ? d : (d?.data || []);
+          for (const x of list) if (x?.slug) nomes[String(x.slug).toLowerCase()] = x.name || x.slug;
+        } catch { /* usa o slug */ }
+        const leads = (data || []).map((r: any) => ({ ...r, loja_nome: nomes[r.loja] || r.loja }));
+        return json({ ok: true, leads });
+      }
+
       case "list_owners": {
         const { data, error } = await admin
           .from("users")
