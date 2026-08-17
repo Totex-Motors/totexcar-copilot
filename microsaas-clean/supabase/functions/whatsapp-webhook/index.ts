@@ -1003,6 +1003,45 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
   return sent;
 }
 
+// carro abaixo da FIPE = "oferta imperdível"
+const abaixoFipe = (v: any) => v?.fipePrice && Number(v.price) > 0 && Number(v.price) < Number(v.fipePrice);
+
+// OFERTA NA HORA: o motor de intenção detectou um desejo e o carro JÁ está no estoque agora.
+// Manda a vitrine na sequência da conversa (janela de 24h aberta → mensagem livre, sem template).
+// Dedup casa com o cron: mesma chave notification_log radar:{radarId}:{vehId} + âncora = data de
+// criação do radar → a oferta instantânea e a do cron NUNCA mandam o mesmo carro duas vezes.
+async function maybeInstantOffer(user: any, intent: any): Promise<void> {
+  try {
+    if (!user?.phone || !intent?.radarId) return;
+    const scopeId = await garagemDealerId(user.dealership).catch(() => null);
+    let cars = await mktVehicles({
+      brand: intent.brand || undefined, search: intent.model || undefined,
+      maxPrice: intent.maxPrice || undefined, minYear: intent.minYear || undefined,
+      dealershipId: scopeId || undefined, limit: 6,
+    }).catch(() => [] as any[]);
+    if (!cars.length) return; // não tem agora → o cron avisa quando entrar (mágica adiada)
+
+    const anchor = String(intent.createdAt || new Date().toISOString()).split("T")[0];
+    const novos: any[] = [];
+    for (const v of cars) {
+      if (!v?.id) continue;
+      const { error } = await supabase.from("notification_log").insert({
+        user_id: user.id, kind: `radar:${intent.radarId}:${v.id}`, due_date: anchor, channel: "whatsapp",
+      });
+      if (error) continue; // 23505 = já avisado (cron ou rodada anterior) → pula
+      novos.push(v);
+    }
+    if (!novos.length) return; // tudo que casa já foi avisado
+    novos.sort((a, b) => Number(abaixoFipe(b)) - Number(abaixoFipe(a))); // oferta imperdível primeiro
+
+    const s = await getSettings();
+    const desejo = [intent.brand, intent.model].filter(Boolean).join(" ") || "o carro que você comentou";
+    const hot = abaixoFipe(novos[0]) ? ", e tem um *abaixo da tabela* 🔥" : "";
+    await waSendText(s, user.phone, `🎯 Que timing! Você comentou de *${desejo}* e eu tenho no estoque *agora*${hot}. Olha só 👇`);
+    await sendCarShowcase(user.phone, novos.slice(0, 5), user.referral_code);
+  } catch (e) { console.error("maybeInstantOffer:", e); }
+}
+
 // ---------- FERRAMENTAS DA IA (function calling) ----------
 const TOOL_SPECS = [
   {
@@ -1280,7 +1319,7 @@ const TOOL_SPECS = [
   },
 ];
 
-type ToolCtx = { user: any; vehicle: any; today: string; inputText: string };
+type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean };
 
 async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any> {
   const { user, vehicle, today } = ctx;
@@ -1683,6 +1722,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       if (!cars.length) return { ok: true, total: 0, categoria: catFiltro || undefined, message: `Nada no estoque com esses critérios${catFiltro ? ` na categoria ${catFiltro}` : ""}. Ofereça criar_radar pro usuário ser avisado quando aparecer.` };
       // VITRINE: manda as fotos dos carros direto no chat
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
+      if (enviados > 0) ctx.shownCars = true; // já mostrou carros nesta conversa → motor de intenção não duplica
       return {
         ok: true, total: cars.length, fotos_enviadas: enviados,
         carros: cars.map((v: any) => mktResumo(v, user.referral_code)),
@@ -1711,6 +1751,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       if (own) cars = cars.filter((c: any) => `${c.brand} ${c.model}`.toLowerCase() !== own || c.year !== vehicle?.ano_modelo);
       cars = cars.slice(0, 6);
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
+      if (enviados > 0) ctx.shownCars = true; // já mostrou carros → motor de intenção não duplica
       return {
         ok: true, criterio, fotos_enviadas: enviados,
         carros: cars.map((c: any) => mktResumo(c, user.referral_code)),
@@ -2930,9 +2971,12 @@ ${JSON.stringify(snapshot)}`;
     parts.push({ kind: "text", text: inputText || "(sem conteúdo)" });
 
     const aiConfig = await getAIConfig();
+    // ctx nomeado: os handlers marcam ctx.shownCars quando mostram a vitrine, e o motor de
+    // intenção lê isso depois pra não mandar oferta repetida.
+    const ctx: ToolCtx = { user, vehicle, today, inputText };
     let replyText = "";
     try {
-      replyText = await runAgent(aiConfig, system, parts, { user, vehicle, today, inputText });
+      replyText = await runAgent(aiConfig, system, parts, ctx);
     } catch (e) {
       console.error("runAgent erro:", e);
     }
@@ -2950,10 +2994,16 @@ ${JSON.stringify(snapshot)}`;
     } catch { /* */ }
 
     // MOTOR DE INTENÇÃO: se o usuário demonstrou querer comprar/trocar por um carro específico,
-    // cria em silêncio o radar (car_radar source=auto). O cron avisa quando o carro entra no
-    // estoque — sem escuta ambiente: só o que ele mesmo mandou pro Co-pilot. Fire-and-forget.
+    // cria em silêncio o radar (car_radar source=auto). Sem escuta ambiente: só o que ele mesmo
+    // mandou pro Co-pilot. Se o carro JÁ está no estoque agora, manda a oferta na sequência
+    // (momento de ouro) — MAS só se o agente não tiver acabado de mostrar carros nesta conversa
+    // (senão seria oferta repetida). Se não tem no estoque, o cron avisa quando entrar.
+    // Fire-and-forget: nunca bloqueia a resposta.
     try {
-      const ci = detectCarIntent(supabase, aiConfig, user.id, inputText);
+      const ci = (async () => {
+        const intent = await detectCarIntent(supabase, aiConfig, user.id, inputText);
+        if (intent && !ctx.shownCars) await maybeInstantOffer(user, intent);
+      })();
       (globalThis as any).EdgeRuntime?.waitUntil?.(ci) ?? ci.catch(() => {});
     } catch { /* */ }
 

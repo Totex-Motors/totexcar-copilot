@@ -243,16 +243,23 @@ REGRAS ESTRITAS:
 - max_price: teto em reais ("até 80 mil" → 80000). min_year: ano mínimo se citado.
 - frase: o trecho curto da fala que mostra a intenção.`;
 
-// Cria/atualiza o radar silencioso. NÃO responde ao usuário (a mágica é o cron avisar depois).
-export async function detectCarIntent(supabase: any, cfg: AIConfig, userId: string, input: string): Promise<void> {
+export type CarIntent = {
+  radarId: string; brand: string | null; model: string | null;
+  maxPrice: number | null; minYear: number | null; createdAt: string;
+};
+
+// Detecta a intenção e cria/atualiza o radar silencioso. Devolve o radar (pra oferta na hora,
+// se o carro já estiver no estoque) ou null. NÃO responde ao usuário — quem avisa é o webhook
+// (se tem no estoque agora) ou o cron (quando entrar). Dedup/âncora casam com o cron.
+export async function detectCarIntent(supabase: any, cfg: AIConfig, userId: string, input: string): Promise<CarIntent | null> {
   try {
-    if (!worthCarIntent(input)) return;
+    if (!worthCarIntent(input)) return null;
     const out = await chatJSON(cheapModel(cfg), CAR_INTENT_SYSTEM,
       `Fala do usuário: ${String(input).slice(0, 600)}\nResponda com o JSON.`, 200, 0);
-    if (!out?.intencao) return;
+    if (!out?.intencao) return null;
     const brand = String(out.brand || "").trim() || null;
     const model = String(out.model || "").trim() || null;
-    if (!brand && !model) return; // exige marca ou modelo específico (não cria radar de categoria)
+    if (!brand && !model) return null; // exige marca ou modelo específico (não cria radar de categoria)
     const maxPrice = Number(out.max_price) > 0 ? Math.round(Number(out.max_price)) : null;
     const minYear = Number(out.min_year) > 1990 && Number(out.min_year) <= 2100 ? Math.round(Number(out.min_year)) : null;
     const frase = String(out.frase || input).slice(0, 200);
@@ -260,7 +267,7 @@ export async function detectCarIntent(supabase: any, cfg: AIConfig, userId: stri
 
     // dedup contra TODOS os radares ativos (manual ou auto): não duplica o mesmo desejo
     const { data: all } = await supabase.from("car_radar")
-      .select("id, brand, model, source, max_price, min_year")
+      .select("id, brand, model, source, max_price, min_year, created_at")
       .eq("user_id", userId).eq("active", true);
     const jaTem = (all || []).find((a: any) => norm(a.brand) === norm(brand) && norm(a.model) === norm(model));
     if (jaTem) {
@@ -271,16 +278,20 @@ export async function detectCarIntent(supabase: any, cfg: AIConfig, userId: stri
           notes: frase, updated_at: new Date().toISOString(),
         }).eq("id", jaTem.id);
       }
-      return;
+      // devolve o desejo (mesmo pré-existente) — pode ter entrado no estoque desde a última vez
+      return { radarId: jaTem.id, brand, model, maxPrice: maxPrice ?? jaTem.max_price, minYear: minYear ?? jaTem.min_year, createdAt: jaTem.created_at };
     }
     // teto de 6 radares auto ativos por usuário (evita explosão de notificação)
-    if ((all || []).filter((a: any) => a.source === "auto").length >= 6) return;
-    await supabase.from("car_radar").insert({
+    if ((all || []).filter((a: any) => a.source === "auto").length >= 6) return null;
+    const { data: novo } = await supabase.from("car_radar").insert({
       user_id: userId, brand, model, max_price: maxPrice, min_year: minYear,
       notes: frase, active: true, source: "auto",
-    });
+    }).select("id, created_at").single();
+    if (!novo?.id) return null;
+    return { radarId: novo.id, brand, model, maxPrice, minYear, createdAt: novo.created_at };
   } catch (e) {
     console.error("detectCarIntent (silencioso, não bloqueia):", e);
+    return null;
   }
 }
 
