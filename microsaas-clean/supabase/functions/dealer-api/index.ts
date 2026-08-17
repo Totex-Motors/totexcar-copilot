@@ -323,6 +323,38 @@ Deno.serve(async (req) => {
         return json({ ok: true, dealership: alvoNome, slug, leads: data || [] });
       }
 
+      // KIT DE QR POR CARRO: resolve slug+id da loja e devolve o estoque dela pra montar 1 QR/veículo
+      case "stand_qr_kit": {
+        const alvoNome = scopeDealership && scopeDealership !== "__none__" ? scopeDealership : (isAdmin ? (p.dealership ? String(p.dealership) : me.dealership) : me.dealership);
+        if (!alvoNome) return json({ error: "sem_loja" }, 400);
+        const MKT = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
+        let slug: string | null = null, dealerId: string | null = null, lojaNome = alvoNome;
+        try {
+          const res = await fetch(`${MKT}/api/dealerships`, { headers: { Accept: "application/json" } });
+          const d = await res.json();
+          const list = Array.isArray(d) ? d : (d?.data || []);
+          const norm = (s: any) => String(s || "").trim().toLowerCase();
+          const hit = list.find((x: any) => norm(x.name) === norm(alvoNome) || norm(x.slug) === norm(alvoNome));
+          if (!hit) return json({ ok: true, matched: false, cars: [] });
+          slug = String(hit.slug).toLowerCase(); dealerId = hit.id; lojaNome = hit.name || alvoNome;
+        } catch { return json({ error: "marketplace_indisponivel" }, 502); }
+        // estoque da loja (até 200)
+        let cars: any[] = [];
+        try {
+          const u = new URL(`${MKT}/api/vehicles`);
+          u.searchParams.set("dealershipId", dealerId!); u.searchParams.set("limit", "200");
+          const res = await fetch(u.toString(), { headers: { Accept: "application/json" } });
+          const d = await res.json();
+          const arr = Array.isArray(d?.data) ? d.data : [];
+          cars = arr.map((v: any) => {
+            const imgs = Array.isArray(v.images) ? v.images : [];
+            const img = (imgs.find((i: any) => i?.isPrimary) || imgs[0])?.url || "";
+            return { id: v.id, brand: v.brand, model: v.model, version: v.version, year: v.year, price: v.price, photo: img };
+          });
+        } catch { /* devolve vazio */ }
+        return json({ ok: true, slug, loja_nome: lojaNome, wa_number: "5511963786699", cars });
+      }
+
       case "list_clients": {
         let q = admin.from("users")
           .select("id, name, email, phone, plan, subscription_status, coupon_code, dealership, cnh_vencimento, created_at, plan_cycle, plan_value")
