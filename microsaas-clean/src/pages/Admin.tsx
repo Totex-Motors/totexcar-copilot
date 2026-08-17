@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Switch } from "@/components/ui/switch";
-import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift } from "lucide-react";
+import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode } from "lucide-react";
+import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -117,6 +118,7 @@ const Admin = () => {
           <TabsTrigger value="config" className="gap-2"><KeyRound className="w-4 h-4" /> Configurações & Integrações</TabsTrigger>
           <TabsTrigger value="growth" className="gap-2"><Ticket className="w-4 h-4" /> Cupons & Ecossistema</TabsTrigger>
           <TabsTrigger value="subs" className="gap-2"><BarChart3 className="w-4 h-4" /> Assinaturas</TabsTrigger>
+          <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
         </TabsList>
 
         <TabsContent value="owners" className="mt-6">
@@ -133,6 +135,9 @@ const Admin = () => {
         </TabsContent>
         <TabsContent value="subs" className="mt-6">
           <SubscriptionsTab />
+        </TabsContent>
+        <TabsContent value="stand" className="mt-6">
+          <StandLeadsPanel source="admin" />
         </TabsContent>
       </Tabs>
     </DashboardLayout>

@@ -282,6 +282,27 @@ Deno.serve(async (req) => {
       case "me":
         return json({ ok: true, dealer: { id: me.id, name: me.name, email: me.email, role: me.role, dealership: me.dealership } });
 
+      // FUNIL DO STAND da loja do lojista (por promotor). O stand usa SLUG; a loja é por NOME →
+      // resolve nome→slug no marketplace. Admin sem escopo vê tudo; com ?dealership= filtra por nome.
+      case "stand_report": {
+        const alvoNome = scopeDealership && scopeDealership !== "__none__" ? scopeDealership : (isAdmin ? null : me.dealership);
+        let slug: string | null = null;
+        if (alvoNome) {
+          try {
+            const res = await fetch(`${Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com"}/api/dealerships`, { headers: { Accept: "application/json" } });
+            const d = await res.json();
+            const list = Array.isArray(d) ? d : (d?.data || []);
+            const norm = (s: any) => String(s || "").trim().toLowerCase();
+            const hit = list.find((x: any) => norm(x.name) === norm(alvoNome) || norm(x.slug) === norm(alvoNome));
+            slug = hit?.slug ? String(hit.slug).toLowerCase() : null;
+            if (!slug) return json({ ok: true, dealership: alvoNome, matched: false, rows: [] });
+          } catch { return json({ ok: true, dealership: alvoNome, rows: [] }); }
+        }
+        const { data, error } = await admin.rpc("stand_report", { p_loja: slug });
+        if (error) throw error;
+        return json({ ok: true, dealership: alvoNome, slug, rows: data || [] });
+      }
+
       case "list_clients": {
         let q = admin.from("users")
           .select("id, name, email, phone, plan, subscription_status, coupon_code, dealership, cnh_vencimento, created_at, plan_cycle, plan_value")
