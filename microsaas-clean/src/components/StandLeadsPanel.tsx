@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { QrCode, RefreshCw, ScanLine, Users, Gift, UserCheck, Download, Phone } from "lucide-react";
+import { StandQrKit } from "./StandQrKit";
 
 type Row = {
   loja: string; loja_nome?: string; promotor: string;
@@ -107,6 +108,8 @@ export function StandLeadsPanel({ source }: { source: "admin" | "dealer" }) {
           </Button>
         </div>
       </div>
+
+      {source === "dealer" && <StandQrKit />}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPI icon={<ScanLine className="w-4 h-4" />} label="Escaneios" value={totals.escaneios} />
