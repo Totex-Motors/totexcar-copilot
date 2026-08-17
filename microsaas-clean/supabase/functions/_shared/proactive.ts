@@ -218,6 +218,83 @@ export function worthExtracting(input: string): boolean {
   return true;
 }
 
+// ---------------- MOTOR DE INTENÇÃO (radar silencioso da Garagem) ----------------
+// Escuta o que o usuário fala PRA gente (texto ou voz transcrita) e, quando ele demonstra
+// querer COMPRAR/TROCAR por um carro específico, cria em silêncio um car_radar (source='auto').
+// Depois o cron (maybeNotifyRadar) dispara "apareceu o carro que você procura" quando o
+// veículo casa com o estoque — a mágica ("como ele sabia?!") vem de a pessoa ter nos CONTADO.
+// Nada de escuta ambiente: só o que ela mesma manda pro Co-pilot.
+
+// pré-filtro barato: só paga a chamada da IA se a frase cheira a intenção de compra
+const CAR_INTENT_HINT = /\b(quero|queria|quer[ií]a|procur|comprar|comprando|trocar|troca|pensando|penso em|gostaria|sonho|financi|de olho|interess|busco|buscando|achar um|quero um|quero uma)\b/i;
+export function worthCarIntent(input: string): boolean {
+  const t = String(input || "").trim();
+  return t.length >= 8 && CAR_INTENT_HINT.test(t);
+}
+
+const CAR_INTENT_SYSTEM = `Você detecta INTENÇÃO DE COMPRA de carro na fala de um usuário (texto ou transcrição de áudio) para o assistente TotexCar.
+Responda SOMENTE com JSON: {"intencao":boolean,"brand":"","model":"","max_price":número ou null,"min_year":número ou null,"frase":""}
+
+REGRAS ESTRITAS:
+- intencao=true SÓ se o usuário quiser COMPRAR ou TROCAR por OUTRO carro no futuro. Ex.: "queria um Corolla", "tô de olho num Compass até 130 mil", "penso em trocar por uma Strada".
+- intencao=false para: o carro que ele JÁ TEM ("meu Gol", "abasteci o Corolla"), fatos passados ("vendi meu Uno"), manutenção, dúvidas gerais, conversa fiada, elogio, reclamação.
+- "brand" e "model": preencha SÓ se ele nomear marca/modelo específicos. Categoria genérica sem modelo ("um SUV", "um carro econômico", "uma picape") → intencao=false (amplo demais para radar).
+- Se NÃO houver marca NEM modelo específico, intencao=false.
+- max_price: teto em reais ("até 80 mil" → 80000). min_year: ano mínimo se citado.
+- frase: o trecho curto da fala que mostra a intenção.`;
+
+export type CarIntent = {
+  radarId: string; brand: string | null; model: string | null;
+  maxPrice: number | null; minYear: number | null; createdAt: string;
+};
+
+// Detecta a intenção e cria/atualiza o radar silencioso. Devolve o radar (pra oferta na hora,
+// se o carro já estiver no estoque) ou null. NÃO responde ao usuário — quem avisa é o webhook
+// (se tem no estoque agora) ou o cron (quando entrar). Dedup/âncora casam com o cron.
+export async function detectCarIntent(supabase: any, cfg: AIConfig, userId: string, input: string): Promise<CarIntent | null> {
+  try {
+    if (!worthCarIntent(input)) return null;
+    const out = await chatJSON(cheapModel(cfg), CAR_INTENT_SYSTEM,
+      `Fala do usuário: ${String(input).slice(0, 600)}\nResponda com o JSON.`, 200, 0);
+    if (!out?.intencao) return null;
+    const brand = String(out.brand || "").trim() || null;
+    const model = String(out.model || "").trim() || null;
+    if (!brand && !model) return null; // exige marca ou modelo específico (não cria radar de categoria)
+    const maxPrice = Number(out.max_price) > 0 ? Math.round(Number(out.max_price)) : null;
+    const minYear = Number(out.min_year) > 1990 && Number(out.min_year) <= 2100 ? Math.round(Number(out.min_year)) : null;
+    const frase = String(out.frase || input).slice(0, 200);
+    const norm = (s: any) => String(s || "").trim().toLowerCase();
+
+    // dedup contra TODOS os radares ativos (manual ou auto): não duplica o mesmo desejo
+    const { data: all } = await supabase.from("car_radar")
+      .select("id, brand, model, source, max_price, min_year, created_at")
+      .eq("user_id", userId).eq("active", true);
+    const jaTem = (all || []).find((a: any) => norm(a.brand) === norm(brand) && norm(a.model) === norm(model));
+    if (jaTem) {
+      // radar manual já cobre → não mexe; radar auto → só refina teto/ano com a fala mais recente
+      if (jaTem.source === "auto") {
+        await supabase.from("car_radar").update({
+          max_price: maxPrice ?? jaTem.max_price, min_year: minYear ?? jaTem.min_year,
+          notes: frase, updated_at: new Date().toISOString(),
+        }).eq("id", jaTem.id);
+      }
+      // devolve o desejo (mesmo pré-existente) — pode ter entrado no estoque desde a última vez
+      return { radarId: jaTem.id, brand, model, maxPrice: maxPrice ?? jaTem.max_price, minYear: minYear ?? jaTem.min_year, createdAt: jaTem.created_at };
+    }
+    // teto de 6 radares auto ativos por usuário (evita explosão de notificação)
+    if ((all || []).filter((a: any) => a.source === "auto").length >= 6) return null;
+    const { data: novo } = await supabase.from("car_radar").insert({
+      user_id: userId, brand, model, max_price: maxPrice, min_year: minYear,
+      notes: frase, active: true, source: "auto",
+    }).select("id, created_at").single();
+    if (!novo?.id) return null;
+    return { radarId: novo.id, brand, model, maxPrice, minYear, createdAt: novo.created_at };
+  } catch (e) {
+    console.error("detectCarIntent (silencioso, não bloqueia):", e);
+    return null;
+  }
+}
+
 export async function runExtractor(supabase: any, cfg: AIConfig, userId: string, input: string, reply: string): Promise<void> {
   try {
     if (!worthExtracting(input)) return;

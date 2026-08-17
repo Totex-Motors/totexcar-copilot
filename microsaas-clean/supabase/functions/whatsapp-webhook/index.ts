@@ -8,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
-import { loadDossier, runExtractor } from "../_shared/proactive.ts";
+import { loadDossier, runExtractor, detectCarIntent } from "../_shared/proactive.ts";
 import { careFuel, careOdometer, careStatement, seloElegivel } from "../_shared/care-score.ts";
 import { upcoming as calendarUpcoming, kmMedioDia as calendarKmDia } from "../_shared/calendar.ts";
 import {
@@ -1003,6 +1003,45 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
   return sent;
 }
 
+// carro abaixo da FIPE = "oferta imperdível"
+const abaixoFipe = (v: any) => v?.fipePrice && Number(v.price) > 0 && Number(v.price) < Number(v.fipePrice);
+
+// OFERTA NA HORA: o motor de intenção detectou um desejo e o carro JÁ está no estoque agora.
+// Manda a vitrine na sequência da conversa (janela de 24h aberta → mensagem livre, sem template).
+// Dedup casa com o cron: mesma chave notification_log radar:{radarId}:{vehId} + âncora = data de
+// criação do radar → a oferta instantânea e a do cron NUNCA mandam o mesmo carro duas vezes.
+async function maybeInstantOffer(user: any, intent: any): Promise<void> {
+  try {
+    if (!user?.phone || !intent?.radarId) return;
+    const scopeId = await garagemDealerId(user.dealership).catch(() => null);
+    let cars = await mktVehicles({
+      brand: intent.brand || undefined, search: intent.model || undefined,
+      maxPrice: intent.maxPrice || undefined, minYear: intent.minYear || undefined,
+      dealershipId: scopeId || undefined, limit: 6,
+    }).catch(() => [] as any[]);
+    if (!cars.length) return; // não tem agora → o cron avisa quando entrar (mágica adiada)
+
+    const anchor = String(intent.createdAt || new Date().toISOString()).split("T")[0];
+    const novos: any[] = [];
+    for (const v of cars) {
+      if (!v?.id) continue;
+      const { error } = await supabase.from("notification_log").insert({
+        user_id: user.id, kind: `radar:${intent.radarId}:${v.id}`, due_date: anchor, channel: "whatsapp",
+      });
+      if (error) continue; // 23505 = já avisado (cron ou rodada anterior) → pula
+      novos.push(v);
+    }
+    if (!novos.length) return; // tudo que casa já foi avisado
+    novos.sort((a, b) => Number(abaixoFipe(b)) - Number(abaixoFipe(a))); // oferta imperdível primeiro
+
+    const s = await getSettings();
+    const desejo = [intent.brand, intent.model].filter(Boolean).join(" ") || "o carro que você comentou";
+    const hot = abaixoFipe(novos[0]) ? ", e tem um *abaixo da tabela* 🔥" : "";
+    await waSendText(s, user.phone, `🎯 Que timing! Você comentou de *${desejo}* e eu tenho no estoque *agora*${hot}. Olha só 👇`);
+    await sendCarShowcase(user.phone, novos.slice(0, 5), user.referral_code);
+  } catch (e) { console.error("maybeInstantOffer:", e); }
+}
+
 // ---------- FERRAMENTAS DA IA (function calling) ----------
 const TOOL_SPECS = [
   {
@@ -1280,7 +1319,7 @@ const TOOL_SPECS = [
   },
 ];
 
-type ToolCtx = { user: any; vehicle: any; today: string; inputText: string };
+type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean };
 
 async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any> {
   const { user, vehicle, today } = ctx;
@@ -1683,10 +1722,11 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       if (!cars.length) return { ok: true, total: 0, categoria: catFiltro || undefined, message: `Nada no estoque com esses critérios${catFiltro ? ` na categoria ${catFiltro}` : ""}. Ofereça criar_radar pro usuário ser avisado quando aparecer.` };
       // VITRINE: manda as fotos dos carros direto no chat
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
+      if (enviados > 0) ctx.shownCars = true; // já mostrou carros nesta conversa → motor de intenção não duplica
       return {
         ok: true, total: cars.length, fotos_enviadas: enviados,
         carros: cars.map((v: any) => mktResumo(v, user.referral_code)),
-        instrucao: enviados > 0 ? "As FOTOS dos carros JÁ foram enviadas ao usuário. Comente 2-3 deles com o PORQUÊ de combinarem com o que ele quer, de forma curta e natural — NÃO repita preço/link (já estão nas fotos)." : undefined,
+        instrucao: enviados > 0 ? "As FOTOS já foram enviadas (cards deslizáveis). Agora fala como um amigo que manja de carro num papo de WhatsApp — NÃO como vendedor nem folheto. Regras: (a) SEM lista numerada, SEM negrito, SEM '1. 2. 3.'; texto corrido de 2-3 linhas. (b) PROIBIDO adjetivo de propaganda ('ótimo custo-benefício', 'muito confiável', 'design moderno', 'completo'); fale detalhe CONCRETO e honesto (ex.: 'o Corolla 2018 é câmbio CVT, macio no trânsito e revenda tranquila', 'o Prisma tem porta-malas grande, bom se você anda com a família'). (c) puxa 1 ou 2 que MAIS casam com o que ELE falou e diz o porquê ligado ao USO dele; se algum tiver um ponto fraco relevante, seja honesto. (d) varia a abertura (nada de 'Encontrei X opções que podem te interessar'); pode fechar perguntando qual chamou mais atenção. NÃO repita preço/link (já estão nos cards)." : undefined,
       };
     }
 
@@ -1711,10 +1751,11 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       if (own) cars = cars.filter((c: any) => `${c.brand} ${c.model}`.toLowerCase() !== own || c.year !== vehicle?.ano_modelo);
       cars = cars.slice(0, 6);
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
+      if (enviados > 0) ctx.shownCars = true; // já mostrou carros → motor de intenção não duplica
       return {
         ok: true, criterio, fotos_enviadas: enviados,
         carros: cars.map((c: any) => mktResumo(c, user.referral_code)),
-        instrucao: enviados > 0 ? "As FOTOS já foram enviadas. Comente rapidamente as opções sem repetir preço/link." : undefined,
+        instrucao: enviados > 0 ? "As FOTOS já foram enviadas (cards deslizáveis). Comenta em 1-2 linhas naturais, como amigo que entende de carro — SEM lista numerada, SEM negrito, SEM adjetivo de folheto. Puxa 1 que faça sentido e diz um detalhe concreto do porquê. Não repita preço/link." : undefined,
       };
     }
 
@@ -2663,7 +2704,7 @@ GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do 
 (3) oportunidades_carros é só um EXTRA opcional ("se quiser, tenho umas ideias na sua faixa também") — nunca a resposta principal, nunca sozinha, e nunca enquadrada como "você deveria trocar".
 (4) se o desejo dele não estiver no estoque, ofereça criar_radar ("te aviso quando aparecer").
 Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e só ajude a comprar se ELE quiser. Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista honesto sobre prós e contras, conectando ao estoque quando fizer sentido.
-FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Só comente os porquês, sem repetir preço/link. NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
+FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Ao comentar, soe como GENTE num papo de WhatsApp, não como catálogo: texto corrido e curto (2-3 linhas), SEM lista numerada, SEM negrito de título, SEM adjetivo de propaganda ("ótimo custo-benefício", "muito confiável", "completo") — em vez disso, um detalhe REAL e honesto ligado ao uso da pessoa. Comente 1 ou 2 que mais combinam, não todos. Sem repetir preço/link (já estão nos cards). NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
 VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Garagem no app". Se precisar, é só dizer que ele pode avaliar por aqui.
 
 RADAR DE SERVIÇOS (achar oficina/borracharia/guincho/chaveiro/bateria): a busca leva ~8 segundos, então SEMPRE avise antes ("Deixa eu procurar aqui pra você, 1 minutinho…") na MESMA mensagem em que decide buscar — nunca deixe o motorista no vácuo achando que travou. Use quando ele precisar de um serviço no carro — "preciso trocar a bateria", "onde conserto o freio", "furei o pneu", "meu carro não pega", "quanto custa revisão" — use buscar_servico. REGRAS: (1) PESQUISAR é livre — NUNCA peça autorização pra procurar ou pra mostrar dado público; só faça. (2) Se não souber onde ele está, pergunte a cidade/bairro em UMA linha e só então busque. (3) Apresente 3 a 6 opções curtas com o porquê de cada uma; marque quem é PARCEIRO TOTEX e deixe claro que o resto é resultado público (a confirmar direto com o estabelecimento — a Totex não credencia nem garante). (4) NUNCA invente preço, disponibilidade, garantia, distância ou tempo de chegada: o que não veio na busca é "não informado" — e diga isso sem rodeio. (5) Não ordene por interesse comercial; parceiro ganha selo, não posição. (6) Só chame pedir_orcamento DEPOIS de listar quais dados serão compartilhados e ele autorizar explicitamente. Se ele disser "pesquisa mas não passa meu telefone", pesquise e ofereça só os links pra ELE iniciar o contato.
@@ -2930,9 +2971,12 @@ ${JSON.stringify(snapshot)}`;
     parts.push({ kind: "text", text: inputText || "(sem conteúdo)" });
 
     const aiConfig = await getAIConfig();
+    // ctx nomeado: os handlers marcam ctx.shownCars quando mostram a vitrine, e o motor de
+    // intenção lê isso depois pra não mandar oferta repetida.
+    const ctx: ToolCtx = { user, vehicle, today, inputText };
     let replyText = "";
     try {
-      replyText = await runAgent(aiConfig, system, parts, { user, vehicle, today, inputText });
+      replyText = await runAgent(aiConfig, system, parts, ctx);
     } catch (e) {
       console.error("runAgent erro:", e);
     }
@@ -2947,6 +2991,20 @@ ${JSON.stringify(snapshot)}`;
     try {
       const ext = runExtractor(supabase, aiConfig, user.id, inputText, replyText);
       (globalThis as any).EdgeRuntime?.waitUntil?.(ext) ?? ext.catch(() => {});
+    } catch { /* */ }
+
+    // MOTOR DE INTENÇÃO: se o usuário demonstrou querer comprar/trocar por um carro específico,
+    // cria em silêncio o radar (car_radar source=auto). Sem escuta ambiente: só o que ele mesmo
+    // mandou pro Co-pilot. Se o carro JÁ está no estoque agora, manda a oferta na sequência
+    // (momento de ouro) — MAS só se o agente não tiver acabado de mostrar carros nesta conversa
+    // (senão seria oferta repetida). Se não tem no estoque, o cron avisa quando entrar.
+    // Fire-and-forget: nunca bloqueia a resposta.
+    try {
+      const ci = (async () => {
+        const intent = await detectCarIntent(supabase, aiConfig, user.id, inputText);
+        if (intent && !ctx.shownCars) await maybeInstantOffer(user, intent);
+      })();
+      (globalThis as any).EdgeRuntime?.waitUntil?.(ci) ?? ci.catch(() => {});
     } catch { /* */ }
 
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
