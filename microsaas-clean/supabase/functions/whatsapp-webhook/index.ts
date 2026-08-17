@@ -2245,10 +2245,46 @@ async function sendStandGift(phone: string, appUrl: string): Promise<void> {
       .eq("from_phone", onlyDigits(phone)).eq("kind", "stand_gift");
     if (count) return;
     await supabase.from("whatsapp_events").insert({ from_phone: onlyDigits(phone), kind: "stand_gift", status: "sent", raw: {}, parsed: {} });
-    const link = `${appUrl}/auth?tab=register`;
-    await sendText(phone,
-      `🎁 *Um presente por ter vindo ao stand:* você ganhou *30 dias grátis* do Co-pilot pra cuidar do seu carro — gasto, revisão, multa, IPVA e FIPE, tudo aqui no WhatsApp.\n\nPra ativar, é só criar sua conta com ESTE mesmo número:\n${link}\n\nOs 30 dias entram na hora. 🚗`);
+    const s = await getSettings();
+    const texto = `🎁 *Um presente por ter vindo ao stand:* você ganhou *30 dias grátis* do Co-pilot pra cuidar do seu carro — gasto, revisão, multa, IPVA e FIPE, tudo aqui no WhatsApp.\n\nToque no botão pra ativar agora, sem sair daqui 👇`;
+    // botão (zero fricção): toque → provisiona a conta e inicia os 30 dias na hora
+    const ok = await waSendMenu(s, phone, texto, ["Ativar 30 dias"]);
+    if (!ok) await sendText(phone, `${texto}\n\nOu responda *ATIVAR* que eu libero na hora. (Também dá pra criar conta em ${appUrl}/auth?tab=register)`);
   } catch (e) { console.error("sendStandGift:", e); }
+}
+
+// ATIVAÇÃO SEM FRICÇÃO: provisiona a conta do visitante do stand (email sintético, SEM senha —
+// mesmo padrão da cortesia) e inicia os 30 dias na hora. O trigger handle_new_user já concede 30
+// dias (há stand_lead deste telefone); reforçamos explicitamente. Idempotente por email sintético.
+async function activateStandTrial(phone: string, name?: string | null): Promise<{ ok: boolean; already?: boolean }> {
+  const digits = onlyDigits(phone);
+  if (!digits) return { ok: false };
+  const email = `${digits}@totexcarfinance.app`;
+  try {
+    const { data: exist } = await supabase.from("users").select("id").ilike("email", email).limit(1);
+    if (exist && exist.length) return { ok: true, already: true };
+    const password = crypto.randomUUID().slice(0, 12);
+    const { data: created, error } = await supabase.auth.admin.createUser({
+      email, password, email_confirm: true,
+      user_metadata: { name: name || "Motorista", phone: digits, email },
+    });
+    if (error || !created?.user) { console.error("activateStandTrial createUser:", error?.message); return { ok: false }; }
+    const trialEnds = new Date(Date.now() + 30 * 24 * 3600_000).toISOString();
+    await supabase.from("users").update({
+      role: "owner", trial_started_at: new Date().toISOString(), trial_ends_at: trialEnds,
+      subscription_status: "trial", plan: "free",
+    }).eq("id", created.user.id);
+    return { ok: true };
+  } catch (e) { console.error("activateStandTrial:", e); return { ok: false }; }
+}
+
+// intenção de ATIVAR (botão "Ativar 30 dias" ou texto) — sem confundir com busca de carro
+function querAtivar(t: string): boolean {
+  const s = String(t || "").toLowerCase().trim();
+  if (/ativar/.test(s) && (/\b30\b|dias|gr[aá]tis|copilot|co-pilot/.test(s) || s.length <= 16)) return true;
+  if (/^(sim,?\s*quero|quero sim|bora|pode ativar|quero ativar|quero meus?\s*30|quero os?\s*30)[\s!.]*$/.test(s)) return true;
+  if (s.replace(/[\s!.]/g, "") === "sim") return true;
+  return false;
 }
 
 async function handleStandLead(phone: string, text: string, contactName?: string): Promise<boolean> {
@@ -2305,6 +2341,21 @@ async function handleStandFollowup(phone: string, text: string): Promise<boolean
     .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
   if (!lead?.length) return false;
   const t = String(text || "").toLowerCase();
+
+  // ATIVAR OS 30 DIAS na hora (botão "Ativar 30 dias" ou "sim/ativar"): provisiona a conta e libera
+  if (querAtivar(t)) {
+    const nome = (lead[0].parsed as any)?.nome || null;
+    const r = await activateStandTrial(phone, nome);
+    if (r.ok) {
+      await sendText(phone, r.already
+        ? `Você já tem seu Co-pilot ativo por aqui 👍 Me diz o que precisa: ver mais carros, ou cuidar do SEU carro (é só pedir *"quero o painel"* que eu te mando o acesso). 🚗`
+        : `🎉 Pronto! Seus *30 dias grátis* já estão ativos.\n\nAgora é só usar:\n• Quer ver mais carros? Me diz o que procura (ex.: "SUV até 100 mil").\n• Quer que eu cuide do SEU carro — gasto, revisão, IPVA, quanto vale? Me pede *"quero o painel"* que eu te mando o acesso pra cadastrar ele (sem senha). 🚗`);
+    } else {
+      await sendText(phone, "Tive um probleminha pra ativar agora 😕 Tenta de novo em instantes, por favor.");
+    }
+    return true;
+  }
+
   const categoria = normCategoria(t);
   let precoMax: number | undefined;
   const mMil = t.match(/(\d{1,3})\s*mil/);
