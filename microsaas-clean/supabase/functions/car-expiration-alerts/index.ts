@@ -375,6 +375,9 @@ async function dealerIdByName(name?: string | null): Promise<string | null> {
   return _dealerIds[String(name).trim().toLowerCase()] || null;
 }
 
+// carro abaixo da FIPE = "oferta imperdível" (prioriza na notificação do radar)
+const abaixoFipe = (v: any) => v?.fipePrice && Number(v.price) > 0 && Number(v.price) < Number(v.fipePrice);
+
 async function fetchRadarMatches(r: any, dealershipId?: string | null) {
   const u = new URL(`${MARKETPLACE}/api/vehicles`);
   const params: Record<string, unknown> = {
@@ -422,13 +425,16 @@ async function maybeNotifyRadar(userId: string, phone: string, r: any, refCode?:
   if (!novos.length) return false;
 
   const desejo = [r.brand, r.model].filter(Boolean).join(" ") || "seu radar";
+  // "oferta imperdível" primeiro: carro abaixo da FIPE encabeça a rodada
+  novos.sort((a, b) => Number(abaixoFipe(b)) - Number(abaixoFipe(a)));
   // API oficial: 1 template por carro (parâmetro não aceita quebra de linha) — máx. 3 por rodada
   for (const v of novos.slice(0, 3)) {
     const title = [v.brand, v.model, v.version, v.year].filter(Boolean).join(" ");
     const km = Number(v.mileage) > 0 ? `, ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
+    const oferta = abaixoFipe(v) ? " 🔥 abaixo da tabela" : "";
     const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
     const url = `${MARKETPLACE}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-    await sendTpl(phone, "radar_match", [desejo, `${title}${km}`, preco, url]);
+    await sendTpl(phone, "radar_match", [desejo, `${title}${km}${oferta}`, preco, url]);
   }
   return true;
 }

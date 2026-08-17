@@ -8,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
-import { loadDossier, runExtractor } from "../_shared/proactive.ts";
+import { loadDossier, runExtractor, detectCarIntent } from "../_shared/proactive.ts";
 import { careFuel, careOdometer, careStatement, seloElegivel } from "../_shared/care-score.ts";
 import { upcoming as calendarUpcoming, kmMedioDia as calendarKmDia } from "../_shared/calendar.ts";
 import {
@@ -2947,6 +2947,14 @@ ${JSON.stringify(snapshot)}`;
     try {
       const ext = runExtractor(supabase, aiConfig, user.id, inputText, replyText);
       (globalThis as any).EdgeRuntime?.waitUntil?.(ext) ?? ext.catch(() => {});
+    } catch { /* */ }
+
+    // MOTOR DE INTENÇÃO: se o usuário demonstrou querer comprar/trocar por um carro específico,
+    // cria em silêncio o radar (car_radar source=auto). O cron avisa quando o carro entra no
+    // estoque — sem escuta ambiente: só o que ele mesmo mandou pro Co-pilot. Fire-and-forget.
+    try {
+      const ci = detectCarIntent(supabase, aiConfig, user.id, inputText);
+      (globalThis as any).EdgeRuntime?.waitUntil?.(ci) ?? ci.catch(() => {});
     } catch { /* */ }
 
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
