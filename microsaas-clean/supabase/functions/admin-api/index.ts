@@ -50,6 +50,22 @@ Deno.serve(async (req) => {
 
   try {
     switch (action) {
+      // FUNIL DO STAND (todas as lojas) — escaneios → presente → conversa → ativação, por loja+promotor
+      case "stand_report": {
+        const { data, error } = await admin.rpc("stand_report", { p_loja: null });
+        if (error) throw error;
+        // mapeia slug → nome bonito da loja (marketplace)
+        let nomes: Record<string, string> = {};
+        try {
+          const res = await fetch(`${Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com"}/api/dealerships`, { headers: { Accept: "application/json" } });
+          const d = await res.json();
+          const list = Array.isArray(d) ? d : (d?.data || []);
+          for (const x of list) if (x?.slug) nomes[String(x.slug).toLowerCase()] = x.name || x.slug;
+        } catch { /* usa o slug mesmo */ }
+        const rows = (data || []).map((r: any) => ({ ...r, loja_nome: nomes[r.loja] || r.loja }));
+        return json({ ok: true, rows });
+      }
+
       case "list_owners": {
         const { data, error } = await admin
           .from("users")

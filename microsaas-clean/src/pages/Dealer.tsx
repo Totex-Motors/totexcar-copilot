@@ -20,9 +20,10 @@ import {
   Car, Users, LogOut, Search, Store, CalendarClock, Wallet,
   Phone, Mail, Gauge, AlertTriangle, ShieldCheck, BadgeCheck, Fuel,
   Megaphone, Sparkles, Send, Loader2, MessageCircle, Banknote, HeartHandshake,
-  ExternalLink, KanbanSquare, MessagesSquare, Bot, UserRound, XCircle, Gift, Star,
+  ExternalLink, KanbanSquare, MessagesSquare, Bot, UserRound, XCircle, Gift, Star, QrCode,
 } from "lucide-react";
 import { PostSaleTab } from "@/components/dealer/PostSaleTab";
+import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useSearchParams } from "react-router-dom";
 import { useCurrentUser, useAuth } from "@/hooks/useAuth";
 import { AuthPage } from "@/pages/Auth";
@@ -239,6 +240,7 @@ export default function Dealer() {
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="w-4 h-4" /> Campanhas</TabsTrigger>
             <TabsTrigger value="recompras" className="gap-2"><Banknote className="w-4 h-4" /> Recompras</TabsTrigger>
             <TabsTrigger value="posvenda" className="gap-2"><HeartHandshake className="w-4 h-4" /> Sucesso do Cliente</TabsTrigger>
+            <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
           </TabsList>
 
           <TabsContent value="clientes" className="mt-6 space-y-6">
@@ -311,6 +313,10 @@ export default function Dealer() {
 
           <TabsContent value="posvenda" className="mt-6">
             <PostSaleTab dealership={viewStore} />
+          </TabsContent>
+
+          <TabsContent value="stand" className="mt-6">
+            <StandLeadsPanel source="dealer" />
           </TabsContent>
         </Tabs>
       </main>
