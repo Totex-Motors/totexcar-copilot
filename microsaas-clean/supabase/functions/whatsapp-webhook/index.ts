@@ -2234,6 +2234,23 @@ async function standScopeId(loja: string): Promise<string | undefined> {
   } catch { return undefined; }
 }
 
+// PRESENTE DO STAND: avisa o visitante que ele ganhou 30 dias grátis do Co-pilot e como ATIVAR
+// (criar conta no app com este mesmo WhatsApp → o trigger handle_new_user concede 30 dias porque
+// há um stand_lead deste telefone nos últimos 90 dias). Dedup por telefone (1x), grava ANTES de
+// enviar pra retry do webhook não mandar 2x.
+async function sendStandGift(phone: string, appUrl: string): Promise<void> {
+  try {
+    const { count } = await supabase.from("whatsapp_events")
+      .select("id", { count: "exact", head: true })
+      .eq("from_phone", onlyDigits(phone)).eq("kind", "stand_gift");
+    if (count) return;
+    await supabase.from("whatsapp_events").insert({ from_phone: onlyDigits(phone), kind: "stand_gift", status: "sent", raw: {}, parsed: {} });
+    const link = `${appUrl}/auth?tab=register`;
+    await sendText(phone,
+      `🎁 *Um presente por ter vindo ao stand:* você ganhou *30 dias grátis* do Co-pilot pra cuidar do seu carro — gasto, revisão, multa, IPVA e FIPE, tudo aqui no WhatsApp.\n\nPra ativar, é só criar sua conta com ESTE mesmo número:\n${link}\n\nOs 30 dias entram na hora. 🚗`);
+  } catch (e) { console.error("sendStandGift:", e); }
+}
+
 async function handleStandLead(phone: string, text: string, contactName?: string): Promise<boolean> {
   const m = String(text || "").match(STAND_RE);
   if (!m) return false;
@@ -2270,6 +2287,10 @@ async function handleStandLead(phone: string, text: string, contactName?: string
     const dealershipId = await standScopeId(loja);
     const cars = await mktVehicles({ dealershipId, limit: 10 }).catch(() => [] as any[]);
     if (cars.length) await sendCarShowcase(phone, cars, null);
+    // presente: 30 dias grátis + como ativar (logo depois da vitrine)
+    const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+    const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+    await sendStandGift(phone, appUrl);
     return true;
   } catch (e) { console.error("handleStandLead:", e); return true; } // código presente = já tratamos
 }
@@ -2292,8 +2313,10 @@ async function handleStandFollowup(phone: string, text: string): Promise<boolean
   else if (mNum) precoMax = Number(mNum[1]);
   const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
   const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+  // rede de segurança: garante que o visitante saiba do presente de 30 dias (dedup 1x)
+  await sendStandGift(phone, appUrl);
   if (!categoria && !precoMax) {
-    await sendText(phone, `Posso te mostrar carros por tipo e faixa de preço — ex.: "SUV até 80 mil", "sedan até 120 mil". 🚗\n\nPra atendimento completo (avaliar seu carro na troca, financiamento, test drive), toca em *Ver carro* num card que a loja te atende. E se quiser que eu cuide do SEU carro (gastos, revisões, multas, FIPE), cadastre este número no app: ${appUrl}`);
+    await sendText(phone, `Posso te mostrar carros por tipo e faixa de preço — ex.: "SUV até 80 mil", "sedan até 120 mil". 🚗\n\nPra atendimento completo (avaliar seu carro na troca, financiamento, test drive), toca em *Ver carro* num card que a loja te atende.`);
     return true;
   }
   const loja = String(lead[0].parsed?.loja || "geral").toLowerCase();
