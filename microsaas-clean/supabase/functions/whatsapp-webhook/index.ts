@@ -1726,7 +1726,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       return {
         ok: true, total: cars.length, fotos_enviadas: enviados,
         carros: cars.map((v: any) => mktResumo(v, user.referral_code)),
-        instrucao: enviados > 0 ? "As FOTOS dos carros JÁ foram enviadas ao usuário. Comente 2-3 deles com o PORQUÊ de combinarem com o que ele quer, de forma curta e natural — NÃO repita preço/link (já estão nas fotos)." : undefined,
+        instrucao: enviados > 0 ? "As FOTOS já foram enviadas (cards deslizáveis). Agora fala como um amigo que manja de carro num papo de WhatsApp — NÃO como vendedor nem folheto. Regras: (a) SEM lista numerada, SEM negrito, SEM '1. 2. 3.'; texto corrido de 2-3 linhas. (b) PROIBIDO adjetivo de propaganda ('ótimo custo-benefício', 'muito confiável', 'design moderno', 'completo'); fale detalhe CONCRETO e honesto (ex.: 'o Corolla 2018 é câmbio CVT, macio no trânsito e revenda tranquila', 'o Prisma tem porta-malas grande, bom se você anda com a família'). (c) puxa 1 ou 2 que MAIS casam com o que ELE falou e diz o porquê ligado ao USO dele; se algum tiver um ponto fraco relevante, seja honesto. (d) varia a abertura (nada de 'Encontrei X opções que podem te interessar'); pode fechar perguntando qual chamou mais atenção. NÃO repita preço/link (já estão nos cards)." : undefined,
       };
     }
 
@@ -1755,7 +1755,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       return {
         ok: true, criterio, fotos_enviadas: enviados,
         carros: cars.map((c: any) => mktResumo(c, user.referral_code)),
-        instrucao: enviados > 0 ? "As FOTOS já foram enviadas. Comente rapidamente as opções sem repetir preço/link." : undefined,
+        instrucao: enviados > 0 ? "As FOTOS já foram enviadas (cards deslizáveis). Comenta em 1-2 linhas naturais, como amigo que entende de carro — SEM lista numerada, SEM negrito, SEM adjetivo de folheto. Puxa 1 que faça sentido e diz um detalhe concreto do porquê. Não repita preço/link." : undefined,
       };
     }
 
@@ -2704,7 +2704,7 @@ GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do 
 (3) oportunidades_carros é só um EXTRA opcional ("se quiser, tenho umas ideias na sua faixa também") — nunca a resposta principal, nunca sozinha, e nunca enquadrada como "você deveria trocar".
 (4) se o desejo dele não estiver no estoque, ofereça criar_radar ("te aviso quando aparecer").
 Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e só ajude a comprar se ELE quiser. Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista honesto sobre prós e contras, conectando ao estoque quando fizer sentido.
-FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Só comente os porquês, sem repetir preço/link. NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
+FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Ao comentar, soe como GENTE num papo de WhatsApp, não como catálogo: texto corrido e curto (2-3 linhas), SEM lista numerada, SEM negrito de título, SEM adjetivo de propaganda ("ótimo custo-benefício", "muito confiável", "completo") — em vez disso, um detalhe REAL e honesto ligado ao uso da pessoa. Comente 1 ou 2 que mais combinam, não todos. Sem repetir preço/link (já estão nos cards). NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
 VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Garagem no app". Se precisar, é só dizer que ele pode avaliar por aqui.
 
 RADAR DE SERVIÇOS (achar oficina/borracharia/guincho/chaveiro/bateria): a busca leva ~8 segundos, então SEMPRE avise antes ("Deixa eu procurar aqui pra você, 1 minutinho…") na MESMA mensagem em que decide buscar — nunca deixe o motorista no vácuo achando que travou. Use quando ele precisar de um serviço no carro — "preciso trocar a bateria", "onde conserto o freio", "furei o pneu", "meu carro não pega", "quanto custa revisão" — use buscar_servico. REGRAS: (1) PESQUISAR é livre — NUNCA peça autorização pra procurar ou pra mostrar dado público; só faça. (2) Se não souber onde ele está, pergunte a cidade/bairro em UMA linha e só então busque. (3) Apresente 3 a 6 opções curtas com o porquê de cada uma; marque quem é PARCEIRO TOTEX e deixe claro que o resto é resultado público (a confirmar direto com o estabelecimento — a Totex não credencia nem garante). (4) NUNCA invente preço, disponibilidade, garantia, distância ou tempo de chegada: o que não veio na busca é "não informado" — e diga isso sem rodeio. (5) Não ordene por interesse comercial; parceiro ganha selo, não posição. (6) Só chame pedir_orcamento DEPOIS de listar quais dados serão compartilhados e ele autorizar explicitamente. Se ele disser "pesquisa mas não passa meu telefone", pesquise e ofereça só os links pra ELE iniciar o contato.
