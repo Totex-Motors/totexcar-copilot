@@ -303,6 +303,26 @@ Deno.serve(async (req) => {
         return json({ ok: true, dealership: alvoNome, slug, rows: data || [] });
       }
 
+      // LISTA de leads individuais da loja do lojista (nome + contato) pra exportar/campanha
+      case "stand_leads": {
+        const alvoNome = scopeDealership && scopeDealership !== "__none__" ? scopeDealership : (isAdmin ? null : me.dealership);
+        let slug: string | null = null;
+        if (alvoNome) {
+          try {
+            const res = await fetch(`${Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com"}/api/dealerships`, { headers: { Accept: "application/json" } });
+            const d = await res.json();
+            const list = Array.isArray(d) ? d : (d?.data || []);
+            const norm = (s: any) => String(s || "").trim().toLowerCase();
+            const hit = list.find((x: any) => norm(x.name) === norm(alvoNome) || norm(x.slug) === norm(alvoNome));
+            slug = hit?.slug ? String(hit.slug).toLowerCase() : null;
+            if (!slug) return json({ ok: true, dealership: alvoNome, leads: [] });
+          } catch { return json({ ok: true, dealership: alvoNome, leads: [] }); }
+        }
+        const { data, error } = await admin.rpc("stand_leads", { p_loja: slug });
+        if (error) throw error;
+        return json({ ok: true, dealership: alvoNome, slug, leads: data || [] });
+      }
+
       case "list_clients": {
         let q = admin.from("users")
           .select("id, name, email, phone, plan, subscription_status, coupon_code, dealership, cnh_vencimento, created_at, plan_cycle, plan_value")
