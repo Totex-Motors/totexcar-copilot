@@ -738,12 +738,26 @@ async function handleRecompraFlowReply(phone: string, flow: Record<string, any>)
   const offerValue = Number(flow.offer_value) || 0;
   const carro = [flow.marca_nome, flow.modelo_nome, flow.ano_nome].filter(Boolean).join(" ") || "veículo";
 
-  // identifica o cliente: usuário do app > jornada de pós-venda > desconhecido (lead de campanha/shopping)
+  // identifica o cliente: usuário do app > jornada de pós-venda > lead do stand (#vender) > desconhecido
   const user = await findUserByPhone(phone);
   const js = user ? [] : await findJourneysByPhone(phone);
   const j = js?.[0] || null;
-  const dealership = user?.dealership || j?.dealership || null;
-  const nome = user?.name || j?.customer_name || null;
+  let dealership = user?.dealership || j?.dealership || null;
+  let nome = user?.name || j?.customer_name || null;
+  // veio de um QR "#vender" do stand? atribui a loja daquele QR (decisão: só a loja do QR)
+  let standSell: { loja: string | null; promotor: string | null } | null = null;
+  if (!dealership) {
+    const desde = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
+    const { data: sell } = await supabase.from("whatsapp_events")
+      .select("parsed").eq("from_phone", phone).eq("kind", "stand_sell")
+      .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+    if (sell?.length) {
+      const ps = sell[0].parsed as any;
+      standSell = { loja: ps?.loja || null, promotor: ps?.promotor || null };
+      if (!nome) nome = ps?.nome || null;
+      if (standSell.loja && standSell.loja !== "geral") dealership = await dealerNameBySlug(standSell.loja);
+    }
+  }
 
   const { error } = await supabase.from("buyback_requests").insert({
     owner_id: user?.id || null,
@@ -779,7 +793,12 @@ async function handleRecompraFlowReply(phone: string, flow: Record<string, any>)
   }
 
   // confirma pro cliente (em sessão — ele acabou de enviar o formulário)
-  await sendText(phone, `✅ Recebido! Seu ${carro} foi avaliado em até *${fmtBRL(offerValue)}* (${flow.pct}% da tabela FIPE).\n\n${dealership ? `A ${dealership}` : "Nossa equipe"} vai entrar em contato pra combinar a vistoria e fechar a proposta. Qualquer dúvida, é só chamar por aqui! 🚗`);
+  await sendText(phone, `✅ Recebido! Seu ${carro} tem *estimativa de referência* de até *${fmtBRL(offerValue)}* (${flow.pct}% da tabela FIPE) — o valor final sai na avaliação presencial.\n\n${dealership ? `A ${dealership}` : "Nossa equipe"} vai entrar em contato pra combinar a vistoria e fechar a proposta. Qualquer dúvida, é só chamar por aqui! 🚗`);
+  // vendedor que veio do QR "#vender" do stand ganha os 30 dias também (quem vende, quer comprar depois)
+  if (standSell) {
+    const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+    await sendStandGift(phone, (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, ""));
+  }
   return true;
 }
 
@@ -2234,6 +2253,47 @@ async function standScopeId(loja: string): Promise<string | undefined> {
   } catch { return undefined; }
 }
 
+// slug da loja → NOME (users.dealership usa nome; buyback_requests e o aviso da loja também)
+async function dealerNameBySlug(slug: string): Promise<string | null> {
+  if (!slug || slug === "geral") return null;
+  try {
+    const res = await fetch(`${MARKETPLACE_URL}/api/dealerships`, { headers: { Accept: "application/json" } });
+    const d = await res.json();
+    const list = Array.isArray(d) ? d : (d?.data || []);
+    return list.find((x: any) => String(x.slug || "").toLowerCase() === slug)?.name || null;
+  } catch { return null; }
+}
+
+// VENDER NO STAND: QR "#vender <loja|geral> <promotor>" → avaliação FIPE na hora (estimativa de
+// referência, sem compromisso) reaproveitando o Flow de Recompra. A atribuição (loja/promotor) fica
+// no stand_sell e é lida quando o formulário volta (handleRecompraFlowReply). Lead vai só pra loja do
+// QR (geral → dono do sistema). Roda ANTES do cadastro (vendedor de shopping raramente é usuário).
+const VENDER_RE = /#vender\s+([a-z0-9-]+)(?:\s+([a-z0-9-]+))?/i;
+async function handleStandSell(phone: string, text: string, contactName?: string): Promise<boolean> {
+  const m = String(text || "").match(VENDER_RE);
+  if (!m) return false;
+  const loja = (m[1] || "geral").toLowerCase();
+  const promotor = (m[2] || "").toLowerCase() || null;
+  try {
+    await supabase.from("whatsapp_events").insert({
+      from_phone: phone, kind: "stand_sell", status: "processed",
+      raw: { text }, parsed: { loja, promotor, nome: contactName || null },
+    });
+    const nome = contactName ? `, ${contactName.split(" ")[0]}` : "";
+    await sendText(phone, `Boa${nome}! 🚗 Vou avaliar seu carro *na hora* pela tabela FIPE — sem compromisso. Toque no botão abaixo e me diga marca, modelo e ano 👇`);
+    const s = await getSettings();
+    await waSendFlow(s, phone, {
+      header: "Avalie seu carro 🚗",
+      body: "Descubra em segundos quanto seu carro vale pela FIPE. É uma estimativa de referência — a loja confirma na avaliação presencial (aqui no stand, se quiser).",
+      cta: "Avaliar meu carro",
+      flowId: RECOMPRA_FLOW_ID,
+      token: "recompra",
+      fallbackText: "Me diga a marca, o modelo e o ano do seu carro que eu consulto a FIPE na hora. 🚗",
+    });
+    return true;
+  } catch (e) { console.error("handleStandSell:", e); return true; }
+}
+
 // PRESENTE DO STAND: avisa o visitante que ele ganhou 30 dias grátis do Co-pilot e como ATIVAR
 // (criar conta no app com este mesmo WhatsApp → o trigger handle_new_user concede 30 dias porque
 // há um stand_lead deste telefone nos últimos 90 dias). Dedup por telefone (1x), grava ANTES de
@@ -2527,6 +2587,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     // Pós-venda (antes do cadastro, funciona p/ quem ainda não é usuário):
     if (msg.kind !== "image") {
       const psText = msg.text || msg.transcription || "";
+      // QR "#vender" do stand — vendedor quer avaliar o carro (Flow de Recompra + atribuição)
+      if (await handleStandSell(msg.phone, psText, msg.contactName)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_sell" } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, stand_sell: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       // QR do stand físico (shopping) — código #stand na mensagem pré-preenchida
       if (await handleStandLead(msg.phone, psText, msg.contactName)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_qr" } }).eq("id", eventId);
