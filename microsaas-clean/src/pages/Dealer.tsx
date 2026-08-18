@@ -580,10 +580,10 @@ function BuybackTab({ dealership }: { dealership?: string }) {
                     </p>
                     {r.qualificacao ? (
                       <p className="text-xs text-muted-foreground">
-                        Já avaliou: <b className="text-foreground">{r.qualificacao.avaliou === true ? "Sim" : r.qualificacao.avaliou === false ? "Não" : "—"}</b>
-                        {" · "}Sabe preço: <b className="text-foreground">{r.qualificacao.sabe_preco === true ? (r.qualificacao.preco_mercado || "Sim") : r.qualificacao.sabe_preco === false ? "Não" : "—"}</b>
-                        {" · "}Troca: <b className="text-foreground">{r.qualificacao.aceita_troca === "sim" ? "Aceita" : r.qualificacao.aceita_troca === "nao" ? "Não" : r.qualificacao.aceita_troca === "depende" ? "Depende" : "—"}</b>
-                        {r.qualificacao.km ? <> · {Number(r.qualificacao.km).toLocaleString("pt-BR")} km</> : null}
+                        {r.modalidade === "express" ? "À vista (repasse 48h)" : `Vitrine · até ${r.qualificacao.prazo_dias ?? "—"} dias`}
+                        {" · vendedor recebe "}<b className="text-foreground">{brl(Number(r.offer_value))}</b>
+                        {r.qualificacao.margem ? <> · margem {brl(Number(r.qualificacao.margem))}</> : null}
+                        {r.fipe_value ? <> · FIPE {brl(Number(r.fipe_value))}</> : null}
                         {" · "}{new Date(r.created_at).toLocaleDateString("pt-BR")}
                       </p>
                     ) : (

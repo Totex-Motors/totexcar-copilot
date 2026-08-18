@@ -731,85 +731,32 @@ NUNCA invente pedágio, preço de hospedagem ou estabelecimento: o que a pesquis
 }
 
 // Resposta do FLOW de RECOMPRA FIPE (endpoint dinâmico): payload {tipo:"recompra", ...} do nfm_reply.
-// Cria o lead em buyback_requests, avisa a loja e confirma pro cliente. Funciona p/ não-usuário.
+// NÃO fecha o lead ainda: guarda a referência (FIPE + carro + atribuição) num evento sell_pending e
+// pergunta a MODALIDADE. O valor sai depois, por MARGEM (Express à vista / Vitrine por prazo).
 async function handleRecompraFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
   if (flow?.tipo !== "recompra") return false;
   const fipeValue = Number(flow.fipe_value) || 0;
-  const offerValue = Number(flow.offer_value) || 0;
   const carro = [flow.marca_nome, flow.modelo_nome, flow.ano_nome].filter(Boolean).join(" ") || "veículo";
 
-  // identifica o cliente: usuário do app > jornada de pós-venda > lead do stand (#vender) > desconhecido
-  const user = await findUserByPhone(phone);
-  const js = user ? [] : await findJourneysByPhone(phone);
-  const j = js?.[0] || null;
-  let dealership = user?.dealership || j?.dealership || null;
-  let nome = user?.name || j?.customer_name || null;
-  // veio de um QR "#vender" do stand? atribui a loja daquele QR (decisão: só a loja do QR)
-  let standSell: { loja: string | null; promotor: string | null; modalidade: string | null } | null = null;
-  if (!dealership) {
-    const desde = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
-    const { data: sell } = await supabase.from("whatsapp_events")
-      .select("parsed").eq("from_phone", phone).eq("kind", "stand_sell")
-      .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
-    if (sell?.length) {
-      const ps = sell[0].parsed as any;
-      standSell = { loja: ps?.loja || null, promotor: ps?.promotor || null, modalidade: ps?.modalidade || null };
-      if (!nome) nome = ps?.nome || null;
-      if (standSell.loja && standSell.loja !== "geral") dealership = await dealerNameBySlug(standSell.loja);
-    }
-  }
-  const modalidade = standSell?.modalidade || null; // 'express' | 'vitrine' | null (recompra normal)
+  // dedup: mesmo carro já em fechamento (ou fechado) neste telefone → não reabre o menu (retry do webhook)
+  const emAndamento = await findSellPending(phone);
+  if (emAndamento && Number(emAndamento.parsed?.fipe_value) === fipeValue) return true;
 
-  const { error } = await supabase.from("buyback_requests").insert({
-    owner_id: user?.id || null,
-    dealership,
-    owner_name: nome,
-    owner_phone: phone,
-    brand: flow.marca_nome || null,
-    model: flow.modelo_nome || null,
-    year: flow.ano_nome || null,
-    fuel: flow.combustivel || null,
-    fipe_code: flow.fipe_code || null,
-    fipe_value: fipeValue || null,
-    offer_pct: Number(flow.pct) || null,
-    offer_value: offerValue || null,
-    modalidade,
-    status: "new",
+  const attr = await resolveSellAttribution(phone);
+  await supabase.from("whatsapp_events").insert({
+    from_phone: phone, kind: "sell_pending", status: "processed",
+    raw: { flow: { marca: flow.marca_nome, modelo: flow.modelo_nome, ano: flow.ano_nome } },
+    parsed: {
+      step: "modalidade", carro, fipe_value: fipeValue,
+      marca_nome: flow.marca_nome || null, modelo_nome: flow.modelo_nome || null, ano_nome: flow.ano_nome || null,
+      combustivel: flow.combustivel || null, fipe_code: flow.fipe_code || null,
+      dealership: attr.dealership, nome: attr.nome, loja: attr.loja, promotor: attr.promotor, ownerId: attr.ownerId,
+    },
   });
-  if (error) { console.error("recompra flow lead:", error.message); return false; }
 
   const s = await getSettings();
-  const fmtBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
-
-  // avisa a loja (template, iniciado pelo negócio); sem loja → avisa o dono do sistema
-  const { data: dealers } = dealership
-    ? await supabase.from("users").select("phone").eq("role", "dealer").eq("dealership", dealership).not("phone", "is", null).limit(3)
-    : { data: [] as any[] };
-  const alvos = (dealers || []).map((d: any) => onlyDigits(d.phone || "")).filter(Boolean);
-  if (!alvos.length && s.support_owner_phone) alvos.push(onlyDigits(s.support_owner_phone));
-  const modLabel = modalidade === "express" ? "Venda Express (compra à vista)" : modalidade === "vitrine" ? "Venda Vitrine (intermediação)" : "Recompra";
-  for (const dp of alvos) {
-    await waSendTemplate(s, dp, "pedido_recompra_loja", [
-      dealership || "Totex (lead sem loja)", `${nome || phone} · ${modLabel}`, carro,
-      `${fmtBRL(offerValue)} (${flow.pct}% da FIPE ${fmtBRL(fipeValue)})`, phone,
-    ]);
-  }
-
-  // confirma pro cliente (em sessão — ele acabou de enviar o formulário), na moldura da modalidade.
-  // NUNCA falar de FIPE com o vendedor (ele já conhece a referência) — a FIPE fica só no aviso da loja.
-  const quemContata = dealership ? `A ${dealership}` : "Nossa equipe";
-  if (modalidade === "vitrine") {
-    await sendText(phone, `✅ Avaliei seu ${carro}! Na *Venda Vitrine* 🏆 ${quemContata.toLowerCase()} anuncia seu carro e vende pra você — você *ganha mais* e paga comissão *só quando vender*. Enquanto isso, o carro continua com você.\n\n${quemContata} vai te chamar pra combinar as fotos e o anúncio. 🚗`);
-  } else if (modalidade === "express") {
-    await sendText(phone, `✅ Recebido! Na *Venda Express* ⚡ sua proposta de compra *à vista* é de até *${fmtBRL(offerValue)}* — pra você vender na hora, sem anunciar nem esperar comprador. Aceita até carro com dívida ou IPVA atrasado.\n\n${quemContata} vai entrar em contato pra combinar a vistoria e pagar. 🚗`);
-  } else {
-    await sendText(phone, `✅ Recebido! Seu ${carro} tem uma proposta de compra à vista de até *${fmtBRL(offerValue)}* — o valor final sai na avaliação presencial.\n\n${quemContata} vai entrar em contato pra combinar a vistoria e fechar. Qualquer dúvida, é só chamar por aqui! 🚗`);
-  }
-  // vendedor que veio do QR "#vender" do stand ganha os 30 dias também (quem vende, quer comprar depois)
-  if (standSell) {
-    const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-    await sendStandGift(phone, (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, ""));
-  }
+  await sendText(phone, `Peguei a referência do seu ${carro} 🚗\nTabela FIPE: *${fmtReais(fipeValue)}*\n\nComo você prefere vender?\n\n⚡ *Venda Express* — à vista pelo nosso grupo de repasse, em *até 48h* (pra carros de boa demanda).\n🏆 *Venda Vitrine* — a loja anuncia e vende o seu; você escolhe o prazo e *quanto mais tempo, mais recebe*.`);
+  await waSendMenu(s, phone, "Toque na opção que combina com você:", ["Venda Express", "Venda Vitrine", "Me ajuda a escolher"]);
   return true;
 }
 
@@ -2275,139 +2222,108 @@ async function dealerNameBySlug(slug: string): Promise<string | null> {
   } catch { return null; }
 }
 
-// VENDER NO STAND: QR "#vender <loja|geral> <promotor>" → captação de dados do vendedor (NÃO avaliamos
-// nem cotamos valor — quem avalia é a loja). O Co-pilot faz uma conversa curta de qualificação (carro,
-// se já avaliou, se sabe o preço de mercado, se aceita troca) e entrega o lead pronto pra loja fechar.
-// A atribuição (loja/promotor/modalidade) fica no stand_sell; o passo da conversa vive em parsed.capture.
-// Lead vai só pra loja do QR (geral → dono do sistema). Roda ANTES do cadastro (vendedor raramente é usuário).
+// VENDER NO STAND: QR "#vender <loja|geral> <promotor>" → abre o Flow de avaliação FIPE (marca/modelo/
+// ano → REFERÊNCIA da tabela). Depois, no chat, o vendedor escolhe a MODALIDADE e o Co-pilot mostra
+// QUANTO ELE RECEBE, calculado por MARGEM (não % cru da FIPE):
+//   • Venda Express ⚡ — à vista pelo grupo de repasse (até 48h, carro de boa demanda); margem maior.
+//   • Venda Vitrine 🏆 — a loja anuncia; o vendedor escolhe o PRAZO (20/45/90 dias) e quanto mais tempo
+//     ele topa esperar, MENOR a margem → ele recebe mais. Tática de ancoragem/urgência.
+// Config editável em app_settings (buyback_express, buyback_prazos). A atribuição (loja/promotor) fica
+// no stand_sell; o estado do fechamento vive num evento sell_pending. Roda ANTES do cadastro.
 const VENDER_RE = /#vender\s+([a-z0-9-]+)(?:\s+([a-z0-9-]+))?/i;
+const fmtReais = (v: number) => `R$ ${(Math.round(Number(v) || 0)).toLocaleString("pt-BR")}`;
 
-// inicia a captação de dados (sem cotar valor) com a moldura da modalidade escolhida
-async function startSellCapture(phone: string, eventId: string, parsed: any, modalidade: "express" | "vitrine") {
-  const abertura = modalidade === "express"
-    ? "Boa escolha! Na *Venda Express* ⚡ a loja compra o seu à vista. Pra já deixar tudo pronto, me conta rapidinho sobre o carro 👇"
-    : "Show! Na *Venda Vitrine* 🏆 a loja anuncia e vende o seu (você ganha mais). Pra montar o anúncio, me conta rapidinho sobre o carro 👇";
-  await supabase.from("whatsapp_events").update({
-    parsed: { ...(parsed || {}), modalidade, capture: { step: "carro" } },
-  }).eq("id", eventId);
-  await sendText(phone, `${abertura}\n\nQual é o carro? Me manda numa mensagem só: *marca, modelo, ano e km*. 🚗`);
+// margem = max(% da FIPE, piso em R$); valor recebido = FIPE − margem, arredondado pra R$ 100.
+function calcOffer(fipe: number, pct: number, piso: number): { margem: number; valor: number } {
+  const margem = Math.max(Math.round(fipe * (Number(pct) || 0) / 100), Number(piso) || 0);
+  const valor = Math.max(0, Math.round((fipe - margem) / 100) * 100);
+  return { margem, valor };
+}
+async function sellConfig(): Promise<{ prazos: any[]; express: { pct: number; piso: number } }> {
+  const { data } = await supabase.from("app_settings").select("buyback_prazos, buyback_express").eq("id", 1).single();
+  const prazos = Array.isArray(data?.buyback_prazos) && data!.buyback_prazos.length
+    ? data!.buyback_prazos
+    : [{ dias: 20, pct: 14, piso: 3500 }, { dias: 45, pct: 10, piso: 2800 }, { dias: 90, pct: 7, piso: 2000 }];
+  const express = (data?.buyback_express && typeof data.buyback_express === "object")
+    ? data.buyback_express : { pct: 20, piso: 10000 };
+  return { prazos, express };
 }
 
-// Etiquetas humanas pras respostas capturadas (pro resumo da loja)
-const simNao = (v: boolean | null) => v === true ? "Sim" : v === false ? "Não" : "—";
-const trocaLabel = (v: string | null) => v === "sim" ? "Aceita troca" : v === "nao" ? "Só vender (sem troca)" : v === "depende" ? "Depende do carro" : "—";
-
-// Continua a conversa de captação de quem veio do #vender e já escolheu a modalidade.
-// Cada mensagem responde o passo atual (parsed.capture.step); ao terminar, grava o lead
-// em buyback_requests (com a qualificação em jsonb, SEM valor) e avisa a loja.
-async function handleStandSellCapture(phone: string, text: string): Promise<boolean> {
-  const desde = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
-  const { data: sell } = await supabase.from("whatsapp_events")
-    .select("id, parsed").eq("from_phone", phone).eq("kind", "stand_sell")
-    .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
-  const ev = sell?.[0];
-  const cap = (ev?.parsed as any)?.capture;
-  if (!ev || !cap?.step || cap.step === "done") return false; // não está no meio da captação
-
-  const t = String(text || "").trim();
-  const tl = t.toLowerCase();
+// abre o Flow de avaliação FIPE (marca/modelo/ano → referência)
+async function abrirAvaliacaoFlow(phone: string) {
   const s = await getSettings();
-  const parsed = (ev.parsed as any) || {};
-  const q = { ...(cap.dados || {}) };            // respostas acumuladas
-  const save = async (step: string, dados: any) =>
-    supabase.from("whatsapp_events").update({ parsed: { ...parsed, capture: { step, dados } } }).eq("id", ev.id);
-
-  switch (cap.step) {
-    case "carro": {
-      q.carro_texto = t;
-      const ano = t.match(/\b(19|20)\d{2}\b/);
-      const km = t.match(/(\d[\d.\s]*)\s*(?:km|mil\s*km|quil)/i);
-      if (ano) q.ano = ano[0];
-      if (km) q.km = km[1].replace(/[.\s]/g, "");
-      await save("avaliacao", q);
-      await waSendMenu(s, phone, "Anotado! ✍️ Você já levou esse carro pra avaliar em algum outro lugar?", ["Sim, já avaliei", "Ainda não"]);
-      return true;
-    }
-    case "avaliacao": {
-      q.avaliou = /\bsim\b|já avali|ja avali/.test(tl) ? true : /não|nao|ainda/.test(tl) ? false : null;
-      await save("preco", q);
-      await waSendMenu(s, phone, "Entendi! E você já sabe mais ou menos por quanto o mercado está vendendo um igual ao seu?", ["Sim, já sei", "Não faço ideia"]);
-      return true;
-    }
-    case "preco": {
-      const sabe = /\bsim\b|já sei|ja sei|sei sim/.test(tl) ? true : /não|nao|ideia/.test(tl) ? false : null;
-      q.sabe_preco = sabe;
-      if (sabe === true) {
-        await save("preco_valor", q);
-        await sendText(phone, "Legal! Por quanto você viu (ou tem em mente)? Pode ser um valor aproximado. 💬");
-        return true;
-      }
-      await save("troca", q);
-      await waSendMenu(s, phone, "Sem problema, a loja te ajuda com isso. 👍 Última pergunta: você aceitaria um carro na troca ou prefere só vender?", ["Aceito troca", "Só vender", "Depende"]);
-      return true;
-    }
-    case "preco_valor": {
-      q.preco_mercado = t;
-      await save("troca", q);
-      await waSendMenu(s, phone, "Perfeito! 👍 Última pergunta: você aceitaria um carro na troca ou prefere só vender?", ["Aceito troca", "Só vender", "Depende"]);
-      return true;
-    }
-    case "troca": {
-      q.aceita_troca = /aceito|troca|sim/.test(tl) && !/depende|só|so vender/.test(tl) ? "sim"
-        : /depende/.test(tl) ? "depende"
-        : /só|so vender|vender|não|nao/.test(tl) ? "nao" : null;
-      await save("done", q);
-      await finishSellCapture(phone, parsed, q);
-      return true;
-    }
-    default:
-      return false;
-  }
+  await waSendFlow(s, phone, {
+    header: "Avalie seu carro 🚗",
+    body: "Me diga a marca, o modelo e o ano que eu já pego a referência de tabela — depois você escolhe como quer vender e eu mostro quanto recebe.",
+    cta: "Avaliar meu carro", flowId: RECOMPRA_FLOW_ID, token: "recompra",
+    fallbackText: "Pra avaliar seu carro, me diga a marca, o modelo e o ano. 🚗",
+  });
 }
 
-// Fecha a captação: grava o lead (sem valor), atribui à loja do QR, avisa a loja e confirma pro vendedor.
-async function finishSellCapture(phone: string, parsed: any, q: any) {
-  const modalidade = parsed?.modalidade || null; // 'express' | 'vitrine'
-  const nome = parsed?.nome || null;
-  const carro = q?.carro_texto || "veículo";
-
-  // atribui à loja do QR (geral → dono do sistema)
-  const loja = parsed?.loja || null;
-  let dealership: string | null = null;
-  if (loja && loja !== "geral") dealership = await dealerNameBySlug(loja);
-
+// resolve a atribuição do vendedor: usuário do app > jornada de pós-venda > lead do stand (#vender)
+async function resolveSellAttribution(phone: string): Promise<{ dealership: string | null; nome: string | null; loja: string | null; promotor: string | null; ownerId: string | null }> {
   const user = await findUserByPhone(phone);
+  const js = user ? [] : await findJourneysByPhone(phone);
+  const j = js?.[0] || null;
+  let dealership = user?.dealership || j?.dealership || null;
+  let nome = user?.name || j?.customer_name || null;
+  let loja: string | null = null, promotor: string | null = null;
+  if (!dealership) {
+    const desde = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
+    const { data: sell } = await supabase.from("whatsapp_events")
+      .select("parsed").eq("from_phone", phone).eq("kind", "stand_sell")
+      .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+    if (sell?.length) {
+      const ps = sell[0].parsed as any;
+      loja = ps?.loja || null; promotor = ps?.promotor || null;
+      if (!nome) nome = ps?.nome || null;
+      if (loja && loja !== "geral") dealership = await dealerNameBySlug(loja);
+    }
+  }
+  return { dealership, nome, loja, promotor, ownerId: user?.id || null };
+}
+
+// pega o fechamento em andamento (evento sell_pending) — no passo pedido
+async function findSellPending(phone: string, step?: string): Promise<{ id: string; parsed: any } | null> {
+  const desde = new Date(Date.now() - 2 * 3600_000).toISOString();
+  const { data } = await supabase.from("whatsapp_events")
+    .select("id, parsed").eq("from_phone", phone).eq("kind", "sell_pending")
+    .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+  const ev = data?.[0];
+  if (!ev) return null;
+  const p = ev.parsed as any;
+  if (step && p?.step !== step) return null;
+  return { id: ev.id, parsed: p };
+}
+
+// grava o lead final em buyback_requests, avisa a loja e dá os 30 dias. Marca o pending como done.
+async function finalizeSellLead(phone: string, pending: { id: string; parsed: any }, res: { modalidade: "express" | "vitrine"; valor: number; margem: number; prazo_dias?: number }) {
+  const p = pending.parsed || {};
+  await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "done" } }).eq("id", pending.id);
+
+  const carro = p.carro || "veículo";
+  const fipe = Number(p.fipe_value) || 0;
+  const dealership = p.dealership || null;
+  const nome = p.nome || null;
+
   await supabase.from("buyback_requests").insert({
-    owner_id: user?.id || null,
-    dealership,
-    owner_name: nome,
-    owner_phone: phone,
-    brand: null,
-    model: q?.carro_texto || null,
-    year: q?.ano || null,
-    modalidade,
+    owner_id: p.ownerId || null,
+    dealership, owner_name: nome, owner_phone: phone,
+    brand: p.marca_nome || null, model: p.modelo_nome || carro, year: p.ano_nome || null,
+    fuel: p.combustivel || null, fipe_code: p.fipe_code || null, fipe_value: fipe || null,
+    offer_value: res.valor || null, modalidade: res.modalidade,
     qualificacao: {
-      avaliou: q?.avaliou ?? null,
-      sabe_preco: q?.sabe_preco ?? null,
-      preco_mercado: q?.preco_mercado || null,
-      aceita_troca: q?.aceita_troca || null,
-      km: q?.km || null,
-      carro_texto: q?.carro_texto || null,
+      canal: res.modalidade === "express" ? "repasse_48h" : "vitrine",
+      prazo_dias: res.prazo_dias ?? null, margem: res.margem, fipe_value: fipe,
     },
     status: "new",
   });
 
   const s = await getSettings();
-  const modLabel = modalidade === "express" ? "Venda Express (compra à vista)" : modalidade === "vitrine" ? "Venda Vitrine (intermediação)" : "Venda";
-  // resumo da qualificação pra loja decidir e avaliar (a avaliação é da loja, não nossa)
-  const resumo = [
-    `Já avaliou antes: ${simNao(q?.avaliou)}`,
-    `Sabe preço de mercado: ${q?.sabe_preco === true ? (q?.preco_mercado ? `Sim (${q.preco_mercado})` : "Sim") : q?.sabe_preco === false ? "Não" : "—"}`,
-    `Troca: ${trocaLabel(q?.aceita_troca)}`,
-    q?.km ? `KM: ${q.km}` : null,
-  ].filter(Boolean).join(" · ");
-
-  // avisa a loja (template, iniciado pelo negócio); sem loja → dono do sistema
+  const modLabel = res.modalidade === "express"
+    ? "Venda Express — à vista (repasse até 48h)"
+    : `Venda Vitrine — até ${res.prazo_dias} dias`;
+  const linhaValor = `${fmtReais(res.valor)} (margem ${fmtReais(res.margem)} · FIPE ${fmtReais(fipe)})`;
   const { data: dealers } = dealership
     ? await supabase.from("users").select("phone").eq("role", "dealer").eq("dealership", dealership).not("phone", "is", null).limit(3)
     : { data: [] as any[] };
@@ -2415,21 +2331,11 @@ async function finishSellCapture(phone: string, parsed: any, q: any) {
   if (!alvos.length && s.support_owner_phone) alvos.push(onlyDigits(s.support_owner_phone));
   for (const dp of alvos) {
     await waSendTemplate(s, dp, "pedido_recompra_loja", [
-      dealership || "Totex (lead sem loja)", `${nome || phone} · ${modLabel}`, carro, resumo, phone,
+      dealership || "Totex (lead sem loja)", `${nome || phone} · ${modLabel}`, carro, linhaValor, phone,
     ]);
   }
 
-  // confirma pro vendedor — SEM cotar valor (a proposta sai com a loja)
-  const quemContata = dealership ? `A ${dealership}` : "Nossa equipe";
-  if (modalidade === "vitrine") {
-    await sendText(phone, `✅ Prontinho! Peguei os dados do seu ${carro}. Na *Venda Vitrine* 🏆 ${quemContata.toLowerCase()} anuncia e vende pra você — você *ganha mais* e paga comissão só quando vender, e usa o carro até lá.\n\n${quemContata} vai te chamar pra ver o carro, combinar as fotos e o valor de anúncio. 🚗`);
-  } else if (modalidade === "express") {
-    await sendText(phone, `✅ Prontinho! Peguei os dados do seu ${carro}. Na *Venda Express* ⚡ ${quemContata.toLowerCase()} compra à vista — pra você vender na hora, sem anunciar nem esperar comprador (aceita até carro com dívida ou IPVA atrasado).\n\n${quemContata} vai entrar em contato pra ver o carro e te passar a proposta. 🚗`);
-  } else {
-    await sendText(phone, `✅ Prontinho! Peguei os dados do seu ${carro}. ${quemContata} vai entrar em contato pra ver o carro e combinar a venda. Qualquer dúvida, é só chamar por aqui! 🚗`);
-  }
-
-  // quem veio do QR "#vender" ganha os 30 dias também (quem vende, quer comprar depois)
+  // 30 dias grátis (quem vende, quer comprar depois)
   const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
   await sendStandGift(phone, (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, ""));
 }
@@ -2442,36 +2348,70 @@ async function handleStandSell(phone: string, text: string, contactName?: string
   try {
     await supabase.from("whatsapp_events").insert({
       from_phone: phone, kind: "stand_sell", status: "processed",
-      raw: { text }, parsed: { loja, promotor, nome: contactName || null, modalidade: null },
+      raw: { text }, parsed: { loja, promotor, nome: contactName || null },
     });
     const nome = contactName ? `, ${contactName.split(" ")[0]}` : "";
-    await sendText(phone, `Boa${nome}! Vender seu carro com a gente é rápido e sem dor de cabeça. 🚗\n\nAntes de avaliar, me diz: como você prefere vender?\n\n⚡ *Venda Express* — receba *hoje*, à vista. A loja compra na hora.\n🏆 *Venda Vitrine* — *ganhe mais*. A loja anuncia e vende pra você; paga comissão só quando vender.`);
-    const s = await getSettings();
-    await waSendMenu(s, phone, "Toque na opção que faz mais sentido pra você:", ["Venda Express", "Venda Vitrine", "Me ajuda a escolher"]);
+    await sendText(phone, `Boa${nome}! Vender seu carro com a gente é rápido e sem dor de cabeça. 🚗\n\nPrimeiro me diga qual é o carro (marca, modelo e ano) que eu já pego a referência de tabela — depois você escolhe como prefere vender. 👇`);
+    await abrirAvaliacaoFlow(phone);
     return true;
   } catch (e) { console.error("handleStandSell:", e); return true; }
 }
 
-// Resposta da escolha (botão Express/Vitrine/Me ajuda) de quem veio do QR "#vender"
-async function handleStandSellChoice(phone: string, text: string): Promise<boolean> {
+// Escolha da MODALIDADE depois da avaliação FIPE (Express / Vitrine / Me ajuda).
+async function handleSellModalidade(phone: string, text: string): Promise<boolean> {
+  const pend = await findSellPending(phone, "modalidade");
+  if (!pend) return false;
   const t = String(text || "").toLowerCase().trim();
-  const isExpress = /venda express|^express|receber? hoje|dinheiro na hora/.test(t);
-  const isVitrine = /venda vitrine|^vitrine|ganhar mais|melhor pre[çc]o/.test(t);
+  const isExpress = /venda express|^express|à vista|a vista|repasse|48/.test(t);
+  const isVitrine = /venda vitrine|^vitrine|anunci|ganhar mais|prazo/.test(t);
   const isHelp = /me ajuda|ajuda a escolher|n[aã]o sei/.test(t);
   if (!isExpress && !isVitrine && !isHelp) return false;
-  const desde = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
-  const { data: sell } = await supabase.from("whatsapp_events")
-    .select("id, parsed").eq("from_phone", phone).eq("kind", "stand_sell")
-    .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
-  if (!sell?.length) return false; // não veio do #vender → deixa outro handler tratar
+
   const s = await getSettings();
+  const fipe = Number(pend.parsed?.fipe_value) || 0;
+  const carro = pend.parsed?.carro || "seu carro";
+  const cfg = await sellConfig();
+  const quemContata = pend.parsed?.dealership ? `A ${pend.parsed.dealership}` : "Nossa equipe";
+
   if (isHelp) {
-    await sendText(phone, `Rapidinho pra eu te indicar o melhor 👇\n\n⚡ *Venda Express* — pra quem quer *receber hoje*, à vista, sem trabalho. A loja compra na hora (aceita até carro com dívida ou IPVA atrasado).\n\n🏆 *Venda Vitrine* — pra quem quer *ganhar mais* e pode esperar um pouco. A loja anuncia e vende pra você; você usa o carro até vender e paga comissão só quando vender.`);
-    await waSendMenu(s, phone, "E aí, qual combina mais?", ["Venda Express", "Venda Vitrine"]);
+    await sendText(phone, `Rapidinho pra te indicar o melhor 👇\n\n⚡ *Venda Express* — pra carro de *boa demanda*: nosso grupo de repasse compra *à vista, em até 48h*. Zero trabalho, recebe rápido.\n\n🏆 *Venda Vitrine* — a loja *anuncia e vende* o seu. Você escolhe o prazo e, *quanto mais tempo topa esperar, mais recebe*. Usa o carro até vender.`);
+    await waSendMenu(s, phone, "Qual combina mais com você?", ["Venda Express", "Venda Vitrine"]);
     return true;
   }
-  const modalidade = isExpress ? "express" : "vitrine";
-  await startSellCapture(phone, sell[0].id, sell[0].parsed as any, modalidade);
+
+  if (isExpress) {
+    const { margem, valor } = calcOffer(fipe, cfg.express.pct, cfg.express.piso);
+    await sendText(phone, `⚡ *Venda Express* — pra carro de boa demanda, nosso grupo de repasse fecha *à vista, em até 48h*.\n\nSua proposta pro ${carro} é de até *${fmtReais(valor)}* (valor final na vistoria). Aceita até carro com dívida ou IPVA atrasado.\n\n${quemContata} já vai entrar em contato pra fechar. 🚗`);
+    await finalizeSellLead(phone, pend, { modalidade: "express", valor, margem });
+    return true;
+  }
+
+  // Vitrine → mostra os prazos (quanto mais tempo, mais recebe) e pede a escolha
+  const prazos = cfg.prazos.map((p: any) => ({ dias: Number(p.dias), ...calcOffer(fipe, p.pct, p.piso) }))
+    .sort((a: any, b: any) => a.dias - b.dias);
+  await supabase.from("whatsapp_events").update({ parsed: { ...pend.parsed, step: "prazo", prazos } }).eq("id", pend.id);
+  const linhas = prazos.map((p: any, i: number) => `${i === 0 ? "⚡" : i === prazos.length - 1 ? "🏆" : "📅"} até ${p.dias} dias → *${fmtReais(p.valor)}*`).join("\n");
+  await sendText(phone, `🏆 *Venda Vitrine* — a loja anuncia e vende o seu ${carro}, e *quanto mais tempo você topa esperar, mais você recebe*:\n\n${linhas}\n\nÉ a referência de tabela menos a nossa margem — menos pressa, menor a margem. Enquanto isso o carro fica com você. Qual prazo combina?`);
+  await waSendMenu(s, phone, "Escolha o prazo:", prazos.map((p: any) => `Até ${p.dias} dias`));
+  return true;
+}
+
+// Escolha do PRAZO da Venda Vitrine (até 20/45/90 dias) → fecha o lead com o valor daquele prazo.
+async function handleSellPrazo(phone: string, text: string): Promise<boolean> {
+  const pend = await findSellPending(phone, "prazo");
+  if (!pend) return false;
+  const prazos: any[] = Array.isArray(pend.parsed?.prazos) ? pend.parsed.prazos : [];
+  if (!prazos.length) return false;
+  const t = String(text || "").toLowerCase();
+  const mDias = t.match(/(\d{2,3})\s*dias?/) || t.match(/at[ée]\s*(\d{2,3})/);
+  if (!mDias) return false;
+  const dias = Number(mDias[1]);
+  // casa com o prazo mais próximo do número escolhido
+  const escolhido = prazos.reduce((best, p) => Math.abs(p.dias - dias) < Math.abs(best.dias - dias) ? p : best, prazos[0]);
+  const carro = pend.parsed?.carro || "seu carro";
+  const quemContata = pend.parsed?.dealership ? `A ${pend.parsed.dealership}` : "Nossa equipe";
+  await sendText(phone, `✅ Fechado! Vendendo o ${carro} em até *${escolhido.dias} dias*, você recebe até *${fmtReais(escolhido.valor)}* (valor final na vistoria).\n\n${quemContata} vai te chamar pra combinar as fotos e o anúncio. Enquanto isso, o carro continua com você. 🚗`);
+  await finalizeSellLead(phone, pend, { modalidade: "vitrine", valor: escolhido.valor, margem: escolhido.margem, prazo_dias: escolhido.dias });
   return true;
 }
 
@@ -2816,20 +2756,20 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     // Pós-venda (antes do cadastro, funciona p/ quem ainda não é usuário):
     if (msg.kind !== "image") {
       const psText = msg.text || msg.transcription || "";
-      // QR "#vender" do stand — vendedor quer avaliar o carro (escolhe Express/Vitrine)
+      // QR "#vender" do stand — vendedor quer vender: abre a avaliação FIPE
       if (await handleStandSell(msg.phone, psText, msg.contactName)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_sell" } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, stand_sell: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
-      // captação de dados (carro, avaliação, preço, troca) de quem já escolheu a modalidade
-      if (await handleStandSellCapture(msg.phone, psText)) {
-        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_sell_capture", input: psText } }).eq("id", eventId);
-        return new Response(JSON.stringify({ ok: true, stand_sell_capture: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      // escolha da MODALIDADE (Express/Vitrine/Me ajuda) depois da avaliação FIPE
+      if (await handleSellModalidade(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "sell_modalidade", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, sell_modalidade: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
-      // escolha da modalidade (Express/Vitrine/Me ajuda) de quem veio do #vender
-      if (await handleStandSellChoice(msg.phone, psText)) {
-        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_sell_choice", input: psText } }).eq("id", eventId);
-        return new Response(JSON.stringify({ ok: true, stand_sell_choice: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      // escolha do PRAZO (Venda Vitrine — até 20/45/90 dias)
+      if (await handleSellPrazo(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "sell_prazo", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, sell_prazo: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // QR do stand físico (shopping) — código #stand na mensagem pré-preenchida
       if (await handleStandLead(msg.phone, psText, msg.contactName)) {
