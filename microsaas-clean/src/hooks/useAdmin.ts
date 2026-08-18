@@ -159,6 +159,8 @@ export interface AppSettings {
   integration_api_key: string | null;
   os_webhook_url: string | null;
   buyback_fipe_pct: number | null;
+  buyback_prazos: Array<{ dias: number; pct: number; piso: number }> | null;
+  buyback_express: { pct: number; piso: number } | null;
   placa_api_url: string | null;
   placa_api_bearer: string | null;
   placa_api_device: string | null;
@@ -279,7 +281,7 @@ export const useUpdateAppSettings = () => {
     mutationFn: async (updates: Partial<AppSettings>) => {
       const { error } = await supabase
         .from('app_settings')
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update({ ...updates, updated_at: new Date().toISOString() } as any)
         .eq('id', 1);
       if (error) throw error;
     },
