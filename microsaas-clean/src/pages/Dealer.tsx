@@ -575,10 +575,22 @@ function BuybackTab({ dealership }: { dealership?: string }) {
                     </p>
                     <p className="text-sm text-muted-foreground truncate">
                       <Car className="w-3.5 h-3.5 inline mr-1" />{[r.brand, r.model, r.year].filter(Boolean).join(" ")}
+                      {r.modalidade === "express" && <Badge className="border-0 ml-2 bg-amber-500/15 text-amber-600">Venda Express ⚡</Badge>}
+                      {r.modalidade === "vitrine" && <Badge className="border-0 ml-2 bg-primary/15 text-primary">Venda Vitrine 🏆</Badge>}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      FIPE {brl(Number(r.fipe_value))} · oferta ({r.offer_pct}%) <b className="text-foreground">{brl(Number(r.offer_value))}</b> · {new Date(r.created_at).toLocaleDateString("pt-BR")}
-                    </p>
+                    {r.qualificacao ? (
+                      <p className="text-xs text-muted-foreground">
+                        Já avaliou: <b className="text-foreground">{r.qualificacao.avaliou === true ? "Sim" : r.qualificacao.avaliou === false ? "Não" : "—"}</b>
+                        {" · "}Sabe preço: <b className="text-foreground">{r.qualificacao.sabe_preco === true ? (r.qualificacao.preco_mercado || "Sim") : r.qualificacao.sabe_preco === false ? "Não" : "—"}</b>
+                        {" · "}Troca: <b className="text-foreground">{r.qualificacao.aceita_troca === "sim" ? "Aceita" : r.qualificacao.aceita_troca === "nao" ? "Não" : r.qualificacao.aceita_troca === "depende" ? "Depende" : "—"}</b>
+                        {r.qualificacao.km ? <> · {Number(r.qualificacao.km).toLocaleString("pt-BR")} km</> : null}
+                        {" · "}{new Date(r.created_at).toLocaleDateString("pt-BR")}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        FIPE {brl(Number(r.fipe_value))} · oferta ({r.offer_pct}%) <b className="text-foreground">{brl(Number(r.offer_value))}</b> · {new Date(r.created_at).toLocaleDateString("pt-BR")}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {wa && (

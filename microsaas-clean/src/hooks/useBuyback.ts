@@ -19,6 +19,15 @@ export interface BuybackRequest {
   fipe_value: number | null;
   offer_pct: number | null;
   offer_value: number | null;
+  modalidade: "express" | "vitrine" | null;
+  qualificacao: {
+    avaliou: boolean | null;
+    sabe_preco: boolean | null;
+    preco_mercado: string | null;
+    aceita_troca: "sim" | "nao" | "depende" | null;
+    km: string | null;
+    carro_texto: string | null;
+  } | null;
   status: "new" | "contacted" | "closed" | "declined" | string;
   created_at: string;
 }
