@@ -698,7 +698,7 @@ function ConfigTab() {
         <CardContent className="space-y-5">
           <p className="text-xs text-muted-foreground">
             O vendedor recebe <strong>FIPE − margem</strong>. A margem é o <strong>maior valor</strong> entre o % da FIPE e o piso em R$
-            (assim escala do carro barato ao caro). Vale para o fluxo "Venda seu carro" no WhatsApp.
+            (assim escala do carro barato ao caro). Este é o <strong>padrão da rede</strong> — cada loja pode definir a própria margem no painel dela (aba Recompras).
           </p>
 
           {/* Venda Express */}

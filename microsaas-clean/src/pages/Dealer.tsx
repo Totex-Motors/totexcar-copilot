@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -307,7 +308,8 @@ export default function Dealer() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="recompras" className="mt-6">
+          <TabsContent value="recompras" className="mt-6 space-y-6">
+            <SellMarginsCard />
             <BuybackTab dealership={viewStore} />
           </TabsContent>
 
@@ -544,6 +546,132 @@ const BUYBACK_STATUS: Record<string, { label: string; cls: string }> = {
   closed: { label: "Concluído", cls: "bg-green-500/15 text-green-600" },
   declined: { label: "Recusado", cls: "bg-muted text-muted-foreground" },
 };
+
+// Margens da "Venda seu carro" da PRÓPRIA loja (Express + Vitrine por prazo). Sem override, usa o padrão da rede.
+function SellMarginsCard() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [usandoPadrao, setUsandoPadrao] = useState(true);
+  const [exPct, setExPct] = useState("20");
+  const [exPiso, setExPiso] = useState("10000");
+  const [p, setP] = useState([
+    { dias: "20", pct: "14", piso: "3500" },
+    { dias: "45", pct: "10", piso: "2800" },
+    { dias: "90", pct: "7", piso: "2000" },
+  ]);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase.functions.invoke("dealer-api", { body: { action: "sell_config" } });
+      const d: any = data || {};
+      const src = d?.own && (d.own.prazos || d.own.express)
+        ? { prazos: d.own.prazos || d.padrao?.prazos, express: d.own.express || d.padrao?.express }
+        : d?.padrao;
+      setUsandoPadrao(!!d?.usando_padrao);
+      setExPct(String(src?.express?.pct ?? 20));
+      setExPiso(String(src?.express?.piso ?? 10000));
+      const pr = (src?.prazos || []).slice(0, 3);
+      while (pr.length < 3) pr.push({ dias: 0, pct: 0, piso: 0 });
+      setP(pr.map((x: any) => ({ dias: String(x.dias), pct: String(x.pct), piso: String(x.piso) })));
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const setPi = (i: number, k: string, v: string) => setP((s) => s.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const body = {
+        action: "sell_config_save",
+        buyback_express: { pct: Number(exPct) || 20, piso: Number(exPiso) || 10000 },
+        buyback_prazos: p.map((x) => ({ dias: Number(x.dias) || 0, pct: Number(x.pct) || 0, piso: Number(x.piso) || 0 }))
+          .filter((x) => x.dias > 0).sort((a, b) => a.dias - b.dias),
+      };
+      const { data, error } = await supabase.functions.invoke("dealer-api", { body });
+      if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
+      setUsandoPadrao(false);
+      toast({ title: "Margens salvas ✅", description: "As avaliações da sua loja passam a usar a sua margem." });
+    } catch (e: any) {
+      toast({ title: "Erro ao salvar", description: String(e?.message || e), variant: "destructive" });
+    } finally { setSaving(false); }
+  };
+
+  const resetPadrao = async () => {
+    setSaving(true);
+    try {
+      await supabase.functions.invoke("dealer-api", { body: { action: "sell_config_save", reset: true } });
+      await load();
+      toast({ title: "Voltou ao padrão da rede" });
+    } finally { setSaving(false); }
+  };
+
+  const FIPE = 70000;
+  const calc = (pct: string, piso: string) => {
+    const margem = Math.max(Math.round(FIPE * (Number(pct) || 0) / 100), Number(piso) || 0);
+    return Math.max(0, Math.round((FIPE - margem) / 100) * 100);
+  };
+  const money = (v: number) => `R$ ${v.toLocaleString("pt-BR")}`;
+
+  return (
+    <Card className="border-0 shadow-premium-md">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Banknote className="w-5 h-5" /> Venda seu carro — sua margem
+          {loading ? null : usandoPadrao
+            ? <Badge className="border-0 bg-muted text-muted-foreground">usando padrão da rede</Badge>
+            : <Badge className="border-0 bg-success/15 text-success">margem da sua loja</Badge>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <p className="text-xs text-muted-foreground">
+          O vendedor recebe <strong>FIPE − margem</strong>. A margem é o <strong>maior valor</strong> entre o % da FIPE e o piso em R$.
+          Enquanto você não salvar, sua loja usa o padrão da rede.
+        </p>
+
+        <div className="rounded-lg border p-4 space-y-3">
+          <div className="font-semibold flex items-center gap-2">⚡ Venda Express <span className="text-xs font-normal text-muted-foreground">à vista (grupo de repasse, até 48h)</span></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>% da FIPE</Label><Input type="number" step="1" value={exPct} onChange={(e) => setExPct(e.target.value)} /></div>
+            <div className="space-y-2"><Label>Piso (R$)</Label><Input type="number" step="100" value={exPiso} onChange={(e) => setExPiso(e.target.value)} /></div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border p-4 space-y-3">
+          <div className="font-semibold flex items-center gap-2">🏆 Venda Vitrine <span className="text-xs font-normal text-muted-foreground">quanto mais prazo, menor a margem → vendedor recebe mais</span></div>
+          <div className="grid grid-cols-3 gap-3 text-xs text-muted-foreground font-medium"><span>Prazo (dias)</span><span>% da FIPE</span><span>Piso (R$)</span></div>
+          {p.map((row, i) => (
+            <div key={i} className="grid grid-cols-3 gap-3">
+              <Input type="number" step="1" value={row.dias} onChange={(e) => setPi(i, "dias", e.target.value)} />
+              <Input type="number" step="1" value={row.pct} onChange={(e) => setPi(i, "pct", e.target.value)} />
+              <Input type="number" step="100" value={row.piso} onChange={(e) => setPi(i, "piso", e.target.value)} />
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-lg bg-muted/40 p-4">
+          <p className="text-xs text-muted-foreground mb-2">Prévia — num carro de <strong>FIPE {money(FIPE)}</strong>, o vendedor recebe:</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="rounded-md bg-background p-2 text-center"><div className="text-xs text-muted-foreground">⚡ Express</div><div className="font-bold">{money(calc(exPct, exPiso))}</div></div>
+            {p.map((row, i) => (
+              <div key={i} className="rounded-md bg-background p-2 text-center"><div className="text-xs text-muted-foreground">🏆 até {row.dias} dias</div><div className="font-bold">{money(calc(row.pct, row.piso))}</div></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button onClick={save} disabled={saving || loading} className="bg-gradient-primary gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Banknote className="w-4 h-4" />} Salvar minha margem
+          </Button>
+          {!usandoPadrao && (
+            <Button variant="ghost" onClick={resetPadrao} disabled={saving} className="text-muted-foreground">Voltar ao padrão da rede</Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function BuybackTab({ dealership }: { dealership?: string }) {
   const { data: reqs, isLoading } = useBuybackRequests(true, dealership);

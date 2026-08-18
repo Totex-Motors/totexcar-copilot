@@ -854,6 +854,40 @@ Deno.serve(async (req) => {
         return json({ ok: true, quitadas: (data || []).length });
       }
 
+      // ===================== VENDA SEU CARRO — margens da LOJA =====================
+      // Cada loja edita a própria margem (Express + Vitrine); sem override, usa o padrão da rede.
+      case "sell_config": {
+        const alvo = (scopeDealership && scopeDealership !== "__none__") ? scopeDealership : me.dealership;
+        const { data: g } = await admin.from("app_settings").select("buyback_prazos, buyback_express").eq("id", 1).single();
+        const padrao = {
+          prazos: Array.isArray(g?.buyback_prazos) && g.buyback_prazos.length ? g.buyback_prazos : [{ dias: 20, pct: 14, piso: 3500 }, { dias: 45, pct: 10, piso: 2800 }, { dias: 90, pct: 7, piso: 2000 }],
+          express: (g?.buyback_express && typeof g.buyback_express === "object") ? g.buyback_express : { pct: 20, piso: 10000 },
+        };
+        let own: any = null;
+        if (alvo) {
+          const { data: d } = await admin.from("dealer_sell_config").select("buyback_prazos, buyback_express, updated_at").eq("dealership", alvo).maybeSingle();
+          if (d && (d.buyback_prazos || d.buyback_express)) own = { prazos: d.buyback_prazos || null, express: d.buyback_express || null, updated_at: d.updated_at };
+        }
+        return json({ ok: true, dealership: alvo, padrao, own, usando_padrao: !own });
+      }
+
+      case "sell_config_save": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        if (p.reset === true) {
+          await admin.from("dealer_sell_config").delete().eq("dealership", writeStore);
+          return json({ ok: true, reset: true });
+        }
+        const prazos = Array.isArray(p.buyback_prazos)
+          ? p.buyback_prazos.map((x: any) => ({ dias: Number(x.dias) || 0, pct: Number(x.pct) || 0, piso: Number(x.piso) || 0 })).filter((x: any) => x.dias > 0)
+          : null;
+        const express = p.buyback_express ? { pct: Number(p.buyback_express.pct) || 0, piso: Number(p.buyback_express.piso) || 0 } : null;
+        const { error } = await admin.from("dealer_sell_config").upsert({
+          dealership: writeStore, buyback_prazos: prazos, buyback_express: express, updated_at: new Date().toISOString(),
+        }, { onConflict: "dealership" });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
       default:
         return json({ error: "unknown_action" }, 400);
     }

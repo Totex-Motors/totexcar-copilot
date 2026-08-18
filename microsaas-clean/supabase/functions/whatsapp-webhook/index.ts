@@ -2318,13 +2318,21 @@ function calcOffer(fipe: number, pct: number, piso: number): { margem: number; v
   const valor = Math.max(0, Math.round((fipe - margem) / 100) * 100);
   return { margem, valor };
 }
-async function sellConfig(): Promise<{ prazos: any[]; express: { pct: number; piso: number } }> {
+// Config de margem: padrão da REDE (app_settings) com override POR LOJA (dealer_sell_config).
+// A loja do lead que tiver margem própria usa a dela; senão, cai no padrão da rede.
+async function sellConfig(dealership?: string | null): Promise<{ prazos: any[]; express: { pct: number; piso: number } }> {
   const { data } = await supabase.from("app_settings").select("buyback_prazos, buyback_express").eq("id", 1).single();
-  const prazos = Array.isArray(data?.buyback_prazos) && data!.buyback_prazos.length
+  let prazos = Array.isArray(data?.buyback_prazos) && data!.buyback_prazos.length
     ? data!.buyback_prazos
     : [{ dias: 20, pct: 14, piso: 3500 }, { dias: 45, pct: 10, piso: 2800 }, { dias: 90, pct: 7, piso: 2000 }];
-  const express = (data?.buyback_express && typeof data.buyback_express === "object")
+  let express = (data?.buyback_express && typeof data.buyback_express === "object")
     ? data.buyback_express : { pct: 20, piso: 10000 };
+  if (dealership) {
+    const { data: d } = await supabase.from("dealer_sell_config")
+      .select("buyback_prazos, buyback_express").eq("dealership", dealership).maybeSingle();
+    if (Array.isArray(d?.buyback_prazos) && d!.buyback_prazos.length) prazos = d!.buyback_prazos;
+    if (d?.buyback_express && typeof d.buyback_express === "object") express = d.buyback_express;
+  }
   return { prazos, express };
 }
 
@@ -2449,7 +2457,7 @@ async function handleSellModalidade(phone: string, text: string): Promise<boolea
   const s = await getSettings();
   const fipe = Number(pend.parsed?.fipe_value) || 0;
   const carro = pend.parsed?.carro || "seu carro";
-  const cfg = await sellConfig();
+  const cfg = await sellConfig(pend.parsed?.dealership); // margem da LOJA do lead (ou padrão da rede)
   const quemContata = pend.parsed?.dealership ? `A ${pend.parsed.dealership}` : "Nossa equipe";
 
   if (isHelp) {
