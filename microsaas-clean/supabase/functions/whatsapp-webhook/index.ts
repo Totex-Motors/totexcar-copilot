@@ -2528,6 +2528,53 @@ function querAtivar(t: string): boolean {
   return false;
 }
 
+// Detecta "ver mais carros / mais opções" (texto ou toque na lista) pra paginar a vitrine do visitante.
+const VER_MAIS_RE = /ver mais|mais carros|mais op[çc][õo]es|mais ve[íi]culos|continuar vendo|mostrar mais/i;
+
+// VITRINE PAGINADA do visitante do stand: mostra 10 carros por vez e oferece "🔎 Ver mais carros"
+// enquanto sobrar estoque. O critério (categoria/preço) e o offset ficam no evento stand_lead
+// (parsed.vitrine), então o "ver mais" continua exatamente a última busca. Ordenação fixa
+// (year_desc) mantém as páginas estáveis entre uma mensagem e outra.
+async function standVitrine(
+  phone: string, loja: string, leadId: string | null, prevParsed: any,
+  opts: { categoria?: string | null; precoMax?: number | null; more?: boolean },
+): Promise<void> {
+  const prev = prevParsed?.vitrine || {};
+  const categoria = opts.more ? (prev.categoria ?? null) : (opts.categoria ?? null);
+  const precoMax = opts.more ? (prev.precoMax ?? null) : (opts.precoMax ?? null);
+  const offset = opts.more ? Number(prev.offset || 0) : 0;
+
+  const dealershipId = await standScopeId(loja);
+  let cars = await mktVehicles({ maxPrice: precoMax || undefined, dealershipId, limit: 60, sort: "year_desc" }).catch(() => [] as any[]);
+  if (categoria) cars = cars.filter((c: any) => carClass(c) === categoria);
+  const pagina = cars.slice(offset, offset + 10);
+
+  if (!pagina.length) {
+    await sendText(phone, offset > 0
+      ? "Esses são todos que tenho com esse perfil por enquanto 🙂 Me diz outro tipo ou faixa de preço (ex.: \"SUV até 80 mil\") que eu procuro de novo."
+      : "Não achei nada com esses critérios no estoque agora 😕 Me fala outro tipo ou faixa de preço que eu procuro.");
+    return;
+  }
+  await sendCarShowcase(phone, pagina, null);
+
+  const novoOffset = offset + pagina.length;
+  const temMais = cars.length > novoOffset;
+  if (leadId) {
+    await supabase.from("whatsapp_events")
+      .update({ parsed: { ...(prevParsed || {}), vitrine: { categoria, precoMax, offset: novoOffset } } })
+      .eq("id", leadId);
+  }
+  // sinalizador de busca: continua vendo ou refina — só oferece "ver mais" se ainda houver estoque
+  const s = await getSettings();
+  const rows = temMais ? ["🔎 Ver mais carros", "🎯 Nova busca"] : ["🎯 Nova busca"];
+  await waSendMenu(
+    s, phone,
+    temMais ? "Quer ver mais opções? É só tocar 👇 (ou me diga o que procura, ex.: \"sedan até 100 mil\")"
+            : "Quer procurar outro perfil? Toque em *Nova busca* ou me diga o tipo/faixa de preço. 🚗",
+    rows,
+  );
+}
+
 async function handleStandLead(phone: string, text: string, contactName?: string): Promise<boolean> {
   const m = String(text || "").match(STAND_RE);
   if (!m) return false;
@@ -2538,10 +2585,11 @@ async function handleStandLead(phone: string, text: string, contactName?: string
   if (!carroId && promotor && promotor.length >= 16) { carroId = promotor; promotor = null; }
   try {
     // o lead é gravado ANTES de responder — mesmo se o envio falhar, a atribuição fica
-    await supabase.from("whatsapp_events").insert({
+    const { data: leadRow } = await supabase.from("whatsapp_events").insert({
       from_phone: phone, kind: "stand_lead", status: "processed",
       raw: { text }, parsed: { loja, promotor, carro: carroId, nome: contactName || null },
-    });
+    }).select("id").single();
+    const leadId = (leadRow as any)?.id || null;
     await sendText(phone, `Que bom te ver por aqui${contactName ? `, ${contactName.split(" ")[0]}` : ""}! 👋 Sou o Co-pilot da Totex Motors. Já te mostro a vitrine — desliza pro lado e toca em *Ver carro* no que curtir.\n\nMe diz o que você procura (ex.: "SUV até 80 mil", "picape automática") que eu filtro na hora. 🚗`);
     // o carro do QR (exposto no stand) vai primeiro, com destaque
     if (carroId) {
@@ -2561,9 +2609,8 @@ async function handleStandLead(phone: string, text: string, contactName?: string
         }
       } catch { /* segue pra vitrine */ }
     }
-    const dealershipId = await standScopeId(loja);
-    const cars = await mktVehicles({ dealershipId, limit: 10 }).catch(() => [] as any[]);
-    if (cars.length) await sendCarShowcase(phone, cars, null);
+    // vitrine paginada (mostra 10 + "🔎 Ver mais carros" enquanto sobrar estoque)
+    await standVitrine(phone, loja, leadId, { loja, promotor, carro: carroId, nome: contactName || null }, {});
     // presente: 30 dias grátis + como ativar (logo depois da vitrine)
     const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
     const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
@@ -2578,10 +2625,19 @@ async function handleStandLead(phone: string, text: string, contactName?: string
 async function handleStandFollowup(phone: string, text: string): Promise<boolean> {
   const desde = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
   const { data: lead } = await supabase.from("whatsapp_events")
-    .select("parsed").eq("from_phone", phone).eq("kind", "stand_lead")
+    .select("id, parsed").eq("from_phone", phone).eq("kind", "stand_lead")
     .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
   if (!lead?.length) return false;
+  const leadId = (lead[0] as any)?.id || null;
+  const leadParsed = (lead[0].parsed as any) || {};
+  const loja = String(leadParsed?.loja || "geral").toLowerCase();
   const t = String(text || "").toLowerCase();
+
+  // "Ver mais carros" (toque na lista ou texto) → próxima página da última busca
+  if (VER_MAIS_RE.test(t)) {
+    await standVitrine(phone, loja, leadId, leadParsed, { more: true });
+    return true;
+  }
 
   // ATIVAR OS 30 DIAS na hora (botão "Ativar 30 dias" ou "sim/ativar"): provisiona a conta e libera
   if (querAtivar(t)) {
@@ -2611,16 +2667,8 @@ async function handleStandFollowup(phone: string, text: string): Promise<boolean
     await sendText(phone, `Posso te mostrar carros por tipo e faixa de preço — ex.: "SUV até 80 mil", "sedan até 120 mil". 🚗\n\nPra atendimento completo (avaliar seu carro na troca, financiamento, test drive), toca em *Ver carro* num card que a loja te atende.`);
     return true;
   }
-  const loja = String(lead[0].parsed?.loja || "geral").toLowerCase();
-  const dealershipId = await standScopeId(loja);
-  let cars = await mktVehicles({ maxPrice: precoMax, dealershipId, limit: categoria ? 120 : 10 }).catch(() => [] as any[]);
-  if (categoria) cars = cars.filter((c: any) => carClass(c) === categoria);
-  cars = cars.slice(0, 10);
-  if (!cars.length) {
-    await sendText(phone, "Não achei nada com esses critérios no estoque agora 😕 Me fala outro tipo ou faixa de preço que eu procuro de novo.");
-    return true;
-  }
-  await sendCarShowcase(phone, cars, null);
+  // vitrine paginada com o critério informado (reseta o offset e guarda a busca pro "ver mais")
+  await standVitrine(phone, loja, leadId, leadParsed, { categoria, precoMax: precoMax ?? null });
   return true;
 }
 
