@@ -2495,7 +2495,14 @@ async function standVitrine(
       : "Não achei nada com esses critérios no estoque agora 😕 Me fala outro tipo ou faixa de preço que eu procuro.");
     return;
   }
-  await sendCarShowcase(phone, pagina, null);
+
+  // ENTREGA a vitrine PRIMEIRO e só segue se ela realmente saiu — o "ver mais" nunca aparece
+  // antes/sem os cards (senão o vendedor vê "ver mais" com a vitrine cortada).
+  const enviados = await sendCarShowcase(phone, pagina, null);
+  if (!enviados) {
+    await sendText(phone, "Deixa eu buscar do jeito certo pra você 🙌 Me diz o que procura — ex.: \"SUV até 80 mil\", \"sedan automático\", \"picape\" — que eu filtro na hora. 🚗");
+    return;
+  }
 
   const novoOffset = offset + pagina.length;
   const temMais = cars.length > novoOffset;

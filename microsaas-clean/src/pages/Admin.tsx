@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Switch } from "@/components/ui/switch";
-import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode } from "lucide-react";
+import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode, Banknote } from "lucide-react";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
@@ -482,6 +482,11 @@ function ConfigTab() {
     asaas_api_key: "", asaas_sandbox: true, asaas_webhook_token: "",
     plan_monthly_price: "19.90", plan_annual_price: "200.00", app_url: "",
     buyback_fipe_pct: "90",
+    // Venda seu carro — margens (Express à vista + Vitrine por prazo). margem = max(% da FIPE, piso).
+    ex_pct: "20", ex_piso: "10000",
+    p1_dias: "20", p1_pct: "14", p1_piso: "3500",
+    p2_dias: "45", p2_pct: "10", p2_piso: "2800",
+    p3_dias: "90", p3_pct: "7", p3_piso: "2000",
     placa_bearer: "", placa_device: "", placa_url: "", apifull_token: "",
     referral_buyer_offer: "Transferência grátis",
     support_owner_phone: "",
@@ -506,6 +511,17 @@ function ConfigTab() {
         plan_annual_price: (settings.plan_annual_price ?? 200).toString(),
         app_url: settings.app_url || "",
         buyback_fipe_pct: (settings.buyback_fipe_pct ?? 90).toString(),
+        ex_pct: String((settings as any).buyback_express?.pct ?? 20),
+        ex_piso: String((settings as any).buyback_express?.piso ?? 10000),
+        p1_dias: String((settings as any).buyback_prazos?.[0]?.dias ?? 20),
+        p1_pct: String((settings as any).buyback_prazos?.[0]?.pct ?? 14),
+        p1_piso: String((settings as any).buyback_prazos?.[0]?.piso ?? 3500),
+        p2_dias: String((settings as any).buyback_prazos?.[1]?.dias ?? 45),
+        p2_pct: String((settings as any).buyback_prazos?.[1]?.pct ?? 10),
+        p2_piso: String((settings as any).buyback_prazos?.[1]?.piso ?? 2800),
+        p3_dias: String((settings as any).buyback_prazos?.[2]?.dias ?? 90),
+        p3_pct: String((settings as any).buyback_prazos?.[2]?.pct ?? 7),
+        p3_piso: String((settings as any).buyback_prazos?.[2]?.piso ?? 2000),
         placa_bearer: settings.placa_api_bearer || "",
         apifull_token: (settings as any).apifull_token || "",
         placa_device: settings.placa_api_device || "",
@@ -541,6 +557,12 @@ function ConfigTab() {
         plan_annual_price: Number(f.plan_annual_price) || 200,
         app_url: f.app_url || null,
         buyback_fipe_pct: Number(f.buyback_fipe_pct) || 90,
+        buyback_express: { pct: Number(f.ex_pct) || 20, piso: Number(f.ex_piso) || 10000 },
+        buyback_prazos: [
+          { dias: Number(f.p1_dias) || 20, pct: Number(f.p1_pct) || 14, piso: Number(f.p1_piso) || 3500 },
+          { dias: Number(f.p2_dias) || 45, pct: Number(f.p2_pct) || 10, piso: Number(f.p2_piso) || 2800 },
+          { dias: Number(f.p3_dias) || 90, pct: Number(f.p3_pct) || 7, piso: Number(f.p3_piso) || 2000 },
+        ].sort((a, b) => a.dias - b.dias),
         placa_api_bearer: f.placa_bearer || null,
         apifull_token: f.apifull_token || null,
         placa_api_device: f.placa_device || null,
@@ -667,6 +689,66 @@ function ConfigTab() {
             <Label className="text-xs">Webhook (cole no Asaas → Integrações → Webhooks; use o token acima no campo "Token de autenticação"):</Label>
             <code className="block text-xs bg-muted p-2 rounded break-all">{asaasWebhook}</code>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Venda seu carro — margens (Express à vista + Vitrine por prazo) */}
+      <Card className="border-0 shadow-premium-md lg:col-span-2">
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Banknote className="w-5 h-5" /> Venda seu carro — margens (Express & Vitrine)</CardTitle></CardHeader>
+        <CardContent className="space-y-5">
+          <p className="text-xs text-muted-foreground">
+            O vendedor recebe <strong>FIPE − margem</strong>. A margem é o <strong>maior valor</strong> entre o % da FIPE e o piso em R$
+            (assim escala do carro barato ao caro). Vale para o fluxo "Venda seu carro" no WhatsApp.
+          </p>
+
+          {/* Venda Express */}
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="font-semibold flex items-center gap-2">⚡ Venda Express <span className="text-xs font-normal text-muted-foreground">à vista (grupo de repasse, até 48h)</span></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>% da FIPE</Label><Input type="number" step="1" value={f.ex_pct} onChange={(e) => set("ex_pct", e.target.value)} placeholder="20" /></div>
+              <div className="space-y-2"><Label>Piso (R$)</Label><Input type="number" step="100" value={f.ex_piso} onChange={(e) => set("ex_piso", e.target.value)} placeholder="10000" /></div>
+            </div>
+          </div>
+
+          {/* Venda Vitrine — 3 prazos */}
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="font-semibold flex items-center gap-2">🏆 Venda Vitrine <span className="text-xs font-normal text-muted-foreground">a loja anuncia · quanto mais prazo, menor a margem → vendedor recebe mais</span></div>
+            <div className="grid grid-cols-3 gap-3 text-xs text-muted-foreground font-medium"><span>Prazo (dias)</span><span>% da FIPE</span><span>Piso (R$)</span></div>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="grid grid-cols-3 gap-3">
+                <Input type="number" step="1" value={(f as any)[`p${i}_dias`]} onChange={(e) => set(`p${i}_dias`, e.target.value)} />
+                <Input type="number" step="1" value={(f as any)[`p${i}_pct`]} onChange={(e) => set(`p${i}_pct`, e.target.value)} />
+                <Input type="number" step="100" value={(f as any)[`p${i}_piso`]} onChange={(e) => set(`p${i}_piso`, e.target.value)} />
+              </div>
+            ))}
+          </div>
+
+          {/* Prévia ao vivo — carro de referência R$ 70.000 */}
+          {(() => {
+            const FIPE = 70000;
+            const calc = (pct: number, piso: number) => {
+              const margem = Math.max(Math.round(FIPE * (Number(pct) || 0) / 100), Number(piso) || 0);
+              return Math.max(0, Math.round((FIPE - margem) / 100) * 100);
+            };
+            const money = (v: number) => `R$ ${v.toLocaleString("pt-BR")}`;
+            const linhas = [
+              { l: "⚡ Express (à vista)", v: calc(Number(f.ex_pct), Number(f.ex_piso)) },
+              ...[1, 2, 3].map((i) => ({ l: `🏆 até ${(f as any)[`p${i}_dias`]} dias`, v: calc(Number((f as any)[`p${i}_pct`]), Number((f as any)[`p${i}_piso`])) })),
+            ];
+            return (
+              <div className="rounded-lg bg-muted/40 p-4 space-y-1">
+                <p className="text-xs text-muted-foreground mb-2">Prévia — num carro de <strong>FIPE {money(FIPE)}</strong>, o vendedor recebe:</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {linhas.map((x, k) => (
+                    <div key={k} className="rounded-md bg-background p-2 text-center">
+                      <div className="text-xs text-muted-foreground">{x.l}</div>
+                      <div className="font-bold">{money(x.v)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
