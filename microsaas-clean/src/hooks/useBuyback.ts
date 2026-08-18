@@ -19,6 +19,13 @@ export interface BuybackRequest {
   fipe_value: number | null;
   offer_pct: number | null;
   offer_value: number | null;
+  modalidade: "express" | "vitrine" | null;
+  qualificacao: {
+    canal?: "repasse_48h" | "vitrine" | null;
+    prazo_dias?: number | null;
+    margem?: number | null;
+    fipe_value?: number | null;
+  } | null;
   status: "new" | "contacted" | "closed" | "declined" | string;
   created_at: string;
 }

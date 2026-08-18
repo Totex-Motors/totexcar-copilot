@@ -66,10 +66,36 @@ async function encryptResponse(resp: unknown, aesKey: CryptoKey, iv: Uint8Array)
 }
 
 // ---------------- FIPE (mesma fonte da edge buyback) ----------------
+// A API pública da FIPE (parallelum) tem rate limit agressivo (429). Como marcas/modelos/anos
+// quase não mudam, cacheamos no banco (7 dias) e só batemos ao vivo no cache miss, com poucos
+// retries curtos (o Meta corta o endpoint dos Flows perto de ~10s). Cache velho serve de rede.
+const FIPE_TTL_MS = 7 * 24 * 3600_000;
+const _sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function fipeGet(path: string) {
-  const res = await fetch(`${FIPE}${path}`);
-  if (!res.ok) throw new Error(`FIPE ${res.status}`);
-  return res.json();
+  // 1) cache fresco
+  const { data: hit } = await admin.from("fipe_cache").select("payload, fetched_at").eq("path", path).maybeSingle();
+  if (hit && Date.now() - new Date(hit.fetched_at).getTime() < FIPE_TTL_MS) return hit.payload;
+
+  // 2) ao vivo com retries curtos (backoff só no 429/503)
+  let lastErr: any = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${FIPE}${path}`);
+      if (res.status === 429 || res.status === 503) {
+        lastErr = new Error(`FIPE ${res.status}`);
+        await _sleep(300 * (attempt + 1));
+        continue;
+      }
+      if (!res.ok) throw new Error(`FIPE ${res.status}`);
+      const json = await res.json();
+      await admin.from("fipe_cache").upsert({ path, payload: json, fetched_at: new Date().toISOString() });
+      return json;
+    } catch (e) { lastErr = e; await _sleep(250 * (attempt + 1)); }
+  }
+  // 3) deu ruim ao vivo? cache velho ainda vale mais que erro na cara do cliente
+  if (hit) return hit.payload;
+  throw lastErr || new Error("FIPE indisponível");
 }
 // Dropdown do Flow aceita até 200 itens — filtro opcional digitado pelo usuário resolve marcas grandes
 const cap200 = (arr: any[], filtro?: string) => {
@@ -449,24 +475,23 @@ async function handleRecompra(req: any): Promise<any> {
     if (req.screen === "ANO") {
       const p = await fipeGet(`/marcas/${encodeURIComponent(d.marca)}/modelos/${encodeURIComponent(d.modelo)}/anos/${encodeURIComponent(d.ano)}`);
       const fipeValue = parseBRL(p?.Valor);
-      const { data: s } = await admin.from("app_settings").select("buyback_fipe_pct").eq("id", 1).single();
-      const pct = Number(s?.buyback_fipe_pct ?? 90);
-      const offer = Math.round(fipeValue * pct) / 100;
       const titulo = `${p?.Marca || ""} ${p?.Modelo || ""} ${p?.AnoModelo || ""}`.trim();
+      // RESULTADO mostra só a REFERÊNCIA de tabela (âncora). A proposta por modalidade/prazo é
+      // montada no chat depois do "complete" (whatsapp-webhook → handleRecompraFlowReply).
       return {
         screen: "RESULTADO",
         data: {
           titulo,
-          oferta: brl(offer),
-          corpo: `Tabela FIPE: ${brl(fipeValue)} (código ${p?.CodigoFipe || "-"}). Oferta de recompra de até ${pct}% da FIPE, sujeita a vistoria e estado de conservação.`,
+          oferta: brl(fipeValue),
+          corpo: `Referência da tabela FIPE (código ${p?.CodigoFipe || "-"}). Toque no botão que eu já te mostro *quanto você recebe* — à vista na Venda Express ou escolhendo o prazo na Venda Vitrine. 🚗`,
           marca_nome: String(p?.Marca || d.marca_nome || ""),
           modelo_nome: String(p?.Modelo || ""),
           ano_nome: String(p?.AnoModelo || ""),
           combustivel: String(p?.Combustivel || ""),
           fipe_code: String(p?.CodigoFipe || ""),
           fipe_value: String(fipeValue),
-          offer_value: String(offer),
-          pct: String(pct),
+          offer_value: String(fipeValue),
+          pct: "100",
         },
       };
     }

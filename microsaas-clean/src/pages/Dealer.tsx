@@ -575,10 +575,22 @@ function BuybackTab({ dealership }: { dealership?: string }) {
                     </p>
                     <p className="text-sm text-muted-foreground truncate">
                       <Car className="w-3.5 h-3.5 inline mr-1" />{[r.brand, r.model, r.year].filter(Boolean).join(" ")}
+                      {r.modalidade === "express" && <Badge className="border-0 ml-2 bg-amber-500/15 text-amber-600">Venda Express ⚡</Badge>}
+                      {r.modalidade === "vitrine" && <Badge className="border-0 ml-2 bg-primary/15 text-primary">Venda Vitrine 🏆</Badge>}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      FIPE {brl(Number(r.fipe_value))} · oferta ({r.offer_pct}%) <b className="text-foreground">{brl(Number(r.offer_value))}</b> · {new Date(r.created_at).toLocaleDateString("pt-BR")}
-                    </p>
+                    {r.qualificacao ? (
+                      <p className="text-xs text-muted-foreground">
+                        {r.modalidade === "express" ? "À vista (repasse 48h)" : `Vitrine · até ${r.qualificacao.prazo_dias ?? "—"} dias`}
+                        {" · vendedor recebe "}<b className="text-foreground">{brl(Number(r.offer_value))}</b>
+                        {r.qualificacao.margem ? <> · margem {brl(Number(r.qualificacao.margem))}</> : null}
+                        {r.fipe_value ? <> · FIPE {brl(Number(r.fipe_value))}</> : null}
+                        {" · "}{new Date(r.created_at).toLocaleDateString("pt-BR")}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        FIPE {brl(Number(r.fipe_value))} · oferta ({r.offer_pct}%) <b className="text-foreground">{brl(Number(r.offer_value))}</b> · {new Date(r.created_at).toLocaleDateString("pt-BR")}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {wa && (
