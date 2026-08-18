@@ -795,14 +795,15 @@ async function handleRecompraFlowReply(phone: string, flow: Record<string, any>)
     ]);
   }
 
-  // confirma pro cliente (em sessão — ele acabou de enviar o formulário), na moldura da modalidade
+  // confirma pro cliente (em sessão — ele acabou de enviar o formulário), na moldura da modalidade.
+  // NUNCA falar de FIPE com o vendedor (ele já conhece a referência) — a FIPE fica só no aviso da loja.
   const quemContata = dealership ? `A ${dealership}` : "Nossa equipe";
   if (modalidade === "vitrine") {
-    await sendText(phone, `✅ Avaliei seu ${carro}! Como referência, a FIPE dele é *${fmtBRL(fipeValue)}*.\n\nNa *Venda Vitrine* 🏆 ${quemContata.toLowerCase()} anuncia seu carro perto desse valor e vende pra você — você *ganha mais* e paga comissão *só quando vender*. Enquanto isso, o carro continua com você.\n\n${quemContata} vai te chamar pra combinar as fotos e o anúncio. 🚗`);
+    await sendText(phone, `✅ Avaliei seu ${carro}! Na *Venda Vitrine* 🏆 ${quemContata.toLowerCase()} anuncia seu carro e vende pra você — você *ganha mais* e paga comissão *só quando vender*. Enquanto isso, o carro continua com você.\n\n${quemContata} vai te chamar pra combinar as fotos e o anúncio. 🚗`);
   } else if (modalidade === "express") {
-    await sendText(phone, `✅ Recebido! Na *Venda Express* ⚡ sua proposta de compra *à vista* é de até *${fmtBRL(offerValue)}*. (A FIPE do ${carro} é ${fmtBRL(fipeValue)} — a proposta considera o estado real e a *venda imediata*, sem você anunciar nem esperar comprador.)\n\n${quemContata} vai entrar em contato pra combinar a vistoria e pagar. Aceita até carro com dívida ou IPVA atrasado. 🚗`);
+    await sendText(phone, `✅ Recebido! Na *Venda Express* ⚡ sua proposta de compra *à vista* é de até *${fmtBRL(offerValue)}* — pra você vender na hora, sem anunciar nem esperar comprador. Aceita até carro com dívida ou IPVA atrasado.\n\n${quemContata} vai entrar em contato pra combinar a vistoria e pagar. 🚗`);
   } else {
-    await sendText(phone, `✅ Recebido! Seu ${carro} tem *estimativa de referência* de até *${fmtBRL(offerValue)}* (${flow.pct}% da tabela FIPE) — o valor final sai na avaliação presencial.\n\n${quemContata} vai entrar em contato pra combinar a vistoria e fechar a proposta. Qualquer dúvida, é só chamar por aqui! 🚗`);
+    await sendText(phone, `✅ Recebido! Seu ${carro} tem uma proposta de compra à vista de até *${fmtBRL(offerValue)}* — o valor final sai na avaliação presencial.\n\n${quemContata} vai entrar em contato pra combinar a vistoria e fechar. Qualquer dúvida, é só chamar por aqui! 🚗`);
   }
   // vendedor que veio do QR "#vender" do stand ganha os 30 dias também (quem vende, quer comprar depois)
   if (standSell) {
@@ -3034,11 +3035,11 @@ ${JSON.stringify(snapshot)}`;
       const sR = await getSettings();
       await waSendFlow(sR, msg.phone, {
         header: "Avalie seu carro 🚗",
-        body: "Descubra em segundos quanto seu carro vale pela tabela FIPE e receba uma proposta de recompra da loja parceira — tudo aqui no WhatsApp.",
+        body: "Receba uma proposta de compra da loja parceira pro seu carro em segundos — tudo aqui no WhatsApp, sem compromisso.",
         cta: "Avaliar meu carro",
         flowId: RECOMPRA_FLOW_ID,
         token: "recompra",
-        fallbackText: "Pra avaliar seu carro na recompra, me diga a marca, o modelo e o ano que eu consulto a FIPE. 🚗",
+        fallbackText: "Pra avaliar seu carro, me diga a marca, o modelo e o ano que eu já preparo a proposta da loja. 🚗",
       });
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "recompra_flow_cta" }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
