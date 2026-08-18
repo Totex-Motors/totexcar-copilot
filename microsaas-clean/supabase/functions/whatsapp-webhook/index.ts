@@ -1101,6 +1101,27 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: {} },
   },
   {
+    name: "arquivar_documento",
+    description: "GUARDA no ArquivoZap o documento que o usuário acabou de enviar (foto/PDF). Chame SEMPRE que a mídia for um documento que vale guardar: multa/auto de infração, IPVA, boleto, CRLV/CRV (documento do carro), CNH, nota fiscal, apólice de seguro, manual, comprovante. Chame ALÉM de qualquer outra ação (ex.: junto com registrar_multa). NÃO chame para hodômetro/painel, print de ganhos de app, foto de carro à venda, selfie ou paisagem.",
+    parameters: {
+      type: "object",
+      properties: {
+        tipo: { type: "string", description: "Um de: multa, ipva, boleto, crlv, cnh, nota_fiscal, seguro, manual, comprovante, documento" },
+        nome: { type: "string", description: "Rótulo curto e humano, ex.: 'Boleto IPVA 2026', 'CRLV Civic', 'Multa Av. Paulista'" },
+        resumo: { type: "string", description: "1 linha com o essencial que dá pra ler (vencimento, valor, placa, órgão...)" },
+      },
+      required: ["tipo", "nome"],
+    },
+  },
+  {
+    name: "buscar_documento",
+    description: "Acha e ENVIA no chat os documentos que o usuário guardou no ArquivoZap. Use quando pedir 'cadê meu X', 'me manda o boleto/CRLV', 'onde está meu documento', 'meus documentos'. Sem termo, manda os mais recentes.",
+    parameters: {
+      type: "object",
+      properties: { termo: { type: "string", description: "Tipo ou nome do documento, ex.: 'boleto ipva', 'crlv', 'multa', 'cnh'. Vazio = mais recentes." } },
+    },
+  },
+  {
     name: "pontos_cnh",
     description: "Pontos acumulados na CNH nos últimos 12 meses (das multas registradas) e risco de suspensão (regra do CTB). Use para 'quantos pontos eu tenho?', 'vou perder a CNH?', 'tô perto de suspender?'.",
     parameters: { type: "object", properties: {} },
@@ -1296,7 +1317,25 @@ const TOOL_SPECS = [
   },
 ];
 
-type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean };
+type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any } };
+
+// ArquivoZap: sobe os bytes do documento pro Storage e grava a ficha (o arquivamento é automático —
+// dispara em background depois do turno, com a classificação que a IA já fez na foto/PDF).
+async function archiveDoc(phone: string, userId: string | null, media: { data: string; mime: string; kind: string }, cls: { tipo: string; nome: string; resumo?: string; meta?: any }): Promise<void> {
+  try {
+    const ext = media.kind === "pdf" ? "pdf" : (String(media.mime || "").split("/")[1] || "jpg").replace("jpeg", "jpg");
+    const path = `${onlyDigits(phone)}/${crypto.randomUUID()}.${ext}`;
+    const bytes = Uint8Array.from(atob(media.data), (c) => c.charCodeAt(0));
+    const up = await supabase.storage.from("arquivozap").upload(path, bytes, { contentType: media.mime || "application/octet-stream", upsert: false });
+    if (up.error) { console.error("arquivozap upload:", up.error.message); return; }
+    await supabase.from("arquivozap_docs").insert({
+      user_id: userId || null, phone: onlyDigits(phone),
+      tipo: (cls.tipo || "documento").toLowerCase(), nome: cls.nome || cls.tipo || "documento",
+      resumo: cls.resumo || null, meta: cls.meta || {},
+      storage_path: path, mime: media.mime || null, size: bytes.length,
+    });
+  } catch (e) { console.error("archiveDoc:", e); }
+}
 
 async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any> {
   const { user, vehicle, today } = ctx;
@@ -1651,7 +1690,47 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       };
       const { data, error } = await supabase.from("multas").insert(row).select("id").single();
       if (error) return { ok: false, error: error.message };
+      // multa sempre vai pro ArquivoZap (mesmo se a IA esquecer arquivar_documento)
+      ctx.archive = { tipo: "multa", nome: `Multa ${a.local || a.auto_numero || ""}`.trim(), resumo: a.descricao || "" };
       return { ok: true, id: data.id };
+    }
+
+    if (name === "arquivar_documento") {
+      ctx.archive = {
+        tipo: String(args?.tipo || "documento"),
+        nome: String(args?.nome || "Documento"),
+        resumo: String(args?.resumo || ""),
+      };
+      return { ok: true, message: "Documento guardado no ArquivoZap. Confirme em 1 linha natural que guardou e que ele pode pedir depois (ex.: 'guardei seu CRLV no ArquivoZap — é só me pedir quando precisar 👍'). NÃO invente conteúdo." };
+    }
+
+    if (name === "buscar_documento") {
+      const ph = onlyDigits(String(user?.phone || ""));
+      if (!ph) return { ok: false, message: "Preciso do WhatsApp do usuário pra achar os documentos." };
+      // sanitiza: vírgula/parênteses/% quebram o filtro .or() do PostgREST
+      const termo = String(args?.termo || "").replace(/[,()%]/g, " ").trim().slice(0, 40);
+      let query = supabase.from("arquivozap_docs").select("*").eq("phone", ph).order("created_at", { ascending: false });
+      query = termo ? query.or(`tipo.ilike.%${termo}%,nome.ilike.%${termo}%,resumo.ilike.%${termo}%`).limit(6) : query.limit(8);
+      const { data: docs } = await query;
+      if (!docs?.length) {
+        return { ok: true, encontrados: 0, message: termo
+          ? `Não achei documento de "${termo}" no ArquivoZap. Assim que você mandar um (foto ou PDF), eu guardo automático e ele fica aqui pra sempre.`
+          : "Você ainda não tem documentos no ArquivoZap. Manda uma multa, boleto, IPVA, CRLV etc. que eu guardo sozinho — depois é só pedir." };
+      }
+      const s = await getSettings();
+      let enviados = 0;
+      for (const d of docs) {
+        const { data: signed } = await supabase.storage.from("arquivozap").createSignedUrl(d.storage_path, 600);
+        if (!signed?.signedUrl) continue;
+        const cap = `📎 ${d.nome || d.tipo}${d.resumo ? ` — ${d.resumo}` : ""}`;
+        const isPdf = String(d.mime || "").includes("pdf") || String(d.storage_path || "").endsWith(".pdf");
+        const ok = isPdf
+          ? await waSendDocument(s, String(user.phone), signed.signedUrl, `${String(d.nome || d.tipo || "documento").replace(/[^\w.-]+/g, "_")}.pdf`, cap)
+          : await waSendImage(s, String(user.phone), signed.signedUrl, cap);
+        if (ok) enviados++;
+      }
+      return { ok: true, encontrados: docs.length, enviados, itens: docs.map((d: any) => ({ tipo: d.tipo, nome: d.nome })),
+        instrucao: "Os arquivos JÁ foram enviados no chat acima. Comente em 1 linha natural o que mandou (ex.: 'te mandei seu CRLV e o boleto do IPVA 👆'). NÃO repita o conteúdo nem invente." };
     }
 
     if (name === "minhas_multas") {
@@ -2987,6 +3066,7 @@ TIPOS DE MENSAGEM (identifique pela foto/texto):
 - PRINT da tela de GANHOS de aplicativo (Uber/99/inDriver mostram "Ganhos" com período e valor) → use registrar_receita (leia o app, o período e o VALOR TOTAL do print).
 - Foto de BOLETO de parcela do financiamento → leia a LINHA DIGITÁVEL COMPLETA (todos os dígitos) e use salvar_boleto. NÃO registre boleto de financiamento como gasto.
 - PDF de CARNÊ do financiamento (os bancos enviam o carnê digital com TODOS os boletos) → extraia o número e a LINHA DIGITÁVEL COMPLETA de CADA parcela e use salvar_carne (todas de uma vez). Confirme quantas parcelas salvou e explique que os lembretes de vencimento sairão com o boleto certo de cada mês, automaticamente.
+- ARQUIVOZAP (cofre de documentos): SEMPRE que a foto/PDF for um DOCUMENTO que vale guardar (multa, IPVA, boleto, CRLV/CRV documento do carro, CNH, nota fiscal, apólice de seguro, manual, comprovante), chame TAMBÉM arquivar_documento — ALÉM da ação principal (ex.: registrar_multa + arquivar_documento). É automático pro usuário: nunca peça pra ele "guardar". NÃO arquive hodômetro, print de ganhos de app, foto de carro à venda, selfie ou paisagem. Quando ele pedir "cadê meu X / me manda o boleto/CRLV / meus documentos", use buscar_documento (eu envio os arquivos).
 
 FINANCIAMENTO/BOLETO: cada parcela tem um boleto PRÓPRIO emitido pelo banco — NUNCA invente, derive ou "calcule" código de barras/linha digitável (seria um boleto inválido). Pedirem o boleto/código de barras → use boleto_parcela e envie a linha digitável salva em bloco copiável, dizendo de qual parcela é. Se não houver linha salva (ou for de parcela anterior), explique com naturalidade e peça a FOTO do boleto do mês (ou o número), que você salva com salvar_boleto — e avise que a linha vai junto no lembrete de vencimento.
 
@@ -3101,7 +3181,7 @@ ${JSON.stringify(snapshot)}`;
         if (eventId) await supabase.from("whatsapp_events").update({ status: "need_info", error: "download_falhou" }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
-      if (!inputText) inputText = "Analise esta foto: pode ser um cupom/nota de gasto, uma multa (auto de infração), o hodômetro do painel ou um print da tela de ganhos de aplicativo (Uber/99). Aja conforme o tipo.";
+      if (!inputText) inputText = "Analise esta foto: pode ser um cupom/nota de gasto, uma multa (auto de infração), o hodômetro do painel, um print da tela de ganhos de aplicativo (Uber/99) ou um DOCUMENTO pra guardar (CRLV/documento do carro, CNH, boleto, IPVA, nota fiscal, apólice de seguro, manual). Aja conforme o tipo — e se for um documento que vale guardar, chame arquivar_documento.";
     }
     if (msg.kind === "audio" && !inputText) {
       let audio: { data: string; media_type: string } | null = null;
@@ -3145,7 +3225,7 @@ ${JSON.stringify(snapshot)}`;
         return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       parts.push({ kind: "pdf", data: pdf.data });
-      if (!inputText) inputText = "Analise este PDF. Se for um carnê/boletos de financiamento, extraia TODAS as parcelas (número e linha digitável completa de cada) e salve com salvar_carne.";
+      if (!inputText) inputText = "Analise este PDF. Se for um carnê/boletos de financiamento, extraia TODAS as parcelas (número e linha digitável completa de cada) e salve com salvar_carne. Se for um DOCUMENTO pra guardar (boleto avulso, IPVA, apólice de seguro, nota fiscal, CRLV, manual), chame arquivar_documento.";
     }
 
     // MENU INTELIGENTE: a lista de ações só acompanha a resposta na 1ª conversa em 12h+ ou quando
@@ -3310,6 +3390,17 @@ ${JSON.stringify(snapshot)}`;
     await reply(replyText);
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
     if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText }, user_id: user.id }).eq("id", eventId);
+
+    // ARQUIVOZAP: se a IA marcou a mídia como documento (arquivar_documento / registrar_multa),
+    // guarda o original em background — sem atrasar a resposta que o usuário já recebeu.
+    if (ctx.archive) {
+      const mp: any = parts.find((p: any) => p.kind === "image" || p.kind === "pdf");
+      if (mp?.data) {
+        const media = { data: mp.data, mime: mp.kind === "pdf" ? "application/pdf" : (mp.media_type || "image/jpeg"), kind: mp.kind };
+        const av = archiveDoc(msg.phone, user.id, media, ctx.archive);
+        (globalThis as any).EdgeRuntime?.waitUntil?.(av) ?? av.catch(() => {});
+      }
+    }
 
     // EXTRATOR DE MEMÓRIA (proativo IA): atualiza dossiê + open loops em background, modelo barato.
     // Nunca bloqueia nem quebra a conversa (runExtractor engole os próprios erros).
