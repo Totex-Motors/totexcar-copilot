@@ -13,6 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import {
   SERVICE_TYPES, normalizeServiceType, isEmergencyService, dedupProviders,
   rankProviders, normalizePhone, searchViaSearchPreview, searchViaGooglePlaces,
+  partnerToRaw, partnersFirst,
 } from "../_shared/radar-search.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -346,16 +347,31 @@ async function handleRadar(req: any, userId?: string): Promise<any> {
         brutos = resultado?.providers || [];
       }
 
-      // parceiros do ecossistema ganham SELO, não posição
+      // lojas do ecossistema ganham selo
       const { data: lojas } = await admin.from("users")
         .select("dealership").eq("role", "dealer").not("dealership", "is", null);
-      const partnerNames = [...new Set((lojas || []).map((l: any) => String(l.dealership)))];
+      // PARCEIROS cadastrados (Radar): entram na lista + selo + topo (prioridade)
+      const cityTok = String(local).split(/[,\-]/)[0].replace(/[,()%]/g, " ").trim();
+      const { data: partners } = await admin.from("service_partners")
+        .select("*").eq("active", true).eq("category", serviceType)
+        .or(`city.is.null,city.ilike.%${cityTok}%`).limit(10);
+      const partnerRaws = (partners || []).map(partnerToRaw);
+      const partnerNames = [
+        ...new Set([...(lojas || []).map((l: any) => String(l.dealership)), ...(partners || []).map((p: any) => String(p.name))]),
+      ];
 
-      const ranked = rankProviders(dedupProviders(brutos), {
+      const ranked = partnersFirst(rankProviders(dedupProviders([...partnerRaws, ...brutos]), {
         mode: String(d.ordem || "balanced") as any,
         emergency: isEmergencyService(serviceType),
         partnerNames,
-      }).slice(0, 6);
+      })).slice(0, 6);
+
+      // conta as indicações dos parceiros que apareceram (prova de valor pra cobrança)
+      for (const r of ranked) {
+        if (!r.partner_id) continue;
+        const row = (partners || []).find((x: any) => String(x.id) === r.partner_id);
+        if (row) await admin.from("service_partners").update({ shown_count: (Number(row.shown_count) || 0) + 1, updated_at: new Date().toISOString() }).eq("id", r.partner_id);
+      }
 
       if (!ranked.length) {
         return radarBusca(local, `Não achei ${def.label.toLowerCase()} em ${local}. Tente outra região ou categoria parecida.`);

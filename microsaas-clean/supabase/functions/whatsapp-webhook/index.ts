@@ -15,6 +15,7 @@ import {
   SERVICE_TYPES, normalizeServiceType, isEmergencyService, dedupProviders,
   rankProviders, normalizePhone as radarNormalizePhone,
   searchViaSearchPreview, searchViaGooglePlaces,
+  partnerToRaw, partnersFirst,
   type RankingMode,
 } from "../_shared/radar-search.ts";
 
@@ -1179,8 +1180,9 @@ const TOOL_SPECS = [
       properties: {
         service_type: {
           type: "string",
-          description: "Categoria: oficina, freios, autoeletrica, bateria, pneus, borracharia, chaveiro, vidros, ar_condicionado, funilaria, estetica, vistoria, guincho, socorro, eletrico_hibrido",
+          description: "Categoria conhecida: oficina, freios, autoeletrica, bateria, pneus, borracharia, chaveiro, vidros, ar_condicionado, funilaria, estetica, vistoria, guincho, socorro, eletrico_hibrido, posto, alinhamento, escapamento, cambio, oleo, insulfilm, som, martelinho, despachante, gnv. Se não encaixar em nenhuma, use 'oficina' e preencha busca_livre.",
         },
+        busca_livre: { type: "string", description: "Use quando o serviço NÃO estiver na lista de categorias: o termo exato que o motorista pediu (ex.: 'blindagem', 'plotagem de adesivo', 'guincho de moto', 'oficina de câmbio CVT'). Deixe vazio se usou uma categoria conhecida." },
         location_text: { type: "string", description: "Cidade, bairro ou referência (ex.: 'Barueri', 'Alphaville', 'Castelo Branco km 22'). Se ele já informou antes, pode omitir." },
         emergency: { type: "boolean", description: "true se o carro está parado/na rua/em risco — prioriza quem vai até ele e atende 24h" },
         mode: { type: "string", enum: ["balanced", "nearest", "best_rated", "open_now", "mobile_service", "totex_partner"], description: "Ordenação, quando o motorista pedir ('o mais perto', 'o mais bem avaliado')" },
@@ -1485,20 +1487,40 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       const emEmergencia = isEmergencyService(serviceType) || args?.emergency === true;
       const t0 = Date.now();
 
-      const usarPlaces = sCfg?.radar_search_provider === "google_places" && !!sCfg?.google_places_api_key;
+      // busca livre: se o motorista pediu algo fora da lista, o termo dele manda
+      const buscaLivre = String(args?.busca_livre || "").trim() || null;
+      const usarPlaces = sCfg?.radar_search_provider === "google_places" && !!sCfg?.google_places_api_key && !buscaLivre;
       const r = usarPlaces
         ? await searchViaGooglePlaces(sCfg.google_places_api_key, { serviceType, locationText: local, limit: limite })
-        : await searchViaSearchPreview(sCfg?.openai_api_key || "", { serviceType, locationText: local, vehicle: carro, limit: limite });
+        : await searchViaSearchPreview(sCfg?.openai_api_key || "", { serviceType, locationText: local, vehicle: carro, limit: limite, freeQuery: buscaLivre });
 
-      // parceiros do ecossistema ganham SELO, não posição no ranking
+      // lojas do ecossistema ganham selo
       const { data: lojas } = await supabase.from("users")
         .select("dealership").eq("role", "dealer").not("dealership", "is", null);
-      const partnerNames = [...new Set((lojas || []).map((l: any) => String(l.dealership)))];
+      // PARCEIROS cadastrados do Radar: entram na lista + selo + topo (prioridade)
+      const cityTok = local.split(/[,\-]/)[0].replace(/[,()%]/g, " ").trim();
+      let pQuery = supabase.from("service_partners").select("*").eq("active", true)
+        .or(`city.is.null,city.ilike.%${cityTok}%`);
+      // busca livre casa parceiro pelo termo (categoria/nome); busca por categoria casa a categoria exata
+      const livreSan = (buscaLivre || "").replace(/[,()%]/g, " ").trim();
+      pQuery = buscaLivre
+        ? pQuery.or(`category.ilike.%${livreSan}%,name.ilike.%${livreSan}%`)
+        : pQuery.eq("category", serviceType);
+      const { data: partners } = await pQuery.limit(10);
+      const partnerRaws = (partners || []).map(partnerToRaw);
+      const partnerNames = [...new Set([...(lojas || []).map((l: any) => String(l.dealership)), ...(partners || []).map((p: any) => String(p.name))])];
 
-      const ranked = rankProviders(dedupProviders(r.providers), {
+      const ranked = partnersFirst(rankProviders(dedupProviders([...partnerRaws, ...r.providers]), {
         mode: (String(args?.mode || "balanced") as RankingMode),
         isEv, isHybrid, emergency: emEmergencia, partnerNames,
-      }).slice(0, limite);
+      })).slice(0, limite);
+
+      // conta indicações dos parceiros que apareceram (prova de valor pra cobrança)
+      for (const rp of ranked) {
+        if (!rp.partner_id) continue;
+        const row = (partners || []).find((x: any) => String(x.id) === rp.partner_id);
+        if (row) await supabase.from("service_partners").update({ shown_count: (Number(row.shown_count) || 0) + 1, updated_at: new Date().toISOString() }).eq("id", rp.partner_id);
+      }
 
       // registra a busca (auditoria + custo), mesmo se falhou
       const { data: busca } = await supabase.from("service_searches").insert({

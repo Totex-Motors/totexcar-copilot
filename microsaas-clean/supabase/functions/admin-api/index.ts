@@ -149,6 +149,48 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
+      // ===================== PARCEIROS DO RADAR =====================
+      case "list_partners": {
+        const { data, error } = await admin.from("service_partners").select("*")
+          .order("category", { ascending: true }).order("priority", { ascending: false }).order("created_at", { ascending: false });
+        if (error) throw error;
+        return json({ ok: true, partners: data || [] });
+      }
+
+      case "save_partner": {
+        const b = payload;
+        const row: Record<string, unknown> = {
+          name: String(b.name || "").trim(),
+          category: String(b.category || "").trim() || null,
+          city: String(b.city || "").trim() || null,
+          phone: b.phone ? String(b.phone).replace(/\D/g, "") : null,
+          whatsapp: b.whatsapp ? String(b.whatsapp).replace(/\D/g, "") : null,
+          address: String(b.address || "").trim() || null,
+          website: String(b.website || "").trim() || null,
+          dealership: String(b.dealership || "").trim() || null,
+          priority: Number(b.priority) || 0,
+          active: b.active !== false,
+          notes: String(b.notes || "").trim() || null,
+          updated_at: new Date().toISOString(),
+        };
+        if (!row.name) return json({ error: "name_required" }, 400);
+        if (b.id) {
+          const { error } = await admin.from("service_partners").update(row).eq("id", b.id);
+          if (error) throw error;
+          return json({ ok: true, id: b.id });
+        }
+        const { data, error } = await admin.from("service_partners").insert({ ...row, created_by: caller.id }).select("id").single();
+        if (error) throw error;
+        return json({ ok: true, id: data!.id });
+      }
+
+      case "delete_partner": {
+        if (!payload.id) return json({ error: "id_required" }, 400);
+        const { error } = await admin.from("service_partners").delete().eq("id", payload.id);
+        if (error) throw error;
+        return json({ ok: true });
+      }
+
       default:
         return json({ error: "unknown_action" }, 400);
     }

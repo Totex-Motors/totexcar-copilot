@@ -45,6 +45,8 @@ export interface RawProvider {
   distance_km?: number | null;
   source: string;
   external_id?: string | null;
+  priority?: number | null;   // parceiro cadastrado: quanto maior, mais no topo entre os parceiros
+  partner_id?: string | null; // id em service_partners (p/ contar indicações)
 }
 
 export interface RankedProvider extends RawProvider {
@@ -122,6 +124,37 @@ export function normalizeServiceType(input?: string | null): string {
 }
 
 export const isEmergencyService = (t: string) => !!SERVICE_TYPES[normalizeServiceType(t)]?.emergencia;
+
+// Converte uma linha de service_partners no formato RawProvider (pra entrar no mesmo pipeline).
+export function partnerToRaw(row: any): RawProvider {
+  return {
+    name: row.name,
+    category: row.category || null,
+    phone: row.phone || null,
+    whatsapp: row.whatsapp || null,
+    website: row.website || null,
+    address: row.address || null,
+    city: row.city || null,
+    latitude: null, longitude: null,
+    rating: null, review_count: null, open_now: null,
+    source: "parceiro_totex",
+    external_id: `partner:${row.id}`,
+    priority: Number(row.priority) || 0,
+    partner_id: String(row.id),
+  };
+}
+
+// Reordena: PARCEIROS primeiro (por prioridade, depois score), depois os públicos por score.
+// Garante que quem cadastrou/pagou aparece no topo, sem esconder as opções públicas embaixo.
+export function partnersFirst(ranked: RankedProvider[]): RankedProvider[] {
+  const part = ranked.filter((p) => p.provider_status === "parceiro_totex")
+    .sort((a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0) || b.rank_score - a.rank_score);
+  const pub = ranked.filter((p) => p.provider_status !== "parceiro_totex")
+    .sort((a, b) => b.rank_score - a.rank_score);
+  const out = [...part, ...pub];
+  out.forEach((p, i) => { p.rank_position = i + 1; });
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Normalizações (base do dedup)
@@ -325,6 +358,7 @@ export async function searchViaSearchPreview(
     radiusKm?: number;
     limit?: number;
     openNow?: boolean;
+    freeQuery?: string | null;   // busca livre: usa este termo em vez da categoria fixa
   },
 ): Promise<{ providers: RawProvider[]; cost: number; durationMs: number; error: string | null }> {
   const t0 = Date.now();
@@ -336,7 +370,12 @@ export async function searchViaSearchPreview(
     return { providers: [], cost: 0, durationMs: 0, error: "sem_chave_ou_localizacao" };
   }
 
-  const prompt = `Pesquise AGORA na web estabelecimentos de "${def.label}" (${def.termos.join(", ")}) em ou perto de "${params.locationText}", Brasil${
+  // busca livre (o motorista digitou algo fora da lista) usa o termo dele; senão, a categoria fixa
+  const free = String(params.freeQuery || "").trim();
+  const alvoLabel = free || def.label;
+  const alvoTermos = free || def.termos.join(", ");
+
+  const prompt = `Pesquise AGORA na web estabelecimentos de "${alvoLabel}" (${alvoTermos}) em ou perto de "${params.locationText}", Brasil${
     params.vehicle ? `, que atendam o veículo: ${params.vehicle}` : ""
   }.
 
