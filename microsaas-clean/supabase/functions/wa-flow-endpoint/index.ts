@@ -299,6 +299,8 @@ async function handleRadar(req: any, userId?: string): Promise<any> {
       const def = SERVICE_TYPES[serviceType];
       const local = String(d.local || "").trim();
       if (!local) return radarBusca("", "Preciso saber onde você está pra procurar. 📍");
+      // campo de busca livre do formulário (opcional): serviço fora da lista de categorias
+      const buscaLivre = String(d.busca || "").trim() || null;
 
       const { data: cfg } = await admin.from("app_settings")
         .select("openai_api_key, radar_cache_hours, radar_search_provider, google_places_api_key")
@@ -312,7 +314,7 @@ async function handleRadar(req: any, userId?: string): Promise<any> {
         .ilike("city", `%${local.split(/[,\-]/)[0].trim()}%`).limit(30);
 
       let brutos: any[] = [];
-      if (cached && cached.length >= 3) {
+      if (!buscaLivre && cached && cached.length >= 3) {
         brutos = cached.map((c: any) => ({
           name: c.name, category: c.category, phone: c.phone, whatsapp: c.whatsapp,
           website: c.website, address: c.address, city: c.city, state: c.state,
@@ -326,10 +328,10 @@ async function handleRadar(req: any, userId?: string): Promise<any> {
         }));
       } else {
         // 2) AO VIVO com trava de tempo
-        const usarPlaces = cfg?.radar_search_provider === "google_places" && !!cfg?.google_places_api_key;
+        const usarPlaces = cfg?.radar_search_provider === "google_places" && !!cfg?.google_places_api_key && !buscaLivre;
         const busca = usarPlaces
           ? searchViaGooglePlaces(cfg!.google_places_api_key!, { serviceType, locationText: local, limit: 6 })
-          : searchViaSearchPreview(cfg?.openai_api_key || "", { serviceType, locationText: local, limit: 6 });
+          : searchViaSearchPreview(cfg?.openai_api_key || "", { serviceType, locationText: local, limit: 6, freeQuery: buscaLivre });
         const resultado: any = await Promise.race([
           busca,
           new Promise((r) => setTimeout(() => r({ __timeout: true }), RADAR_TIMEOUT_MS)),
@@ -340,7 +342,7 @@ async function handleRadar(req: any, userId?: string): Promise<any> {
             screen: "RESPERA",
             data: {
               titulo: "Estou procurando 🔎",
-              corpo: `Achar ${def.label.toLowerCase()} em ${local} está demorando um pouco mais que o normal. Fecha aqui que eu te mando as melhores opções no chat em instantes.`,
+              corpo: `Achar ${buscaLivre || def.label.toLowerCase()} em ${local} está demorando um pouco mais que o normal. Fecha aqui que eu te mando as melhores opções no chat em instantes.`,
             },
           };
         }
@@ -352,9 +354,13 @@ async function handleRadar(req: any, userId?: string): Promise<any> {
         .select("dealership").eq("role", "dealer").not("dealership", "is", null);
       // PARCEIROS cadastrados (Radar): entram na lista + selo + topo (prioridade)
       const cityTok = String(local).split(/[,\-]/)[0].replace(/[,()%]/g, " ").trim();
-      const { data: partners } = await admin.from("service_partners")
-        .select("*").eq("active", true).eq("category", serviceType)
-        .or(`city.is.null,city.ilike.%${cityTok}%`).limit(10);
+      let pQuery = admin.from("service_partners").select("*").eq("active", true)
+        .or(`city.is.null,city.ilike.%${cityTok}%`);
+      const livreSan = (buscaLivre || "").replace(/[,()%]/g, " ").trim();
+      pQuery = buscaLivre
+        ? pQuery.or(`category.ilike.%${livreSan}%,name.ilike.%${livreSan}%`)
+        : pQuery.eq("category", serviceType);
+      const { data: partners } = await pQuery.limit(10);
       const partnerRaws = (partners || []).map(partnerToRaw);
       const partnerNames = [
         ...new Set([...(lojas || []).map((l: any) => String(l.dealership)), ...(partners || []).map((p: any) => String(p.name))]),
