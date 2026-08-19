@@ -76,6 +76,16 @@ export const SERVICE_TYPES: Record<string, { label: string; termos: string[]; em
   guincho:       { label: "Guincho / reboque", termos: ["guincho 24 horas", "reboque"], emergencia: true },
   socorro:       { label: "Socorro mecânico", termos: ["socorro mecânico 24 horas", "mecânico móvel"], emergencia: true },
   eletrico_hibrido: { label: "Elétricos e híbridos", termos: ["oficina carro elétrico", "especializada híbrido"] },
+  posto:         { label: "Posto de gasolina", termos: ["posto de combustível", "posto de gasolina"] },
+  alinhamento:   { label: "Alinhamento e balanceamento", termos: ["alinhamento e balanceamento", "geometria"] },
+  escapamento:   { label: "Escapamento", termos: ["escapamento", "silencioso automotivo"] },
+  cambio:        { label: "Câmbio e transmissão", termos: ["câmbio automático", "retífica de câmbio", "transmissão"] },
+  oleo:          { label: "Troca de óleo", termos: ["troca de óleo", "troca de óleo e filtros"] },
+  insulfilm:     { label: "Insulfilm / película", termos: ["insulfilm", "película automotiva"] },
+  som:           { label: "Som e multimídia", termos: ["som automotivo", "multimídia", "acessórios automotivos"] },
+  martelinho:    { label: "Martelinho de ouro", termos: ["martelinho de ouro", "reparo de amassados"] },
+  despachante:   { label: "Despachante", termos: ["despachante veicular", "licenciamento documento"] },
+  gnv:           { label: "GNV / kit gás", termos: ["conversão GNV", "kit gás natural veicular"] },
 };
 
 export function normalizeServiceType(input?: string | null): string {
@@ -93,6 +103,16 @@ export function normalizeServiceType(input?: string | null): string {
     pintura: "funilaria", lanternagem: "funilaria",
     lavagem: "estetica", "lava-rapido": "estetica",
     ev: "eletrico_hibrido", hibrido: "eletrico_hibrido",
+    posto: "posto", gasolina: "posto", combustivel: "posto", etanol: "posto", diesel: "posto", "posto de gasolina": "posto",
+    alinhamento: "alinhamento", balanceamento: "alinhamento", geometria: "alinhamento",
+    escape: "escapamento", silencioso: "escapamento",
+    cambio: "cambio", transmissao: "cambio", embreagem: "cambio",
+    oleo: "oleo", "troca de oleo": "oleo",
+    pelicula: "insulfilm", "insufilm": "insulfilm",
+    som: "som", multimidia: "som", acessorios: "som",
+    martelinho: "martelinho", amassado: "martelinho", granizo: "martelinho",
+    despachante: "despachante", licenciamento: "despachante",
+    gnv: "gnv", gas: "gnv",
   };
   if (alias[s]) return alias[s];
   for (const [key, def] of Object.entries(SERVICE_TYPES)) {
