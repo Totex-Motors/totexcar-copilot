@@ -2340,6 +2340,16 @@ function calcOffer(fipe: number, pct: number, piso: number): { margem: number; v
   const valor = Math.max(0, Math.round((fipe - margem) / 100) * 100);
   return { margem, valor };
 }
+
+// Cenários da Venda Vitrine (do curto ao longo prazo). Nomes com viés de neuromarketing:
+// o curto prazo soa como a escolha ativa/competitiva; o longo, como aposta que espera.
+const VITRINE_TIERS = [
+  { nome: "Venda Competitiva", prazo: "curto prazo", emoji: "⚡" },
+  { nome: "Venda Equilibrada", prazo: "médio prazo", emoji: "⚖️" },
+  { nome: "Venda Otimista", prazo: "longo prazo", emoji: "🎯" },
+];
+// mapeia o índice ordenado (curto→longo) pro cenário; degrada bem se houver ≠ 3 prazos
+const tierFor = (i: number, total: number) => (total <= 1 || i === 0) ? VITRINE_TIERS[0] : (i >= total - 1 ? VITRINE_TIERS[2] : VITRINE_TIERS[1]);
 // Config de margem: padrão da REDE (app_settings) com override POR LOJA (dealer_sell_config).
 // A loja do lead que tiver margem própria usa a dela; senão, cai no padrão da rede.
 async function sellConfig(dealership?: string | null): Promise<{ prazos: any[]; express: { pct: number; piso: number } }> {
@@ -2495,31 +2505,43 @@ async function handleSellModalidade(phone: string, text: string): Promise<boolea
     return true;
   }
 
-  // Vitrine → mostra os prazos (quanto mais tempo, mais recebe) e pede a escolha
+  // Vitrine → apresenta os 3 cenários (curto/médio/longo prazo) com os nomes de neuromarketing
   const prazos = cfg.prazos.map((p: any) => ({ dias: Number(p.dias), ...calcOffer(fipe, p.pct, p.piso) }))
     .sort((a: any, b: any) => a.dias - b.dias);
   await supabase.from("whatsapp_events").update({ parsed: { ...pend.parsed, step: "prazo", prazos } }).eq("id", pend.id);
-  const linhas = prazos.map((p: any, i: number) => `${i === 0 ? "⚡" : i === prazos.length - 1 ? "🏆" : "📅"} até ${p.dias} dias → *${fmtReais(p.valor)}*`).join("\n");
-  await sendText(phone, `🏆 *Venda Vitrine* — a loja anuncia e vende o seu ${carro}, e *quanto mais tempo você topa esperar, mais você recebe*:\n\n${linhas}\n\nÉ a referência de tabela menos a nossa margem — menos pressa, menor a margem. Enquanto isso o carro fica com você. Qual prazo combina?`);
-  await waSendMenu(s, phone, "Escolha o prazo:", prazos.map((p: any) => `Até ${p.dias} dias`));
+  const linhas = prazos.map((p: any, i: number) => {
+    const t = tierFor(i, prazos.length);
+    return `${t.emoji} *${t.nome}* = ${t.prazo} *${fmtReais(p.valor)}*`;
+  }).join("\n");
+  await sendText(phone, `✅ Avaliei seu ${carro}! Com base na análise de mercado através das fontes de dados do nosso *motor de estudo*, essas são as opções de venda na *Vitrine*:\n\n${linhas}\n\nQual faz mais sentido pra você?`);
+  await waSendMenu(s, phone, "Escolha o cenário:", prazos.map((_p: any, i: number) => tierFor(i, prazos.length).nome));
   return true;
 }
 
-// Escolha do PRAZO da Venda Vitrine (até 20/45/90 dias) → fecha o lead com o valor daquele prazo.
+// Escolha do CENÁRIO da Venda Vitrine (Competitiva/Equilibrada/Otimista) → fecha o lead com o valor.
 async function handleSellPrazo(phone: string, text: string): Promise<boolean> {
   const pend = await findSellPending(phone, "prazo");
   if (!pend) return false;
   const prazos: any[] = Array.isArray(pend.parsed?.prazos) ? pend.parsed.prazos : [];
   if (!prazos.length) return false;
   const t = String(text || "").toLowerCase();
-  const mDias = t.match(/(\d{2,3})\s*dias?/) || t.match(/at[ée]\s*(\d{2,3})/);
-  if (!mDias) return false;
-  const dias = Number(mDias[1]);
-  // casa com o prazo mais próximo do número escolhido
-  const escolhido = prazos.reduce((best, p) => Math.abs(p.dias - dias) < Math.abs(best.dias - dias) ? p : best, prazos[0]);
+  let idx = -1;
+  if (/competitiv/.test(t)) idx = 0;
+  else if (/otimist/.test(t)) idx = prazos.length - 1;
+  else if (/equilibrad/.test(t)) idx = Math.min(1, prazos.length - 1);
+  else {
+    // compat: "até 45 dias" / "45 dias" → casa pelo número
+    const mDias = t.match(/(\d{2,3})\s*dias?/) || t.match(/at[ée]\s*(\d{2,3})/);
+    if (!mDias) return false;
+    const dias = Number(mDias[1]);
+    const near = prazos.reduce((best, p) => Math.abs(p.dias - dias) < Math.abs(best.dias - dias) ? p : best, prazos[0]);
+    idx = prazos.indexOf(near);
+  }
+  const escolhido = prazos[idx];
+  const tier = tierFor(idx, prazos.length);
   const carro = pend.parsed?.carro || "seu carro";
   const quemContata = pend.parsed?.dealership ? `A ${pend.parsed.dealership}` : "Nossa equipe";
-  await sendText(phone, `✅ Fechado! Vendendo o ${carro} em até *${escolhido.dias} dias*, você recebe até *${fmtReais(escolhido.valor)}* (valor final na vistoria).\n\n${quemContata} vai te chamar pra combinar as fotos e o anúncio. Enquanto isso, o carro continua com você. 🚗`);
+  await sendText(phone, `✅ Fechado! Você escolheu a *${tier.nome}* (${tier.prazo}) pro seu ${carro}: recebe até *${fmtReais(escolhido.valor)}* — valor final na vistoria.\n\n${quemContata} vai te chamar pra combinar as fotos e o anúncio. Enquanto isso, o carro continua com você. 🚗`);
   await finalizeSellLead(phone, pend, { modalidade: "vitrine", valor: escolhido.valor, margem: escolhido.margem, prazo_dias: escolhido.dias });
   return true;
 }
