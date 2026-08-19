@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Switch } from "@/components/ui/switch";
-import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode, Banknote } from "lucide-react";
+import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode, Banknote, Wrench, Loader2, Eye } from "lucide-react";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
@@ -119,6 +119,7 @@ const Admin = () => {
           <TabsTrigger value="growth" className="gap-2"><Ticket className="w-4 h-4" /> Cupons & Ecossistema</TabsTrigger>
           <TabsTrigger value="subs" className="gap-2"><BarChart3 className="w-4 h-4" /> Assinaturas</TabsTrigger>
           <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
+          <TabsTrigger value="partners" className="gap-2"><Wrench className="w-4 h-4" /> Parceiros</TabsTrigger>
         </TabsList>
 
         <TabsContent value="owners" className="mt-6">
@@ -138,6 +139,9 @@ const Admin = () => {
         </TabsContent>
         <TabsContent value="stand" className="mt-6">
           <StandLeadsPanel source="admin" />
+        </TabsContent>
+        <TabsContent value="partners" className="mt-6">
+          <PartnersTab />
         </TabsContent>
       </Tabs>
     </DashboardLayout>
@@ -1085,5 +1089,132 @@ function ConsultaCreditosCard() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ===================== PARCEIROS DO RADAR =====================
+const RADAR_CATS: { value: string; label: string }[] = [
+  { value: "oficina", label: "Oficina mecânica" }, { value: "freios", label: "Freios e suspensão" },
+  { value: "autoeletrica", label: "Autoelétrica" }, { value: "bateria", label: "Baterias" },
+  { value: "pneus", label: "Pneus" }, { value: "borracharia", label: "Borracharia" },
+  { value: "chaveiro", label: "Chaveiro" }, { value: "vidros", label: "Vidros" },
+  { value: "ar_condicionado", label: "Ar-condicionado" }, { value: "funilaria", label: "Funilaria e pintura" },
+  { value: "estetica", label: "Estética e lavagem" }, { value: "vistoria", label: "Vistoria" },
+  { value: "guincho", label: "Guincho / reboque" }, { value: "socorro", label: "Socorro mecânico" },
+  { value: "eletrico_hibrido", label: "Elétricos e híbridos" }, { value: "posto", label: "Posto de gasolina" },
+  { value: "alinhamento", label: "Alinhamento e balanceamento" }, { value: "escapamento", label: "Escapamento" },
+  { value: "cambio", label: "Câmbio e transmissão" }, { value: "oleo", label: "Troca de óleo" },
+  { value: "insulfilm", label: "Insulfilm / película" }, { value: "som", label: "Som e multimídia" },
+  { value: "martelinho", label: "Martelinho de ouro" }, { value: "despachante", label: "Despachante" },
+  { value: "gnv", label: "GNV / kit gás" },
+];
+const catLabel = (v: string) => RADAR_CATS.find((c) => c.value === v)?.label || v || "—";
+
+type Partner = {
+  id?: string; name: string; category: string; city: string; phone: string; whatsapp: string;
+  address: string; website: string; priority: number; active: boolean; shown_count?: number; notes: string;
+};
+const emptyPartner: Partner = { name: "", category: "oficina", city: "", phone: "", whatsapp: "", address: "", website: "", priority: 0, active: true, notes: "" };
+
+function PartnersTab() {
+  const qc = useQueryClient();
+  const { data: partners, isLoading } = useQuery({
+    queryKey: ["radar-partners"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "list_partners" } });
+      if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
+      return ((data as any)?.partners || []) as Partner[];
+    },
+  });
+  const [f, setF] = useState<Partner>(emptyPartner);
+  const [saving, setSaving] = useState(false);
+  const set = (k: keyof Partner, v: any) => setF((p) => ({ ...p, [k]: v }));
+
+  const save = async () => {
+    if (!f.name.trim()) { toast({ title: "Informe o nome do parceiro", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "save_partner", ...f } });
+      if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
+      toast({ title: f.id ? "Parceiro atualizado" : "Parceiro cadastrado ✅" });
+      setF(emptyPartner);
+      qc.invalidateQueries({ queryKey: ["radar-partners"] });
+    } catch (e: any) { toast({ title: "Erro ao salvar", description: String(e?.message || e), variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+  const remove = async (id?: string) => {
+    if (!id) return;
+    await supabase.functions.invoke("admin-api", { body: { action: "delete_partner", id } });
+    qc.invalidateQueries({ queryKey: ["radar-partners"] });
+    toast({ title: "Parceiro removido" });
+  };
+  const toggle = async (p: Partner) => {
+    await supabase.functions.invoke("admin-api", { body: { action: "save_partner", ...p, active: !p.active } });
+    qc.invalidateQueries({ queryKey: ["radar-partners"] });
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Wrench className="w-5 h-5" /> {f.id ? "Editar parceiro" : "Novo parceiro do Radar"}</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">Parceiros aparecem com selo <strong>“Parceiro Totex”</strong> e no <strong>topo</strong> da categoria/cidade dele quando um motorista buscar no Radar.</p>
+          <div className="space-y-2"><Label>Nome</Label><Input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Ex.: Auto Center do Zé" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2"><Label>Categoria</Label>
+              <Select value={f.category} onValueChange={(v) => set("category", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{RADAR_CATS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2"><Label>Cidade / bairro</Label><Input value={f.city} onChange={(e) => set("city", e.target.value)} placeholder="Barueri" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2"><Label>Telefone</Label><Input value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="11 3xxx-xxxx" /></div>
+            <div className="space-y-2"><Label>WhatsApp</Label><Input value={f.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} placeholder="11 9xxxx-xxxx" /></div>
+          </div>
+          <div className="space-y-2"><Label>Endereço</Label><Input value={f.address} onChange={(e) => set("address", e.target.value)} placeholder="Rua, número, bairro" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2"><Label>Site (opcional)</Label><Input value={f.website} onChange={(e) => set("website", e.target.value)} placeholder="https://..." /></div>
+            <div className="space-y-2"><Label>Prioridade</Label><Input type="number" value={f.priority} onChange={(e) => set("priority", Number(e.target.value))} placeholder="0" /></div>
+          </div>
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div><Label>Ativo</Label><p className="text-xs text-muted-foreground">Desligue pra tirar do Radar sem apagar</p></div>
+            <Switch checked={f.active} onCheckedChange={(v) => set("active", v)} />
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={save} disabled={saving} className="bg-gradient-primary gap-2">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {f.id ? "Salvar" : "Cadastrar"}</Button>
+            {f.id && <Button variant="ghost" onClick={() => setF(emptyPartner)}>Cancelar edição</Button>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader><CardTitle className="text-lg">Parceiros cadastrados ({partners?.length || 0})</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? <div className="p-8 text-center text-muted-foreground">Carregando...</div>
+            : !partners?.length ? <div className="p-8 text-center text-muted-foreground">Nenhum parceiro ainda. Cadastre o primeiro ao lado — ele já entra no Radar com selo e prioridade.</div>
+            : <div className="divide-y divide-border">
+              {partners.map((p) => (
+                <div key={p.id} className="p-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate flex items-center gap-2">{p.name}
+                      {!p.active && <Badge className="border-0 bg-muted text-muted-foreground">inativo</Badge>}
+                      {p.priority > 0 && <Badge className="border-0 bg-primary/15 text-primary">prio {p.priority}</Badge>}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{catLabel(p.category)}{p.city ? ` · ${p.city}` : ""}{p.whatsapp ? ` · zap ${p.whatsapp}` : ""}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Eye className="w-3 h-3" /> {p.shown_count || 0} indicações</p>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Switch checked={p.active} onCheckedChange={() => toggle(p)} />
+                    <Button size="sm" variant="ghost" onClick={() => setF({ ...emptyPartner, ...p })}>Editar</Button>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => remove(p.id)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                </div>
+              ))}
+            </div>}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
