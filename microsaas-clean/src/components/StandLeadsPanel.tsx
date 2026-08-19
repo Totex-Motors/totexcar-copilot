@@ -28,8 +28,9 @@ const fmtTel = (t: string) => {
 const fmtData = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
 
-// componente reutilizável: /admin (todas as lojas) e /lojista (só a loja dele)
-export function StandLeadsPanel({ source }: { source: "admin" | "dealer" }) {
+// componente reutilizável: /admin (todas as lojas) e /lojista (só a loja dele).
+// `dealership` escopa a visão (admin abrindo o painel de uma loja específica → só os leads dela).
+export function StandLeadsPanel({ source, dealership }: { source: "admin" | "dealer"; dealership?: string }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,15 +39,16 @@ export function StandLeadsPanel({ source }: { source: "admin" | "dealer" }) {
     setLoading(true);
     try {
       const fn = source === "admin" ? "admin-api" : "dealer-api";
+      const extra = dealership ? { dealership } : {};
       const [r1, r2] = await Promise.all([
-        supabase.functions.invoke(fn, { body: { action: "stand_report" } }),
-        supabase.functions.invoke(fn, { body: { action: "stand_leads" } }),
+        supabase.functions.invoke(fn, { body: { action: "stand_report", ...extra } }),
+        supabase.functions.invoke(fn, { body: { action: "stand_leads", ...extra } }),
       ]);
       setRows(((r1.data as any)?.rows || []) as Row[]);
       setLeads(((r2.data as any)?.leads || []) as Lead[]);
     } finally { setLoading(false); }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [source]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [source, dealership]);
 
   // exporta CSV (UTF-8 BOM + ; pro Excel BR) — lista pronta pra campanha
   const exportar = () => {

@@ -318,7 +318,7 @@ export default function Dealer() {
           </TabsContent>
 
           <TabsContent value="stand" className="mt-6">
-            <StandLeadsPanel source="dealer" />
+            <StandLeadsPanel source="dealer" dealership={viewStore} />
           </TabsContent>
         </Tabs>
       </main>
