@@ -2513,7 +2513,7 @@ async function handleSellModalidade(phone: string, text: string): Promise<boolea
     const t = tierFor(i, prazos.length);
     return `${t.emoji} *${t.nome}* = ${t.prazo} *${fmtReais(p.valor)}*`;
   }).join("\n");
-  await sendText(phone, `✅ Avaliei seu ${carro}! Com base na análise de mercado através das fontes de dados do nosso *motor de estudo*, essas são as opções de venda na *Vitrine*:\n\n${linhas}\n\nQual faz mais sentido pra você?`);
+  await sendText(phone, `✅ Avaliei seu ${carro}! Com base na análise de mercado através das fontes de dados do nosso *motor de estudo*, essas são as opções de venda na *Vitrine*:\n\n${linhas}\n\nQual faz mais sentido pra você?\n\n_Estimativa: a avaliação e os valores serão validados mediante avaliação formal do veículo._`);
   await waSendMenu(s, phone, "Escolha o cenário:", prazos.map((_p: any, i: number) => tierFor(i, prazos.length).nome));
   return true;
 }
