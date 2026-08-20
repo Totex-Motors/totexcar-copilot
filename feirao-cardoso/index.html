@@ -224,6 +224,12 @@
         <label for="f-zap">WhatsApp *</label>
         <input id="f-zap" inputmode="tel" autocomplete="off" placeholder="(11) 99999-9999">
       </div>
+
+      <!-- campos definidos pelo evento (formulário flexível) -->
+      <div id="campos-dinamicos"></div>
+
+      <!-- campos legados: usados quando o evento NÃO tem formulário próprio -->
+      <div id="campos-legado">
       <div class="campo">
         <label for="f-insta">@ Instagram</label>
         <input id="f-insta" autocomplete="off" placeholder="@cliente">
@@ -260,6 +266,7 @@
         <label for="f-obs">Observações</label>
         <input id="f-obs" autocomplete="off" placeholder="Ex.: procura SUV até 80 mil, volta amanhã…">
       </div>
+      </div><!-- /campos-legado -->
       <div id="edit-banner" style="display:none; background:var(--chip); border:1.5px solid var(--azul); border-radius:12px; padding:10px 14px; margin-bottom:16px; font-size:14px; font-weight:600; color:var(--azul)">
         ✎ Editando <span id="edit-voucher"></span>
         <button onclick="cancelarEdicao()" style="float:right; border:0; background:transparent; color:var(--erro); font-weight:700; cursor:pointer; font-family:inherit; font-size:13px">cancelar</button>
@@ -335,6 +342,8 @@
   // ação ativa da loja (data/hora do sorteio, prêmio, nº de ganhadores — configurada no painel do lojista)
   var EV = null;
   var FEV = '';
+  var MODO_CAMPOS = false;   // evento com formulário próprio (campos definidos no painel)
+  var CAMPOS = [];           // definição dos campos do evento ativo
   function nGanhadores(){ return (EV && EV.ganhadores) || 5; }
   function premioTxt(){ return (EV && EV.premio) || '1 ano grátis do TotexCar Co-pilot'; }
   function quandoTxt(){
@@ -400,8 +409,95 @@
     document.getElementById('cap-titulo').textContent = EV.titulo || 'Grande sorteio do Feirão';
     document.getElementById('cap-premio').textContent = n + ' × ' + premioTxt().toUpperCase();
     if(!dados_ganhadores_na_tela()) document.getElementById('btnSortear').textContent = '🎉 Sortear os ' + n + ' ganhadores';
+    renderCampos();
   }
   function dados_ganhadores_na_tela(){ return !!(cache.ganhadores && cache.ganhadores.length); }
+
+  // ============ FORMULÁRIO FLEXÍVEL (campos definidos por evento) ============
+  // Sem campos no evento → modo legado (Instagram, cliente, interesse, origem, obs). Com campos → renderiza o formulário próprio.
+  function renderCampos(){
+    var lista = (EV && Array.isArray(EV.campos)) ? EV.campos : [];
+    MODO_CAMPOS = lista.length > 0;
+    CAMPOS = lista;
+    document.getElementById('campos-legado').style.display = MODO_CAMPOS ? 'none' : '';
+    var box = document.getElementById('campos-dinamicos');
+    if(!MODO_CAMPOS){ box.innerHTML = ''; return; }
+    box.innerHTML = CAMPOS.map(function(c){
+      // visibilidade por contexto: publico (link) x balcão
+      if(PUBLICO && c.publico === false) return '';
+      if(!PUBLICO && c.balcao === false) return '';
+      var id = 'd-' + c.id;
+      var req = c.obrigatorio ? ' *' : '';
+      var head = '<div class="campo" data-cid="'+esc(c.id)+'"><label>'+esc(c.label||c.id)+req+'</label>';
+      var t = c.tipo || 'texto';
+      if(t === 'escolha' || t === 'multipla' || t === 'simnao'){
+        var ops = (t === 'simnao') ? ['Sim','Não'] : (c.opcoes || []);
+        var multi = t === 'multipla' ? ' data-multi="1"' : '';
+        return head + '<div class="chips" id="'+id+'"'+multi+'>'
+          + ops.map(function(o){ return '<button type="button" data-v="'+esc(o)+'">'+esc(o)+'</button>'; }).join('')
+          + '</div></div>';
+      }
+      var attr = t==='email' ? 'inputmode="email"' : t==='telefone' ? 'inputmode="tel"' : t==='numero' ? 'inputmode="numeric"' : '';
+      var type = t==='data' ? 'date' : 'text';
+      return head + '<input id="'+id+'" type="'+type+'" '+attr+' autocomplete="off" placeholder="'+esc(c.placeholder||'')+'"></div>';
+    }).join('');
+    // clique nos chips dinâmicos (single ou múltipla escolha)
+    box.querySelectorAll('.chips').forEach(function(g){
+      g.addEventListener('click', function(e){
+        if(e.target.tagName !== 'BUTTON') return;
+        if(this.hasAttribute('data-multi')) e.target.classList.toggle('sel');
+        else { this.querySelectorAll('button').forEach(function(b){ b.classList.remove('sel'); }); e.target.classList.add('sel'); }
+      });
+    });
+  }
+
+  // lê as respostas dos campos dinâmicos; retorna {ok, respostas, erro}
+  function lerCampos(){
+    var respostas = {};
+    for(var i=0;i<CAMPOS.length;i++){
+      var c = CAMPOS[i];
+      if(PUBLICO && c.publico === false) continue;
+      if(!PUBLICO && c.balcao === false) continue;
+      var el = document.getElementById('d-' + c.id);
+      if(!el) continue;
+      var val = '';
+      if(el.classList.contains('chips')){
+        var sel = el.querySelectorAll('button.sel');
+        val = Array.prototype.map.call(sel, function(b){ return b.dataset.v; }).join('; ');
+      } else { val = (el.value||'').trim(); }
+      if(c.obrigatorio && !val) return {ok:false, erro:'Preencha: ' + (c.label||c.id)};
+      if(val) respostas[c.id] = val;
+    }
+    return {ok:true, respostas:respostas};
+  }
+
+  function preencherCampos(respostas){
+    respostas = respostas || {};
+    CAMPOS.forEach(function(c){
+      var el = document.getElementById('d-' + c.id);
+      if(!el) return;
+      var val = respostas[c.id];
+      if(el.classList.contains('chips')){
+        var partes = String(val||'').split(';').map(function(s){ return s.trim(); });
+        el.querySelectorAll('button').forEach(function(b){ b.classList.toggle('sel', partes.indexOf(b.dataset.v) >= 0); });
+      } else { el.value = val || ''; }
+    });
+  }
+
+  function limparCampos(){
+    CAMPOS.forEach(function(c){
+      var el = document.getElementById('d-' + c.id);
+      if(!el) return;
+      if(el.classList.contains('chips')) el.querySelectorAll('button').forEach(function(b){ b.classList.remove('sel'); });
+      else el.value = '';
+    });
+  }
+
+  // resumo textual das respostas (para a lista e o CSV)
+  function resumoRespostas(p){
+    if(!p.respostas) return '';
+    return CAMPOS.map(function(c){ var v = p.respostas[c.id]; return v ? v : null; }).filter(Boolean).join(' · ');
+  }
 
   // personalização da loja (nome, foto da fachada, contatos)
   function aplicarLoja(){
@@ -506,7 +602,7 @@
           headers:{'Prefer':'return=representation'},
           body: JSON.stringify({
             loja:LOJA, evento_id:p.evento_id||null, canal:p.canal||'loja', voucher:p.voucher, nome:p.nome, zap:p.zap, zap_limpo:p.zap_limpo,
-            insta:p.insta, obs:p.obs, cliente:p.cliente, interesse:p.interesse, origem:p.origem, promotora:p.promotora||null, hora:p.hora
+            insta:p.insta, obs:p.obs, cliente:p.cliente, interesse:p.interesse, origem:p.origem, promotora:p.promotora||null, respostas:p.respostas||null, hora:p.hora
           })
         }).then(function(r){
           if(r.ok || r.status===409){ // 409 = já subiu por outro caminho
@@ -564,6 +660,7 @@
     marcarChip('g-interesse', p.interesse || '');
     marcarChip('g-origem', p.origem || '');
     marcarChip('g-promotora', p.promotora || '');
+    if(MODO_CAMPOS) preencherCampos(p.respostas);
     document.getElementById('edit-voucher').textContent = v + ' — ' + (p.nome || '');
     document.getElementById('edit-banner').style.display = 'block';
     document.getElementById('btnCadastrar').textContent = '💾 Salvar alterações';
@@ -578,6 +675,7 @@
     document.getElementById('f-aviso').style.display = 'none';
     ['f-nome','f-zap','f-insta','f-obs'].forEach(function(id){ document.getElementById(id).value=''; });
     ['g-cliente','g-interesse','g-origem','g-promotora'].forEach(limparChips);
+    limparCampos();
   }
 
   function salvarEdicao(){
@@ -589,13 +687,17 @@
     if(pessoas.some(function(p){ return p.voucher!==v && p.zap_limpo === zapLimpo; })){
       return erroForm('Esse WhatsApp já está em outro cadastro.');
     }
-    var mud = {
-      nome:nome, zap:zap, zap_limpo:zapLimpo,
-      insta: document.getElementById('f-insta').value.trim(),
-      obs: document.getElementById('f-obs').value.trim(),
-      cliente: chip('g-cliente'), interesse: chip('g-interesse'), origem: chip('g-origem')
-    };
-    if(document.getElementById('g-promotora').children.length) mud.promotora = chip('g-promotora') || null;
+    var mud = { nome:nome, zap:zap, zap_limpo:zapLimpo };
+    if(MODO_CAMPOS){
+      var rr = lerCampos();
+      if(!rr.ok) return erroForm(rr.erro);
+      mud.respostas = rr.respostas;
+    } else {
+      mud.insta = document.getElementById('f-insta').value.trim();
+      mud.obs = document.getElementById('f-obs').value.trim();
+      mud.cliente = chip('g-cliente'); mud.interesse = chip('g-interesse'); mud.origem = chip('g-origem');
+      if(document.getElementById('g-promotora').children.length) mud.promotora = chip('g-promotora') || null;
+    }
     var btn = document.getElementById('btnCadastrar');
     btn.disabled = true; btn.textContent = 'Salvando…';
     var fim = function(){ btn.disabled = false; cancelarEdicao(); aba('lis'); lista(); };
@@ -636,13 +738,20 @@
     }
     var registro = {
       loja:LOJA, evento_id: EV ? EV.id : null, canal:CANAL, nome:nome, zap:zap, zap_limpo:zapLimpo,
-      insta: document.getElementById('f-insta').value.trim(),
-      obs: document.getElementById('f-obs').value.trim(),
-      cliente: chip('g-cliente'), interesse: chip('g-interesse'),
-      promotora: chip('g-promotora') || null,
-      origem: (PUBLICO && EV && EV.tipo === 'live') ? 'Live Instagram' : (chip('g-origem') || (PUBLICO ? 'Link público' : '')),
       hora: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
     };
+    if(MODO_CAMPOS){
+      var r = lerCampos();
+      if(!r.ok) return erroForm(r.erro);
+      registro.respostas = r.respostas;
+    } else {
+      registro.insta = document.getElementById('f-insta').value.trim();
+      registro.obs = document.getElementById('f-obs').value.trim();
+      registro.cliente = chip('g-cliente');
+      registro.interesse = chip('g-interesse');
+      registro.promotora = chip('g-promotora') || null;
+      registro.origem = (PUBLICO && EV && EV.tipo === 'live') ? 'Live Instagram' : (chip('g-origem') || (PUBLICO ? 'Link público' : ''));
+    }
     btn.disabled = true; btn.textContent = 'Salvando…';
 
     api('feirao_cadastros', {
@@ -714,6 +823,7 @@
     document.getElementById('veu').classList.remove('on');
     ['f-nome','f-zap','f-insta','f-obs'].forEach(function(id){ document.getElementById(id).value=''; });
     ['g-cliente','g-interesse','g-origem','g-promotora'].forEach(limparChips);
+    limparCampos();
     document.getElementById('f-nome').focus();
   }
 
@@ -747,6 +857,7 @@
         + (p.insta ? ' · '+esc(p.insta) : '')
         + (p.origem ? ' · '+esc(p.origem) : '') + (p.hora ? ' · '+esc(p.hora) : '')
         + (p.promotora ? ' · 👩 '+esc(p.promotora) : '')
+        + (p.respostas ? '<br>'+esc(resumoRespostas(p)) : '')
         + (p.canal && p.canal !== 'loja'
             ? '<br>🔗 '+esc(p.canal) + (p.chegou_em
                 ? ' · <b style="color:var(--ok)">🏬 veio à loja</b>'
@@ -797,11 +908,24 @@
   }
 
   function exportarCSV(){
-    var linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Promotora','Canal','Chegou na loja','Hora','Observações']];
-    pessoas.forEach(function(p){
-      linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,p.promotora,
-        p.canal||'loja', (!p.canal||p.canal==='loja') ? 'sim' : (p.chegou_em ? 'sim' : 'não'), p.hora,p.obs]);
-    });
+    var linhas;
+    if(MODO_CAMPOS){
+      // colunas dinâmicas: os campos do próprio evento
+      var cab = ['Voucher','Nome','WhatsApp'].concat(CAMPOS.map(function(c){ return c.label||c.id; }))
+        .concat(['Canal','Chegou na loja','Hora']);
+      linhas = [cab];
+      pessoas.forEach(function(p){
+        var r = p.respostas || {};
+        linhas.push([p.voucher,p.nome,p.zap].concat(CAMPOS.map(function(c){ return r[c.id]||''; }))
+          .concat([p.canal||'loja', (!p.canal||p.canal==='loja') ? 'sim' : (p.chegou_em ? 'sim' : 'não'), p.hora]));
+      });
+    } else {
+      linhas = [['Voucher','Nome','WhatsApp','Instagram','Já é cliente','Interesse','Onde viu','Promotora','Canal','Chegou na loja','Hora','Observações']];
+      pessoas.forEach(function(p){
+        linhas.push([p.voucher,p.nome,p.zap,p.insta,p.cliente,p.interesse,p.origem,p.promotora,
+          p.canal||'loja', (!p.canal||p.canal==='loja') ? 'sim' : (p.chegou_em ? 'sim' : 'não'), p.hora,p.obs]);
+      });
+    }
     var csv = '﻿' + linhas.map(function(l){
       return l.map(function(c){ return '"'+String(c||'').replace(/"/g,'""')+'"'; }).join(';');
     }).join('\n');

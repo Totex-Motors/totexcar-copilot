@@ -45,6 +45,22 @@ const TIPOS: Record<string, { rotulo: string; icone: string }> = {
   promocao: { rotulo: "Promoção", icone: "🏷️" },
 };
 
+// Formulário flexível: cada campo definido à mão pelo lojista
+interface Campo { label: string; tipo: string; opcoes: string; obrigatorio: boolean; onde: "ambos" | "link" | "balcao" }
+const TIPOS_CAMPO: Record<string, string> = {
+  texto: "Texto", email: "E-mail", telefone: "Telefone", numero: "Número",
+  data: "Data", escolha: "Escolha única", multipla: "Múltipla escolha", simnao: "Sim / Não",
+};
+const CAMPO_NOVO: Campo = { label: "", tipo: "texto", opcoes: "", obrigatorio: false, onde: "ambos" };
+// modelo pronto que reproduz o formulário padrão de feirão de veículos
+const MODELO_FEIRAO: Campo[] = [
+  { label: "@ Instagram", tipo: "texto", opcoes: "", obrigatorio: false, onde: "ambos" },
+  { label: "Já é cliente?", tipo: "simnao", opcoes: "", obrigatorio: false, onde: "ambos" },
+  { label: "O que procura hoje?", tipo: "escolha", opcoes: "Comprar, Trocar", obrigatorio: false, onde: "ambos" },
+  { label: "Onde viu o feirão?", tipo: "escolha", opcoes: "Panfleto, Instagram, WhatsApp, Facebook, Indicação, Passou em frente", obrigatorio: false, onde: "balcao" },
+  { label: "Observações", tipo: "texto", opcoes: "", obrigatorio: false, onde: "balcao" },
+];
+
 const HEADERS = { apikey: FEIRAO_KEY, Authorization: `Bearer ${FEIRAO_KEY}` };
 
 async function feirao<T>(path: string): Promise<T> {
@@ -161,6 +177,26 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const [novaAcao, setNovaAcao] = useState(false);
   const [salvandoAcao, setSalvandoAcao] = useState(false);
   const [acao, setAcao] = useState({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao", beneficios: "" });
+  const [campos, setCampos] = useState<Campo[]>([]); // vazio = formulário padrão
+
+  const setCampo = (i: number, patch: Partial<Campo>) =>
+    setCampos((p) => p.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+
+  // monta o schema de campos para o banco (id slug único, opções em array)
+  const montarCampos = () => {
+    const usados: Record<string, number> = {};
+    return campos.filter((c) => c.label.trim()).map((c) => {
+      let id = slugify(c.label).replace(/-/g, "_") || "campo";
+      if (usados[id]) { usados[id]++; id = `${id}_${usados[id]}`; } else usados[id] = 1;
+      return {
+        id, label: c.label.trim(), tipo: c.tipo, obrigatorio: c.obrigatorio,
+        opcoes: (c.tipo === "escolha" || c.tipo === "multipla")
+          ? c.opcoes.split(",").map((o) => o.trim()).filter(Boolean) : undefined,
+        publico: c.onde !== "balcao",
+        balcao: c.onde !== "link",
+      };
+    });
+  };
 
   // Link público de auto-cadastro, ETIQUETADO POR CANAL: cada mídia usa seu link
   // (lista de marketing, bio, live...) e os cadastros não se misturam com os do balcão.
@@ -202,6 +238,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
           ganhadores: Math.min(100, Math.max(1, Number(acao.ganhadores) || 5)),
           sorteio_em: new Date(acao.quando).toISOString(),
           beneficios: acao.beneficios.split("\n").map((b) => b.trim()).filter(Boolean).slice(0, 12),
+          campos: campos.length ? montarCampos() : null,
           ativo: true,
         }),
       });
@@ -210,6 +247,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
       setNovaAcao(false);
       setEventoSelId(null);
       setAcao({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao", beneficios: "" });
+      setCampos([]);
       qc.invalidateQueries({ queryKey: ["feirao-eventos", slug] });
       qc.invalidateQueries({ queryKey: ["feirao-ganhadores", slug] });
       qc.invalidateQueries({ queryKey: ["feirao-total", slug] });
@@ -441,6 +479,59 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
                   onChange={(e) => setAcao((p) => ({ ...p, beneficios: e.target.value }))}
                 />
               </div>
+
+              {/* Construtor de formulário (edição manual dos campos) */}
+              <div className="col-span-2 space-y-2 rounded-lg border border-dashed p-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <Label className="text-xs font-bold">📋 Campos do formulário {campos.length ? `(${campos.length} personalizado${campos.length > 1 ? "s" : ""})` : "(usando o padrão)"}</Label>
+                  <span className="flex gap-1.5">
+                    {!campos.length && (
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => setCampos(MODELO_FEIRAO.map((c) => ({ ...c })))}>Partir do modelo feirão</Button>
+                    )}
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] gap-1" onClick={() => setCampos((p) => [...p, { ...CAMPO_NOVO }])}>
+                      <Plus className="w-3 h-3" /> Adicionar campo
+                    </Button>
+                  </span>
+                </div>
+                {!campos.length ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Vazio = formulário padrão (Instagram, já é cliente, comprar/trocar, onde viu, observações).
+                    Adicione campos para montar um formulário do seu jeito — <b>Nome e WhatsApp já são fixos</b>.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {campos.map((c, i) => (
+                      <div key={i} className="rounded-md border p-2 space-y-1.5 bg-background">
+                        <div className="flex gap-2 items-center">
+                          <Input className="flex-1 h-8" placeholder="Pergunta (ex.: Sua cidade)" value={c.label} onChange={(e) => setCampo(i, { label: e.target.value })} />
+                          <select className="border rounded-md px-2 h-8 text-xs bg-background" value={c.tipo} onChange={(e) => setCampo(i, { tipo: e.target.value })}>
+                            {Object.entries(TIPOS_CAMPO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                          </select>
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setCampos((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        </div>
+                        {(c.tipo === "escolha" || c.tipo === "multipla") && (
+                          <Input className="h-8 text-xs" placeholder="Opções separadas por vírgula (ex.: Comprar, Trocar)" value={c.opcoes} onChange={(e) => setCampo(i, { opcoes: e.target.value })} />
+                        )}
+                        <div className="flex items-center gap-3 flex-wrap text-[11px]">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <Checkbox checked={c.obrigatorio} onCheckedChange={(v) => setCampo(i, { obrigatorio: v === true })} /> Obrigatório
+                          </label>
+                          <span className="flex items-center gap-1.5">
+                            aparece em:
+                            <select className="border rounded-md px-1.5 h-7 bg-background" value={c.onde} onChange={(e) => setCampo(i, { onde: e.target.value as Campo["onde"] })}>
+                              <option value="ambos">Balcão e link</option>
+                              <option value="link">Só no link público</option>
+                              <option value="balcao">Só no balcão</option>
+                            </select>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-muted-foreground" onClick={() => setCampos([])}>↺ Voltar ao formulário padrão</Button>
+                  </div>
+                )}
+              </div>
+
               <div className="col-span-2 flex items-center justify-between gap-2">
                 <p className="text-[11px] text-muted-foreground">Criar uma nova ação zera a lista do app (os dados das ações anteriores ficam guardados no banco).</p>
                 <Button size="sm" className="gap-1.5 shrink-0" disabled={salvandoAcao} onClick={criarAcao}>
