@@ -2417,7 +2417,10 @@ async function findSellPending(phone: string, step?: string): Promise<{ id: stri
 
 // Envia o lead pro CRM (TotexGest) — endpoint + api-key ficam em app_settings (fora do git).
 // Best-effort com retry curto; nunca trava o webhook (chamado via EdgeRuntime.waitUntil).
-async function pushToTotexgest(lead: { name?: string | null; phone: string; email?: string | null; city?: string | null; state?: string | null; utm_campaign?: string | null }): Promise<void> {
+async function pushToTotexgest(lead: {
+  name?: string | null; phone: string; email?: string | null; city?: string | null; state?: string | null;
+  utm_campaign?: string | null; subject?: string | null; notes?: string | null; custom?: Record<string, unknown> | null;
+}): Promise<void> {
   try {
     const { data } = await supabase.from("app_settings").select("crm_lead_url, crm_lead_key").eq("id", 1).single();
     const url = data?.crm_lead_url; const key = data?.crm_lead_key;
@@ -2432,6 +2435,11 @@ async function pushToTotexgest(lead: { name?: string | null; phone: string; emai
     if (lead.email) body.email = lead.email;
     if (lead.city) body.city = lead.city;
     if (lead.state) body.state = lead.state;
+    // dados ricos da tratativa (o CRM deve registrar como nota/atividade na timeline do lead,
+    // inclusive quando o telefone já existe — reconversão)
+    if (lead.subject) body.subject = lead.subject;
+    if (lead.notes) { body.notes = lead.notes; body.message = lead.notes; body.description = lead.notes; }
+    if (lead.custom) body.custom = lead.custom;
     for (let i = 0; i < 3; i++) {
       try {
         const res = await fetch(url, { method: "POST", headers: { "x-api-key": key, "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -2470,7 +2478,24 @@ async function finalizeSellLead(phone: string, pending: { id: string; parsed: an
 
   // manda o lead pro CRM (TotexGest). Awaited de propósito: o usuário já recebeu a proposta
   // antes daqui, e fire-and-forget via waitUntil era cortado quando o isolate é reciclado.
-  await pushToTotexgest({ name: nome, phone, utm_campaign: res.modalidade === "express" ? "venda-express" : "venda-vitrine" });
+  {
+    const modTxt = res.modalidade === "express" ? "Venda Express (à vista, repasse até 48h)" : `Venda Vitrine (até ${res.prazo_dias} dias)`;
+    const notes = `Vendedor quer vender *${carro}* via *${modTxt}*.\n`
+      + `Proposta: ${fmtReais(res.valor)} · FIPE ${fmtReais(fipe)} · margem ${fmtReais(res.margem)}.`
+      + (dealership ? `\nLoja: ${dealership}.` : "");
+    await pushToTotexgest({
+      name: nome, phone,
+      utm_campaign: res.modalidade === "express" ? "venda-express" : "venda-vitrine",
+      subject: `${res.modalidade === "express" ? "Venda Express" : "Venda Vitrine"} — ${carro}`,
+      notes,
+      custom: {
+        carro, modalidade: res.modalidade, valor_proposto: res.valor,
+        fipe: fipe, margem: res.margem, prazo_dias: res.prazo_dias ?? null,
+        loja: dealership || null,
+        marca: p.marca_nome || null, modelo: p.modelo_nome || null, ano: p.ano_nome || null, combustivel: p.combustivel || null,
+      },
+    });
+  }
 
   const s = await getSettings();
   const modLabel = res.modalidade === "express"
@@ -2753,6 +2778,14 @@ async function handleAgenda(phone: string, text: string): Promise<boolean> {
     await waSendImage(s, phone, `${appUrl}/${unit.foto}`, `📍 ${unit.nome}`);
     const carroTxt = p.carro ? ` do seu ${p.carro}` : "";
     await sendText(phone, `✅ *Agendamento confirmado!*\n\n📅 ${p.data_label} às *${slot.h}*\n📍 *${unit.nome}*\n${unit.endereco}\n🗺️ ${unit.maps}\n\nÉ rapidinho: fazemos a avaliação presencial${carroTxt} e já aproveitamos pra tirar as fotos no estúdio. Se puder, chega uns 10 min antes. 🚗✨\n\nPrecisa remarcar? Só me mandar *AGENDAR*.`);
+
+    // registra o agendamento no CRM (nota/atividade na timeline do lead)
+    await pushToTotexgest({
+      name: p.nome, phone, utm_campaign: "agendamento",
+      subject: `Agendamento — ${unit.curto}`,
+      notes: `Agendou avaliação presencial + sessão de fotos.\n📅 ${p.data_label} às ${slot.h}\n📍 ${unit.nome}\n${unit.endereco}` + (p.carro ? `\nVeículo: ${p.carro}` : ""),
+      custom: { tipo: "agendamento", unidade: unit.key, unidade_nome: unit.nome, data: p.data_iso, horario: slot.h, periodo: slot.periodo, carro: p.carro || null, loja: p.dealership || null },
+    });
 
     // avisa a loja (best-effort, free-form — só entra se a loja estiver na janela de 24h)
     try {
