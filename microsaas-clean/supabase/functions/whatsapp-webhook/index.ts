@@ -2415,6 +2415,34 @@ async function findSellPending(phone: string, step?: string): Promise<{ id: stri
   return { id: ev.id, parsed: p };
 }
 
+// Envia o lead pro CRM (TotexGest) — endpoint + api-key ficam em app_settings (fora do git).
+// Best-effort com retry curto; nunca trava o webhook (chamado via EdgeRuntime.waitUntil).
+async function pushToTotexgest(lead: { name?: string | null; phone: string; email?: string | null; city?: string | null; state?: string | null; utm_campaign?: string | null }): Promise<void> {
+  try {
+    const { data } = await supabase.from("app_settings").select("crm_lead_url, crm_lead_key").eq("id", 1).single();
+    const url = data?.crm_lead_url; const key = data?.crm_lead_key;
+    if (!url || !key) return; // integração desligada
+    const body: Record<string, unknown> = {
+      name: lead.name || "Lead WhatsApp",
+      phone: onlyDigits(lead.phone),
+      source: "totexcar-copilot",
+      utm_source: "whatsapp",
+      utm_campaign: lead.utm_campaign || "captacao",
+    };
+    if (lead.email) body.email = lead.email;
+    if (lead.city) body.city = lead.city;
+    if (lead.state) body.state = lead.state;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await fetch(url, { method: "POST", headers: { "x-api-key": key, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (res.ok) return;
+        if (res.status < 500) { console.error("totexgest reject", res.status, await res.text().catch(() => "")); return; } // 4xx: não adianta repetir
+      } catch (e) { console.error("totexgest attempt", i, e); }
+      await new Promise((r) => setTimeout(r, 600 * (i + 1)));
+    }
+  } catch (e) { console.error("pushToTotexgest:", e); }
+}
+
 // grava o lead final em buyback_requests, avisa a loja e dá os 30 dias. Marca o pending como done.
 async function finalizeSellLead(phone: string, pending: { id: string; parsed: any }, res: { modalidade: "express" | "vitrine"; valor: number; margem: number; prazo_dias?: number }) {
   const p = pending.parsed || {};
@@ -2437,6 +2465,13 @@ async function finalizeSellLead(phone: string, pending: { id: string; parsed: an
     },
     status: "new",
   });
+
+  // manda o lead pro CRM (TotexGest) em background — não trava o WhatsApp
+  {
+    const utm = res.modalidade === "express" ? "venda-express" : "venda-vitrine";
+    const p2 = pushToTotexgest({ name: nome, phone, utm_campaign: utm });
+    (globalThis as any).EdgeRuntime?.waitUntil?.(p2) ?? p2.catch(() => {});
+  }
 
   const s = await getSettings();
   const modLabel = res.modalidade === "express"
