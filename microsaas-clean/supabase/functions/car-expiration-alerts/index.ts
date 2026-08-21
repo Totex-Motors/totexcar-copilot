@@ -5,7 +5,7 @@
 // v8: + RADAR da Garagem Totex — avisa quando um carro do desejo aparece no estoque do marketplace.
 // v9: TODO alerta é iniciado pelo negócio → na API oficial sai por TEMPLATE aprovado (ver _shared/wa.ts).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { loadWaSettings, waSendTemplate, waProvider, type WaSettings } from "../_shared/wa.ts";
+import { loadWaSettings, waSendTemplate, waSendMenu, waProvider, type WaSettings } from "../_shared/wa.ts";
 import { composeProactive, loadDossier, pickAngle, type AIConfig } from "../_shared/proactive.ts";
 import { careStreak, careDecay, careStatement, lojasAderidas } from "../_shared/care-score.ts";
 import { kmMedioDia, syncCalendar, projectRevisions } from "../_shared/calendar.ts";
@@ -629,6 +629,58 @@ async function runReferralBonuses(): Promise<number> {
   return credited;
 }
 
+// ---------- CADÊNCIA DO PRESENTE DO STAND (nudges gratuitos, dentro da janela de 24h) ----------
+// 2 lembretes p/ quem NÃO ativou: nudge 1 (~5h) e nudge 2 (~20h) após o scan. Regras:
+//  • mensagem LIVRE (custo zero) → só vale DENTRO da janela de 24h (por isso ageH < 23);
+//  • só no horário civil 08–21h (BRT = UTC-3) — se cair de noite, o cron horário segura pra manhã;
+//  • para de vez quando a pessoa ativa (vira usuário) ou quando a janela fecha.
+const NUDGE_MSGS = [
+  `Oi! 👋 Uma pergunta rápida: quando vence o *licenciamento* do seu carro? 🤔\n\nQuase ninguém lembra de cabeça — e esquecer custa *multa, pontos na CNH e o carro no guincho* 😬\n\nCom o TotexCar Co-pilot você é *avisado antes de vencer* e ainda guarda o comprovante no cofre. Nunca mais paga por esquecimento.\n\nSeus *30 dias grátis* ainda estão aqui — ativa em 10 segundos 👇`,
+  `Oi de novo! 👋 Já pensou em nunca mais procurar documento do carro em gaveta? 📁\n\nNo Co-pilot você manda a foto do CRLV, IPVA, seguro... e acha tudo aqui na hora que precisar (blitz, venda, sinistro).\n\nSeus *30 dias grátis* seguem te esperando 👇`,
+];
+
+async function runStandNudges(): Promise<number> {
+  const now = Date.now();
+  const localHour = new Date(now - 3 * 3600_000).getUTCHours(); // BRT = UTC-3 (sem horário de verão)
+  if (localHour < 8 || localHour >= 21) return 0; // fora do horário civil → segura pro próximo ciclo
+
+  const desde = new Date(now - 23 * 3600_000).toISOString(); // só dentro da janela de 24h
+  const { data: gifts } = await supabase.from("whatsapp_events")
+    .select("from_phone, created_at").eq("kind", "stand_gift")
+    .gte("created_at", desde).order("created_at", { ascending: true });
+  if (!gifts?.length) return 0;
+
+  const wa = await waS();
+  let sent = 0;
+  const seen = new Set<string>();
+  for (const g of gifts) {
+    const phone = onlyDigits(g.from_phone || "");
+    if (!phone || seen.has(phone)) continue;
+    seen.add(phone);
+    const ageH = (now - new Date(g.created_at).getTime()) / 3600_000;
+    if (ageH < 5 || ageH >= 23) continue;
+
+    // já virou usuário (ativou / já era cliente)? não incomoda
+    const variants = phone.startsWith("55") ? [phone, phone.slice(2)] : [phone, "55" + phone];
+    const { count: userCount } = await supabase.from("users").select("id", { count: "exact", head: true }).in("phone", variants);
+    if (userCount) continue;
+
+    const { data: nd } = await supabase.from("whatsapp_events")
+      .select("parsed").eq("from_phone", phone).eq("kind", "stand_nudge");
+    const done = new Set((nd || []).map((e: any) => Number(e.parsed?.n)));
+
+    let n = 0;
+    if (ageH >= 20 && !done.has(2)) n = 2;
+    else if (ageH < 20 && !done.has(1)) n = 1;
+    if (!n) continue;
+
+    // grava ANTES (dedup em retry) e envia mensagem LIVRE com botão de ativar
+    await supabase.from("whatsapp_events").insert({ from_phone: phone, kind: "stand_nudge", status: "sent", raw: {}, parsed: { n } });
+    if (await waSendMenu(wa, phone, NUDGE_MSGS[n - 1], ["Ativar 30 dias grátis"])) sent++;
+  }
+  return sent;
+}
+
 Deno.serve(async (req) => {
   _wa = null;
   _ai = null;
@@ -636,6 +688,13 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
     return new Response("unauthorized", { status: 401 });
+  }
+
+  // job horário: só a cadência do presente do stand (não roda os alertas diários)
+  if (url.searchParams.get("job") === "stand_nudge") {
+    let n = 0;
+    try { n = await runStandNudges(); } catch (e) { console.error("stand_nudge:", e); }
+    return new Response(JSON.stringify({ ok: true, job: "stand_nudge", sent: n }), { headers: { "Content-Type": "application/json" } });
   }
 
   let sent = 0;
