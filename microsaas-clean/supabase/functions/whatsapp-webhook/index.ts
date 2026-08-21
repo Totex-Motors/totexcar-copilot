@@ -2558,9 +2558,12 @@ async function sendStandGift(phone: string, appUrl: string): Promise<void> {
     if (count) return;
     await supabase.from("whatsapp_events").insert({ from_phone: onlyDigits(phone), kind: "stand_gift", status: "sent", raw: {}, parsed: {} });
     const s = await getSettings();
-    const texto = `🎁 *Um presente por ter vindo ao stand:* você ganhou *30 dias grátis* do Co-pilot pra cuidar do seu carro — gasto, revisão, multa, IPVA e FIPE, tudo aqui no WhatsApp.\n\nToque no botão pra ativar agora, sem sair daqui 👇`;
+    // 1º o CARD explicativo (a pessoa entende O QUE é antes de ver o "grátis" — mata o "o que é isso?")
+    await waSendImage(s, phone, `${appUrl}/copiloto-explica.jpg`, "Esse é o *TotexCar Co-pilot* — seu assistente de carro aqui no WhatsApp. 🚗");
+    // 2º o presente + CTA, agora que já entende o valor
+    const texto = `Oi! 👋 Dá uma olhada no que eu faço por você (aqui em cima 👆).\n\nE por você ter passado no nosso stand, os *primeiros 30 dias são por nossa conta* 🎁\n\nQuer experimentar? É só tocar 👇`;
     // botão (zero fricção): toque → provisiona a conta e inicia os 30 dias na hora
-    const ok = await waSendMenu(s, phone, texto, ["Ativar 30 dias"]);
+    const ok = await waSendMenu(s, phone, texto, ["Ativar 30 dias grátis"]);
     if (!ok) await sendText(phone, `${texto}\n\nOu responda *ATIVAR* que eu libero na hora. (Também dá pra criar conta em ${appUrl}/auth?tab=register)`);
   } catch (e) { console.error("sendStandGift:", e); }
 }
