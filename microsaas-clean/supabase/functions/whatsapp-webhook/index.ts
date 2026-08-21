@@ -2435,11 +2435,13 @@ async function pushToTotexgest(lead: { name?: string | null; phone: string; emai
     for (let i = 0; i < 3; i++) {
       try {
         const res = await fetch(url, { method: "POST", headers: { "x-api-key": key, "Content-Type": "application/json" }, body: JSON.stringify(body) });
-        if (res.ok) return;
+        if (res.ok) { console.log("totexgest ok", body.phone, body.utm_campaign); return; }
         if (res.status < 500) { console.error("totexgest reject", res.status, await res.text().catch(() => "")); return; } // 4xx: não adianta repetir
+        console.error("totexgest 5xx", res.status);
       } catch (e) { console.error("totexgest attempt", i, e); }
-      await new Promise((r) => setTimeout(r, 600 * (i + 1)));
+      if (i < 2) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
     }
+    console.error("totexgest gave up after retries", body.phone);
   } catch (e) { console.error("pushToTotexgest:", e); }
 }
 
@@ -2466,12 +2468,9 @@ async function finalizeSellLead(phone: string, pending: { id: string; parsed: an
     status: "new",
   });
 
-  // manda o lead pro CRM (TotexGest) em background — não trava o WhatsApp
-  {
-    const utm = res.modalidade === "express" ? "venda-express" : "venda-vitrine";
-    const p2 = pushToTotexgest({ name: nome, phone, utm_campaign: utm });
-    (globalThis as any).EdgeRuntime?.waitUntil?.(p2) ?? p2.catch(() => {});
-  }
+  // manda o lead pro CRM (TotexGest). Awaited de propósito: o usuário já recebeu a proposta
+  // antes daqui, e fire-and-forget via waitUntil era cortado quando o isolate é reciclado.
+  await pushToTotexgest({ name: nome, phone, utm_campaign: res.modalidade === "express" ? "venda-express" : "venda-vitrine" });
 
   const s = await getSettings();
   const modLabel = res.modalidade === "express"
