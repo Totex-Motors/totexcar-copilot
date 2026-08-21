@@ -2502,6 +2502,7 @@ async function handleSellModalidade(phone: string, text: string): Promise<boolea
     const { margem, valor } = calcOffer(fipe, cfg.express.pct, cfg.express.piso);
     await sendText(phone, `⚡ *Venda Express* — pra carro de boa demanda, nosso grupo de repasse fecha *à vista, em até 48h*.\n\nSua proposta pro ${carro} é de até *${fmtReais(valor)}* (valor final na vistoria). Aceita até carro com dívida ou IPVA atrasado.\n\n${quemContata} já vai entrar em contato pra fechar. 🚗`);
     await finalizeSellLead(phone, pend, { modalidade: "express", valor, margem });
+    await offerAgendamento(phone, { carro, dealership: pend.parsed?.dealership || null, nome: pend.parsed?.nome || null, source: "sell" });
     return true;
   }
 
@@ -2541,8 +2542,9 @@ async function handleSellPrazo(phone: string, text: string): Promise<boolean> {
   const tier = tierFor(idx, prazos.length);
   const carro = pend.parsed?.carro || "seu carro";
   const quemContata = pend.parsed?.dealership ? `A ${pend.parsed.dealership}` : "Nossa equipe";
-  await sendText(phone, `✅ Fechado! Você escolheu a *${tier.nome}* (${tier.prazo}) pro seu ${carro}: recebe até *${fmtReais(escolhido.valor)}* — valor final na vistoria.\n\n${quemContata} vai te chamar pra combinar as fotos e o anúncio. Enquanto isso, o carro continua com você. 🚗`);
+  await sendText(phone, `✅ Fechado! Você escolheu a *${tier.nome}* (${tier.prazo}) pro seu ${carro}: recebe até *${fmtReais(escolhido.valor)}* — valor final na vistoria.\n\nEnquanto isso, o carro continua com você. 🚗`);
   await finalizeSellLead(phone, pend, { modalidade: "vitrine", valor: escolhido.valor, margem: escolhido.margem, prazo_dias: escolhido.dias });
+  await offerAgendamento(phone, { carro, dealership: pend.parsed?.dealership || null, nome: pend.parsed?.nome || null, source: "sell" });
   return true;
 }
 
@@ -2566,6 +2568,172 @@ async function sendStandGift(phone: string, appUrl: string): Promise<void> {
     const ok = await waSendMenu(s, phone, texto, ["Ativar 30 dias grátis"]);
     if (!ok) await sendText(phone, `${texto}\n\nOu responda *ATIVAR* que eu libero na hora. (Também dá pra criar conta em ${appUrl}/auth?tab=register)`);
   } catch (e) { console.error("sendStandGift:", e); }
+}
+
+// ===================== AGENDAMENTO (avaliação presencial + sessão de fotos no estúdio) =====================
+// Fluxo por menu no próprio webhook (sem Flow do Meta): oferta → unidade → dia → horário → confirma.
+// O estado vive num evento `agenda_pending` (mesmo padrão do sell_pending). Na confirmação, envia a
+// foto da fachada da unidade escolhida + endereço + link do Maps. Fotos são best-effort (se o arquivo
+// ainda não existir em /public, a imagem falha em silêncio e o texto com endereço vai do mesmo jeito).
+const AGENDA_UNITS: Record<string, { key: string; nome: string; curto: string; endereco: string; foto: string; maps: string }> = {
+  carapicuiba: {
+    key: "carapicuiba",
+    nome: "Cardoso Veículos — Carapicuíba",
+    curto: "Carapicuíba",
+    endereco: "Av. Desembargador Dr. Eduardo Cunha de Abreu, 131 — Carapicuíba/SP (abaixo do Poupatempo)",
+    foto: "loja-carapicuiba.jpg",
+    maps: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent("Cardoso Veículos, Av. Desembargador Dr. Eduardo Cunha de Abreu 131, Carapicuíba SP"),
+  },
+  alphaville: {
+    key: "alphaville",
+    nome: "Cardoso Prime — Alphaville",
+    curto: "Alphaville",
+    endereco: "Alameda Rio Negro, 229 — Alphaville, Barueri/SP (dentro do Posto, ao lado do Shopping Iguatemi)",
+    foto: "loja-alphaville.jpg",
+    maps: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent("Cardoso Prime, Alameda Rio Negro 229, Alphaville Barueri SP"),
+  },
+};
+// horários do estúdio: seg–sáb, manhã 9–12 / tarde 14–18
+const AGENDA_SLOTS = [
+  { h: "09:00", periodo: "manha" }, { h: "10:00", periodo: "manha" }, { h: "11:00", periodo: "manha" },
+  { h: "14:00", periodo: "tarde" }, { h: "15:00", periodo: "tarde" }, { h: "16:00", periodo: "tarde" }, { h: "17:00", periodo: "tarde" },
+];
+// próximos N dias úteis (seg–sáb, pula domingo) no fuso BRT (UTC-3)
+function agendaDays(count = 6): { label: string; iso: string }[] {
+  const WD = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const out: { label: string; iso: string }[] = [];
+  const baseBrt = new Date(Date.now() - 3 * 3600_000);
+  let d = 1;
+  while (out.length < count && d < 20) {
+    const day = new Date(baseBrt.getTime() + d * 24 * 3600_000);
+    const dow = day.getUTCDay();
+    if (dow !== 0) {
+      const dd = String(day.getUTCDate()).padStart(2, "0");
+      const mm = String(day.getUTCMonth() + 1).padStart(2, "0");
+      out.push({ label: `${WD[dow]} ${dd}/${mm}`, iso: `${day.getUTCFullYear()}-${mm}-${dd}` });
+    }
+    d++;
+  }
+  return out;
+}
+function agendaAppUrl(row?: { app_url?: string | null } | null): string {
+  return (row?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+}
+
+// OFERTA de agendamento — mostra o estúdio (gera desejo real: foto boa vende mais rápido) e o CTA.
+async function offerAgendamento(phone: string, ctx: { carro?: string | null; dealership?: string | null; nome?: string | null; source?: string }): Promise<void> {
+  try {
+    const s = await getSettings();
+    const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+    const appUrl = agendaAppUrl(cfg);
+    await supabase.from("whatsapp_events").insert({
+      from_phone: onlyDigits(phone), kind: "agenda_pending", status: "processed",
+      raw: {}, parsed: { step: "offer", carro: ctx.carro || null, dealership: ctx.dealership || null, nome: ctx.nome || null, source: ctx.source || "sell" },
+    });
+    await waSendImage(s, phone, `${appUrl}/estudio-totex.jpg`, "Nosso *estúdio profissional* de fotos 📸");
+    const txt = `Pra fechar o valor com segurança, o próximo passo é uma *avaliação presencial rápida* — e de quebra seu carro ganha uma *sessão de fotos no nosso estúdio profissional*. Foto boa vende mais rápido e por mais. 🚗✨\n\nQuer já deixar agendado? Eu marco o melhor dia e horário com você.`;
+    const ok = await waSendMenu(s, phone, txt, ["📸 Quero agendar", "A loja me chama"]);
+    if (!ok) await sendText(phone, `${txt}\n\nResponda *AGENDAR* que eu marco com você.`);
+  } catch (e) { console.error("offerAgendamento:", e); }
+}
+
+async function findAgendaPending(phone: string): Promise<{ id: string; parsed: any } | null> {
+  const desde = new Date(Date.now() - 2 * 3600_000).toISOString();
+  const { data } = await supabase.from("whatsapp_events")
+    .select("id, parsed").eq("from_phone", onlyDigits(phone)).eq("kind", "agenda_pending")
+    .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+  const ev = data?.[0];
+  if (!ev) return null;
+  const p = ev.parsed as any;
+  if (p?.step === "done") return null;
+  return { id: ev.id, parsed: p };
+}
+
+// Máquina de estados do agendamento. Retorna true se tratou a mensagem.
+async function handleAgenda(phone: string, text: string): Promise<boolean> {
+  const t = String(text || "").toLowerCase().trim();
+  const wantsStart = /#agendar|^agendar\b|quero agendar|agendar (a |uma )?(avalia|foto|vistoria|sess)/.test(t);
+  let pend = await findAgendaPending(phone);
+
+  if (!pend && wantsStart) { await offerAgendamento(phone, { source: "hashtag" }); return true; }
+  if (!pend) return false;
+  const p = pend.parsed || {};
+  const s = await getSettings();
+
+  // OFERTA: aceita ou recusa
+  if (p.step === "offer") {
+    const no = /loja me chama|agora n[aã]o|depois|mais tarde|n[aã]o quero|nao quero|n[aã]o obrig/.test(t);
+    const yes = /agendar|avalia|foto|est[uú]dio|marcar|^sim|bora|quero|vamos/.test(t);
+    if (no) {
+      await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "done", declined: true } }).eq("id", pend.id);
+      await sendText(phone, "Tranquilo! 👍 A loja vai te chamar pra combinar a avaliação e as fotos. Se mudar de ideia, é só me mandar *AGENDAR*. 🚗");
+      return true;
+    }
+    if (!yes) return false;
+    await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "unidade" } }).eq("id", pend.id);
+    await waSendMenu(s, phone, "Show! 📍 Em qual das nossas lojas fica melhor pra você?", [AGENDA_UNITS.carapicuiba.curto, AGENDA_UNITS.alphaville.curto]);
+    return true;
+  }
+
+  // UNIDADE
+  if (p.step === "unidade") {
+    let unit = null as (typeof AGENDA_UNITS)[string] | null;
+    if (/carapicu/.test(t)) unit = AGENDA_UNITS.carapicuiba;
+    else if (/alphav|prime|iguatemi|rio negro/.test(t)) unit = AGENDA_UNITS.alphaville;
+    if (!unit) return false;
+    const dias = agendaDays(6);
+    await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "dia", unidade: unit.key, dias } }).eq("id", pend.id);
+    await waSendMenu(s, phone, `Perfeito — *${unit.curto}*. 📅 Qual dia fica melhor?`, dias.map((d) => d.label));
+    return true;
+  }
+
+  // DIA
+  if (p.step === "dia") {
+    const dias: any[] = Array.isArray(p.dias) ? p.dias : [];
+    const pick = dias.find((d) => t.includes(String(d.label).toLowerCase()))
+      || dias.find((d) => { const mm = t.match(/(\d{2})\/(\d{2})/); return mm && String(d.iso).endsWith(`-${mm[2]}-${mm[1]}`); });
+    if (!pick) return false;
+    await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "horario", data_iso: pick.iso, data_label: pick.label } }).eq("id", pend.id);
+    await waSendMenu(s, phone, `📆 *${pick.label}*. Que horário? (manhã ou tarde)`, AGENDA_SLOTS.map((sl) => `${sl.h} — ${sl.periodo === "manha" ? "Manhã" : "Tarde"}`));
+    return true;
+  }
+
+  // HORÁRIO → finaliza e confirma
+  if (p.step === "horario") {
+    let slot = AGENDA_SLOTS.find((sl) => t.includes(sl.h));
+    if (!slot) { const mh = t.match(/(\d{1,2})[:h]/); if (mh) { const hh = String(mh[1]).padStart(2, "0"); slot = AGENDA_SLOTS.find((sl) => sl.h.startsWith(hh)); } }
+    if (!slot) return false;
+    const unit = AGENDA_UNITS[p.unidade] || AGENDA_UNITS.carapicuiba;
+    const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+    const appUrl = agendaAppUrl(cfg);
+    const { data: bb } = await supabase.from("buyback_requests").select("id")
+      .eq("owner_phone", onlyDigits(phone)).order("created_at", { ascending: false }).limit(1);
+    await supabase.from("agendamentos").insert({
+      phone: onlyDigits(phone), nome: p.nome || null, dealership: p.dealership || null,
+      unidade: unit.key, unidade_nome: unit.nome, carro: p.carro || null,
+      buyback_id: bb?.[0]?.id || null, data: p.data_iso, periodo: slot.periodo, horario: slot.h,
+      status: "agendado", source: p.source || "sell",
+    });
+    await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "done", horario: slot.h } }).eq("id", pend.id);
+
+    await waSendImage(s, phone, `${appUrl}/${unit.foto}`, `📍 ${unit.nome}`);
+    const carroTxt = p.carro ? ` do seu ${p.carro}` : "";
+    await sendText(phone, `✅ *Agendamento confirmado!*\n\n📅 ${p.data_label} às *${slot.h}*\n📍 *${unit.nome}*\n${unit.endereco}\n🗺️ ${unit.maps}\n\nÉ rapidinho: fazemos a avaliação presencial${carroTxt} e já aproveitamos pra tirar as fotos no estúdio. Se puder, chega uns 10 min antes. 🚗✨\n\nPrecisa remarcar? Só me mandar *AGENDAR*.`);
+
+    // avisa a loja (best-effort, free-form — só entra se a loja estiver na janela de 24h)
+    try {
+      if (p.dealership) {
+        const { data: dealers } = await supabase.from("users").select("phone")
+          .eq("role", "dealer").eq("dealership", p.dealership).not("phone", "is", null).limit(3);
+        for (const dp of (dealers || [])) {
+          const num = onlyDigits(dp.phone || "");
+          if (num) await sendText(num, `📸 *Novo agendamento* — ${unit.curto}\n${p.nome || phone} · ${p.carro || "veículo"}\n📅 ${p.data_label} às ${slot.h}\nContato: ${phone}`);
+        }
+      }
+    } catch { /* fora da janela: aparece só no painel */ }
+    return true;
+  }
+  return false;
 }
 
 // ATIVAÇÃO SEM FRICÇÃO: provisiona a conta do visitante do stand (email sintético, SEM senha —
@@ -2911,6 +3079,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (await handleSellPrazo(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "sell_prazo", input: psText } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, sell_prazo: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // AGENDAMENTO da avaliação presencial + sessão de fotos (oferta → unidade → dia → horário)
+      if (await handleAgenda(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "agenda", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, agenda: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // QR do stand físico (shopping) — código #stand na mensagem pré-preenchida
       if (await handleStandLead(msg.phone, psText, msg.contactName)) {
