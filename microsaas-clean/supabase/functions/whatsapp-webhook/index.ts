@@ -2859,6 +2859,33 @@ async function activateStandTrial(phone: string, name?: string | null): Promise<
   } catch (e) { console.error("activateStandTrial:", e); return { ok: false }; }
 }
 
+// ATIVAÇÃO DO BRINDE (botão "Ativar 30 dias" / "sim/ativar") pra QUALQUER visitante que recebeu a
+// oferta — inclusive quem veio por #vender (que gera stand_sell, não stand_lead). Antes o único
+// caminho de ativação vivia dentro de handleStandFollowup, gated em stand_lead → o botão do #vender
+// não fazia nada. Aqui o gate é o próprio stand_gift (criado nos DOIS fluxos ao enviar o presente).
+async function handleStandActivate(phone: string, text: string): Promise<boolean> {
+  // roda cedo (antes do lookup de usuário), então exige a palavra "ativar" explícita (o botão
+  // "Ativar 30 dias grátis" sempre tem) — NÃO captura "sim" solto, pra não sequestrar resposta a
+  // outra pergunta. O "sim/quero" mais frouxo continua só no handleStandFollowup (contexto sem agente).
+  if (!/\bativar\b/i.test(String(text || ""))) return false;
+  const digits = onlyDigits(phone);
+  const { count } = await supabase.from("whatsapp_events")
+    .select("id", { count: "exact", head: true }).eq("from_phone", digits).eq("kind", "stand_gift");
+  if (!count) return false; // só ativa quem realmente recebeu a oferta do presente
+  // nome best-effort: pega do stand_sell/stand_lead mais recente
+  const { data: ctx } = await supabase.from("whatsapp_events")
+    .select("parsed").eq("from_phone", digits).in("kind", ["stand_sell", "stand_lead"])
+    .order("created_at", { ascending: false }).limit(1);
+  const nome = (ctx?.[0]?.parsed as any)?.nome || null;
+  const r = await activateStandTrial(phone, nome);
+  await sendText(phone, r.ok
+    ? (r.already
+      ? `Você já tem seu Co-pilot ativo por aqui 👍 É só me pedir o que precisa: ver carros, avaliar o seu, ou *"quero o painel"* pra cuidar do seu carro. 🚗`
+      : `🎉 Pronto! Seus *30 dias grátis* já estão ativos.\n\nAgora é só usar — me pede *"quero o painel"* que eu te mando o acesso pra cadastrar seu carro (sem senha), ou me diz o que procura. 🚗`)
+    : "Tive um probleminha pra ativar agora 😕 Tenta de novo em instantes, por favor.");
+  return true;
+}
+
 // intenção de ATIVAR (botão "Ativar 30 dias" ou texto) — sem confundir com busca de carro
 function querAtivar(t: string): boolean {
   const s = String(t || "").toLowerCase().trim();
@@ -2970,9 +2997,13 @@ async function handleStandLead(phone: string, text: string, contactName?: string
 // matar o papo com "cadastre-se" no meio do shopping perde a venda. Busca leve por categoria e
 // faixa de preço mantém a vitrine viva; o convite pro app vai junto, sem bloquear.
 async function handleStandFollowup(phone: string, text: string): Promise<boolean> {
-  const desde = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+  // reconhece o visitante que VOLTA: além do #stand (stand_lead), também #vender (stand_sell) e quem
+  // recebeu o brinde (stand_gift). Janela de 30 dias. Isso resolve o re-scan: o WhatsApp muitas vezes
+  // NÃO repõe o texto pré-preenchido (#vender/#stand) numa conversa que já existe, então a pessoa
+  // manda qualquer coisa — aqui a gente re-engaja (vitrine / vender / ativar) em vez de dar "cadastre-se".
+  const desde = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
   const { data: lead } = await supabase.from("whatsapp_events")
-    .select("id, parsed").eq("from_phone", phone).eq("kind", "stand_lead")
+    .select("id, parsed").eq("from_phone", phone).in("kind", ["stand_lead", "stand_sell", "stand_gift"])
     .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
   if (!lead?.length) return false;
   const leadId = (lead[0] as any)?.id || null;
@@ -2983,6 +3014,13 @@ async function handleStandFollowup(phone: string, text: string): Promise<boolean
   // "Ver mais carros" (toque na lista ou texto) → próxima página da última busca
   if (VER_MAIS_RE.test(t)) {
     await standVitrine(phone, loja, leadId, leadParsed, { more: true });
+    return true;
+  }
+
+  // re-entra no fluxo de VENDER se a pessoa voltou querendo vender (o QR #vender não repôs o texto)
+  if (isRecompraQuery(t)) {
+    await sendText(phone, "Boa! Vender seu carro com a gente é rápido. 🚗 Me diz a marca, o modelo e o ano que eu já pego a referência de tabela.");
+    await abrirAvaliacaoFlow(phone);
     return true;
   }
 
@@ -3182,6 +3220,12 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (await handleAgenda(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "agenda", input: psText } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, agenda: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // ATIVAR o brinde de 30 dias (botão/"sim") — funciona pra quem veio por #stand OU #vender
+      // (gate = stand_gift). Antes só ativava quem tinha stand_lead, então o #vender ficava sem brinde.
+      if (await handleStandActivate(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_activate" } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, stand_activate: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // QR do stand físico (shopping) — código #stand na mensagem pré-preenchida
       if (await handleStandLead(msg.phone, psText, msg.contactName)) {
