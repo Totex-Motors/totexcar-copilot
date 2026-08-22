@@ -850,6 +850,40 @@ async function webpMediaId(s: any, url: string): Promise<string | null> {
   } catch (e) { console.error("webpMediaId:", e); return null; }
 }
 
+// MEDIA ID pra QUALQUER foto de card. A Meta rejeita na ENTREGA (131053) quando o host serve
+// Content-Type inválido — ex.: o blob BNDV serve .jpg como "image/jpg" (Julio Multimarcas), e
+// WebP falha em card. Em vez de mandar por URL e torcer, baixamos os bytes e subimos na API de
+// mídia da Meta com o MIME CORRETO (sniff por magic bytes) → o card usa image.id e SEMPRE entrega.
+// Cache em wa_media_cache (25d) — converte cada foto uma vez só.
+async function imageMediaId(s: any, url: string): Promise<string | null> {
+  try {
+    if (!url || !/^https:\/\//i.test(url)) return null;
+    const cacheOk = new Date(Date.now() - 25 * 24 * 3600_000).toISOString();
+    const { data: hit } = await supabase.from("wa_media_cache")
+      .select("media_id, created_at").eq("url", url).gte("created_at", cacheOk).maybeSingle();
+    if (hit?.media_id) return hit.media_id;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    const u8 = new Uint8Array(buf);
+    let bytes: Uint8Array; let mime: string; let fname: string;
+    const isWebp = isWebpUrl(url) || (u8[8] === 0x57 && u8[9] === 0x45 && u8[10] === 0x42 && u8[11] === 0x50); // "WEBP"
+    if (isWebp) {
+      const png = await webpToPng(buf);
+      if (!png) return null;
+      bytes = png; mime = "image/png"; fname = "foto.png";
+    } else if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47) { // PNG
+      bytes = u8; mime = "image/png"; fname = "foto.png";
+    } else { // trata o resto como JPEG (corrige o "image/jpg" do host)
+      bytes = u8; mime = "image/jpeg"; fname = "foto.jpg";
+    }
+    const id = await waUploadMedia(s, bytes, mime, fname);
+    if (!id) return null;
+    await supabase.from("wa_media_cache").upsert({ url, media_id: id, created_at: new Date().toISOString() });
+    return id;
+  } catch (e) { console.error("imageMediaId:", e); return null; }
+}
+
 // resumo compacto de um carro pro chat (com link rastreável ?ref do dono → comissão do Indique)
 function mktResumo(v: any, refCode?: string | null) {
   return {
@@ -940,23 +974,20 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
   // CATÁLOGO DESLIZÁVEL primeiro: 1 mensagem com até 10 cards (foto + botão "Ver carro" com ?ref).
   // Template pendente/erro → cai nas fotos individuais abaixo. Sem quebra de linha nos textos (regra de template).
   const cards: { imageUrl: string; imageId?: string; texto: string; urlSuffix: string }[] = [];
-  for (const v of cars.slice(0, 10)) {
-    const img = carImg(v);
-    // carrossel e tudo-ou-nada: 1 imagem invalida derruba a mensagem inteira — so https limpo
-    if (!img || !/^https:\/\//i.test(img)) continue;
-    // foto WebP (BNDV): converte e hospeda na Meta; sem conversão o card fica FORA
-    // (melhor 8 cards entregues do que a vitrine inteira morta no 131053)
-    let imageId: string | undefined;
-    if (isWebpUrl(img)) {
-      imageId = (await webpMediaId(s, img)) || undefined;
-      if (!imageId) continue;
-    }
+  // TODA foto vai por MEDIA ID (bytes re-hospedados na Meta com MIME correto). Assim nem WebP nem
+  // host que serve "image/jpg" (BNDV/Julio) derruba o card no 131053. Resolve em paralelo (rápido;
+  // cacheado depois da 1ª vez). Card sem media id fica de fora — melhor 8 entregues do que 0.
+  const cand = cars.slice(0, 10).filter((v) => { const i = carImg(v); return i && /^https:\/\//i.test(i); });
+  const ids = await Promise.all(cand.map((v) => imageMediaId(s, carImg(v))));
+  cand.forEach((v, i) => {
+    const imageId = ids[i] || undefined;
+    if (!imageId) return;
     cards.push({
-      imageUrl: img, imageId,
+      imageUrl: carImg(v), imageId,
       texto: cardTexto(v, brl),
       urlSuffix: `${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`,
     });
-  }
+  });
   if (cards.length >= 2) {
     if (await waSendCarousel(s, phone, cards)) return cards.length;
     // falhou com o lote cheio? tenta com 5 (imagem/limite de algum card pode ter derrubado)
@@ -967,8 +998,8 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
   for (const v of cars.slice(0, 5)) {
     const img = carImg(v);
     if (!img) continue;
-    const mediaId = isWebpUrl(img) ? (await webpMediaId(s, img)) || undefined : undefined;
-    if (isWebpUrl(img) && !mediaId) continue; // WebP sem conversão não entrega — pula
+    const mediaId = (await imageMediaId(s, img)) || undefined; // sempre via media id (MIME correto)
+    if (!mediaId) continue; // sem media id não entrega — pula
     const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
     const km = Number(v.mileage) > 0 ? ` · ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
     const fipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 abaixo da FIPE" : "";
@@ -2916,10 +2947,10 @@ async function handleStandLead(phone: string, text: string, contactName?: string
           const img = carImg(v);
           if (img) {
             const sHl = await getSettings();
-            const mediaId = isWebpUrl(img) ? (await webpMediaId(sHl, img)) || undefined : undefined;
+            const mediaId = (await imageMediaId(sHl, img)) || undefined; // sempre via media id (MIME correto)
             const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
             const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
-            if (!isWebpUrl(img) || mediaId) await waSendImage(sHl, phone, img,
+            if (mediaId) await waSendImage(sHl, phone, img,
               `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o que você viu no stand — fotos e ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`, mediaId);
           }
         }
