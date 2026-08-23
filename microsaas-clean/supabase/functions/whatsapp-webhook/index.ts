@@ -1817,16 +1817,26 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       // Lote de 120: uma loja sozinha já passa de 50 carros (Cardoso tem 94) — com 40, parte do
       // estoque nunca entrava no funil e SUVs reais sumiam da vitrine.
       const catFiltro = normCategoria(args?.categoria);
+      const busca = String(args?.busca || "").trim();
+      const maxPrice = Number(args?.preco_max) > 0 ? Number(args.preco_max) : undefined;
+      const minYear = Number(args?.ano_min) > 0 ? Number(args.ano_min) : undefined;
+      const maxMileage = Number(args?.km_max) > 0 ? Number(args.km_max) : undefined;
       let cars = await mktVehicles({
-        search: args?.busca, brand: args?.marca,
-        maxPrice: Number(args?.preco_max) > 0 ? Number(args.preco_max) : undefined,
-        minYear: Number(args?.ano_min) > 0 ? Number(args.ano_min) : undefined,
-        maxMileage: Number(args?.km_max) > 0 ? Number(args.km_max) : undefined,
+        brand: args?.marca, maxPrice, minYear, maxMileage,
         dealershipId: scopeId || undefined,
-        limit: catFiltro ? 120 : 10,
+        limit: (catFiltro || busca) ? 120 : 10,
       });
       // até 10: é o máximo de cards do carrossel — vitrine cheia em vez de 6
       if (catFiltro) cars = cars.filter((c: any) => carClass(c) === catFiltro);
+      if (busca) {
+        // interpreta o MODELO digitado: tolera minúsculas, parcial e erro de digitação (carMatchesQuery)
+        let matched = cars.filter((c: any) => carMatchesQuery(c, busca));
+        if (!matched.length) { // pode estar além do lote → reforça com a busca exata do servidor
+          const server = await mktVehicles({ search: busca, brand: args?.marca, maxPrice, minYear, maxMileage, dealershipId: scopeId || undefined, limit: 120 });
+          matched = catFiltro ? server.filter((c: any) => carClass(c) === catFiltro) : server;
+        }
+        cars = matched;
+      }
       cars = cars.slice(0, 10);
       if (!cars.length) return { ok: true, total: 0, categoria: catFiltro || undefined, message: `Nada no estoque com esses critérios${catFiltro ? ` na categoria ${catFiltro}` : ""}. Ofereça criar_radar pro usuário ser avisado quando aparecer.` };
       // VITRINE: manda as fotos dos carros direto no chat
