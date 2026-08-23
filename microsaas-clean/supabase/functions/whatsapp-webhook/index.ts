@@ -2913,8 +2913,18 @@ async function standVitrine(
   const offset = opts.more ? Number(prev.offset || 0) : 0;
 
   const dealershipId = await standScopeId(loja);
-  let cars = await mktVehicles({ search: search || undefined, maxPrice: precoMax || undefined, dealershipId, limit: 60, sort: "year_desc" }).catch(() => [] as any[]);
+  let cars = await mktVehicles({ maxPrice: precoMax || undefined, dealershipId, limit: 60, sort: "year_desc" }).catch(() => [] as any[]);
   if (categoria) cars = cars.filter((c: any) => carClass(c) === categoria);
+  if (search) {
+    // busca por modelo TOLERANTE a erro de digitação/acento, sobre o estoque da loja
+    let matched = cars.filter((c: any) => carMatchesQuery(c, search));
+    if (!matched.length) {
+      // nada local (pode estar além dos 60) → tenta a busca exata do marketplace como reforço
+      const server = await mktVehicles({ search, maxPrice: precoMax || undefined, dealershipId, limit: 60, sort: "year_desc" }).catch(() => [] as any[]);
+      matched = categoria ? server.filter((c: any) => carClass(c) === categoria) : server;
+    }
+    cars = matched;
+  }
   const pagina = cars.slice(offset, offset + 10);
 
   if (!pagina.length) {
@@ -3006,6 +3016,41 @@ async function handleStandLead(phone: string, text: string, contactName?: string
 // Visitante do stand SEM cadastro continuando a conversa: o agente completo exige usuário, mas
 // matar o papo com "cadastre-se" no meio do shopping perde a venda. Busca leve por categoria e
 // faixa de preço mantém a vitrine viva; o convite pro app vai junto, sem bloquear.
+// ---- BUSCA TOLERANTE (nomenclatura/erro de digitação) ----
+// normaliza p/ comparar: minúsculas, sem acento, só alfanumérico
+function normCar(s: string): string {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+// distância de edição (Levenshtein) — tolera erro de digitação ("mustange" ~ "mustang")
+function levDist(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+// o carro casa a busca? por token, tolerando acento e erro de digitação (limiar cresce com o tamanho)
+function carMatchesQuery(car: any, term: string): boolean {
+  const hay = normCar([car?.brand, car?.model, car?.version].filter(Boolean).join(" ")).split(" ").filter(Boolean);
+  const qs = normCar(term).split(" ").filter(Boolean);
+  if (!qs.length) return true;
+  return qs.every((q) => {
+    if (q.length < 3) return hay.includes(q);
+    return hay.some((h) => {
+      if (h.includes(q) || q.includes(h)) return true;
+      const thr = q.length >= 6 ? 2 : 1; // "mustang"(7) tolera 2; palavras curtas, 1
+      return levDist(h, q) <= thr;
+    });
+  });
+}
+
 // interpreta uma busca livre de carro: tipo (SUV/sedan/…), faixa de preço e MODELO/marca (texto livre).
 function parseCarQuery(text: string): { categoria: string | null; precoMax: number | null; search: string | null; termo: string } {
   const raw = String(text || "").trim();
