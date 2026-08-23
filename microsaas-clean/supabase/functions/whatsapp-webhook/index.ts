@@ -1160,7 +1160,7 @@ const TOOL_SPECS = [
   },
   {
     name: "buscar_carros",
-    description: "Caminho PRINCIPAL de recomendação: busca carros no ESTOQUE REAL do marketplace Totexmotors pelos critérios que o USUÁRIO QUER (o que ele pediu: tipo, marca, preço, ano, km). Use depois de entender o desejo dele. Sempre que for recomendar/comprar/trocar pelo gosto do usuário, é esta.",
+    description: "Caminho PRINCIPAL de recomendação: busca carros no ESTOQUE REAL do marketplace Totexmotors pelos critérios que o USUÁRIO QUER (tipo, marca, preço, ano, km). BUSCA DIRETA: se o usuário NOMEAR um modelo/marca ou perguntar 'tem X?' ('tem Mustang?', 'quero um Onix', 'tem Corolla até 80 mil?'), chame JÁ com busca=<modelo> — NÃO faça perguntas antes. Só pergunte pra entender o desejo quando ele NÃO deu nenhum critério ('quero trocar de carro'). Sempre que for recomendar/comprar/trocar pelo gosto do usuário, é esta.",
     parameters: {
       type: "object",
       properties: {
@@ -1838,7 +1838,10 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         cars = matched;
       }
       cars = cars.slice(0, 10);
-      if (!cars.length) return { ok: true, total: 0, categoria: catFiltro || undefined, message: `Nada no estoque com esses critérios${catFiltro ? ` na categoria ${catFiltro}` : ""}. Ofereça criar_radar pro usuário ser avisado quando aparecer.` };
+      if (!cars.length) {
+        const alvo = busca || catFiltro || [args?.marca].filter(Boolean).join(" ") || "esse perfil";
+        return { ok: true, total: 0, categoria: catFiltro || undefined, message: `NENHUM carro no estoque com "${alvo}". Seja DIRETO e honesto: diga que NÃO tem "${alvo}" no estoque agora — NÃO mostre nem sugira outros carros como se fossem a resposta. No máximo ofereça, em 1 linha, criar um radar (criar_radar) pra avisar quando aparecer, OU pergunte se ele topa ver algo parecido (aí sim, só se ele aceitar).` };
+      }
       // VITRINE: manda as fotos dos carros direto no chat
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
       if (enviados > 0) ctx.shownCars = true; // já mostrou carros nesta conversa → motor de intenção não duplica
@@ -3617,7 +3620,7 @@ MOTORISTA PRO (TotexCar Co-pilot PRO): MODO PRO do usuário: ${user.driver_mode 
 SEU CARRO — CONCIERGE TÉCNICO DO DONO: você é o concierge automotivo PESSOAL deste dono e conhece o carro DELE a fundo. ${fichaStr ? `FICHA TÉCNICA do carro (use como FONTE DA VERDADE): ${fichaStr}` : "A ficha técnica deste carro ainda está sendo montada — se perguntarem especificação, dê uma faixa honesta e diga que vai confirmar."} Cruze a ficha com os DADOS REAIS do dono (hodômetro, consumo calculado, gastos, próximas manutenções por km) pra dar dicas ESPECÍFICAS: qual óleo/pneu/vela e quando trocar, intervalo de revisão, o que fazer neste km, economia de combustível, e compare o consumo REAL com o esperado da ficha (ex.: "seu consumo tá abaixo do normal desse motor — pode ser calibragem/filtro"). Para elétrico/híbrido: cuidados de bateria (carga 20–80%), regeneração, autonomia. ⚠️ REGRA DE OURO: NUNCA invente número exato de óleo/pneu/torque/intervalo — use a ficha; se o dado não estiver nela, dê uma FAIXA e mande confirmar no manual do proprietário ou concessionária. Segurança e o bolso do dono em 1º lugar; seja proativo e didático.
 
 GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do ecossistema Totexmotors — entende profundamente de carros (versões, motores, consumo, confiabilidade, custo de manutenção, revenda) e tem acesso ao ESTOQUE REAL das lojas via ferramentas. FILOSOFIA: a recomendação é guiada pelo DESEJO do dono, NÃO pelo preço do carro atual. O carro dele pode já ser ótimo — então NUNCA empurre "upgrade" só porque dá. Fluxo quando falar em comprar/trocar/procurar carro:
-(1) ENTENDA O DESEJO PRIMEIRO. Se ele ainda não disse claramente o que procura, faça 1–2 perguntas curtas antes de buscar: o que você quer de diferente no próximo carro? (ex.: tipo/tamanho — SUV, sedan, picape; uso — família, viagem, cidade; marca/modelo que curte; orçamento; algo que falte ou incomode no atual). NÃO pergunte se ele já deu os critérios.
+(1) ENTENDA O DESEJO PRIMEIRO — MAS SÓ SE ELE NÃO DEU CRITÉRIO. Se ele NOMEOU um modelo/marca ou perguntou "tem X?" ("tem Mustang?", "quero um Onix", "tem picape até 90 mil?"), NÃO pergunte NADA — chame buscar_carros JÁ (modelo no campo busca, tipo no campo categoria) e responda com o resultado. No WhatsApp a pessoa quer velocidade. Só faça 1–2 perguntas curtas quando ele NÃO deu nenhum critério ("quero trocar de carro", "me ajuda a escolher"). Se a busca voltar VAZIA, seja direto: "não tenho <o que ele pediu> no estoque agora" — NUNCA mostre outros carros como se fossem a resposta (no máximo ofereça um radar ou pergunte se topa ver algo parecido).
 (2) Só DEPOIS de entender, use buscar_carros com os critérios DELE e recomende 2–3 opções explicando o PORQUÊ de cada uma pro que ELE pediu, sempre com o link. ⚠️ Se ele pedir por TIPO de carroceria ("um SUV", "uma picape", "um sedan", "um hatch"), passe no campo "categoria" da ferramenta — NUNCA escreva SUV/sedan no campo "busca" (a categoria é filtrada pela nossa classificação; texto livre traria carro errado).
 (3) oportunidades_carros é só um EXTRA opcional ("se quiser, tenho umas ideias na sua faixa também") — nunca a resposta principal, nunca sozinha, e nunca enquadrada como "você deveria trocar".
 (4) se o desejo dele não estiver no estoque, ofereça criar_radar ("te aviso quando aparecer").
