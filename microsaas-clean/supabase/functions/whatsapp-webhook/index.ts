@@ -2996,6 +2996,32 @@ async function handleStandLead(phone: string, text: string, contactName?: string
 // Visitante do stand SEM cadastro continuando a conversa: o agente completo exige usuário, mas
 // matar o papo com "cadastre-se" no meio do shopping perde a venda. Busca leve por categoria e
 // faixa de preço mantém a vitrine viva; o convite pro app vai junto, sem bloquear.
+// "Ver mais carros" / "Nova busca" da vitrine do stand — funciona pra QUALQUER um (usuário ou não).
+// Antes a paginação só existia dentro de handleStandFollowup (só p/ não-cadastrado), então quem já
+// virou usuário tocava "Ver mais carros" e caía no agente em vez de vir a próxima página.
+async function handleStandVerMais(phone: string, text: string): Promise<boolean> {
+  const t = String(text || "").toLowerCase();
+  const verMais = VER_MAIS_RE.test(t);
+  const novaBusca = /nova busca|🎯/.test(t);
+  if (!verMais && !novaBusca) return false;
+  const desde = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
+  const { data } = await supabase.from("whatsapp_events")
+    .select("id, parsed").eq("from_phone", onlyDigits(phone))
+    .in("kind", ["stand_lead", "stand_sell", "stand_gift"])
+    .gte("created_at", desde).order("created_at", { ascending: false }).limit(5);
+  // pega o evento mais recente que tenha uma vitrine em andamento (offset); senão o mais recente
+  const ev = (data || []).find((e) => (e.parsed as any)?.vitrine) || (data || [])[0];
+  if (!ev) return false; // sem contexto de stand → deixa outro handler tratar
+  const parsed = (ev.parsed as any) || {};
+  const loja = String(parsed?.loja || "geral").toLowerCase();
+  if (novaBusca && !verMais) {
+    await sendText(phone, 'Fechou! Me diz o tipo e a faixa de preço — ex.: "SUV até 80 mil", "sedan automático", "picape". 🚗');
+    return true;
+  }
+  await standVitrine(phone, loja, ev.id, parsed, { more: true });
+  return true;
+}
+
 async function handleStandFollowup(phone: string, text: string): Promise<boolean> {
   // reconhece o visitante que VOLTA: além do #stand (stand_lead), também #vender (stand_sell) e quem
   // recebeu o brinde (stand_gift). Janela de 30 dias. Isso resolve o re-scan: o WhatsApp muitas vezes
@@ -3226,6 +3252,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (await handleStandActivate(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_activate" } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, stand_activate: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // "Ver mais carros" / "Nova busca" da vitrine do stand — vale p/ usuário E não-usuário
+      if (await handleStandVerMais(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_vermais" } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, stand_vermais: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // QR do stand físico (shopping) — código #stand na mensagem pré-preenchida
       if (await handleStandLead(msg.phone, psText, msg.contactName)) {
