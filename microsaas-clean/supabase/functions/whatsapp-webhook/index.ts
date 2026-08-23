@@ -2904,22 +2904,32 @@ const VER_MAIS_RE = /ver mais|mais carros|mais op[çc][õo]es|mais ve[íi]culos|
 // (year_desc) mantém as páginas estáveis entre uma mensagem e outra.
 async function standVitrine(
   phone: string, loja: string, leadId: string | null, prevParsed: any,
-  opts: { categoria?: string | null; precoMax?: number | null; more?: boolean },
+  opts: { categoria?: string | null; precoMax?: number | null; search?: string | null; more?: boolean; termo?: string | null; _fallback?: boolean },
 ): Promise<void> {
   const prev = prevParsed?.vitrine || {};
   const categoria = opts.more ? (prev.categoria ?? null) : (opts.categoria ?? null);
   const precoMax = opts.more ? (prev.precoMax ?? null) : (opts.precoMax ?? null);
+  const search = opts.more ? (prev.search ?? null) : (opts.search ?? null);
   const offset = opts.more ? Number(prev.offset || 0) : 0;
 
   const dealershipId = await standScopeId(loja);
-  let cars = await mktVehicles({ maxPrice: precoMax || undefined, dealershipId, limit: 60, sort: "year_desc" }).catch(() => [] as any[]);
+  let cars = await mktVehicles({ search: search || undefined, maxPrice: precoMax || undefined, dealershipId, limit: 60, sort: "year_desc" }).catch(() => [] as any[]);
   if (categoria) cars = cars.filter((c: any) => carClass(c) === categoria);
   const pagina = cars.slice(offset, offset + 10);
 
   if (!pagina.length) {
-    await sendText(phone, offset > 0
-      ? "Esses são todos que tenho com esse perfil por enquanto 🙂 Me diz outro tipo ou faixa de preço (ex.: \"SUV até 80 mil\") que eu procuro de novo."
-      : "Não achei nada com esses critérios no estoque agora 😕 Me fala outro tipo ou faixa de preço que eu procuro.");
+    if (offset > 0) {
+      await sendText(phone, "Esses são todos que tenho com esse perfil por enquanto 🙂 Me diz outro tipo, modelo ou faixa de preço (ex.: \"SUV até 80 mil\") que eu procuro de novo.");
+      return;
+    }
+    // busca específica (modelo/tipo/preço) sem resultado → NÃO deixa no vácuo: avisa e já mostra o que tem
+    const termo = opts.termo || search || categoria || (precoMax ? `até ${fmtReais(precoMax)}` : null);
+    if (termo && !opts._fallback) {
+      await sendText(phone, `Não tenho *${termo}* no estoque agora 😕 Mas dá uma olhada no que tenho disponível 👇`);
+      await standVitrine(phone, loja, leadId, { ...(prevParsed || {}), vitrine: {} }, { _fallback: true });
+      return;
+    }
+    await sendText(phone, "Estoque sem novidades nesse momento 😕 Me fala um tipo, modelo ou faixa de preço que eu procuro pra você. 🚗");
     return;
   }
 
@@ -2935,7 +2945,7 @@ async function standVitrine(
   const temMais = cars.length > novoOffset;
   if (leadId) {
     await supabase.from("whatsapp_events")
-      .update({ parsed: { ...(prevParsed || {}), vitrine: { categoria, precoMax, offset: novoOffset } } })
+      .update({ parsed: { ...(prevParsed || {}), vitrine: { categoria, precoMax, search, offset: novoOffset } } })
       .eq("id", leadId);
   }
   // sinalizador de busca: continua vendo ou refina — só oferece "ver mais" se ainda houver estoque
@@ -2996,6 +3006,28 @@ async function handleStandLead(phone: string, text: string, contactName?: string
 // Visitante do stand SEM cadastro continuando a conversa: o agente completo exige usuário, mas
 // matar o papo com "cadastre-se" no meio do shopping perde a venda. Busca leve por categoria e
 // faixa de preço mantém a vitrine viva; o convite pro app vai junto, sem bloquear.
+// interpreta uma busca livre de carro: tipo (SUV/sedan/…), faixa de preço e MODELO/marca (texto livre).
+function parseCarQuery(text: string): { categoria: string | null; precoMax: number | null; search: string | null; termo: string } {
+  const raw = String(text || "").trim();
+  const t = raw.toLowerCase();
+  const categoria = normCategoria(t);
+  let precoMax: number | null = null;
+  const mMil = t.match(/(\d{1,3})\s*mil/);
+  const mNum = t.replace(/\./g, "").match(/\b(\d{5,7})\b/);
+  if (mMil) precoMax = Number(mMil[1]) * 1000;
+  else if (mNum) precoMax = Number(mNum[1]);
+  // termo de busca livre (modelo/marca) = texto sem tipo, preço e conectores
+  let search: string | null = raw
+    .replace(/at[ée]\s*r?\$?\s*\d[\d.\s]*mil?/gi, " ")
+    .replace(/\d[\d.]*\s*mil/gi, " ")
+    .replace(/\br?\$?\s*\d{4,7}\b/gi, " ")
+    .replace(/\b(suv|sedan|sed[aã]|hatch|picape|pick-?up|caminhonete|utilit[aá]rio)s?\b/gi, " ")
+    .replace(/\b(at[ée]|de|com|carro|carros|autom[aá]tico|manual|quero|ver|um|uma|uns|por favor|tem|tenho|voc[eê]s?)\b/gi, " ")
+    .replace(/\s+/g, " ").trim();
+  if (search && search.length < 2) search = null;
+  return { categoria, precoMax, search, termo: raw.replace(/\s+/g, " ").trim() };
+}
+
 // "Ver mais carros" / "Nova busca" da vitrine do stand — funciona pra QUALQUER um (usuário ou não).
 // Antes a paginação só existia dentro de handleStandFollowup (só p/ não-cadastrado), então quem já
 // virou usuário tocava "Ver mais carros" e caía no agente em vez de vir a próxima página.
@@ -3015,10 +3047,35 @@ async function handleStandVerMais(phone: string, text: string): Promise<boolean>
   const parsed = (ev.parsed as any) || {};
   const loja = String(parsed?.loja || "geral").toLowerCase();
   if (novaBusca && !verMais) {
-    await sendText(phone, 'Fechou! Me diz o tipo e a faixa de preço — ex.: "SUV até 80 mil", "sedan automático", "picape". 🚗');
+    // arma o PRÓXIMO texto como busca (modelo/tipo/preço) — assim "Mustang" vira busca direta, não agente
+    await supabase.from("whatsapp_events")
+      .update({ parsed: { ...parsed, vitrine: { ...(parsed.vitrine || {}), awaiting: true, offset: 0 } } }).eq("id", ev.id);
+    await sendText(phone, 'Fechou! Me diz o *tipo*, o *modelo* ou a *faixa de preço* — ex.: "SUV até 80 mil", "Mustang", "picape". 🚗');
     return true;
   }
   await standVitrine(phone, loja, ev.id, parsed, { more: true });
+  return true;
+}
+
+// Busca direta na vitrine do stand: dispara quando o visitante acabou de tocar "Nova busca" (flag
+// awaiting) e mandou o critério. Entende MODELO ("Mustang"), tipo e preço, busca no estoque da loja
+// e já manda os cards — se não tiver o específico, avisa e mostra o que tem. Vale p/ usuário E não.
+async function handleStandSearch(phone: string, text: string): Promise<boolean> {
+  const digits = onlyDigits(phone);
+  const desde = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
+  const { data } = await supabase.from("whatsapp_events")
+    .select("id, parsed").eq("from_phone", digits)
+    .in("kind", ["stand_lead", "stand_sell", "stand_gift"])
+    .gte("created_at", desde).order("created_at", { ascending: false }).limit(5);
+  const ev = (data || []).find((e) => (e.parsed as any)?.vitrine?.awaiting);
+  if (!ev) return false; // ninguém esperando critério → deixa o fluxo normal (agente/followup)
+  const parsed = (ev.parsed as any) || {};
+  const loja = String(parsed?.loja || "geral").toLowerCase();
+  // consome o one-shot antes de buscar (evita loop se a busca falhar)
+  await supabase.from("whatsapp_events")
+    .update({ parsed: { ...parsed, vitrine: { ...(parsed.vitrine || {}), awaiting: false } } }).eq("id", ev.id);
+  const q = parseCarQuery(text);
+  await standVitrine(phone, loja, ev.id, parsed, { categoria: q.categoria, precoMax: q.precoMax, search: q.search, termo: q.termo });
   return true;
 }
 
@@ -3064,22 +3121,17 @@ async function handleStandFollowup(phone: string, text: string): Promise<boolean
     return true;
   }
 
-  const categoria = normCategoria(t);
-  let precoMax: number | undefined;
-  const mMil = t.match(/(\d{1,3})\s*mil/);
-  const mNum = t.replace(/\./g, "").match(/\b(\d{5,7})\b/);
-  if (mMil) precoMax = Number(mMil[1]) * 1000;
-  else if (mNum) precoMax = Number(mNum[1]);
+  const q = parseCarQuery(text); // entende tipo, preço E modelo/marca ("Mustang")
   const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
   const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
   // rede de segurança: garante que o visitante saiba do presente de 30 dias (dedup 1x)
   await sendStandGift(phone, appUrl);
-  if (!categoria && !precoMax) {
-    await sendText(phone, `Posso te mostrar carros por tipo e faixa de preço — ex.: "SUV até 80 mil", "sedan até 120 mil". 🚗\n\nPra atendimento completo (avaliar seu carro na troca, financiamento, test drive), toca em *Ver carro* num card que a loja te atende.`);
+  if (!q.categoria && !q.precoMax && !q.search) {
+    await sendText(phone, `Posso te mostrar carros por tipo, modelo ou faixa de preço — ex.: "SUV até 80 mil", "Mustang", "picape". 🚗\n\nPra atendimento completo (avaliar seu carro na troca, financiamento, test drive), toca em *Ver carro* num card que a loja te atende.`);
     return true;
   }
   // vitrine paginada com o critério informado (reseta o offset e guarda a busca pro "ver mais")
-  await standVitrine(phone, loja, leadId, leadParsed, { categoria, precoMax: precoMax ?? null });
+  await standVitrine(phone, loja, leadId, leadParsed, { categoria: q.categoria, precoMax: q.precoMax, search: q.search, termo: q.termo });
   return true;
 }
 
@@ -3257,6 +3309,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (await handleStandVerMais(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_vermais" } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, stand_vermais: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // critério de busca logo após "Nova busca" (modelo/tipo/preço) → cards diretos, sem passar pelo agente
+      if (await handleStandSearch(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_search", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, stand_search: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // QR do stand físico (shopping) — código #stand na mensagem pré-preenchida
       if (await handleStandLead(msg.phone, psText, msg.contactName)) {
