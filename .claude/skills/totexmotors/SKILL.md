@@ -63,7 +63,8 @@ Direção: **Canal + Comunidade do WhatsApp → Co-pilot → vitrine → interme
   ser atrativa e dar sensação de ganho. Sem ficção; sempre operável.
 
 Entregáveis planejados nesta ordem: **(1) esta skill → (2) Playbook Canal+Comunidade
-→ (3) Piloto de 1 funil com métrica real.**
+→ (3) Piloto de 1 funil com métrica real.** O Playbook está em
+`PLAYBOOK-CANAL-COMUNIDADE.md` (raiz) — leia antes de mexer em growth/distribuição.
 
 ## 3. Arquitetura
 
