@@ -1,5 +1,7 @@
 # sessões/ferramentas locais (não fazem parte do produto)
-.claude/
+# EXCEÇÃO: .claude/skills/ é versionado (conhecimento compartilhado do projeto)
+.claude/*
+!.claude/skills/
 .agents/
 
 # credenciais — NUNCA commitar
