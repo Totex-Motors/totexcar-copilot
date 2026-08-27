@@ -7,13 +7,16 @@ import { Radio, Copy, Loader2, Link2 } from "lucide-react";
 
 const brl = (v: any) => (v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "consulte");
 
-// Gera os links do CANAL do WhatsApp por carro do estoque da loja. Cada link abre o Co-pilot com
-// "#oferta <idDoCarro>" → aquele carro em destaque + a vitrine, marcado como origem=canal (funil).
-// Reaproveita o action stand_qr_kit do dealer-api (mesma lista de carros + número do Co-pilot).
+// Link do CANAL: em vez do wa.me cru (que vira card vazio da logo), usamos o resolvedor "oferta",
+// que mostra a FOTO + título + preço do carro na PRÉVIA do post e, ao tocar, abre o Co-pilot naquele
+// carro (marcado origem=canal). Cole o link no post do Canal — o WhatsApp monta o card sozinho.
+const OFERTA_BASE = "https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/oferta";
+
+// Gera os links do CANAL do WhatsApp por carro do estoque da loja. Reaproveita o action stand_qr_kit
+// do dealer-api (mesma lista de carros).
 export function CanalLinksCard() {
   const [loading, setLoading] = useState(false);
   const [cars, setCars] = useState<any[] | null>(null);
-  const [wa, setWa] = useState("5511963786699");
 
   const carregar = async () => {
     setLoading(true);
@@ -21,7 +24,6 @@ export function CanalLinksCard() {
       const { data, error } = await supabase.functions.invoke("dealer-api", { body: { action: "stand_qr_kit" } });
       if (error) throw error;
       setCars(((data as any)?.cars || []) as any[]);
-      setWa((data as any)?.wa_number || "5511963786699");
     } catch (e: any) {
       toast({ title: "Não consegui carregar", description: String(e?.message || e), variant: "destructive" });
     } finally {
@@ -29,8 +31,8 @@ export function CanalLinksCard() {
     }
   };
 
-  const linkGeral = `https://wa.me/${wa}?text=${encodeURIComponent("#oferta")}`;
-  const linkCarro = (id: string) => `https://wa.me/${wa}?text=${encodeURIComponent("#oferta " + id)}`;
+  const linkGeral = OFERTA_BASE;
+  const linkCarro = (id: string) => `${OFERTA_BASE}?c=${encodeURIComponent(id)}`;
   const copiar = async (link: string, label: string) => {
     try {
       await navigator.clipboard.writeText(link);
@@ -47,8 +49,9 @@ export function CanalLinksCard() {
           <div>
             <div className="font-semibold flex items-center gap-2"><Radio className="w-5 h-5 text-primary" /> Links do Canal do WhatsApp</div>
             <p className="text-sm text-muted-foreground mt-1">
-              Cole no post do Canal. Quem tocar cai no Co-pilot <strong>naquele carro</strong> + a vitrine — marcado como
-              <strong> origem canal</strong> pra eu medir o funil (clique → conversa → lead).
+              Copia o link e <strong>cola no post do Canal</strong> — o WhatsApp monta o card sozinho, com a
+              <strong> foto, o modelo e o preço</strong> do carro. Quem tocar cai no Co-pilot naquele carro (marcado
+              <strong> origem canal</strong> pra medir o funil).
             </p>
           </div>
           <Button variant="outline" className="gap-2 h-9 shrink-0" onClick={() => copiar(linkGeral, "Link geral do Canal")}>
