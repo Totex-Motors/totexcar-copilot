@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { QrCode, RefreshCw, ScanLine, Users, Gift, UserCheck, Download, Phone } from "lucide-react";
 import { StandQrKit } from "./StandQrKit";
+import { CanalLinksCard } from "./CanalLinksCard";
 
 type Row = {
   loja: string; loja_nome?: string; promotor: string;
@@ -112,6 +113,7 @@ export function StandLeadsPanel({ source, dealership }: { source: "admin" | "dea
       </div>
 
       {source === "dealer" && <StandQrKit />}
+      {source === "dealer" && <CanalLinksCard />}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPI icon={<ScanLine className="w-4 h-4" />} label="Escaneios" value={totals.escaneios} />
