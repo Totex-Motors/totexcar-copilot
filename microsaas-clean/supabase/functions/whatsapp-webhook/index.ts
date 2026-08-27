@@ -2982,6 +2982,44 @@ async function standVitrine(
   );
 }
 
+// CANAL do WhatsApp: link "#oferta" (geral) ou "#oferta <carroId>" (carro do post). Abre a vitrine
+// da rede inteira e RASTREIA a origem (parsed.origem='canal') pro funil do piloto. Reaproveita a
+// máquina da vitrine (registra como stand_lead → paginação/"ver mais"/re-engajamento funcionam).
+// NÃO dá o brinde de 30 dias (canal ≠ stand físico) — o brinde continua no fechamento do #vender.
+const OFERTA_RE = /#oferta(?:\s+([a-z0-9][a-z0-9-]{5,}))?/i;
+async function handleCanalOferta(phone: string, text: string, contactName?: string): Promise<boolean> {
+  const m = String(text || "").match(OFERTA_RE);
+  if (!m) return false;
+  const carroId = (m[1] || "").trim() || null;
+  try {
+    const parsed = { loja: "geral", promotor: "canal", origem: "canal", carro: carroId, nome: contactName || null };
+    const { data: leadRow } = await supabase.from("whatsapp_events").insert({
+      from_phone: phone, kind: "stand_lead", status: "processed", raw: { text }, parsed,
+    }).select("id").single();
+    const leadId = (leadRow as any)?.id || null;
+    const nome = contactName ? `, ${contactName.split(" ")[0]}` : "";
+    await sendText(phone, `Opa${nome}! 👋 Que bom que veio do nosso canal. Já te mostro os carros — desliza pro lado e toca em *Ver carro* no que curtir. Ou me diz o que procura (ex.: "SUV até 80 mil", "Strada"). 🚗`);
+    if (carroId) {
+      try {
+        const res = await fetch(`${MARKETPLACE_URL}/api/vehicles/${encodeURIComponent(carroId)}`, { headers: { Accept: "application/json" } });
+        if (res.ok) {
+          const v = await res.json();
+          const img = carImg(v);
+          if (img) {
+            const sHl = await getSettings();
+            const mediaId = (await imageMediaId(sHl, img)) || undefined;
+            const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+            const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
+            if (mediaId) await waSendImage(sHl, phone, img, `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o do canal — fotos e ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`, mediaId);
+          }
+        }
+      } catch { /* segue pra vitrine */ }
+    }
+    await standVitrine(phone, "geral", leadId, parsed, {});
+    return true;
+  } catch (e) { console.error("handleCanalOferta:", e); return true; }
+}
+
 async function handleStandLead(phone: string, text: string, contactName?: string): Promise<boolean> {
   const m = String(text || "").match(STAND_RE);
   if (!m) return false;
@@ -3372,6 +3410,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (await handleStandSearch(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_search", input: psText } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, stand_search: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // CANAL do WhatsApp — link "#oferta" nos posts (rastreado como origem=canal)
+      if (await handleCanalOferta(msg.phone, psText, msg.contactName)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "canal_oferta", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, canal_oferta: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // QR do stand físico (shopping) — código #stand na mensagem pré-preenchida
       if (await handleStandLead(msg.phone, psText, msg.contactName)) {
