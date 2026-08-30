@@ -149,25 +149,17 @@
   }
   .slot.stamped:nth-child(even) svg{transform:rotate(4deg)}
 
-  /* bolinha vazia = braseiro aceso: chamas em 3 camadas dançando dessincronizadas */
-  .slot.burning{box-shadow:inset 0 2px 6px rgba(74,50,38,.35), 0 0 14px rgba(232,134,43,.35)}
-  .fl{transform-box:fill-box;transform-origin:50% 100%}
-  .f-red{animation:fdance 1.05s ease-in-out infinite alternate}
-  .f-org{animation:fdance .78s ease-in-out infinite alternate-reverse}
-  .f-yel{animation:fdance .58s ease-in-out infinite alternate}
-  @keyframes fdance{
-    from{transform:scaleY(.86) scaleX(1.09) rotate(-3.5deg)}
-    to{transform:scaleY(1.14) scaleX(.9) rotate(3.5deg)}
+  /* bolinha vazia = braseiro com FOGO SIMULADO (combustão procedural em canvas) */
+  .slot.burning{
+    background:radial-gradient(circle at 50% 40%, #2b1709, #1a0d05 70%, #140a04);
+    border:2.5px solid #b9a487;
+    overflow:hidden;
+    box-shadow:inset 0 2px 8px rgba(0,0,0,.6), 0 0 16px rgba(232,110,30,.4);
   }
-  .slot-glow{animation:pglowp 1.4s ease-in-out infinite alternate}
-  @keyframes pglowp{from{opacity:.55}to{opacity:1}}
-  /* cada braseiro num ritmo: desincroniza as chamas por posição */
-  .slot:nth-child(2n) .fl{animation-delay:.22s}
-  .slot:nth-child(3n) .fl{animation-delay:.41s}
-  .slot:nth-child(3n) .f-red{animation-duration:1.2s}
-  .slot:nth-child(5n) .fl{animation-delay:.6s}
-  .slot:nth-child(4n) .f-org{animation-duration:.9s}
-  .slot:nth-child(2n) .slot-glow{animation-delay:.5s}
+  .slot.burning canvas{
+    position:absolute;inset:0;width:100%;height:100%;
+    border-radius:50%;
+  }
   .lc-rule{
     position:relative;
     background:linear-gradient(135deg, var(--ember) 0%, #d97722 100%);
@@ -388,19 +380,9 @@
 
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
-    /* exceção: o fogo dos selos mantém vida com um brilho pulsante SUAVE
-       (só opacidade, sem movimento espacial — celulares com "reduzir
-       movimento"/"remover animações" ligado ainda veem a brasa acesa) */
-    .fl,.slot-glow{
-      transform:none!important;
-      animation-name:shimmer!important;animation-duration:2.4s!important;
-      animation-iteration-count:infinite!important;animation-direction:alternate!important;
-      animation-timing-function:ease-in-out!important;
-    }
-    .f-org{animation-duration:1.9s!important}
-    .f-yel{animation-duration:1.5s!important}
+    /* o fogo simulado dos selos vira uma chama parada porém realista
+       (o motor JS congela num frame já "queimado" — ver FireSlots) */
   }
-  @keyframes shimmer{from{opacity:.55}to{opacity:1}}
   @media (max-width:380px){
     .stamp-grid{gap:9px}
     .pin-pad{grid-template-columns:repeat(3,64px)}
@@ -642,26 +624,104 @@ const STAMP_SVG = `
   <text x="50" y="64" text-anchor="middle" font-family="'Nunito Sans',sans-serif" font-weight="800" font-size="8.5" letter-spacing="2" fill="#f0a45a">ESPETOS</text>
 </svg>`;
 
-/* bolinha SEM selo: um braseiro aceso — a chama dança até a compra "conquistar" o fogo */
-const EMPTY_SLOT_SVG = `
-<svg viewBox="0 0 100 100" aria-hidden="true">
-  <defs>
-    <radialGradient id="pit" cx="50%" cy="42%" r="70%">
-      <stop offset="0%" stop-color="#331b0c"/><stop offset="72%" stop-color="#1e1007"/><stop offset="100%" stop-color="#170c05"/>
-    </radialGradient>
-    <radialGradient id="pglow" cx="50%" cy="78%" r="55%">
-      <stop offset="0%" stop-color="#e8862b" stop-opacity=".55"/><stop offset="100%" stop-color="#e8862b" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <circle cx="50" cy="50" r="49" fill="url(#pit)"/>
-  <circle cx="50" cy="50" r="47.5" fill="none" stroke="#b9a487" stroke-width="2.5"/>
-  <circle class="slot-glow" cx="50" cy="50" r="46" fill="url(#pglow)"/>
-  <ellipse cx="50" cy="84" rx="26" ry="7" fill="#4a2410"/>
-  <circle cx="38" cy="83" r="2.6" fill="#ff9c46"/><circle cx="52" cy="86" r="2.2" fill="#ffb35c"/><circle cx="63" cy="83" r="2.4" fill="#ff8a33"/>
-  <path class="fl f-red" d="M50 20 C39 37 29 50 31 64 Q34 81 50 86 Q66 81 69 64 C71 50 61 37 50 20 Z" fill="#c93e18"/>
-  <path class="fl f-org" d="M50 36 C43 48 36 56 38 67 Q40 80 50 84 Q60 80 62 67 C64 56 57 48 50 36 Z" fill="#e8862b"/>
-  <path class="fl f-yel" d="M50 52 C46 59 42 64 43 70 Q45 79 50 81 Q55 79 57 70 C58 64 54 59 50 52 Z" fill="#f5c04e"/>
-</svg>`;
+/* =====================================================================
+   FireSlots — FOGO REAL simulado (algoritmo de propagação de calor do
+   DOOM): cada bolinha sem selo tem um buffer de combustão onde o calor
+   nasce na base, sobe com decaimento aleatório e vento lateral. Nada é
+   keyframe: cada frame é único, com núcleo branco-quente, línguas
+   laranja e pontas que se desprendem. Renderiza em baixa resolução e o
+   navegador suaviza no upscale (visual de fogo de verdade).
+   ===================================================================== */
+const FireSlots = (function(){
+  // paleta do frio→branco-quente (37 níveis, base do DOOM) com alfa na cauda
+  const RGB = [
+    [7,7,7],[31,7,7],[47,15,7],[71,15,7],[87,23,7],[103,31,7],[119,31,7],[143,39,7],
+    [159,47,7],[175,63,7],[191,71,7],[199,71,7],[223,79,7],[223,87,7],[223,87,7],[215,95,7],
+    [215,95,7],[215,103,15],[207,111,15],[207,119,15],[207,127,15],[207,135,23],[199,135,23],[199,143,23],
+    [199,151,31],[191,159,31],[191,159,31],[191,167,39],[191,167,39],[191,175,47],[183,175,47],[183,183,47],
+    [183,183,55],[207,207,111],[223,223,159],[239,239,199],[255,255,255]
+  ];
+  const PAL = RGB.map((c,i)=>[c[0],c[1],c[2], i===0?0 : i<8 ? 30+i*28 : 255]);
+  const MAXH = 36; // calor máximo (índice da paleta)
+  const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function makeSim(cv, cw, ch, seedFn){
+    cv.width = cw; cv.height = ch;
+    const ctx = cv.getContext('2d');
+    const buf = new Uint8Array(cw*ch);
+    const img = ctx.createImageData(cw, ch);
+    return { cv, ctx, buf, img, w:cw, h:ch, seedFn, t:0 };
+  }
+  function step(s){
+    s.t++;
+    s.seedFn(s);
+    const {buf, w, h} = s;
+    for(let y=h-1; y>0; y--){
+      const row = y*w, above = row-w;
+      for(let x=0; x<w; x++){
+        const v = buf[row+x];
+        if(v === 0){ buf[above+x] = 0; continue; }
+        const r = Math.random();
+        // decaimento: quanto mais alto, mais o calor se perde (línguas afinam)
+        const decay = r < .38 ? 0 : r < .80 ? 1 : 2;
+        // vento/turbulência lateral; nas paredes o calor se dissipa
+        // (sem isso ele acumula e vira uma coluna brilhante na borda)
+        const dx = (Math.random()*3|0) - 1;
+        let tx = x + dx, wall = 0;
+        if(tx < 0){ tx = 0; wall = 3; } else if(tx >= w){ tx = w-1; wall = 3; }
+        const nv = v - decay - wall;
+        buf[above+tx] = nv > 0 ? nv : 0;
+      }
+    }
+  }
+  function paint(s){
+    const {buf, img} = s, d = img.data;
+    for(let i=0; i<buf.length; i++){
+      const p = PAL[buf[i]], o = i*4;
+      d[o]=p[0]; d[o+1]=p[1]; d[o+2]=p[2]; d[o+3]=p[3];
+    }
+    s.ctx.putImageData(img, 0, 0);
+  }
+  // base da chama da bolinha: forte no centro, fraca nas bordas, com "respiração"
+  function slotSeed(s){
+    const {buf, w, h} = s, base = (h-1)*w;
+    const breathe = .8 + .2*Math.sin(s.t/23 + s.phase);
+    for(let x=0; x<w; x++){
+      const cx = Math.abs(x - w/2) / (w/2);            // 0 centro → 1 borda
+      let v = cx < .58 ? MAXH * breathe * (1 - cx*.6) : 0;
+      if(Math.random() < .12) v *= .4;                  // tremor de carvão
+      buf[base+x] = Math.min(MAXH, v|0);
+    }
+  }
+
+  let sims = [], raf = null;
+  function collect(){
+    sims = [];
+    document.querySelectorAll('canvas.slot-fire').forEach(cv=>{
+      const s = makeSim(cv, 34, 42, slotSeed);
+      s.phase = Math.random()*6.28;                     // cada braseiro no seu ritmo
+      // pré-aquecimento: nasce já queimando, não "sobe do zero"
+      for(let i=0; i<50; i++) step(s);
+      paint(s);
+      sims.push(s);
+    });
+    if(reduced) return;                                  // chama parada porém realista
+    if(!raf && sims.length) raf = requestAnimationFrame(loop);
+    if(!sims.length && raf){ cancelAnimationFrame(raf); raf = null; }
+  }
+  let odd = false;
+  function loop(){
+    raf = null;
+    if(document.hidden){ raf = requestAnimationFrame(loop); return; }
+    odd = !odd;
+    if(odd){                                             // ~30fps: cadência de fogo real
+      for(const s of sims){ if(!s.cv.isConnected) continue; step(s); paint(s); }
+      sims = sims.filter(s=>s.cv.isConnected);
+    }
+    if(sims.length) raf = requestAnimationFrame(loop);
+  }
+  return { collect, makeSim, step, paint, MAXH, PAL, reduced };
+})();
 
 const LOGO_SVG = `
 <svg class="logo-mark" viewBox="0 0 100 100" aria-hidden="true">
@@ -680,6 +740,7 @@ function render(){
   $app.innerHTML = topBar() + (state.tab==='card' ? viewCard() : viewAdmin());
   bind();
   renderQRs($app);
+  FireSlots.collect();
 }
 
 function topBar(){
@@ -725,7 +786,7 @@ function viewCard(){
   const goal = db.settings.goal;
   const full = c.stamps >= goal;
   const slots = Array.from({length:goal}, (_,i)=>
-    `<div class="slot ${i < c.stamps ? 'stamped':'burning'}">${i < c.stamps ? STAMP_SVG : EMPTY_SLOT_SVG}</div>`).join('');
+    `<div class="slot ${i < c.stamps ? 'stamped':'burning'}">${i < c.stamps ? STAMP_SVG : '<canvas class="slot-fire" aria-hidden="true"></canvas>'}</div>`).join('');
   return `<main>
     <div class="loyalty-card ${full?'full':''}">
       <div class="lc-head">
@@ -1151,11 +1212,38 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
   let hot = spots();
   addEventListener('resize', () => { hot = spots(); });
 
-  const flames = [], smokes = [], embers = [];
-  function spawnFlame(){
-    const x = hot[Math.floor(Math.random()*hot.length)] + rnd(-26,26);
-    flames.push({ x, y: H + rnd(0,8), r: rnd(10,26), vy: rnd(.8,1.7), wob: rnd(0,6.28), life: 1 });
+  const smokes = [], embers = [];
+
+  // fogueira REAL: faixa de simulação de combustão (mesmo motor das bolinhas),
+  // semeada nos focos de brasa — línguas de fogo orgânicas, nunca repetidas
+  const CELL = 5;
+  let hearth = null;
+  function hearthSeed(s){
+    const {buf, w, h} = s, base = (h-1)*w;
+    buf.fill(0, base, base + w);
+    for(const hx of hot){
+      const cx = Math.round(hx / CELL);
+      const breathe = .72 + .28*Math.sin(s.t/26 + cx);
+      const spread = 3 + (Math.random()*2|0);
+      for(let dx=-spread; dx<=spread; dx++){
+        const x = cx + dx;
+        if(x < 0 || x >= w) continue;
+        const fall = 1 - Math.abs(dx)/(spread+1);
+        buf[base+x] = Math.max(buf[base+x], (FireSlots.MAXH * breathe * fall) | 0);
+      }
+    }
+    // carvões espalhados entre os focos
+    for(let x=0; x<w; x++) if(buf[base+x]===0 && Math.random()<.08) buf[base+x] = 4 + (Math.random()*6|0);
   }
+  function rebuildHearth(){
+    const off = document.createElement('canvas');
+    hearth = FireSlots.makeSim(off, Math.max(20, Math.ceil(W/CELL)), Math.max(16, Math.ceil(H/CELL)), hearthSeed);
+    hearth.phase = 0;
+    for(let i=0; i<60; i++) FireSlots.step(hearth); // já nasce queimando
+    FireSlots.paint(hearth);
+  }
+  rebuildHearth();
+  addEventListener('resize', rebuildHearth);
   function spawnSmoke(){
     const x = hot[Math.floor(Math.random()*hot.length)] + rnd(-34,34);
     smokes.push({ x, y: H - rnd(26,60), r: rnd(9,17), vy: rnd(.25,.55), vx: rnd(-.12,.12), wob: rnd(0,6.28), life: 1 });
@@ -1172,7 +1260,7 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
     g.addColorStop(1, 'rgba(232,134,43,0)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
-  if(reduced){ drawStatic(); return; }
+  if(reduced){ drawStatic(); ctx.drawImage(hearth.cv, 0, 0, W, H); return; }
 
   let t = 0, running = true;
   document.addEventListener('visibilitychange', () => {
@@ -1209,22 +1297,11 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
     }
 
-    // chamas (aditivas, dançando)
-    if(flames.length < 60){ spawnFlame(); if(Math.random() < .75) spawnFlame(); }
+    // fogo simulado (a cada 2 frames = cadência natural de chama)
+    if(t % 2 === 0){ FireSlots.step(hearth); FireSlots.paint(hearth); }
     ctx.globalCompositeOperation = 'lighter';
-    for(let i = flames.length - 1; i >= 0; i--){
-      const p = flames[i];
-      p.y -= p.vy; p.x += Math.sin(p.wob + t/9) * .55;
-      p.r *= .981; p.life -= .011;
-      if(p.life <= 0 || p.r < 1){ flames.splice(i,1); continue; }
-      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
-      // núcleo amarelo → laranja → vermelho transparente
-      g.addColorStop(0, 'rgba(255,214,120,'+(.68*p.life)+')');
-      g.addColorStop(.45, 'rgba(232,134,43,'+(.46*p.life)+')');
-      g.addColorStop(1, 'rgba(201,62,24,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
-    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(hearth.cv, 0, 0, W, H);
 
     // brasas (faíscas subindo rápido)
     if(embers.length < 14 && Math.random() < .3) spawnEmber();
