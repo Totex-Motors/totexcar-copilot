@@ -118,16 +118,20 @@
       radial-gradient(1px 1px at 40% 85%, rgba(74,50,38,.07) 0 1px, transparent 1px);
     background-size:90px 90px,70px 70px,110px 110px;
   }
-  .lc-head{display:flex;align-items:flex-start;gap:12px;position:relative}
-  .lc-head .logo-mark{width:52px;height:52px}
-  .lc-title{flex:1;text-align:center;padding-top:2px}
-  .lc-title .cartao{font-family:var(--display);font-weight:400;font-size:20px;color:var(--ink);line-height:1}
-  .lc-title .fide{font-family:var(--display);font-weight:400;font-size:30px;color:var(--ember);letter-spacing:.5px;line-height:1.15;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+  .lc-head{display:flex;align-items:flex-start;gap:clamp(6px,2vw,12px);position:relative}
+  .lc-head .logo-mark{width:clamp(38px,11vw,52px);height:clamp(38px,11vw,52px)}
+  .lc-title{flex:1;text-align:center;padding-top:2px;min-width:0}
+  .lc-title .cartao{font-family:var(--display);font-weight:400;font-size:clamp(14px,4.6vw,20px);color:var(--ink);line-height:1}
+  .lc-title .fide{font-family:var(--display);font-weight:400;font-size:clamp(19px,6.8vw,30px);color:var(--ember);letter-spacing:.5px;line-height:1.15;text-shadow:0 1px 0 rgba(255,255,255,.5)}
   .lc-code{
-    text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;
+    text-align:right;font-family:var(--mono);font-size:clamp(11px,3.2vw,13px);font-weight:700;
     color:var(--ink-soft);letter-spacing:.06em;white-space:nowrap;
   }
-  .lc-name{font-size:15px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;text-align:right}
+  .lc-name{
+    font-size:clamp(12px,3.6vw,15px);font-weight:800;color:var(--ink);
+    text-transform:uppercase;letter-spacing:.04em;margin-top:2px;text-align:right;
+    max-width:26vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
 
   .stamp-grid{
     display:grid;grid-template-columns:repeat(5,1fr);gap:12px;
