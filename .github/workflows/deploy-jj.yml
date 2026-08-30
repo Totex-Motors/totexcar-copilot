@@ -1,0 +1,50 @@
+name: Deploy JJ Fidelidade
+
+# Deploy do app Cartão Fidelidade da J.J Espetos (jj-fidelidade/) como projeto
+# PRÓPRIO na Vercel — separado do totexcar-copilot. O projeto é criado/atualizado
+# pelo nome do diretório de deploy ("jjespetos" → https://jjespetos.vercel.app,
+# se o subdomínio estiver livre; senão a Vercel escolhe um sufixo e a URL sai no log).
+#
+# Dispara no push da main quando jj-fidelidade/ muda, e manualmente (workflow_dispatch).
+# Reusa os mesmos segredos do deploy principal: VERCEL_TOKEN e VERCEL_ORG_ID
+# (NÃO seta VERCEL_PROJECT_ID — isso apontaria pro projeto do Co-pilot).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'jj-fidelidade/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-jj
+  cancel-in-progress: true
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+
+jobs:
+  deploy:
+    name: Deploy to Vercel (jjespetos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy (site estático, projeto jjespetos)
+        run: |
+          # pasta de deploy com o nome do projeto (o --yes cria o projeto com esse nome)
+          mkdir -p /tmp/jjespetos
+          cp jj-fidelidade/index.html /tmp/jjespetos/index.html
+          cd /tmp/jjespetos
+          vercel deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee deploy.log
+          echo "----------------------------------------"
+          echo "URL de produção (alias do projeto):"
+          vercel inspect "$(grep -o 'https://[^ ]*\.vercel\.app' deploy.log | tail -1)" --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | grep -i -A5 'alias\|url' || true
