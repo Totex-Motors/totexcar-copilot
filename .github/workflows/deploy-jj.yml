@@ -44,6 +44,7 @@ jobs:
           # pasta de deploy com o nome do projeto (o --yes cria o projeto com esse nome)
           mkdir -p /tmp/jjespetos
           cp jj-fidelidade/index.html /tmp/jjespetos/index.html
+          cp jj-fidelidade/og.jpg /tmp/jjespetos/og.jpg   # imagem do card de compartilhamento (Open Graph)
           cd /tmp/jjespetos
           vercel deploy --prod --yes \
             --scope "${{ secrets.VERCEL_ORG_ID }}" \
