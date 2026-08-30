@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#180e08">
+<title>J.J Fidelidade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;1,400&display=swap">
+<style>
+  /* ================= J.J ESPETOS — tema único "brasa à noite" ================= */
+  :root{
+    --char:#180e08;        /* fundo espresso */
+    --char-2:#211309;      /* fundo gradiente */
+    --smoke:#332013;       /* superfície marrom */
+    --smoke-2:#402a19;     /* superfície elevada */
+    --line:#573926;        /* bordas quentes */
+    --card:#f6efe1;        /* papel creme do cartão físico */
+    --card-2:#efe5cf;
+    --ember:#e8862b;       /* laranja do logo */
+    --ember-soft:#f0a45a;
+    --flame:#c93e18;       /* vermelho fogo */
+    --ink:#4a3226;         /* marrom "Cartão" */
+    --ink-soft:#7a5c44;
+    --cream:#f3e8d2;       /* texto claro sobre escuro */
+    --cream-dim:#c9b295;
+    --good:#7cb86a;
+    --danger:#e05b4b;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --display:'Alfa Slab One',Georgia,serif;
+    --body:'Nunito Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(120% 90% at 50% -10%, var(--char-2) 0%, var(--char) 60%) fixed, var(--char);
+    color:var(--cream);
+    font-family:var(--body);
+    font-size:16px;line-height:1.5;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:var(--body);cursor:pointer}
+  input,select,textarea{font-family:var(--body)}
+  ::selection{background:var(--ember);color:var(--char)}
+
+  .app{max-width:460px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative}
+  .app.wide{max-width:760px}
+
+  /* ---------- topo ---------- */
+  header.top{
+    display:flex;align-items:center;gap:12px;
+    padding:18px 20px 10px;
+  }
+  .logo-mark{width:46px;height:46px;flex:none}
+  .brand{display:flex;flex-direction:column;line-height:1.05}
+  .brand b{font-family:var(--display);font-weight:400;font-size:19px;color:var(--ember);letter-spacing:.5px}
+  .brand span{font-size:11px;letter-spacing:.28em;color:var(--cream-dim);text-transform:uppercase;font-weight:700}
+  header.top .spacer{flex:1}
+  .pill-btn{
+    background:transparent;border:1px solid var(--line);color:var(--cream-dim);
+    border-radius:999px;padding:7px 14px;font-size:13px;font-weight:700;
+    transition:color .15s,border-color .15s;
+  }
+  .pill-btn:hover{color:var(--cream);border-color:var(--ember)}
+  .pill-btn.active{background:var(--ember);border-color:var(--ember);color:var(--char)}
+
+  main{flex:1;padding:8px 20px 96px;display:flex;flex-direction:column;gap:16px}
+
+  h1.screen-title{font-family:var(--display);font-weight:400;font-size:24px;color:var(--cream);margin:6px 0 0;text-wrap:balance}
+  .muted{color:var(--cream-dim);font-size:14px;margin:0}
+
+  /* ---------- abas inferiores ---------- */
+  nav.tabs{
+    position:fixed;bottom:0;left:0;right:0;z-index:40;
+    display:flex;justify-content:center;gap:8px;
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top, var(--char) 65%, transparent);
+  }
+  nav.tabs .wrap{
+    display:flex;gap:6px;background:var(--smoke);border:1px solid var(--line);
+    border-radius:999px;padding:6px;box-shadow:0 8px 30px rgba(0,0,0,.5);
+  }
+  nav.tabs button{
+    border:0;background:transparent;color:var(--cream-dim);
+    font-weight:800;font-size:14px;padding:10px 22px;border-radius:999px;
+    transition:background .15s,color .15s;
+  }
+  nav.tabs button.active{background:var(--ember);color:var(--char)}
+
+  /* ---------- o cartão ---------- */
+  .loyalty-card{
+    background:linear-gradient(160deg, var(--card) 0%, var(--card-2) 100%);
+    border-radius:18px;
+    padding:22px 20px 18px;
+    color:var(--ink);
+    box-shadow:0 18px 50px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.6);
+    position:relative;overflow:hidden;
+  }
+  .loyalty-card::before{ /* leve textura de papel */
+    content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+    background:
+      radial-gradient(1px 1px at 12% 30%, rgba(74,50,38,.08) 0 1px, transparent 1px),
+      radial-gradient(1px 1px at 68% 62%, rgba(74,50,38,.07) 0 1px, transparent 1px),
+      radial-gradient(1px 1px at 40% 85%, rgba(74,50,38,.07) 0 1px, transparent 1px);
+    background-size:90px 90px,70px 70px,110px 110px;
+  }
+  .lc-head{display:flex;align-items:flex-start;gap:12px;position:relative}
+  .lc-head .logo-mark{width:52px;height:52px}
+  .lc-title{flex:1;text-align:center;padding-top:2px}
+  .lc-title .cartao{font-family:var(--display);font-weight:400;font-size:20px;color:var(--ink);line-height:1}
+  .lc-title .fide{font-family:var(--display);font-weight:400;font-size:30px;color:var(--ember);letter-spacing:.5px;line-height:1.15;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+  .lc-code{
+    text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;
+    color:var(--ink-soft);letter-spacing:.06em;white-space:nowrap;
+  }
+  .lc-name{font-size:15px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;text-align:right}
+
+  .stamp-grid{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:12px;
+    margin:20px 6px 18px;position:relative;
+  }
+  .slot{
+    aspect-ratio:1;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #b9a487, #a08a6b 70%);
+    box-shadow:inset 0 2px 6px rgba(74,50,38,.35);
+    display:flex;align-items:center;justify-content:center;
+    position:relative;
+  }
+  .slot svg{width:100%;height:100%;display:block;border-radius:50%}
+  .slot.stamped svg{animation:stampIn .45s cubic-bezier(.2,1.6,.4,1) both}
+  @keyframes stampIn{
+    0%{transform:scale(2.1) rotate(-14deg);opacity:0}
+    60%{transform:scale(.92) rotate(2deg);opacity:1}
+    100%{transform:scale(1) rotate(-3deg)}
+  }
+  .slot.stamped:nth-child(even) svg{transform:rotate(4deg)}
+  .lc-rule{
+    position:relative;
+    background:linear-gradient(135deg, var(--ember) 0%, #d97722 100%);
+    color:#fff8ec;border-radius:14px;
+    font-weight:800;font-size:13.5px;line-height:1.45;
+    padding:12px 16px;text-align:center;
+    text-shadow:0 1px 2px rgba(120,50,0,.35);
+  }
+  .loyalty-card.full{box-shadow:0 18px 50px rgba(0,0,0,.55), 0 0 0 3px var(--ember), 0 0 42px rgba(232,134,43,.45)}
+
+  .progress-note{display:flex;align-items:center;gap:10px;justify-content:center;font-weight:700;color:var(--cream-dim);font-size:14px}
+  .progress-note b{color:var(--ember-soft)}
+  .reward-banner{
+    background:linear-gradient(135deg,#2c1a0c,#3a230e);
+    border:1px solid var(--ember);border-radius:16px;
+    padding:16px 18px;text-align:center;
+    animation:glow 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes glow{from{box-shadow:0 0 8px rgba(232,134,43,.25)}to{box-shadow:0 0 26px rgba(232,134,43,.55)}}
+  .reward-banner h2{font-family:var(--display);font-weight:400;color:var(--ember);font-size:20px;margin:0 0 4px}
+  .reward-banner p{margin:0;color:var(--cream);font-size:14px;font-weight:600}
+
+  /* ---------- formulários ---------- */
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field label{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim)}
+  .field input,.field select{
+    background:var(--smoke);border:1px solid var(--line);border-radius:12px;
+    color:var(--cream);font-size:16px;padding:13px 14px;outline:none;
+    transition:border-color .15s;width:100%;
+  }
+  .field input:focus,.field select:focus{border-color:var(--ember)}
+  .field input::placeholder{color:#8a6f57}
+  .btn{
+    border:0;border-radius:12px;padding:14px 18px;
+    font-size:15px;font-weight:800;letter-spacing:.02em;
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    transition:transform .1s,filter .15s;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn-primary{background:linear-gradient(135deg,var(--ember),#d97722);color:var(--char)}
+  .btn-primary:hover{filter:brightness(1.08)}
+  .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--cream)}
+  .btn-ghost:hover{border-color:var(--ember)}
+  .btn-danger{background:transparent;border:1px solid var(--danger);color:var(--danger)}
+  .btn-block{width:100%}
+  .btn[disabled]{opacity:.4;cursor:not-allowed}
+
+  .panel{
+    background:var(--smoke);border:1px solid var(--line);border-radius:16px;
+    padding:18px;display:flex;flex-direction:column;gap:14px;
+  }
+  .panel h3{margin:0;font-size:15px;font-weight:800;color:var(--cream)}
+
+  /* ---------- admin ---------- */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .stat{
+    background:var(--smoke);border:1px solid var(--line);border-radius:14px;
+    padding:12px 10px;text-align:center;
+  }
+  .stat b{display:block;font-family:var(--display);font-weight:400;font-size:24px;color:var(--ember);font-variant-numeric:tabular-nums}
+  .stat span{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--cream-dim)}
+
+  .search-row{display:flex;gap:8px}
+  .search-row input{flex:1}
+
+  .client-list{display:flex;flex-direction:column;gap:8px}
+  .client-row{
+    display:flex;align-items:center;gap:12px;
+    background:var(--smoke);border:1px solid var(--line);border-radius:14px;
+    padding:12px 14px;transition:border-color .15s;text-align:left;width:100%;
+    color:var(--cream);
+  }
+  .client-row:hover{border-color:var(--ember)}
+  .client-row .who{flex:1;min-width:0}
+  .client-row .who b{display:block;font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .client-row .who span{font-family:var(--mono);font-size:12px;color:var(--cream-dim)}
+  .dots{display:flex;gap:3px;flex-wrap:wrap;max-width:96px;justify-content:flex-end}
+  .dots i{width:9px;height:9px;border-radius:50%;background:#513824}
+  .dots i.on{background:var(--ember)}
+  .row-count{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cream-dim);white-space:nowrap}
+  .row-count b{color:var(--ember-soft)}
+
+  .empty{
+    text-align:center;color:var(--cream-dim);font-size:14px;
+    border:1px dashed var(--line);border-radius:14px;padding:26px 16px;
+  }
+
+  /* ---------- modal ---------- */
+  .overlay{
+    position:fixed;inset:0;z-index:60;background:rgba(10,5,2,.72);
+    display:flex;align-items:flex-end;justify-content:center;
+    animation:fadeIn .18s ease both;
+  }
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  .sheet{
+    width:100%;max-width:460px;max-height:88vh;overflow-y:auto;
+    background:var(--char-2);border:1px solid var(--line);border-bottom:0;
+    border-radius:22px 22px 0 0;padding:20px 20px 28px;
+    display:flex;flex-direction:column;gap:14px;
+    animation:slideUp .22s cubic-bezier(.2,.9,.3,1) both;
+  }
+  @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .sheet-head{display:flex;align-items:center;gap:10px}
+  .sheet-head h2{flex:1;margin:0;font-family:var(--display);font-weight:400;font-size:20px;color:var(--cream)}
+  .close-x{background:transparent;border:1px solid var(--line);color:var(--cream-dim);border-radius:50%;width:34px;height:34px;font-size:16px;line-height:1}
+
+  .history{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto}
+  .history li{
+    list-style:none;display:flex;justify-content:space-between;gap:10px;
+    font-size:13px;padding:8px 10px;border-radius:10px;background:var(--smoke);
+  }
+  .history{padding:0;margin:0}
+  .history .h-what{font-weight:700}
+  .history .h-when{color:var(--cream-dim);font-family:var(--mono);font-size:12px;white-space:nowrap}
+  .h-stamp .h-what{color:var(--ember-soft)}
+  .h-redeem .h-what{color:var(--good)}
+
+  /* ---------- pin ---------- */
+  .pin-box{display:flex;flex-direction:column;gap:14px;align-items:center;padding:26px 0 8px}
+  .pin-dots{display:flex;gap:14px}
+  .pin-dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--line)}
+  .pin-dots i.on{background:var(--ember);border-color:var(--ember)}
+  .pin-pad{display:grid;grid-template-columns:repeat(3,72px);gap:10px;justify-content:center}
+  .pin-pad button{
+    height:60px;border-radius:16px;background:var(--smoke);border:1px solid var(--line);
+    color:var(--cream);font-size:22px;font-weight:800;
+  }
+  .pin-pad button:active{background:var(--smoke-2)}
+  .pin-err{color:var(--danger);font-weight:700;font-size:14px;min-height:20px;margin:0}
+  .shake{animation:shake .4s}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
+
+  .toast{
+    position:fixed;left:50%;bottom:92px;transform:translateX(-50%);
+    background:var(--card);color:var(--ink);font-weight:800;font-size:14px;
+    border-radius:999px;padding:11px 20px;z-index:80;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);
+    animation:toastIn .25s ease both;white-space:nowrap;
+  }
+  @keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+
+  .admin-sub{display:flex;gap:6px}
+  .admin-sub button{
+    flex:1;border:1px solid var(--line);background:transparent;color:var(--cream-dim);
+    border-radius:12px;padding:10px;font-weight:800;font-size:13px;
+  }
+  .admin-sub button.active{background:var(--smoke-2);color:var(--ember);border-color:var(--ember)}
+
+  .footer-note{text-align:center;font-size:12px;color:#8a6f57;padding:4px 20px 0}
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  }
+  @media (max-width:380px){
+    .stamp-grid{gap:9px}
+    .pin-pad{grid-template-columns:repeat(3,64px)}
+  }
+</style>
+
+<div class="app" id="app"></div>
+<nav class="tabs"><div class="wrap">
+  <button id="tabCard" class="active">Meu Cartão</button>
+  <button id="tabAdmin">Admin</button>
+</div></nav>
+
+<script>
+/* =====================================================================
+   J.J ESPETOS — Cartão Fidelidade digital + painel admin (v1, arquivo único)
+   Dados no localStorage. Backup por exportar/importar JSON no Admin › Ajustes.
+   ===================================================================== */
+(function(){
+'use strict';
+
+const LS_KEY = 'jj_fidelidade_v1';
+const DEFAULTS = {
+  settings:{ pin:'1234', goal:10, reward:'um almoço completo grátis',
+    rule:'Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!' },
+  seq: 1,
+  customers: []
+};
+
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const d = JSON.parse(raw);
+      d.settings = Object.assign({}, DEFAULTS.settings, d.settings||{});
+      d.customers = d.customers||[]; d.seq = d.seq||1; return d; }
+  }catch(e){}
+  // primeiro uso: um cliente de exemplo, igual ao cartão da foto
+  const d = JSON.parse(JSON.stringify(DEFAULTS));
+  const c = makeCustomer(d, 'Junior', '');
+  c.stamps = 2;
+  c.history = [
+    {t:'stamp', ts:Date.now()-86400000*9},
+    {t:'stamp', ts:Date.now()-86400000*2}
+  ];
+  d.customers.push(c);
+  save(d);
+  return d;
+}
+function save(d){ try{ localStorage.setItem(LS_KEY, JSON.stringify(d)); }catch(e){} }
+
+function makeCustomer(d, name, phone){
+  const code = 'JJ-' + String(d.seq++).padStart(4,'0');
+  return { id: code, code, name: name.trim(), phone: (phone||'').trim(),
+           stamps:0, redeemed:0, createdAt: Date.now(), history:[] };
+}
+
+let db = load();
+let state = {
+  tab:'card',            // card | admin
+  adminOk:false,
+  adminSub:'clientes',   // clientes | novo | ajustes
+  search:'',
+  cardCode: localStorage.getItem(LS_KEY+':mycard') || '',
+  detail:null,           // id do cliente aberto no modal
+  pinBuf:'', pinErr:false
+};
+
+/* ---------- helpers ---------- */
+const $app = document.getElementById('app');
+const esc = s => String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const fmtDate = ts => new Date(ts).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'})
+  + ' ' + new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+const byCodeOrPhone = q => {
+  q = q.trim().toLowerCase();
+  if(!q) return null;
+  return db.customers.find(c =>
+    c.code.toLowerCase() === q ||
+    c.code.toLowerCase() === ('jj-'+q).toLowerCase() ||
+    (c.phone && c.phone.replace(/\D/g,'') === q.replace(/\D/g,'') && q.replace(/\D/g,'').length >= 8)
+  ) || null;
+};
+
+function toast(msg){
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  const t = document.createElement('div');
+  t.className='toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2400);
+}
+
+/* selo carimbado: adesivo escuro com J.J e chamas, igual ao físico */
+const STAMP_SVG = `
+<svg viewBox="0 0 100 100" aria-hidden="true">
+  <defs>
+    <radialGradient id="sg" cx="38%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#3a2113"/><stop offset="100%" stop-color="#1c0f07"/>
+    </radialGradient>
+  </defs>
+  <circle cx="50" cy="50" r="49" fill="url(#sg)"/>
+  <circle cx="50" cy="50" r="46" fill="none" stroke="#e8862b" stroke-opacity=".35" stroke-width="1.5"/>
+  <path d="M22 88 Q28 70 33 78 Q36 62 44 74 Q48 58 55 72 Q60 60 66 76 Q71 66 78 88 Z" fill="#c93e18"/>
+  <path d="M30 88 Q35 76 40 82 Q45 70 51 80 Q56 70 61 82 Q65 76 70 88 Z" fill="#e8862b"/>
+  <path d="M38 88 Q43 80 47 85 Q51 78 56 85 Q59 81 62 88 Z" fill="#f5c04e"/>
+  <text x="50" y="52" text-anchor="middle" font-family="'Alfa Slab One',Georgia,serif" font-size="26" fill="#e8862b">J.J</text>
+  <text x="50" y="64" text-anchor="middle" font-family="'Nunito Sans',sans-serif" font-weight="800" font-size="8.5" letter-spacing="2" fill="#f0a45a">ESPETOS</text>
+</svg>`;
+
+const LOGO_SVG = `
+<svg class="logo-mark" viewBox="0 0 100 100" aria-hidden="true">
+  <circle cx="50" cy="50" r="48" fill="#1c0f07" stroke="#e8862b" stroke-opacity=".4" stroke-width="2"/>
+  <path d="M20 90 Q28 66 34 76 Q38 58 46 72 Q50 54 57 70 Q62 58 68 74 Q74 64 80 90 Z" fill="#c93e18"/>
+  <path d="M30 90 Q36 76 41 82 Q46 68 52 80 Q57 70 62 82 Q67 76 72 90 Z" fill="#e8862b"/>
+  <text x="50" y="50" text-anchor="middle" font-family="'Alfa Slab One',Georgia,serif" font-size="28" fill="#e8862b">J.J</text>
+  <text x="50" y="63" text-anchor="middle" font-family="'Nunito Sans',sans-serif" font-weight="800" font-size="9" letter-spacing="2" fill="#f0a45a">ESPETOS</text>
+</svg>`;
+
+/* ---------- renderização ---------- */
+function render(){
+  document.getElementById('tabCard').classList.toggle('active', state.tab==='card');
+  document.getElementById('tabAdmin').classList.toggle('active', state.tab==='admin');
+  $app.classList.toggle('wide', state.tab==='admin' && state.adminOk);
+  $app.innerHTML = topBar() + (state.tab==='card' ? viewCard() : viewAdmin());
+  bind();
+}
+
+function topBar(){
+  return `<header class="top">${LOGO_SVG}
+    <div class="brand"><b>J.J Espetos</b><span>Fidelidade</span></div>
+    <div class="spacer"></div>
+    ${state.tab==='admin' && state.adminOk ? `<button class="pill-btn" data-act="lock">Sair</button>`:''}
+  </header>`;
+}
+
+/* ===================== VISÃO DO CLIENTE ===================== */
+function viewCard(){
+  const c = byCodeOrPhone(state.cardCode);
+  if(!c){
+    return `<main>
+      <h1 class="screen-title">Seu cartão fidelidade, agora no celular</h1>
+      <p class="muted">Digite o código do seu cartão (está escrito nele, ex.: <b>JJ-0001</b>) ou o telefone que você deixou no balcão.</p>
+      <div class="panel">
+        <div class="field">
+          <label for="findCard">Código ou telefone</label>
+          <input id="findCard" inputmode="text" autocomplete="off" placeholder="JJ-0001 ou (11) 99999-9999">
+        </div>
+        <button class="btn btn-primary btn-block" data-act="find">Abrir meu cartão</button>
+        <p class="muted" style="font-size:13px">Ainda não tem cartão? Peça no balcão da J.J Espetos — é grátis.</p>
+      </div>
+      <p class="footer-note">Av. Tenente Marques, 06 — Polvilho, Cajamar</p>
+    </main>`;
+  }
+  const goal = db.settings.goal;
+  const full = c.stamps >= goal;
+  const slots = Array.from({length:goal}, (_,i)=>
+    `<div class="slot ${i < c.stamps ? 'stamped':''}">${i < c.stamps ? STAMP_SVG : ''}</div>`).join('');
+  return `<main>
+    <div class="loyalty-card ${full?'full':''}">
+      <div class="lc-head">
+        ${LOGO_SVG}
+        <div class="lc-title"><div class="cartao">Cartão</div><div class="fide">FIDELIDADE</div></div>
+        <div><div class="lc-code">${esc(c.code)}</div><div class="lc-name">${esc(c.name)}</div></div>
+      </div>
+      <div class="stamp-grid">${slots}</div>
+      <div class="lc-rule">${esc(db.settings.rule)}</div>
+    </div>
+    ${full
+      ? `<div class="reward-banner"><h2>Prêmio liberado! 🎉</h2>
+           <p>Você ganhou ${esc(db.settings.reward)}. Mostre esta tela no balcão para resgatar.</p></div>`
+      : `<p class="progress-note">${STAMP_ICON_MINI()} <span><b>${c.stamps} de ${goal}</b> selos — faltam <b>${goal-c.stamps}</b> para ${esc(db.settings.reward)}</span></p>`}
+    <button class="btn btn-ghost btn-block" data-act="forget">Trocar de cartão</button>
+    <p class="footer-note">Obrigado pela preferência! · Av. Tenente Marques, 06 — Polvilho, Cajamar</p>
+  </main>`;
+}
+function STAMP_ICON_MINI(){
+  return `<svg width="18" height="18" viewBox="0 0 100 100" style="flex:none"><circle cx="50" cy="50" r="48" fill="#1c0f07"/><path d="M25 88 Q34 62 42 76 Q48 56 58 74 Q66 62 75 88 Z" fill="#e8862b"/></svg>`;
+}
+
+/* ===================== ADMIN ===================== */
+function viewAdmin(){
+  if(!state.adminOk) return viewPin();
+  const s = db.settings;
+  const month0 = new Date(); month0.setDate(1); month0.setHours(0,0,0,0);
+  const stampsMonth = db.customers.reduce((n,c)=> n + c.history.filter(h=>h.t==='stamp' && h.ts>=+month0).length, 0);
+  const redeemed = db.customers.reduce((n,c)=> n + c.redeemed, 0);
+
+  let body = '';
+  if(state.adminSub==='clientes') body = adminClientes();
+  if(state.adminSub==='novo') body = adminNovo();
+  if(state.adminSub==='ajustes') body = adminAjustes();
+
+  return `<main>
+    <h1 class="screen-title">Painel da churrasqueira</h1>
+    <div class="stats">
+      <div class="stat"><b>${db.customers.length}</b><span>clientes</span></div>
+      <div class="stat"><b>${stampsMonth}</b><span>selos no mês</span></div>
+      <div class="stat"><b>${redeemed}</b><span>prêmios dados</span></div>
+    </div>
+    <div class="admin-sub">
+      <button data-sub="clientes" class="${state.adminSub==='clientes'?'active':''}">Clientes</button>
+      <button data-sub="novo" class="${state.adminSub==='novo'?'active':''}">+ Novo cliente</button>
+      <button data-sub="ajustes" class="${state.adminSub==='ajustes'?'active':''}">Ajustes</button>
+    </div>
+    ${body}
+  </main>
+  ${state.detail ? modalDetail() : ''}`;
+}
+
+function adminClientes(){
+  const q = state.search.trim().toLowerCase();
+  const list = db.customers
+    .filter(c => !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q) || (c.phone||'').includes(q))
+    .sort((a,b)=> b.createdAt - a.createdAt);
+  const goal = db.settings.goal;
+  const rows = list.map(c=>{
+    const dots = Array.from({length:goal},(_,i)=>`<i class="${i<c.stamps?'on':''}"></i>`).join('');
+    return `<button class="client-row" data-open="${esc(c.id)}">
+      <div class="who"><b>${esc(c.name)}</b><span>${esc(c.code)}${c.phone?' · '+esc(c.phone):''}</span></div>
+      <div class="dots">${dots}</div>
+      <span class="row-count"><b>${c.stamps}</b>/${goal}</span>
+    </button>`;
+  }).join('');
+  return `<div class="search-row field"><input id="searchInp" placeholder="Buscar por nome, código ou telefone" value="${esc(state.search)}"></div>
+    <div class="client-list">${rows || `<div class="empty">Nenhum cliente ${q?'encontrado':'ainda'}. Cadastre o primeiro em “+ Novo cliente”.</div>`}</div>`;
+}
+
+function adminNovo(){
+  return `<div class="panel">
+    <h3>Cadastrar cliente</h3>
+    <div class="field"><label for="npName">Nome *</label><input id="npName" placeholder="Ex.: Junior" autocomplete="off"></div>
+    <div class="field"><label for="npPhone">Telefone / WhatsApp</label><input id="npPhone" inputmode="tel" placeholder="(11) 99999-9999" autocomplete="off"></div>
+    <button class="btn btn-primary btn-block" data-act="create">Criar cartão</button>
+    <p class="muted" style="font-size:13px">O cliente abre o cartão dele nesta mesma página, na aba “Meu Cartão”, usando o código gerado ou o telefone.</p>
+  </div>`;
+}
+
+function adminAjustes(){
+  const s = db.settings;
+  return `<div class="panel">
+    <h3>Regras do cartão</h3>
+    <div class="field"><label for="stGoal">Selos para ganhar o prêmio</label>
+      <select id="stGoal">${[5,6,8,10,12,15].map(n=>`<option ${n===s.goal?'selected':''}>${n}</option>`).join('')}</select></div>
+    <div class="field"><label for="stReward">Prêmio</label><input id="stReward" value="${esc(s.reward)}"></div>
+    <div class="field"><label for="stRule">Texto que aparece no cartão</label><input id="stRule" value="${esc(s.rule)}"></div>
+    <button class="btn btn-primary btn-block" data-act="saveSettings">Salvar regras</button>
+  </div>
+  <div class="panel">
+    <h3>Segurança</h3>
+    <div class="field"><label for="stPin">PIN do admin (4 dígitos)</label><input id="stPin" inputmode="numeric" maxlength="4" value="${esc(s.pin)}"></div>
+    <button class="btn btn-ghost btn-block" data-act="savePin">Trocar PIN</button>
+  </div>
+  <div class="panel">
+    <h3>Backup</h3>
+    <p class="muted" style="font-size:13px">Os dados ficam salvos neste aparelho. Exporte de vez em quando para não perder nada.</p>
+    <button class="btn btn-ghost btn-block" data-act="export">Exportar dados (JSON)</button>
+    <div class="field"><label for="impFile">Importar backup</label><input id="impFile" type="file" accept="application/json"></div>
+  </div>`;
+}
+
+function modalDetail(){
+  const c = db.customers.find(x=>x.id===state.detail);
+  if(!c) return '';
+  const goal = db.settings.goal;
+  const full = c.stamps >= goal;
+  const hist = c.history.slice().reverse().slice(0,30).map(h=>
+    `<li class="${h.t==='stamp'?'h-stamp':'h-redeem'}">
+      <span class="h-what">${h.t==='stamp' ? '+1 selo' : '🏆 Prêmio resgatado'}</span>
+      <span class="h-when">${fmtDate(h.ts)}</span></li>`).join('');
+  return `<div class="overlay" data-close="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Cliente ${esc(c.name)}">
+    <div class="sheet-head"><h2>${esc(c.name)}</h2><button class="close-x" data-close="1" aria-label="Fechar">✕</button></div>
+    <p class="muted" style="margin-top:-8px"><span style="font-family:var(--mono)">${esc(c.code)}</span>${c.phone?' · '+esc(c.phone):''} · cliente desde ${new Date(c.createdAt).toLocaleDateString('pt-BR')}</p>
+    <div class="stats">
+      <div class="stat"><b>${c.stamps}</b><span>selos agora</span></div>
+      <div class="stat"><b>${goal}</b><span>meta</span></div>
+      <div class="stat"><b>${c.redeemed}</b><span>prêmios</span></div>
+    </div>
+    ${full
+      ? `<button class="btn btn-primary btn-block" data-act="redeem">🏆 Entregar prêmio e zerar cartão</button>`
+      : `<button class="btn btn-primary btn-block" data-act="stamp">🔥 Dar +1 selo (${c.stamps+1} de ${goal})</button>`}
+    ${!full && c.stamps>0 ? `<button class="btn btn-ghost btn-block" data-act="unstamp">Desfazer último selo</button>`:''}
+    <div class="panel" style="padding:14px">
+      <h3>Histórico</h3>
+      ${hist ? `<ul class="history">${hist}</ul>` : `<p class="muted" style="font-size:13px">Sem movimentos ainda.</p>`}
+    </div>
+    <button class="btn btn-danger btn-block" data-act="delClient">Excluir cliente</button>
+  </div></div>`;
+}
+
+function viewPin(){
+  const dots = Array.from({length:4},(_,i)=>`<i class="${i<state.pinBuf.length?'on':''}"></i>`).join('');
+  const keys = ['1','2','3','4','5','6','7','8','9','←','0','ok'];
+  return `<main>
+    <h1 class="screen-title" style="text-align:center">Área do dono</h1>
+    <p class="muted" style="text-align:center">Digite o PIN para abrir o painel.</p>
+    <div class="pin-box ${state.pinErr?'shake':''}">
+      <div class="pin-dots">${dots}</div>
+      <p class="pin-err">${state.pinErr?'PIN errado. Tenta de novo.':''}</p>
+      <div class="pin-pad">${keys.map(k=>`<button data-key="${k}">${k==='ok'?'✓':k}</button>`).join('')}</div>
+      <p class="muted" style="font-size:12px">PIN inicial: 1234 — troque em Ajustes.</p>
+    </div>
+  </main>`;
+}
+
+/* ---------- eventos ---------- */
+function bind(){
+  $app.querySelectorAll('[data-act]').forEach(el=> el.addEventListener('click', ()=> action(el.dataset.act)));
+  $app.querySelectorAll('[data-sub]').forEach(el=> el.addEventListener('click', ()=>{ state.adminSub = el.dataset.sub; render(); }));
+  $app.querySelectorAll('[data-open]').forEach(el=> el.addEventListener('click', ()=>{ state.detail = el.dataset.open; render(); }));
+  $app.querySelectorAll('[data-close]').forEach(el=> el.addEventListener('click', e=>{ if(e.target===el){ state.detail=null; render(); } }));
+  $app.querySelectorAll('[data-key]').forEach(el=> el.addEventListener('click', ()=> pinKey(el.dataset.key)));
+
+  const s = $app.querySelector('#searchInp');
+  if(s){ s.addEventListener('input', ()=>{ state.search = s.value; renderListOnly(); });
+         if(state.search) { s.focus(); s.setSelectionRange(s.value.length,s.value.length); } }
+
+  const f = $app.querySelector('#findCard');
+  if(f) f.addEventListener('keydown', e=>{ if(e.key==='Enter') action('find'); });
+
+  const imp = $app.querySelector('#impFile');
+  if(imp) imp.addEventListener('change', importBackup);
+}
+function renderListOnly(){ // busca sem perder foco
+  const wrap = $app.querySelector('.client-list');
+  if(!wrap) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = adminClientes();
+  wrap.replaceWith(tmp.querySelector('.client-list'));
+  $app.querySelectorAll('[data-open]').forEach(el=> el.addEventListener('click', ()=>{ state.detail = el.dataset.open; render(); }));
+}
+
+function pinKey(k){
+  if(k==='←'){ state.pinBuf = state.pinBuf.slice(0,-1); state.pinErr=false; }
+  else if(k==='ok'){ checkPin(); return; }
+  else { state.pinBuf = (state.pinBuf + k).slice(0,4); state.pinErr=false;
+         if(state.pinBuf.length===4){ checkPin(); return; } }
+  render();
+}
+function checkPin(){
+  if(state.pinBuf === db.settings.pin){ state.adminOk = true; state.pinBuf=''; state.pinErr=false; }
+  else { state.pinErr = true; state.pinBuf=''; }
+  render();
+}
+
+function action(act){
+  const c = state.detail ? db.customers.find(x=>x.id===state.detail) : null;
+  switch(act){
+    case 'find':{
+      const v = $app.querySelector('#findCard').value;
+      const found = byCodeOrPhone(v);
+      if(!found){ toast('Cartão não encontrado. Confira o código.'); return; }
+      state.cardCode = found.code;
+      localStorage.setItem(LS_KEY+':mycard', found.code);
+      render(); break;
+    }
+    case 'forget':
+      state.cardCode=''; localStorage.removeItem(LS_KEY+':mycard'); render(); break;
+    case 'lock':
+      state.adminOk=false; state.pinBuf=''; render(); break;
+    case 'create':{
+      const name = $app.querySelector('#npName').value.trim();
+      const phone = $app.querySelector('#npPhone').value.trim();
+      if(!name){ toast('Falta o nome do cliente.'); return; }
+      const nc = makeCustomer(db, name, phone);
+      db.customers.push(nc); save(db);
+      state.adminSub='clientes'; state.detail = nc.id; state.search='';
+      render(); toast(`Cartão ${nc.code} criado para ${nc.name}!`); break;
+    }
+    case 'stamp':{
+      if(!c) return;
+      c.stamps++; c.history.push({t:'stamp', ts:Date.now()}); save(db);
+      render();
+      toast(c.stamps >= db.settings.goal ? `🎉 ${c.name} completou o cartão!` : `Selo ${c.stamps}/${db.settings.goal} para ${c.name}`);
+      break;
+    }
+    case 'unstamp':{
+      if(!c || c.stamps<=0) return;
+      c.stamps--;
+      for(let i=c.history.length-1;i>=0;i--){ if(c.history[i].t==='stamp'){ c.history.splice(i,1); break; } }
+      save(db); render(); break;
+    }
+    case 'redeem':{
+      if(!c) return;
+      if(!confirm(`Entregar ${db.settings.reward} para ${c.name} e zerar o cartão?`)) return;
+      c.stamps = 0; c.redeemed++; c.history.push({t:'redeem', ts:Date.now()}); save(db);
+      render(); toast(`🏆 Prêmio entregue para ${c.name}!`); break;
+    }
+    case 'delClient':{
+      if(!c) return;
+      if(!confirm(`Excluir ${c.name} (${c.code})? Isso apaga o histórico.`)) return;
+      db.customers = db.customers.filter(x=>x.id!==c.id); save(db);
+      state.detail=null; render(); toast('Cliente excluído.'); break;
+    }
+    case 'saveSettings':{
+      db.settings.goal = parseInt($app.querySelector('#stGoal').value,10)||10;
+      db.settings.reward = $app.querySelector('#stReward').value.trim()||DEFAULTS.settings.reward;
+      db.settings.rule = $app.querySelector('#stRule').value.trim()||DEFAULTS.settings.rule;
+      db.customers.forEach(x=>{ if(x.stamps>db.settings.goal) x.stamps=db.settings.goal; });
+      save(db); render(); toast('Regras salvas!'); break;
+    }
+    case 'savePin':{
+      const p = $app.querySelector('#stPin').value.trim();
+      if(!/^\d{4}$/.test(p)){ toast('O PIN precisa ter 4 números.'); return; }
+      db.settings.pin = p; save(db); toast('PIN atualizado!'); break;
+    }
+    case 'export':{
+      const blob = new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'jj-fidelidade-backup-' + new Date().toISOString().slice(0,10) + '.json';
+      a.click(); URL.revokeObjectURL(a.href); break;
+    }
+  }
+}
+
+function importBackup(e){
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    try{
+      const d = JSON.parse(r.result);
+      if(!Array.isArray(d.customers)) throw new Error('formato');
+      d.settings = Object.assign({}, DEFAULTS.settings, d.settings||{});
+      d.seq = d.seq || (d.customers.length+1);
+      db = d; save(db); render(); toast('Backup importado!');
+    }catch(err){ toast('Arquivo inválido — use um backup exportado daqui.'); }
+  };
+  r.readAsText(f);
+}
+
+/* ---------- abas ---------- */
+document.getElementById('tabCard').addEventListener('click', ()=>{ state.tab='card'; state.detail=null; render(); });
+document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='admin'; render(); });
+
+render();
+})();
+</script>
+
+</html>
