@@ -1441,41 +1441,8 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
   rebuildHearth();
   addEventListener('resize', rebuildHearth);
 
-  // ---- chamas LAMBENDO AS LATERAIS: línguas que nascem, sobem pela borda e
-  // somem, em posições que derivam com o tempo (mesmo motor de combustão,
-  // desenhado rotacionado: base colada na borda, pontas para dentro) ----
-  const SD = 72, SCELL = 4; // profundidade da lambida (px) e resolução mais fina
-  let sideL = null, sideR = null;
-  function makeSideSeed(phase){
-    return function(s){
-      const {buf, w} = s, base = (s.h-1)*w;
-      buf.fill(0, base, base + w);
-      for(let k=0; k<5; k++){
-        // cada língua deriva devagar ao longo da borda e "respira"; às vezes apaga
-        const c = (Math.sin(s.t/(150+k*37) + phase + k*1.9) * .5 + .5) * (w-10) + 5;
-        const breathe = .5 + .5*Math.sin(s.t/19 + k*2.3 + phase*2);
-        // ancorada na fogueira: forte embaixo, rara e fraca perto do topo
-        const anchor = .2 + .8 * (c / w);
-        if(breathe * anchor < .28) continue;
-        const spread = 5 + (Math.random()*3|0);
-        for(let dx=-spread; dx<=spread; dx++){
-          const x = (c|0) + dx;
-          if(x < 0 || x >= w) continue;
-          const fall = 1 - Math.abs(dx)/(spread+1);
-          buf[base+x] = Math.max(buf[base+x], (FireSlots.MAXH * breathe * anchor * fall) | 0);
-        }
-      }
-    };
-  }
-  function rebuildSides(){
-    const len = Math.max(40, Math.ceil(H/SCELL)), dep = Math.max(14, Math.ceil(SD/SCELL));
-    sideL = FireSlots.makeSim(document.createElement('canvas'), len, dep, makeSideSeed(0));
-    sideR = FireSlots.makeSim(document.createElement('canvas'), len, dep, makeSideSeed(2.6));
-    for(let i=0; i<40; i++){ FireSlots.step(sideL); FireSlots.step(sideR); }
-    FireSlots.paint(sideL); FireSlots.paint(sideR);
-  }
-  rebuildSides();
-  addEventListener('resize', rebuildSides);
+  // (as chamas laterais foram testadas e removidas a pedido do dono —
+  //  ficaram fortes demais; o clima vem da fogueira + fumaça + faíscas)
   function spawnSmoke(){
     // nasce na ponta das chamas e sobe ATÉ O TOPO da tela
     const x = hot[Math.floor(Math.random()*hot.length)] + rnd(-40,40);
@@ -1527,26 +1494,10 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
     }
 
     // fogo simulado na base (a cada 2 frames = cadência natural de chama)
-    if(t % 2 === 0){
-      FireSlots.step(hearth); FireSlots.paint(hearth);
-      FireSlots.step(sideL); FireSlots.paint(sideL);
-      FireSlots.step(sideR); FireSlots.paint(sideR);
-    }
+    if(t % 2 === 0){ FireSlots.step(hearth); FireSlots.paint(hearth); }
     ctx.globalCompositeOperation = 'lighter';
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(hearth.cv, 0, H - FH, W, FH);
-
-    // lambidas nas laterais (rotacionadas: base na borda, pontas para dentro)
-    ctx.save();
-    ctx.globalAlpha = .7;
-    ctx.transform(0, 1, -1, 0, SD, 0);          // esquerda
-    ctx.drawImage(sideL.cv, 0, 0, H, SD);
-    ctx.restore();
-    ctx.save();
-    ctx.globalAlpha = .7;
-    ctx.transform(0, 1, 1, 0, W - SD, 0);       // direita
-    ctx.drawImage(sideR.cv, 0, 0, H, SD);
-    ctx.restore();
 
     // faíscas voando ALTO, com halo de brasa
     if(embers.length < 26 && Math.random() < .45) spawnEmber();
