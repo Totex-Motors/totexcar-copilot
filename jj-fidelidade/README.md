@@ -53,6 +53,10 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
   indicação; tocar num nome abre a ficha do cliente.
 
 **Clima de churrasqueira**
+- **Bolinhas sem selo são braseiros acesos**: cada espaço vazio do cartão tem uma
+  chama animada dançando dentro (3 camadas dessincronizadas + brilho pulsando) —
+  dar o selo "conquista" o fogo, carimbando o adesivo do logo por cima. Gatilho
+  visual de consumo: o cartão inteiro parece uma grelha esperando os espetos.
 - Fogo animado na base da tela (canvas leve, ~60fps): chamas dançando, brasas
   voando e fumaça subindo, mais o logo com as chamas tremeluzindo. Pausa quando a
   aba fica oculta e vira um brilho parado para quem prefere menos animação
