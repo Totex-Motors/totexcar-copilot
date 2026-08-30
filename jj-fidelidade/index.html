@@ -46,9 +46,10 @@
 
   .app{max-width:460px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;z-index:1}
 
-  /* ---------- fogo da churrasqueira (canvas na base da tela) ---------- */
+  /* ---------- fogo da churrasqueira (canvas em TELA CHEIA: fogo embaixo,
+       fumaça subindo até o topo, faíscas voando alto) ---------- */
   #fireCanvas{
-    position:fixed;left:0;right:0;bottom:0;width:100%;height:210px;
+    position:fixed;inset:0;width:100%;height:100%;
     z-index:0;pointer-events:none;
   }
   /* chamas do logo tremeluzindo (só o logo da marca; os selos ficam parados) */
@@ -384,8 +385,8 @@
 
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
-    /* o fogo simulado dos selos vira uma chama parada porém realista
-       (o motor JS congela num frame já "queimado" — ver FireSlots) */
+    /* o fogo em canvas (FireSlots/fogueira) roda sempre — é identidade da
+       marca e não depende da configuração de animação do aparelho */
   }
   @media (max-width:380px){
     .stamp-grid{gap:9px}
@@ -709,7 +710,8 @@ const FireSlots = (function(){
       paint(s);
       sims.push(s);
     });
-    if(reduced) return;                                  // chama parada porém realista
+    // o fogo roda SEMPRE (canvas/JS não depende da config de animação do
+    // aparelho — decisão de produto: a chama é a alma do app)
     if(!raf && sims.length) raf = requestAnimationFrame(loop);
     if(!sims.length && raf){ cancelAnimationFrame(raf); raf = null; }
   }
@@ -1198,7 +1200,6 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
   const cv = document.getElementById('fireCanvas');
   if(!cv || !cv.getContext) return;
   const ctx = cv.getContext('2d');
-  const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   let W = 0, H = 0, dpr = 1;
 
   function resize(){
@@ -1239,9 +1240,11 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
     // carvões espalhados entre os focos
     for(let x=0; x<w; x++) if(buf[base+x]===0 && Math.random()<.08) buf[base+x] = 4 + (Math.random()*6|0);
   }
+  let FH = 240; // altura da faixa de fogo na base (o resto da tela é da fumaça)
   function rebuildHearth(){
+    FH = Math.round(Math.min(300, Math.max(200, H * .32)));
     const off = document.createElement('canvas');
-    hearth = FireSlots.makeSim(off, Math.max(20, Math.ceil(W/CELL)), Math.max(16, Math.ceil(H/CELL)), hearthSeed);
+    hearth = FireSlots.makeSim(off, Math.max(20, Math.ceil(W/CELL)), Math.max(16, Math.ceil(FH/CELL)), hearthSeed);
     hearth.phase = 0;
     for(let i=0; i<60; i++) FireSlots.step(hearth); // já nasce queimando
     FireSlots.paint(hearth);
@@ -1249,23 +1252,16 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
   rebuildHearth();
   addEventListener('resize', rebuildHearth);
   function spawnSmoke(){
-    const x = hot[Math.floor(Math.random()*hot.length)] + rnd(-34,34);
-    smokes.push({ x, y: H - rnd(26,60), r: rnd(9,17), vy: rnd(.25,.55), vx: rnd(-.12,.12), wob: rnd(0,6.28), life: 1 });
+    // nasce na ponta das chamas e sobe ATÉ O TOPO da tela
+    const x = hot[Math.floor(Math.random()*hot.length)] + rnd(-40,40);
+    smokes.push({ x, y: H - FH*rnd(.5,.85), r: rnd(12,22), vy: rnd(1.5,2.8), vx: rnd(-.2,.2), wob: rnd(0,6.28), life: 1 });
   }
   function spawnEmber(){
-    const x = hot[Math.floor(Math.random()*hot.length)] + rnd(-14,14);
-    embers.push({ x, y: H - rnd(0,14), vy: rnd(.8,1.7), vx: rnd(-.25,.25), r: rnd(1,2.2), wob: rnd(0,6.28), life: 1 });
+    const x = hot[Math.floor(Math.random()*hot.length)] + rnd(-16,16);
+    embers.push({ x, y: H - rnd(10,70), vy: rnd(1.6,3.2), vx: rnd(-.35,.35), r: rnd(1,2.6), wob: rnd(0,6.28), life: 1 });
   }
 
-  function drawStatic(){ // versão parada: só o brilho de brasa no rodapé
-    const g = ctx.createLinearGradient(0, H, 0, H - 120);
-    g.addColorStop(0, 'rgba(201,62,24,.34)');
-    g.addColorStop(.5, 'rgba(232,134,43,.12)');
-    g.addColorStop(1, 'rgba(232,134,43,0)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  }
-  if(reduced){ drawStatic(); ctx.drawImage(hearth.cv, 0, 0, W, H); return; }
-
+  // o fogo roda SEMPRE — não depende da configuração de animação do aparelho
   let t = 0, running = true;
   document.addEventListener('visibilitychange', () => {
     running = !document.hidden;
@@ -1277,45 +1273,54 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
     t++;
     ctx.clearRect(0, 0, W, H);
 
-    // brilho de fundo respirando
-    const breathe = .26 + Math.sin(t/38) * .05;
-    const bg = ctx.createLinearGradient(0, H, 0, 0);
+    // brilho de brasa respirando na zona do fogo
+    const breathe = .32 + Math.sin(t/34) * .08;
+    const gtop = H - FH*1.9;
+    const bg = ctx.createLinearGradient(0, H, 0, gtop);
     bg.addColorStop(0, 'rgba(201,62,24,'+breathe+')');
-    bg.addColorStop(.55, 'rgba(232,134,43,.07)');
+    bg.addColorStop(.5, 'rgba(232,134,43,.09)');
     bg.addColorStop(1, 'rgba(232,134,43,0)');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = bg; ctx.fillRect(0, Math.max(0,gtop), W, H - Math.max(0,gtop));
 
-    // fumaça (atrás das chamas, subindo e abrindo)
-    if(smokes.length < 26 && Math.random() < .35) spawnSmoke();
+    // fumaça: colunas que sobem ATÉ O TOPO, abrindo e serpenteando
+    if(smokes.length < 42 && Math.random() < .6) spawnSmoke();
     ctx.globalCompositeOperation = 'source-over';
     for(let i = smokes.length - 1; i >= 0; i--){
       const p = smokes[i];
-      p.y -= p.vy; p.x += p.vx + Math.sin(p.wob + t/34) * .3;
-      p.r += .12; p.life -= .0058;
-      if(p.life <= 0 || p.y < -20){ smokes.splice(i,1); continue; }
-      const a = .13 * p.life * Math.min(1, (H - p.y) / 60 + .4);
+      p.vy += .006;                                     // fumaça acelera ao subir
+      p.y -= p.vy;
+      p.x += p.vx + Math.sin(p.wob + t/26) * .55;       // serpenteia
+      p.r += .17; p.life -= .0034;
+      if(p.life <= 0 || p.y < -70){ smokes.splice(i,1); continue; }
+      const born = 1 - p.life;                          // aparece suave, morre suave
+      const a = .17 * p.life * Math.min(1, born * 6);
       const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
-      g.addColorStop(0, 'rgba(140,120,105,'+a+')');
-      g.addColorStop(1, 'rgba(140,120,105,0)');
+      g.addColorStop(0, 'rgba(172,150,132,'+a+')');
+      g.addColorStop(1, 'rgba(172,150,132,0)');
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
     }
 
-    // fogo simulado (a cada 2 frames = cadência natural de chama)
+    // fogo simulado na base (a cada 2 frames = cadência natural de chama)
     if(t % 2 === 0){ FireSlots.step(hearth); FireSlots.paint(hearth); }
     ctx.globalCompositeOperation = 'lighter';
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(hearth.cv, 0, 0, W, H);
+    ctx.drawImage(hearth.cv, 0, H - FH, W, FH);
 
-    // brasas (faíscas subindo rápido)
-    if(embers.length < 14 && Math.random() < .3) spawnEmber();
+    // faíscas voando ALTO, com halo de brasa
+    if(embers.length < 26 && Math.random() < .45) spawnEmber();
     for(let i = embers.length - 1; i >= 0; i--){
       const p = embers[i];
-      p.y -= p.vy; p.x += p.vx + Math.sin(p.wob + t/7) * .4;
-      p.life -= .012;
-      if(p.life <= 0 || p.y < 0){ embers.splice(i,1); continue; }
-      ctx.fillStyle = 'rgba(255,190,90,'+(.85*p.life)+')';
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, 6.283); ctx.fill();
+      p.y -= p.vy; p.x += p.vx + Math.sin(p.wob + t/7) * .5;
+      p.life -= .006;
+      if(p.life <= 0 || p.y < -10){ embers.splice(i,1); continue; }
+      const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r*4);
+      halo.addColorStop(0, 'rgba(255,170,70,'+(.35*p.life)+')');
+      halo.addColorStop(1, 'rgba(255,170,70,0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r*4, 0, 6.283); ctx.fill();
+      ctx.fillStyle = 'rgba(255,214,120,'+(.95*p.life)+')';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * Math.max(.4,p.life), 0, 6.283); ctx.fill();
     }
     ctx.globalCompositeOperation = 'source-over';
 
