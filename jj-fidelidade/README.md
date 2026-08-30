@@ -12,6 +12,24 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
 - Quando completa a meta, o cartão "acende" e aparece o aviso de prêmio liberado para
   mostrar no balcão.
 
+**QR codes**
+- Na tela do cartão: QR que abre aquele cartão em outro celular (`?c=JJ-0001`).
+- Na ficha do cliente (Admin): QR do cartão + "Imprimir QR deste cartão".
+- Em Admin › Ajustes: **"Imprimir cartaz do balcão"** — cartaz A4 com o logo, QR e a regra
+  da promoção, para o cliente escanear e cair direto na tela do cartão.
+- O endereço usado nos QR é o "Endereço público do app" (Ajustes); vazio = o endereço atual.
+
+**Envio por WhatsApp (instância oficial do Co-pilot)**
+- Ao cadastrar cliente com telefone, o link do cartão vai automático no WhatsApp dele.
+- Na ficha do cliente há o botão "📲 Enviar cartão no WhatsApp"; se o envio direto falhar,
+  o app abre o WhatsApp do aparelho com a mensagem pronta (plano B que sempre funciona).
+- Backend: edge function `jj-fidelidade` (em `microsaas-clean/supabase/functions/`), na
+  mesma instância Meta do Co-pilot. Dentro da janela de 24h vai texto livre; fora dela vai
+  o template UTILITY `jj_fidelidade_cartao` (criado via `{action:"setup"}`; precisa estar
+  APPROVED pela Meta — confira em Ajustes › "Testar conexão").
+- Proteção: chave em `app_settings.jj_wa_key` + máx. 1 envio por telefone a cada 10 min.
+  A chave fica no app (Ajustes); para trocar, atualize a coluna no banco e no app.
+
 **Aba "Admin" (dono)**
 - Protegida por PIN de 4 dígitos (inicial: `1234` — troque em Ajustes).
 - Resumo: total de clientes, selos dados no mês, prêmios entregues.

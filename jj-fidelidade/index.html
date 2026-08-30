@@ -285,6 +285,44 @@
 
   .footer-note{text-align:center;font-size:12px;color:#8a6f57;padding:4px 20px 0}
 
+  /* ---------- QR ---------- */
+  .qr-row{display:flex;align-items:center;gap:14px}
+  .qr-box{
+    background:#fff;border-radius:12px;padding:9px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    min-width:118px;min-height:118px;
+  }
+  .qr-box img,.qr-box canvas{display:block}
+  .qr-box .qr-missing{max-width:100px;font-size:11px;color:#7a5c44;text-align:center;font-weight:700}
+  .qr-hint{font-size:13px;color:var(--cream-dim);font-weight:600;margin:0}
+  .qr-hint b{color:var(--cream)}
+
+  /* ---------- cartaz de impressão (só aparece no print) ---------- */
+  #poster{display:none}
+  @media print{
+    body{background:#fff!important}
+    body.printing .app,body.printing nav.tabs,body.printing .overlay,body.printing .toast{display:none!important}
+    body.printing #poster{
+      display:flex;flex-direction:column;align-items:center;text-align:center;
+      color:#1c0f07;font-family:var(--body);
+      padding:12mm 10mm;gap:6mm;
+    }
+    #poster .p-logo{width:34mm;height:34mm}
+    #poster .p-cartao{font-family:var(--display);font-weight:400;font-size:26pt;color:#4a3226;line-height:1}
+    #poster .p-fide{font-family:var(--display);font-weight:400;font-size:40pt;color:#e8862b;line-height:1.1}
+    #poster .p-sub{font-size:14pt;font-weight:800;color:#4a3226;margin-top:2mm}
+    #poster .p-qr{padding:6mm;border:1.2mm solid #1c0f07;border-radius:8mm}
+    #poster .p-qr img,#poster .p-qr canvas{width:62mm!important;height:62mm!important}
+    #poster .p-code{font-family:var(--mono);font-size:16pt;font-weight:700;color:#4a3226;letter-spacing:.08em}
+    #poster .p-steps{font-size:12pt;font-weight:700;color:#1c0f07;line-height:1.7;max-width:150mm}
+    #poster .p-rule{
+      background:#e8862b;color:#fff;border-radius:5mm;padding:5mm 8mm;
+      font-weight:800;font-size:12.5pt;max-width:155mm;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    }
+    #poster .p-addr{font-size:10.5pt;font-weight:700;color:#7a5c44}
+  }
+
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   }
@@ -300,6 +338,9 @@
   <button id="tabAdmin">Admin</button>
 </div></nav>
 
+<div id="poster" aria-hidden="true"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 /* =====================================================================
    J.J ESPETOS — Cartão Fidelidade digital + painel admin (v1, arquivo único)
@@ -311,7 +352,10 @@
 const LS_KEY = 'jj_fidelidade_v1';
 const DEFAULTS = {
   settings:{ pin:'1234', goal:10, reward:'um almoço completo grátis',
-    rule:'Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!' },
+    rule:'Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!',
+    appUrl:'',   // endereço público do app (usado nos QR e na mensagem); vazio = o endereço atual
+    waEndpoint:'https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/jj-fidelidade',
+    waKey:'64d10fcbb90742423a67440828c853b7' },
   seq: 1,
   customers: []
 };
@@ -369,6 +413,77 @@ const byCodeOrPhone = q => {
   ) || null;
 };
 
+/* ---------- QR + WhatsApp ---------- */
+function appUrl(){
+  const cfg = (db.settings.appUrl||'').trim().replace(/\/+$/,'');
+  if(cfg) return cfg;
+  return /^https?:$/.test(location.protocol) ? location.origin + location.pathname : '';
+}
+function cardUrl(code){ const b = appUrl(); return b ? b + '?c=' + encodeURIComponent(code) : ''; }
+function phone55(p){ const d = String(p||'').replace(/\D/g,''); return d.length<=11 ? '55'+d : d; }
+
+function renderQRs(root){
+  (root||document).querySelectorAll('[data-qr]').forEach(el=>{
+    el.innerHTML='';
+    const text = el.dataset.qr;
+    if(!text){ el.innerHTML = '<span class="qr-missing">Defina o endereço público do app em Admin › Ajustes</span>'; return; }
+    if(!window.QRCode){ el.innerHTML = '<span class="qr-missing">'+esc(text)+'</span>'; return; }
+    new QRCode(el, { text, width: parseInt(el.dataset.size||'110',10), height: parseInt(el.dataset.size||'110',10),
+      colorDark:'#1c0f07', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.M });
+  });
+}
+
+async function sendCardWA(c, opts){
+  opts = opts || {};
+  const ep = (db.settings.waEndpoint||'').trim(), k = (db.settings.waKey||'').trim(), url = cardUrl(c.code);
+  if(!c.phone){ if(!opts.silent) toast('Este cliente não tem telefone cadastrado.'); return; }
+  if(!ep || !k){ if(!opts.silent) waFallback(c, 'Envio direto não configurado'); return; }
+  if(!url){ if(!opts.silent) toast('Defina o endereço público do app em Ajustes.'); return; }
+  toast('Enviando cartão no WhatsApp…');
+  try{
+    const r = await fetch(ep, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'send_card', k, phone: phone55(c.phone), name: c.name,
+        code: c.code, stamps: c.stamps, goal: db.settings.goal, url }) });
+    const j = await r.json().catch(()=>({}));
+    if(j.ok){ toast('📲 Cartão enviado no WhatsApp de '+c.name+'!'); return; }
+    if(j.error==='aguarde_10min'){ toast('Já foi enviado há pouco — aguarde uns minutos.'); return; }
+    if(opts.silent){ toast('Não consegui enviar automático — use o botão WhatsApp no cliente.'); return; }
+    waFallback(c, 'O envio direto falhou');
+  }catch(e){
+    if(opts.silent){ toast('Sem conexão com o servidor de envio.'); return; }
+    waFallback(c, 'Sem conexão com o servidor');
+  }
+}
+function waFallback(c, why){
+  // plano B sempre funciona: abre o WhatsApp do aparelho com a mensagem pronta
+  const link = cardUrl(c.code);
+  const msg = '🔥 Olá '+c.name+'! Seu Cartão Fidelidade J.J Espetos ('+c.code+')'
+    + (link ? ' está aqui: '+link : ' está pronto — código '+c.code+'.')
+    + ' Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!';
+  if(why) toast(why+' — abrindo seu WhatsApp…');
+  window.open('https://wa.me/'+phone55(c.phone)+'?text='+encodeURIComponent(msg), '_blank');
+}
+
+function printPoster(c){
+  const poster = document.getElementById('poster');
+  const url = c ? cardUrl(c.code) : appUrl();
+  poster.innerHTML = `
+    ${LOGO_SVG.replace('class="logo-mark"','class="p-logo"')}
+    <div><div class="p-cartao">Cartão</div><div class="p-fide">FIDELIDADE</div>
+    <div class="p-sub">${c ? 'de '+esc(c.name)+' — agora no celular' : 'agora no seu celular'}</div></div>
+    <div class="p-qr"><div data-qr="${esc(url)}" data-size="240"></div></div>
+    ${c ? `<div class="p-code">${esc(c.code)}</div>`:''}
+    <div class="p-steps">${c
+      ? 'Aponte a câmera do celular para o código acima<br>e acompanhe seus selos e seu prêmio.'
+      : 'Aponte a câmera do celular para o código acima,<br>digite o código do seu cartão e acompanhe seus selos.'}</div>
+    <div class="p-rule">${esc(db.settings.rule)}</div>
+    <div class="p-addr">J.J Espetos · Av. Tenente Marques, 06 — Polvilho, Cajamar</div>`;
+  renderQRs(poster);
+  if(!url){ toast('Defina o endereço público do app em Ajustes antes de imprimir.'); return; }
+  document.body.classList.add('printing');
+  setTimeout(()=>{ window.print(); document.body.classList.remove('printing'); }, 250);
+}
+
 function toast(msg){
   document.querySelectorAll('.toast').forEach(t=>t.remove());
   const t = document.createElement('div');
@@ -410,6 +525,7 @@ function render(){
   $app.classList.toggle('wide', state.tab==='admin' && state.adminOk);
   $app.innerHTML = topBar() + (state.tab==='card' ? viewCard() : viewAdmin());
   bind();
+  renderQRs($app);
 }
 
 function topBar(){
@@ -456,6 +572,10 @@ function viewCard(){
       ? `<div class="reward-banner"><h2>Prêmio liberado! 🎉</h2>
            <p>Você ganhou ${esc(db.settings.reward)}. Mostre esta tela no balcão para resgatar.</p></div>`
       : `<p class="progress-note">${STAMP_ICON_MINI()} <span><b>${c.stamps} de ${goal}</b> selos — faltam <b>${goal-c.stamps}</b> para ${esc(db.settings.reward)}</span></p>`}
+    <div class="panel"><div class="qr-row">
+      <div class="qr-box" data-qr="${esc(cardUrl(c.code))}" data-size="100"></div>
+      <p class="qr-hint"><b>Leve seu cartão com você:</b> aponte a câmera de outro celular para este código e o cartão abre lá.</p>
+    </div></div>
     <button class="btn btn-ghost btn-block" data-act="forget">Trocar de cartão</button>
     <p class="footer-note">Obrigado pela preferência! · Av. Tenente Marques, 06 — Polvilho, Cajamar</p>
   </main>`;
@@ -518,13 +638,27 @@ function adminNovo(){
     <div class="field"><label for="npName">Nome *</label><input id="npName" placeholder="Ex.: Junior" autocomplete="off"></div>
     <div class="field"><label for="npPhone">Telefone / WhatsApp</label><input id="npPhone" inputmode="tel" placeholder="(11) 99999-9999" autocomplete="off"></div>
     <button class="btn btn-primary btn-block" data-act="create">Criar cartão</button>
-    <p class="muted" style="font-size:13px">O cliente abre o cartão dele nesta mesma página, na aba “Meu Cartão”, usando o código gerado ou o telefone.</p>
+    <p class="muted" style="font-size:13px">Com telefone preenchido, o link do cartão vai <b>automático no WhatsApp do cliente</b>. Ele também pode abrir pela aba “Meu Cartão” (código ou telefone) ou escaneando o QR.</p>
   </div>`;
 }
 
 function adminAjustes(){
   const s = db.settings;
   return `<div class="panel">
+    <h3>QR e divulgação</h3>
+    <p class="muted" style="font-size:13px;margin:0">Imprima o cartaz e deixe no balcão: o cliente escaneia e cai direto na tela do cartão.</p>
+    <button class="btn btn-primary btn-block" data-act="printPoster">🖨️ Imprimir cartaz do balcão (QR)</button>
+    <div class="field"><label for="stAppUrl">Endereço público do app (usado nos QR e no WhatsApp)</label>
+      <input id="stAppUrl" placeholder="${esc(appUrl()||'https://seu-endereco.vercel.app')}" value="${esc(s.appUrl||'')}"></div>
+  </div>
+  <div class="panel">
+    <h3>Envio por WhatsApp</h3>
+    <p class="muted" style="font-size:13px;margin:0">Usa a instância oficial (Meta) já conectada. Ao cadastrar cliente com telefone, o cartão vai automático no WhatsApp dele.</p>
+    <div class="field"><label for="stWaEp">Endpoint de envio</label><input id="stWaEp" value="${esc(s.waEndpoint||'')}"></div>
+    <div class="field"><label for="stWaKey">Chave de envio</label><input id="stWaKey" value="${esc(s.waKey||'')}"></div>
+    <button class="btn btn-ghost btn-block" data-act="testWA">Testar conexão / status do template</button>
+  </div>
+  <div class="panel">
     <h3>Regras do cartão</h3>
     <div class="field"><label for="stGoal">Selos para ganhar o prêmio</label>
       <select id="stGoal">${[5,6,8,10,12,15].map(n=>`<option ${n===s.goal?'selected':''}>${n}</option>`).join('')}</select></div>
@@ -566,6 +700,14 @@ function modalDetail(){
       ? `<button class="btn btn-primary btn-block" data-act="redeem">🏆 Entregar prêmio e zerar cartão</button>`
       : `<button class="btn btn-primary btn-block" data-act="stamp">🔥 Dar +1 selo (${c.stamps+1} de ${goal})</button>`}
     ${!full && c.stamps>0 ? `<button class="btn btn-ghost btn-block" data-act="unstamp">Desfazer último selo</button>`:''}
+    <div class="panel" style="padding:14px"><div class="qr-row">
+      <div class="qr-box" data-qr="${esc(cardUrl(c.code))}" data-size="104"></div>
+      <div style="display:flex;flex-direction:column;gap:8px;flex:1">
+        <p class="qr-hint" style="margin:0">O cliente aponta a câmera e o cartão abre no celular dele.</p>
+        ${c.phone ? `<button class="btn btn-primary" style="padding:10px" data-act="sendWA">📲 Enviar cartão no WhatsApp</button>`:''}
+        <button class="btn btn-ghost" style="padding:10px" data-act="printCard">🖨️ Imprimir QR deste cartão</button>
+      </div>
+    </div></div>
     <div class="panel" style="padding:14px">
       <h3>Histórico</h3>
       ${hist ? `<ul class="history">${hist}</ul>` : `<p class="muted" style="font-size:13px">Sem movimentos ainda.</p>`}
@@ -650,7 +792,26 @@ function action(act){
       const nc = makeCustomer(db, name, phone);
       db.customers.push(nc); save(db);
       state.adminSub='clientes'; state.detail = nc.id; state.search='';
-      render(); toast(`Cartão ${nc.code} criado para ${nc.name}!`); break;
+      render(); toast(`Cartão ${nc.code} criado para ${nc.name}!`);
+      if(nc.phone) sendCardWA(nc, {silent:true}); // manda o cartão no WhatsApp do cliente
+      break;
+    }
+    case 'sendWA': if(c) sendCardWA(c); break;
+    case 'printCard': if(c) printPoster(c); break;
+    case 'printPoster': printPoster(null); break;
+    case 'testWA':{
+      const ep = $app.querySelector('#stWaEp').value.trim(), k = $app.querySelector('#stWaKey').value.trim();
+      if(!ep || !k){ toast('Preencha endpoint e chave.'); return; }
+      toast('Testando…');
+      fetch(ep, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'setup', k}) })
+        .then(r=>r.json())
+        .then(j=>{
+          if(!j.ok){ toast('Falhou: '+(j.error||'erro desconhecido')); return; }
+          toast(j.status==='APPROVED' ? '✅ Conectado — template aprovado!' :
+                '🟡 Conectado — template '+j.status+' (aguardando aprovação da Meta)');
+        })
+        .catch(()=>toast('Sem conexão com o endpoint.'));
+      break;
     }
     case 'stamp':{
       if(!c) return;
@@ -681,6 +842,9 @@ function action(act){
       db.settings.goal = parseInt($app.querySelector('#stGoal').value,10)||10;
       db.settings.reward = $app.querySelector('#stReward').value.trim()||DEFAULTS.settings.reward;
       db.settings.rule = $app.querySelector('#stRule').value.trim()||DEFAULTS.settings.rule;
+      db.settings.appUrl = $app.querySelector('#stAppUrl').value.trim();
+      db.settings.waEndpoint = $app.querySelector('#stWaEp').value.trim();
+      db.settings.waKey = $app.querySelector('#stWaKey').value.trim();
       db.customers.forEach(x=>{ if(x.stamps>db.settings.goal) x.stamps=db.settings.goal; });
       save(db); render(); toast('Regras salvas!'); break;
     }
@@ -718,6 +882,13 @@ function importBackup(e){
 /* ---------- abas ---------- */
 document.getElementById('tabCard').addEventListener('click', ()=>{ state.tab='card'; state.detail=null; render(); });
 document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='admin'; render(); });
+
+// chegou por QR? (?c=JJ-0001) → abre direto o cartão
+const urlCode = new URLSearchParams(location.search).get('c');
+if(urlCode){
+  const found = byCodeOrPhone(urlCode);
+  if(found){ state.tab='card'; state.cardCode = found.code; localStorage.setItem(LS_KEY+':mycard', found.code); }
+}
 
 render();
 })();

@@ -462,6 +462,14 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
     body: "🆘 Novo chamado de suporte com urgência {{1}} aberto no TotexCar Co-pilot. Cliente: {{2}}, plano {{3}}. Assunto: {{4}}. Resumo do caso: {{5}}. Número do ticket para acompanhamento: {{6}}. Responda o cliente assim que possível.",
     render: (p) => `🆘 SUPORTE TCF — chamado ${p[0]}\n\n👤 ${p[1]}\n💼 Plano: ${p[2]}\n\n📌 ${p[3]}\n${p[4]}\n\nTicket: ${p[5]}`,
   },
+  // J.J Espetos — cartão fidelidade digital (app jj-fidelidade/ na raiz do repo).
+  // Criado/enviado pela edge function jj-fidelidade (autocontida); registrado aqui
+  // como fonte da verdade. Params: nome, "X de Y" selos, link do cartão.
+  jj_fidelidade_cartao: {
+    category: "UTILITY",
+    body: "Olá {{1}}! 🔥 Seu Cartão Fidelidade J.J Espetos está pronto. Você já tem {{2}} selos. Acompanhe seus selos e seu prêmio aqui: {{3}} Obrigado pela preferência!",
+    render: (p) => `Olá ${p[0]}! 🔥 Seu *Cartão Fidelidade J.J Espetos* está pronto.\n\nVocê já tem *${p[1]}* selos. Acompanhe aqui:\n${p[2]}\n\nObrigado pela preferência!`,
+  },
   pedido_recompra_loja: {
     category: "UTILITY",
     body: "🚗 Pedido de recompra na {{1}}: {{2}} avaliou o {{3}} pela tabela FIPE e pediu recompra por {{4}}. Contato: {{5}}. Veja os detalhes no Painel do Lojista.",
