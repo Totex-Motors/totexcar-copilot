@@ -134,13 +134,22 @@ Deno.serve(async (req) => {
 
   if (p.action === "card_pull") {
     const q = String(p.code || "").trim();
-    const qDigits = onlyDigits(q);
     const st = await loadState();
     if (!st || !q) return json({ ok: true, found: false });
+    // telefone tolerante: com/sem +55, com/sem o nono dígito, com/sem DDD
+    const canon = (v: unknown) => { let d = onlyDigits(v); if (d.length > 11 && d.startsWith("55")) d = d.slice(2); return d; };
+    const matchPhone = (a: unknown, b: unknown) => {
+      const ca = canon(a), cb = canon(b);
+      if (ca.length < 8 || cb.length < 8) return false;
+      if (ca === cb) return true;
+      if (ca.slice(-8) !== cb.slice(-8)) return false;
+      const da = ca.length >= 10 ? ca.slice(0, 2) : "", db2 = cb.length >= 10 ? cb.slice(0, 2) : "";
+      return !da || !db2 || da === db2;
+    };
     const c = (st.customers || []).find((x: any) =>
       String(x.code || "").toUpperCase() === q.toUpperCase() ||
       String(x.code || "").toUpperCase() === ("JJ-" + q).toUpperCase() ||
-      (qDigits.length >= 8 && onlyDigits(x.phone) === qDigits));
+      matchPhone(x.phone, q));
     if (!c) return json({ ok: true, found: false });
     const s2 = st.settings || {};
     // só o necessário pro cartão: sem telefone, sem histórico, sem outros clientes
