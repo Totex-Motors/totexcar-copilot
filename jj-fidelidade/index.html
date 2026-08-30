@@ -546,11 +546,19 @@ async function sendCardWA(c, opts){
   }
 }
 function waFallback(c, why){
-  // plano B sempre funciona: abre o WhatsApp do aparelho com a mensagem pronta
+  // plano B sempre funciona: abre o WhatsApp do aparelho com a mensagem pronta.
+  // ATENÇÃO: só emojis do plano básico Unicode (⭐ ✅ ➡) — emojis "altos" (🔥 etc.)
+  // são mutilados pelo wa.me?text= em alguns Androids e chegam como "�".
   const link = cardUrl(c.code);
-  const msg = '🔥 Olá '+c.name+'! Seu Cartão Fidelidade J.J Espetos ('+c.code+')'
-    + (link ? ' está aqui: '+link : ' está pronto — código '+c.code+'.')
-    + ' Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!';
+  const msg =
+    'Olá, *'+c.name+'*! ⭐\n\n'
+    + 'Seu *Cartão Fidelidade J.J Espetos* está pronto.\n\n'
+    + '*Cartão:* '+c.code+'\n'
+    + '*Selos:* '+c.stamps+' de '+db.settings.goal+'\n\n'
+    + (link ? '➡ Acompanhe seus selos e seu prêmio:\n'+link+'\n\n' : '')
+    + db.settings.rule+'\n\n'
+    + '_J.J Restaurante e Espetaria_\n'
+    + 'Av. Tenente Marquês, 06 — Polvilho, Cajamar';
   if(why) toast(why+' — abrindo seu WhatsApp…');
   window.open('https://wa.me/'+phone55(c.phone)+'?text='+encodeURIComponent(msg), '_blank');
 }
@@ -1258,9 +1266,14 @@ function action(act){
       const me = byCodeOrPhone(state.cardCode); if(!me) return;
       const first = (me.name||'').trim().split(/\s+/)[0];
       const link = inviteUrl(me);
-      const msg = '🔥 Bora comer na J.J Espetos? Compra 1 costela no bafo ou 1 frango e apresenta meu voucher *'
-        + me.code + '* no balcão' + (link ? ': '+link : '.')
-        + ' Você já começa seu cartão fidelidade — juntando 10 selos ganha um almoço completo grátis! — ' + first;
+      // só emojis do plano básico (⭐ ➡): os "altos" viram "�" no wa.me de alguns Androids
+      const msg =
+        '*Bora comer na J.J Espetos?* ⭐\n\n'
+        + 'Compra *1 costela no bafo ou 1 frango* e apresenta meu voucher *'+me.code+'* no balcão.\n\n'
+        + 'Você já começa seu cartão fidelidade — juntando *'+db.settings.goal+' selos* você ganha *'
+        + db.settings.reward+'*!\n\n'
+        + (link ? '➡ Abre seu voucher aqui:\n'+link+'\n\n' : '')
+        + '— '+first;
       window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
       break;
     }

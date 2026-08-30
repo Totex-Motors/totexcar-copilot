@@ -167,11 +167,17 @@ Deno.serve(async (req) => {
       .eq("from_phone", to55).eq("kind", "jj_card_send").gte("created_at", since).limit(1);
     if (recent?.length) return json({ ok: false, error: "aguarde_10min" }, 429);
 
+    // só emojis do plano básico Unicode (⭐ ➡): os "altos" (🔥 etc.) chegam
+    // como "�" em alguns Androids — mesma formatação do modo grátis do app
     const text =
-      `🔥 Olá ${name}! Seu *Cartão Fidelidade J.J Espetos* está pronto.\n\n` +
-      `Você já tem *${stamps} de ${goal}* selos. Acompanhe seus selos e seu prêmio aqui:\n${url}\n\n` +
-      `Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis. ` +
-      `Obrigado pela preferência! — Av. Tenente Marques, 06 · Polvilho, Cajamar`;
+      `Olá, *${name}*! ⭐\n\n` +
+      `Seu *Cartão Fidelidade J.J Espetos* está pronto.\n\n` +
+      `*Cartão:* ${String(p.code || "")}\n` +
+      `*Selos:* ${stamps} de ${goal}\n\n` +
+      `➡ Acompanhe seus selos e seu prêmio:\n${url}\n\n` +
+      `Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!\n\n` +
+      `_J.J Restaurante e Espetaria_\n` +
+      `Av. Tenente Marquês, 06 — Polvilho, Cajamar`;
 
     const sent = await uazapiText(s, to55, text);
     if (!sent.ok) return json({ ok: false, error: sent.err });
