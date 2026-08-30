@@ -427,7 +427,7 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
 
 const LS_KEY = 'jj_fidelidade_v1';
 const DEFAULTS = {
-  settings:{ pin:'1234', goal:10, reward:'um almoço completo grátis',
+  settings:{ pin:'123456', goal:10, reward:'um almoço completo grátis',
     rule:'Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!',
     appUrl:'',      // endereço público do app (usado nos QR e na mensagem); vazio = o endereço atual
     waApi:false,    // false = envio grátis (abre o WhatsApp); true = automático pela instância de API
@@ -1121,7 +1121,7 @@ function adminAjustes(){
   </div>
   <div class="panel">
     <h3>Segurança</h3>
-    <div class="field"><label for="stPin">PIN do admin (4 dígitos)</label><input id="stPin" inputmode="numeric" maxlength="4" value="${esc(s.pin)}"></div>
+    <div class="field"><label for="stPin">PIN do admin (6 dígitos)</label><input id="stPin" inputmode="numeric" maxlength="6" value="${esc(s.pin)}"></div>
     <button class="btn btn-ghost btn-block" data-act="savePin">Trocar PIN</button>
   </div>
   <div class="panel">
@@ -1172,7 +1172,7 @@ function modalDetail(){
 }
 
 function viewPin(){
-  const dots = Array.from({length:4},(_,i)=>`<i class="${i<state.pinBuf.length?'on':''}"></i>`).join('');
+  const dots = Array.from({length:6},(_,i)=>`<i class="${i<state.pinBuf.length?'on':''}"></i>`).join('');
   const keys = ['1','2','3','4','5','6','7','8','9','←','0','ok'];
   return `<main>
     <h1 class="screen-title" style="text-align:center">Área do dono</h1>
@@ -1181,7 +1181,6 @@ function viewPin(){
       <div class="pin-dots">${dots}</div>
       <p class="pin-err">${state.pinErr?'PIN errado. Tenta de novo.':state.pinBusy?'Conectando à nuvem…':''}</p>
       <div class="pin-pad">${keys.map(k=>`<button data-key="${k}">${k==='ok'?'✓':k}</button>`).join('')}</div>
-      <p class="muted" style="font-size:12px">PIN inicial: 1234 — troque em Ajustes.</p>
     </div>
   </main>`;
 }
@@ -1218,8 +1217,8 @@ function renderListOnly(){ // busca sem perder foco
 function pinKey(k){
   if(k==='←'){ state.pinBuf = state.pinBuf.slice(0,-1); state.pinErr=false; }
   else if(k==='ok'){ checkPin(); return; }
-  else { state.pinBuf = (state.pinBuf + k).slice(0,4); state.pinErr=false;
-         if(state.pinBuf.length===4){ checkPin(); return; } }
+  else { state.pinBuf = (state.pinBuf + k).slice(0,6); state.pinErr=false;
+         if(state.pinBuf.length===6){ checkPin(); return; } }
   render();
 }
 async function checkPin(){
@@ -1346,7 +1345,7 @@ function action(act){
     }
     case 'savePin':{
       const p = $app.querySelector('#stPin').value.trim();
-      if(!/^\d{4}$/.test(p)){ toast('O PIN precisa ter 4 números.'); return; }
+      if(!/^\d{6}$/.test(p)){ toast('O PIN precisa ter 6 números.'); return; }
       db.settings.pin = p; save(db); scheduleSync(); toast('PIN atualizado!'); break;
     }
     case 'export':{

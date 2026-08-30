@@ -63,7 +63,7 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
   (`prefers-reduced-motion`).
 
 **Aba "Admin" (dono)**
-- Protegida por PIN de 4 dígitos (inicial: `1234` — troque em Ajustes).
+- Protegida por PIN de 6 dígitos (definido pelo dono; o PIN da nuvem é a fonte da verdade).
 - Resumo: total de clientes, selos dados no mês, prêmios entregues.
 - Clientes: busca por nome/código/telefone, cadastro com código automático (`JJ-0001`,
   `JJ-0002`…), dar +1 selo, desfazer selo, entregar prêmio (zera o cartão e conta no
