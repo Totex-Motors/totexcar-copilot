@@ -285,6 +285,26 @@
 
   .footer-note{text-align:center;font-size:12px;color:#8a6f57;padding:4px 20px 0}
 
+  /* ---------- indicação ---------- */
+  .voucher-code{
+    font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:.08em;
+    color:var(--ember);text-align:center;
+    border:2px dashed var(--ember);border-radius:12px;padding:10px 14px;
+    background:rgba(232,134,43,.07);
+  }
+  .invite-hero{
+    background:linear-gradient(160deg, var(--card) 0%, var(--card-2) 100%);
+    border-radius:18px;padding:24px 20px;color:var(--ink);text-align:center;
+    box-shadow:0 18px 50px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.6);
+    display:flex;flex-direction:column;gap:12px;align-items:center;
+  }
+  .invite-hero .iv-eyebrow{font-size:12px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft)}
+  .invite-hero .iv-title{font-family:var(--display);font-weight:400;font-size:26px;color:var(--ember);line-height:1.15;text-wrap:balance}
+  .invite-hero .iv-from{font-size:15px;font-weight:800;color:var(--ink)}
+  .invite-hero .voucher-code{font-size:30px;background:#fff}
+  .invite-hero .iv-rule{font-size:14px;font-weight:700;color:var(--ink);line-height:1.55}
+  .invite-hero .iv-rule b{color:var(--flame)}
+
   /* ---------- QR ---------- */
   .qr-row{display:flex;align-items:center;gap:14px}
   .qr-box{
@@ -394,6 +414,7 @@ let state = {
   adminSub:'clientes',   // clientes | novo | ajustes
   search:'',
   cardCode: localStorage.getItem(LS_KEY+':mycard') || '',
+  invite: (function(){ try{ return JSON.parse(localStorage.getItem(LS_KEY+':invite')||'null'); }catch(e){ return null; } })(),
   detail:null,           // id do cliente aberto no modal
   pinBuf:'', pinErr:false
 };
@@ -420,6 +441,11 @@ function appUrl(){
   return /^https?:$/.test(location.protocol) ? location.origin + location.pathname : '';
 }
 function cardUrl(code){ const b = appUrl(); return b ? b + '?c=' + encodeURIComponent(code) : ''; }
+function inviteUrl(c){
+  const b = appUrl(); if(!b) return '';
+  const first = (c.name||'').trim().split(/\s+/)[0];
+  return b + '?i=' + encodeURIComponent(c.code) + (first ? '&n=' + encodeURIComponent(first) : '');
+}
 function phone55(p){ const d = String(p||'').replace(/\D/g,''); return d.length<=11 ? '55'+d : d; }
 
 function renderQRs(root){
@@ -543,6 +569,20 @@ function topBar(){
 /* ===================== VISÃO DO CLIENTE ===================== */
 function viewCard(){
   const c = byCodeOrPhone(state.cardCode);
+  if(!c && state.invite){
+    const iv = state.invite;
+    return `<main>
+      <div class="invite-hero">
+        <div class="iv-eyebrow">Voucher de indicação</div>
+        <div class="iv-title">${iv.name ? esc(iv.name)+' te chamou pra comer na J.J!' : 'Você foi convidado pra comer na J.J!'}</div>
+        <div class="voucher-code">${esc(iv.code)}</div>
+        <p class="iv-rule">Compre <b>1 costela no bafo ou 1 frango</b> e <b>mostre esta tela no balcão</b>.<br>
+        Você já começa seu cartão fidelidade — e ${iv.name ? esc(iv.name) : 'quem te indicou'} ganha <b>+1 selo</b>. 🔥</p>
+      </div>
+      <p class="footer-note">J.J Espetos · Av. Tenente Marques, 06 — Polvilho, Cajamar</p>
+      <button class="btn btn-ghost btn-block" data-act="dismissInvite">Já tenho cartão / abrir outro cartão</button>
+    </main>`;
+  }
   if(!c){
     return `<main>
       <h1 class="screen-title">Seu cartão fidelidade, agora no celular</h1>
@@ -576,8 +616,18 @@ function viewCard(){
       ? `<div class="reward-banner"><h2>Prêmio liberado! 🎉</h2>
            <p>Você ganhou ${esc(db.settings.reward)}. Mostre esta tela no balcão para resgatar.</p></div>`
       : `<p class="progress-note">${STAMP_ICON_MINI()} <span><b>${c.stamps} de ${goal}</b> selos — faltam <b>${goal-c.stamps}</b> para ${esc(db.settings.reward)}</span></p>`}
+    <div class="panel">
+      <h3>🤝 Indique um amigo e ganhe +1 selo</h3>
+      <p class="muted" style="font-size:13px;margin:0">Seu amigo compra <b>1 costela no bafo ou 1 frango</b> e apresenta seu voucher no balcão — você ganha <b>+1 selo</b> na hora, e ele já começa o cartão dele.</p>
+      <div class="voucher-code">${esc(c.code)}</div>
+      <button class="btn btn-primary btn-block" data-act="shareInvite">📲 Convidar pelo WhatsApp</button>
+      <div class="qr-row">
+        <div class="qr-box" data-qr="${esc(inviteUrl(c))}" data-size="88"></div>
+        <p class="qr-hint">Ou deixe seu amigo escanear este QR: abre o voucher com seu código no celular dele.</p>
+      </div>
+    </div>
     <div class="panel"><div class="qr-row">
-      <div class="qr-box" data-qr="${esc(cardUrl(c.code))}" data-size="100"></div>
+      <div class="qr-box" data-qr="${esc(cardUrl(c.code))}" data-size="88"></div>
       <p class="qr-hint"><b>Leve seu cartão com você:</b> aponte a câmera de outro celular para este código e o cartão abre lá.</p>
     </div></div>
     <button class="btn btn-ghost btn-block" data-act="forget">Trocar de cartão</button>
@@ -593,7 +643,7 @@ function viewAdmin(){
   if(!state.adminOk) return viewPin();
   const s = db.settings;
   const month0 = new Date(); month0.setDate(1); month0.setHours(0,0,0,0);
-  const stampsMonth = db.customers.reduce((n,c)=> n + c.history.filter(h=>h.t==='stamp' && h.ts>=+month0).length, 0);
+  const stampsMonth = db.customers.reduce((n,c)=> n + c.history.filter(h=>(h.t==='stamp'||h.t==='referral') && h.ts>=+month0).length, 0);
   const redeemed = db.customers.reduce((n,c)=> n + c.redeemed, 0);
 
   let body = '';
@@ -641,6 +691,8 @@ function adminNovo(){
     <h3>Cadastrar cliente</h3>
     <div class="field"><label for="npName">Nome *</label><input id="npName" placeholder="Ex.: Junior" autocomplete="off"></div>
     <div class="field"><label for="npPhone">Telefone / WhatsApp</label><input id="npPhone" inputmode="tel" placeholder="(11) 99999-9999" autocomplete="off"></div>
+    <div class="field"><label for="npRef">Voucher de indicação (se o cliente apresentou)</label><input id="npRef" placeholder="JJ-0001" autocomplete="off" style="text-transform:uppercase"></div>
+    <p class="muted" style="font-size:13px;margin:0">🤝 Com voucher válido, <b>quem indicou ganha +1 selo automático</b> — vale na primeira compra de costela ou frango do indicado.</p>
     <button class="btn btn-primary btn-block" data-act="create">Criar cartão</button>
     <p class="muted" style="font-size:13px">Com telefone preenchido, o link do cartão vai <b>automático no WhatsApp do cliente</b>. Ele também pode abrir pela aba “Meu Cartão” (código ou telefone) ou escaneando o QR.</p>
   </div>`;
@@ -696,12 +748,14 @@ function modalDetail(){
   const goal = db.settings.goal;
   const full = c.stamps >= goal;
   const hist = c.history.slice().reverse().slice(0,30).map(h=>
-    `<li class="${h.t==='stamp'?'h-stamp':'h-redeem'}">
-      <span class="h-what">${h.t==='stamp' ? '+1 selo' : '🏆 Prêmio resgatado'}</span>
+    `<li class="${h.t==='redeem'?'h-redeem':'h-stamp'}">
+      <span class="h-what">${h.t==='stamp' ? '+1 selo'
+        : h.t==='referral' ? '🤝 +1 selo — indicou '+esc(h.friend||'um amigo')
+        : '🏆 Prêmio resgatado'}</span>
       <span class="h-when">${fmtDate(h.ts)}</span></li>`).join('');
   return `<div class="overlay" data-close="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Cliente ${esc(c.name)}">
     <div class="sheet-head"><h2>${esc(c.name)}</h2><button class="close-x" data-close="1" aria-label="Fechar">✕</button></div>
-    <p class="muted" style="margin-top:-8px"><span style="font-family:var(--mono)">${esc(c.code)}</span>${c.phone?' · '+esc(c.phone):''} · cliente desde ${new Date(c.createdAt).toLocaleDateString('pt-BR')}</p>
+    <p class="muted" style="margin-top:-8px"><span style="font-family:var(--mono)">${esc(c.code)}</span>${c.phone?' · '+esc(c.phone):''} · cliente desde ${new Date(c.createdAt).toLocaleDateString('pt-BR')}${c.referredBy?' · veio por indicação ('+esc(c.referredBy)+')':''}</p>
     <div class="stats">
       <div class="stat"><b>${c.stamps}</b><span>selos agora</span></div>
       <div class="stat"><b>${goal}</b><span>meta</span></div>
@@ -794,16 +848,44 @@ function action(act){
     }
     case 'forget':
       state.cardCode=''; localStorage.removeItem(LS_KEY+':mycard'); render(); break;
+    case 'shareInvite':{
+      const me = byCodeOrPhone(state.cardCode); if(!me) return;
+      const first = (me.name||'').trim().split(/\s+/)[0];
+      const link = inviteUrl(me);
+      const msg = '🔥 Bora comer na J.J Espetos? Compra 1 costela no bafo ou 1 frango e apresenta meu voucher *'
+        + me.code + '* no balcão' + (link ? ': '+link : '.')
+        + ' Você já começa seu cartão fidelidade — juntando 10 selos ganha um almoço completo grátis! — ' + first;
+      window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+      break;
+    }
+    case 'dismissInvite':
+      state.invite=null; localStorage.removeItem(LS_KEY+':invite'); render(); break;
     case 'lock':
       state.adminOk=false; state.pinBuf=''; render(); break;
     case 'create':{
       const name = $app.querySelector('#npName').value.trim();
       const phone = $app.querySelector('#npPhone').value.trim();
       if(!name){ toast('Falta o nome do cliente.'); return; }
+      const refCode = ($app.querySelector('#npRef').value||'').trim().toUpperCase();
       const nc = makeCustomer(db, name, phone);
+      let refMsg = '';
+      if(refCode){
+        const ref = byCodeOrPhone(refCode);
+        if(!ref){ refMsg = ' Voucher '+refCode+' não encontrado — nenhum selo de indicação dado.'; }
+        else {
+          nc.referredBy = ref.code;
+          if(ref.stamps < db.settings.goal){
+            ref.stamps++;
+            ref.history.push({t:'referral', ts:Date.now(), friend: nc.name});
+            refMsg = ' 🤝 +1 selo para '+ref.name+' pela indicação!';
+          } else {
+            refMsg = ' Cartão de '+ref.name+' já está cheio — resgate o prêmio antes de somar o selo da indicação.';
+          }
+        }
+      }
       db.customers.push(nc); save(db);
       state.adminSub='clientes'; state.detail = nc.id; state.search='';
-      render(); toast(`Cartão ${nc.code} criado para ${nc.name}!`);
+      render(); toast(`Cartão ${nc.code} criado para ${nc.name}!`+refMsg);
       if(nc.phone) sendCardWA(nc, {silent:true}); // manda o cartão no WhatsApp do cliente
       break;
     }
@@ -855,7 +937,7 @@ function action(act){
     case 'unstamp':{
       if(!c || c.stamps<=0) return;
       c.stamps--;
-      for(let i=c.history.length-1;i>=0;i--){ if(c.history[i].t==='stamp'){ c.history.splice(i,1); break; } }
+      for(let i=c.history.length-1;i>=0;i--){ if(c.history[i].t==='stamp'||c.history[i].t==='referral'){ c.history.splice(i,1); break; } }
       save(db); render(); break;
     }
     case 'redeem':{
@@ -920,6 +1002,13 @@ const urlCode = new URLSearchParams(location.search).get('c');
 if(urlCode){
   const found = byCodeOrPhone(urlCode);
   if(found){ state.tab='card'; state.cardCode = found.code; localStorage.setItem(LS_KEY+':mycard', found.code); }
+}
+// chegou por convite? (?i=JJ-0001&n=Junior) → guarda e mostra o voucher de indicação
+const urlInvite = new URLSearchParams(location.search).get('i');
+if(urlInvite){
+  state.invite = { code: urlInvite.toUpperCase(), name: new URLSearchParams(location.search).get('n') || '' };
+  localStorage.setItem(LS_KEY+':invite', JSON.stringify(state.invite));
+  state.tab='card';
 }
 
 render();

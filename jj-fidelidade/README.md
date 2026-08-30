@@ -35,6 +35,18 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
 - Proteção: chave em `app_settings.jj_wa_key` + máx. 1 envio por telefone a cada 10 min.
   A chave fica no app (Ajustes › Avançado); para trocar, atualize a coluna no banco e no app.
 
+**Gamificação de indicação (indique e ganhe +1 selo)**
+- Todo cliente tem um **voucher de indicação** (o próprio código do cartão) na tela do
+  cartão: código em destaque, QR e botão "Convidar pelo WhatsApp" com mensagem pronta.
+- O amigo abre o link do convite (`?i=JJ-0001&n=Junior`) e vê a tela do voucher:
+  "Junior te chamou pra comer na J.J!", com a regra — comprar 1 costela no bafo ou
+  1 frango e mostrar a tela no balcão.
+- No balcão, ao cadastrar o amigo (primeira compra), o campo **"Voucher de indicação"**
+  valida o código e dá **+1 selo automático para quem indicou** (aparece no histórico
+  como "🤝 +1 selo — indicou Fulano"; o novo cliente fica marcado "veio por indicação").
+- Se o cartão de quem indicou já estiver cheio, o app avisa para resgatar o prêmio
+  primeiro (o selo de indicação não passa da meta).
+
 **Aba "Admin" (dono)**
 - Protegida por PIN de 4 dígitos (inicial: `1234` — troque em Ajustes).
 - Resumo: total de clientes, selos dados no mês, prêmios entregues.
