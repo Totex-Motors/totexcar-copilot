@@ -548,7 +548,7 @@ async function sendCardWA(c, opts){
 function waFallback(c, why){
   // plano B sempre funciona: abre o WhatsApp do aparelho com a mensagem pronta.
   // ATENÇÃO: só emojis do plano básico Unicode (⭐ ✅ ➡) — emojis "altos" (🔥 etc.)
-  // são mutilados pelo wa.me?text= em alguns Androids e chegam como "�".
+  // são mutilados pelo wa.me?text= em alguns Androids e viram interrogação.
   const link = cardUrl(c.code);
   const msg =
     'Olá, *'+c.name+'*! ⭐\n\n'
@@ -1266,7 +1266,7 @@ function action(act){
       const me = byCodeOrPhone(state.cardCode); if(!me) return;
       const first = (me.name||'').trim().split(/\s+/)[0];
       const link = inviteUrl(me);
-      // só emojis do plano básico (⭐ ➡): os "altos" viram "�" no wa.me de alguns Androids
+      // só emojis do plano básico (⭐ ➡): os "altos" viram "interrogação" no wa.me de alguns Androids
       const msg =
         '*Bora comer na J.J Espetos?* ⭐\n\n'
         + 'Compra *1 costela no bafo ou 1 frango* e apresenta meu voucher *'+me.code+'* no balcão.\n\n'
