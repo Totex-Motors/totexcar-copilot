@@ -2911,6 +2911,26 @@ function querAtivar(t: string): boolean {
 // Detecta "ver mais carros / mais opções" (texto ou toque na lista) pra paginar a vitrine do visitante.
 const VER_MAIS_RE = /ver mais|mais carros|mais op[çc][õo]es|mais ve[íi]culos|continuar vendo|mostrar mais/i;
 
+// CONVITE CONTEXTUAL pra COMUNIDADE do WhatsApp (a "escada": grupo pra quem topa; busca 1:1 pra
+// quem não). Dispara SÓ nos becos sem saída da vitrine (não achou o carro / acabou o estoque) — o
+// momento em que "ver primeiro quando chegar" tem valor real. 1x por telefone (dedup por evento),
+// promessa honesta (mudo, 2 posts/dia, sai quando quiser). Link em app_settings.comunidade_link
+// (trocável sem deploy; vazio = convite desligado).
+async function offerComunidade(phone: string): Promise<void> {
+  try {
+    const digits = onlyDigits(phone);
+    const { data } = await supabase.from("app_settings").select("comunidade_link").eq("id", 1).single();
+    const link = String((data as any)?.comunidade_link || "").trim();
+    if (!link) return;
+    const { count } = await supabase.from("whatsapp_events")
+      .select("id", { count: "exact", head: true })
+      .eq("from_phone", digits).eq("kind", "comunidade_invite");
+    if (count) return;
+    await supabase.from("whatsapp_events").insert({ from_phone: digits, kind: "comunidade_invite", status: "sent", raw: {}, parsed: {} });
+    await sendText(phone, `👀 Dica: carro bom some em dias — e as ofertas saem *primeiro* na nossa comunidade, antes do anúncio.\n\nSem bagunça: só posts de oportunidade, 2 por dia, e você sai quando quiser 👉 ${link}`);
+  } catch (e) { console.error("offerComunidade:", e); }
+}
+
 // VITRINE PAGINADA do visitante do stand: mostra 10 carros por vez e oferece "🔎 Ver mais carros"
 // enquanto sobrar estoque. O critério (categoria/preço) e o offset ficam no evento stand_lead
 // (parsed.vitrine), então o "ver mais" continua exatamente a última busca. Ordenação fixa
@@ -2943,6 +2963,7 @@ async function standVitrine(
   if (!pagina.length) {
     if (offset > 0) {
       await sendText(phone, "Esses são todos que tenho com esse perfil por enquanto 🙂 Me diz outro tipo, modelo ou faixa de preço (ex.: \"SUV até 80 mil\") que eu procuro de novo.");
+      await offerComunidade(phone); // "ver primeiro quando chegar" — o momento em que o grupo tem valor
       return;
     }
     // busca específica (modelo/tipo/preço) sem resultado → NÃO deixa no vácuo: avisa e já mostra o que tem
@@ -2953,6 +2974,7 @@ async function standVitrine(
       return;
     }
     await sendText(phone, "Estoque sem novidades nesse momento 😕 Me fala um tipo, modelo ou faixa de preço que eu procuro pra você. 🚗");
+    await offerComunidade(phone);
     return;
   }
 

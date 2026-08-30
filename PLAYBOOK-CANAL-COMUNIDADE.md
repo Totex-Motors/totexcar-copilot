@@ -57,6 +57,48 @@ autonomia + **sensação de ganho**, e monetizar fechando pras duas pontas (não
 3. **Ativar:** ligar o ímã "quanto vale seu carro"; medir `#vender`; primeiros agendamentos/fechamentos.
 4. **Ler e decidir:** cliques→conversas→leads→fechamento. O que converte, dobra; o que não, corta. Só aí escalar/replicar pra outras lojas.
 
+## Estrutura da Comunidade (fase 1 — comece ENXUTO)
+Comunidade criada: https://chat.whatsapp.com/LheuXvp88otLcadFBXWTi7
+**Poucos grupos cheios > muitos vazios.** Começar com 4; abrir novos só quando um encher ~200+.
+
+| Grupo | Papel | Quem posta |
+|---|---|---|
+| 📣 Avisos TotexMotors | carro do dia / abaixo da FIPE (ligado ao Canal) | só admin |
+| 🔥 Oportunidades / Repasse | só abaixo da FIPE, à vista — urgência real | só admin |
+| 🚗 SUVs, Picapes & Elétricos | o que mais gira; conversa liberada | todos |
+| 💰 Vendo meu carro (avaliação grátis) | a ponta vendedora → alimenta o #vender | todos |
+
+Ímãs de utilidade (dicas de dono, Radar de serviços) ficam pra fase 2, quando tiver gente.
+
+## Estratégia de convite — "a escada" (objeção: "não quero mais grupo")
+Ninguém quer grupo; as pessoas querem **vantagem com porta de saída**. Nunca venda "entre no
+grupo"; venda **acesso antecipado**: *"Carro bom some em dias. Quem vê primeiro, compra. As
+ofertas saem no grupo ANTES do anúncio."* (urgência honesta — carro usado é peça única.)
+
+As 3 promessas anti-objeção (garantidas por estrutura, não por promessa):
+1. 🔕 "Só 2 posts/dia, zero conversa" → grupo com **só admin posta**.
+2. ⚡ "Só oportunidade de verdade" → curadoria (abaixo da FIPE / recém-chegado).
+3. 🚪 "Sai com um toque, sem mágoa" → dizer isso NO convite desarma a resistência.
+
+A escada (deixa a pessoa escolher o nível de compromisso; capture em algum degrau):
+- 📣 **Canal** = compromisso mínimo ("só seguir, ninguém te vê").
+- 👥 **Grupo** = vantagem ("vê as ofertas primeiro").
+- 🤖 **Co-pilot 1:1** = zero grupo ("me diz o carro que te aviso quando chegar" — nosso diferencial).
+
+Scripts por contexto (balcão, Canal/Instagram, pós-#vender, quem recusa grupo): a objeção nomeada
+no convite ("sei que ninguém aguenta mais grupo; esse é mudo, 2 posts/dia, só oportunidade").
+
+**No Co-pilot (implementado):** `offerComunidade()` — convite contextual 1x por telefone, disparado
+só nos becos sem saída da vitrine (não achou / acabou o estoque), quando "ver primeiro" tem valor.
+Link configurável em `app_settings.comunidade_link` (vazio = desligado).
+
+## Alto-falante vs cofre (números)
+- **Oficial (Meta) 5511963786699 = o Co-pilot (cofre).** NUNCA conectar em API não-oficial.
+- **Não-oficial (TotexGest) = alto-falante dos grupos (descartável).** Postagens agendadas nos
+  grupos próprios (2x/dia, audiência opt-in) = volume baixo, risco baixo. Se cair, troca o chip.
+- Lição do mercado (DevZapp, R$197–697/mês): links de captação por origem e organização por tema
+  valem copiar (do jeito seguro); criação de grupos em lote + disparo em massa NÃO (queima número).
+
 ## Minha parte (dev do Co-pilot) — sustentar o playbook
 - Links prontos (deep-links `wa.me`) por tipo de post (vender, carro específico, avaliação).
 - Rastreio de cliques nos eventos (cliques→conversa→lead sem planilha manual).
