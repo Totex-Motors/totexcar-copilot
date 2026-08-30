@@ -156,8 +156,8 @@
   .f-org{animation:fdance .78s ease-in-out infinite alternate-reverse}
   .f-yel{animation:fdance .58s ease-in-out infinite alternate}
   @keyframes fdance{
-    from{transform:scaleY(.9) scaleX(1.06) rotate(-2.5deg)}
-    to{transform:scaleY(1.1) scaleX(.93) rotate(2.5deg)}
+    from{transform:scaleY(.86) scaleX(1.09) rotate(-3.5deg)}
+    to{transform:scaleY(1.14) scaleX(.9) rotate(3.5deg)}
   }
   .slot-glow{animation:pglowp 1.4s ease-in-out infinite alternate}
   @keyframes pglowp{from{opacity:.55}to{opacity:1}}
@@ -388,7 +388,19 @@
 
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+    /* exceção: o fogo dos selos mantém vida com um brilho pulsante SUAVE
+       (só opacidade, sem movimento espacial — celulares com "reduzir
+       movimento"/"remover animações" ligado ainda veem a brasa acesa) */
+    .fl,.slot-glow{
+      transform:none!important;
+      animation-name:shimmer!important;animation-duration:2.4s!important;
+      animation-iteration-count:infinite!important;animation-direction:alternate!important;
+      animation-timing-function:ease-in-out!important;
+    }
+    .f-org{animation-duration:1.9s!important}
+    .f-yel{animation-duration:1.5s!important}
   }
+  @keyframes shimmer{from{opacity:.55}to{opacity:1}}
   @media (max-width:380px){
     .stamp-grid{gap:9px}
     .pin-pad{grid-template-columns:repeat(3,64px)}
