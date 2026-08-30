@@ -485,13 +485,23 @@ const $app = document.getElementById('app');
 const esc = s => String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const fmtDate = ts => new Date(ts).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'})
   + ' ' + new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+/* telefone tolerante: casa com/sem +55, com/sem o nono dígito, com/sem DDD */
+function matchPhone(a, b){
+  const canon = v => { let d = String(v||'').replace(/\D/g,''); if(d.length > 11 && d.startsWith('55')) d = d.slice(2); return d; };
+  a = canon(a); b = canon(b);
+  if(a.length < 8 || b.length < 8) return false;
+  if(a === b) return true;
+  if(a.slice(-8) !== b.slice(-8)) return false;    // mesmos 8 finais…
+  const da = a.length >= 10 ? a.slice(0,2) : '', db2 = b.length >= 10 ? b.slice(0,2) : '';
+  return !da || !db2 || da === db2;                // …e, se ambos têm DDD, o DDD bate
+}
 const byCodeOrPhone = q => {
   q = q.trim().toLowerCase();
   if(!q) return null;
   return db.customers.find(c =>
     c.code.toLowerCase() === q ||
     c.code.toLowerCase() === ('jj-'+q).toLowerCase() ||
-    (c.phone && c.phone.replace(/\D/g,'') === q.replace(/\D/g,'') && q.replace(/\D/g,'').length >= 8)
+    matchPhone(c.phone, q)
   ) || null;
 };
 
@@ -678,12 +688,29 @@ async function pullState(pin){
     if(j.ok){
       cloudOk = true;
       if(j.data && Array.isArray(j.data.customers)){
-        j.data.settings = Object.assign({}, DEFAULTS.settings, j.data.settings||{});
-        if(!j.data.settings.waEndpoint) j.data.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
-        if(!j.data.settings.waKey) j.data.settings.waKey = DEFAULTS.settings.waKey;
-        j.data.seq = Math.max(j.data.seq||1, db.seq||1);
-        db = j.data; save(db);
-        return { status:'ok', hadData:true };
+        const cloud = j.data;
+        cloud.settings = Object.assign({}, DEFAULTS.settings, cloud.settings||{});
+        if(!cloud.settings.waEndpoint) cloud.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
+        if(!cloud.settings.waKey) cloud.settings.waKey = DEFAULTS.settings.waKey;
+        cloud.seq = Math.max(cloud.seq||1, db.seq||1);
+        // FUSÃO anti-perda: cliente que só existe neste aparelho (push que não
+        // chegou à nuvem) NÃO pode sumir no pull — entra na nuvem agora.
+        let merged = 0;
+        for(const lc of db.customers){
+          const cc = cloud.customers.find(x => x.code === lc.code);
+          if(!cc){
+            cloud.customers.push(lc); merged++;
+          } else if(cc.name !== lc.name){
+            // colisão de código (numeração recomeçou num aparelho zerado): recodifica o local
+            const nc = Object.assign({}, lc);
+            nc.code = 'JJ-' + String(cloud.seq++).padStart(4,'0'); nc.id = nc.code;
+            cloud.customers.push(nc); merged++;
+          } else if((lc.history||[]).length > (cc.history||[]).length){
+            Object.assign(cc, lc); merged++;            // local mais adiantado (selo não sincado)
+          }
+        }
+        db = cloud; save(db);
+        return { status:'ok', hadData:true, merged };
       }
       return { status:'ok', hadData:false };            // nuvem ainda vazia (primeiro uso)
     }
@@ -1238,6 +1265,7 @@ async function checkPin(){
   state.pinBusy = false;
   if(res.status === 'ok' && res.hadData){
     state.adminOk = true; authPin = pin;
+    if(res.merged){ scheduleSync(); toast('☁️ '+res.merged+' registro(s) deste aparelho enviados pra nuvem.'); }
   } else if(res.status === 'pin'){
     state.pinErr = true;
   } else {
