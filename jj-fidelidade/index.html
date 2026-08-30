@@ -614,6 +614,57 @@ function printPoster(c){
   setTimeout(()=>{ window.print(); document.body.classList.remove('printing'); }, 250);
 }
 
+/* explosão de faíscas — dispara no ponto do toque quando o selo é dado.
+   Canvas temporário ACIMA de tudo, remove-se sozinho quando a última faísca apaga. */
+let lastTap = { x: 0, y: 0 };
+function sparkBurst(x, y, big){
+  x = x || innerWidth/2; y = y || innerHeight/2;
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:120;pointer-events:none';
+  document.body.appendChild(cv);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(innerWidth*dpr); cv.height = Math.round(innerHeight*dpr);
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const N = big ? 130 : 80, ps = [];
+  for(let i=0; i<N; i++){
+    const a = Math.random()*6.283, v = 2.2 + Math.random()*(big ? 9 : 6.5);
+    ps.push({ x, y, vx: Math.cos(a)*v, vy: Math.sin(a)*v - 2.2,
+      r: 1 + Math.random()*2.4, life: .85 + Math.random()*.35,
+      gold: Math.random() < (big ? .5 : .25) });
+  }
+  let flash = big ? .5 : .35; // clarão inicial de brasa
+  (function anim(){
+    c.clearRect(0, 0, innerWidth, innerHeight);
+    c.globalCompositeOperation = 'lighter';
+    if(flash > 0){
+      const g = c.createRadialGradient(x, y, 0, x, y, big ? 190 : 130);
+      g.addColorStop(0, 'rgba(255,190,90,'+flash+')');
+      g.addColorStop(1, 'rgba(255,120,40,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(x, y, big ? 190 : 130, 0, 6.283); c.fill();
+      flash -= .06;
+    }
+    let alive = 0;
+    for(const p of ps){
+      if(p.life <= 0) continue;
+      alive++;
+      p.x += p.vx; p.y += p.vy;
+      p.vy += .16; p.vx *= .985;              // gravidade + arrasto: faísca de verdade
+      p.life -= .016 + Math.random()*.012;
+      const col = p.gold ? '255,224,130' : '255,170,70';
+      const halo = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r*4);
+      halo.addColorStop(0, 'rgba('+col+','+(.4*p.life)+')');
+      halo.addColorStop(1, 'rgba('+col+',0)');
+      c.fillStyle = halo;
+      c.beginPath(); c.arc(p.x, p.y, p.r*4, 0, 6.283); c.fill();
+      c.fillStyle = 'rgba(255,235,170,'+Math.min(1, p.life)+')';
+      c.beginPath(); c.arc(p.x, p.y, p.r*Math.max(.35, p.life), 0, 6.283); c.fill();
+    }
+    if(alive || flash > 0) requestAnimationFrame(anim);
+    else cv.remove();
+  })();
+}
+
 function toast(msg){
   document.querySelectorAll('.toast').forEach(t=>t.remove());
   const t = document.createElement('div');
@@ -1031,7 +1082,10 @@ function viewPin(){
 
 /* ---------- eventos ---------- */
 function bind(){
-  $app.querySelectorAll('[data-act]').forEach(el=> el.addEventListener('click', ()=> action(el.dataset.act)));
+  $app.querySelectorAll('[data-act]').forEach(el=> el.addEventListener('click', (e)=>{
+    lastTap = { x: e.clientX || 0, y: e.clientY || 0 };
+    action(el.dataset.act);
+  }));
   $app.querySelectorAll('[data-sub]').forEach(el=> el.addEventListener('click', ()=>{ state.adminSub = el.dataset.sub; render(); }));
   $app.querySelectorAll('[data-open]').forEach(el=> el.addEventListener('click', ()=>{ state.detail = el.dataset.open; render(); }));
   $app.querySelectorAll('[data-close]').forEach(el=> el.addEventListener('click', e=>{ if(e.target===el){ state.detail=null; render(); } }));
@@ -1134,7 +1188,9 @@ function action(act){
       if(!c) return;
       c.stamps++; c.history.push({t:'stamp', ts:Date.now()}); save(db);
       render();
-      toast(c.stamps >= db.settings.goal ? `🎉 ${c.name} completou o cartão!` : `Selo ${c.stamps}/${db.settings.goal} para ${c.name}`);
+      const full = c.stamps >= db.settings.goal;
+      sparkBurst(lastTap.x, lastTap.y, full); // 🔥 explosão de faíscas no +1 (maior ao completar)
+      toast(full ? `🎉 ${c.name} completou o cartão!` : `Selo ${c.stamps}/${db.settings.goal} para ${c.name}`);
       break;
     }
     case 'unstamp':{
@@ -1147,7 +1203,9 @@ function action(act){
       if(!c) return;
       if(!confirm(`Entregar ${db.settings.reward} para ${c.name} e zerar o cartão?`)) return;
       c.stamps = 0; c.redeemed++; c.history.push({t:'redeem', ts:Date.now()}); save(db);
-      render(); toast(`🏆 Prêmio entregue para ${c.name}!`); break;
+      render();
+      sparkBurst(lastTap.x, lastTap.y, true); // 🏆 chuva de faíscas dourada no prêmio
+      toast(`🏆 Prêmio entregue para ${c.name}!`); break;
     }
     case 'delClient':{
       if(!c) return;
@@ -1261,6 +1319,42 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
   }
   rebuildHearth();
   addEventListener('resize', rebuildHearth);
+
+  // ---- chamas LAMBENDO AS LATERAIS: línguas que nascem, sobem pela borda e
+  // somem, em posições que derivam com o tempo (mesmo motor de combustão,
+  // desenhado rotacionado: base colada na borda, pontas para dentro) ----
+  const SD = 72, SCELL = 4; // profundidade da lambida (px) e resolução mais fina
+  let sideL = null, sideR = null;
+  function makeSideSeed(phase){
+    return function(s){
+      const {buf, w} = s, base = (s.h-1)*w;
+      buf.fill(0, base, base + w);
+      for(let k=0; k<5; k++){
+        // cada língua deriva devagar ao longo da borda e "respira"; às vezes apaga
+        const c = (Math.sin(s.t/(150+k*37) + phase + k*1.9) * .5 + .5) * (w-10) + 5;
+        const breathe = .5 + .5*Math.sin(s.t/19 + k*2.3 + phase*2);
+        // ancorada na fogueira: forte embaixo, rara e fraca perto do topo
+        const anchor = .2 + .8 * (c / w);
+        if(breathe * anchor < .28) continue;
+        const spread = 5 + (Math.random()*3|0);
+        for(let dx=-spread; dx<=spread; dx++){
+          const x = (c|0) + dx;
+          if(x < 0 || x >= w) continue;
+          const fall = 1 - Math.abs(dx)/(spread+1);
+          buf[base+x] = Math.max(buf[base+x], (FireSlots.MAXH * breathe * anchor * fall) | 0);
+        }
+      }
+    };
+  }
+  function rebuildSides(){
+    const len = Math.max(40, Math.ceil(H/SCELL)), dep = Math.max(14, Math.ceil(SD/SCELL));
+    sideL = FireSlots.makeSim(document.createElement('canvas'), len, dep, makeSideSeed(0));
+    sideR = FireSlots.makeSim(document.createElement('canvas'), len, dep, makeSideSeed(2.6));
+    for(let i=0; i<40; i++){ FireSlots.step(sideL); FireSlots.step(sideR); }
+    FireSlots.paint(sideL); FireSlots.paint(sideR);
+  }
+  rebuildSides();
+  addEventListener('resize', rebuildSides);
   function spawnSmoke(){
     // nasce na ponta das chamas e sobe ATÉ O TOPO da tela
     const x = hot[Math.floor(Math.random()*hot.length)] + rnd(-40,40);
@@ -1312,10 +1406,26 @@ document.getElementById('tabAdmin').addEventListener('click', ()=>{ state.tab='a
     }
 
     // fogo simulado na base (a cada 2 frames = cadência natural de chama)
-    if(t % 2 === 0){ FireSlots.step(hearth); FireSlots.paint(hearth); }
+    if(t % 2 === 0){
+      FireSlots.step(hearth); FireSlots.paint(hearth);
+      FireSlots.step(sideL); FireSlots.paint(sideL);
+      FireSlots.step(sideR); FireSlots.paint(sideR);
+    }
     ctx.globalCompositeOperation = 'lighter';
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(hearth.cv, 0, H - FH, W, FH);
+
+    // lambidas nas laterais (rotacionadas: base na borda, pontas para dentro)
+    ctx.save();
+    ctx.globalAlpha = .7;
+    ctx.transform(0, 1, -1, 0, SD, 0);          // esquerda
+    ctx.drawImage(sideL.cv, 0, 0, H, SD);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = .7;
+    ctx.transform(0, 1, 1, 0, W - SD, 0);       // direita
+    ctx.drawImage(sideR.cv, 0, 0, H, SD);
+    ctx.restore();
 
     // faíscas voando ALTO, com halo de brasa
     if(embers.length < 26 && Math.random() < .45) spawnEmber();
