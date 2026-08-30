@@ -14,6 +14,18 @@
 //   { action:"status", k }
 //       → diz se a instância está configurada (sem expor o token).
 //
+// BANCO DE DADOS na nuvem (tabela jj_state, blob único — 1 balcão escreve):
+//   { action:"state_pull", k, pin }   → estado completo; exige o PIN do admin
+//                                       gravado no próprio blob (bootstrap: sem
+//                                       blob ainda, devolve data:null).
+//   { action:"state_push", k, pin, data } → grava o estado; valida o PIN contra
+//                                       o blob EXISTENTE (troca de PIN: autentica
+//                                       com o antigo, grava o novo).
+//   { action:"card_pull", k, code }   → só o cartão de UM cliente (por código ou
+//                                       telefone) + regras públicas — sem
+//                                       telefone/histórico; é o que o celular do
+//                                       cliente usa, sem PIN.
+//
 // Anti-abuso: chave obrigatória + 1 envio por telefone a cada 10 min
 // (whatsapp_events kind=jj_card_send).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
@@ -94,6 +106,48 @@ Deno.serve(async (req) => {
       ok: true,
       configured: !!(s.jj_uazapi_url && s.jj_uazapi_token),
       url_set: !!s.jj_uazapi_url, token_set: !!s.jj_uazapi_token,
+    });
+  }
+
+  // ---------- banco de dados na nuvem (jj_state) ----------
+  const loadState = async (): Promise<any | null> => {
+    const { data } = await admin.from("jj_state").select("data").eq("id", 1).maybeSingle();
+    return (data?.data && typeof data.data === "object" && Array.isArray(data.data.customers)) ? data.data : null;
+  };
+
+  if (p.action === "state_pull") {
+    const st = await loadState();
+    if (st && String(p.pin || "") !== String(st.settings?.pin || "")) return json({ ok: false, error: "pin_invalido" }, 403);
+    return json({ ok: true, data: st });
+  }
+
+  if (p.action === "state_push") {
+    const st = await loadState();
+    if (st && String(p.pin || "") !== String(st.settings?.pin || "")) return json({ ok: false, error: "pin_invalido" }, 403);
+    const data = p.data;
+    if (!data || !Array.isArray(data.customers) || !data.settings) return json({ ok: false, error: "dados_invalidos" }, 400);
+    if (JSON.stringify(data).length > 2_000_000) return json({ ok: false, error: "dados_grandes" }, 400);
+    const { error } = await admin.from("jj_state").upsert({ id: 1, data, updated_at: new Date().toISOString() });
+    if (error) { console.error("JJ state_push falhou:", error); return json({ ok: false, error: "falha_ao_salvar" }, 500); }
+    return json({ ok: true });
+  }
+
+  if (p.action === "card_pull") {
+    const q = String(p.code || "").trim();
+    const qDigits = onlyDigits(q);
+    const st = await loadState();
+    if (!st || !q) return json({ ok: true, found: false });
+    const c = (st.customers || []).find((x: any) =>
+      String(x.code || "").toUpperCase() === q.toUpperCase() ||
+      String(x.code || "").toUpperCase() === ("JJ-" + q).toUpperCase() ||
+      (qDigits.length >= 8 && onlyDigits(x.phone) === qDigits));
+    if (!c) return json({ ok: true, found: false });
+    const s2 = st.settings || {};
+    // só o necessário pro cartão: sem telefone, sem histórico, sem outros clientes
+    return json({
+      ok: true, found: true,
+      customer: { code: c.code, name: c.name, stamps: c.stamps | 0, redeemed: c.redeemed | 0 },
+      rules: { goal: s2.goal || 10, reward: s2.reward || "", rule: s2.rule || "" },
     });
   }
 
