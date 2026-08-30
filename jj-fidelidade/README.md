@@ -46,6 +46,9 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
   como "🤝 +1 selo — indicou Fulano"; o novo cliente fica marcado "veio por indicação").
 - Se o cartão de quem indicou já estiver cheio, o app avisa para resgatar o prêmio
   primeiro (o selo de indicação não passa da meta).
+- **Aba "🏆 Ranking" no Admin:** pódio de quem mais indica (🥇🥈🥉, barra proporcional,
+  total de indicações e quantas no mês), com o total de clientes novos vindos por
+  indicação; tocar num nome abre a ficha do cliente.
 
 **Aba "Admin" (dono)**
 - Protegida por PIN de 4 dígitos (inicial: `1234` — troque em Ajustes).

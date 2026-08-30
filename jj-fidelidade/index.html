@@ -305,6 +305,16 @@
   .invite-hero .iv-rule{font-size:14px;font-weight:700;color:var(--ink);line-height:1.55}
   .invite-hero .iv-rule b{color:var(--flame)}
 
+  /* ---------- ranking de indicações ---------- */
+  .rank-row{align-items:center}
+  .rank-row.rank-top{border-color:var(--ember);box-shadow:0 0 18px rgba(232,134,43,.18)}
+  .rank-pos{flex:none;width:36px;text-align:center;font-size:20px;font-weight:800;color:var(--cream-dim)}
+  .rank-bar{height:6px;border-radius:99px;background:#402a19;margin-top:6px;overflow:hidden}
+  .rank-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--flame),var(--ember))}
+  .rank-count{text-align:right;font-size:12px;font-weight:700;color:var(--cream-dim);white-space:nowrap;line-height:1.4}
+  .rank-count b{display:block;font-family:var(--display);font-weight:400;font-size:20px;color:var(--ember);font-variant-numeric:tabular-nums}
+  .rank-count em{display:block;font-style:normal;color:var(--good)}
+
   /* ---------- QR ---------- */
   .qr-row{display:flex;align-items:center;gap:14px}
   .qr-box{
@@ -649,6 +659,7 @@ function viewAdmin(){
   let body = '';
   if(state.adminSub==='clientes') body = adminClientes();
   if(state.adminSub==='novo') body = adminNovo();
+  if(state.adminSub==='ranking') body = adminRanking();
   if(state.adminSub==='ajustes') body = adminAjustes();
 
   return `<main>
@@ -660,7 +671,8 @@ function viewAdmin(){
     </div>
     <div class="admin-sub">
       <button data-sub="clientes" class="${state.adminSub==='clientes'?'active':''}">Clientes</button>
-      <button data-sub="novo" class="${state.adminSub==='novo'?'active':''}">+ Novo cliente</button>
+      <button data-sub="novo" class="${state.adminSub==='novo'?'active':''}">+ Novo</button>
+      <button data-sub="ranking" class="${state.adminSub==='ranking'?'active':''}">🏆 Ranking</button>
       <button data-sub="ajustes" class="${state.adminSub==='ajustes'?'active':''}">Ajustes</button>
     </div>
     ${body}
@@ -696,6 +708,36 @@ function adminNovo(){
     <button class="btn btn-primary btn-block" data-act="create">Criar cartão</button>
     <p class="muted" style="font-size:13px">Com telefone preenchido, o link do cartão vai <b>automático no WhatsApp do cliente</b>. Ele também pode abrir pela aba “Meu Cartão” (código ou telefone) ou escaneando o QR.</p>
   </div>`;
+}
+
+function adminRanking(){
+  const month0 = new Date(); month0.setDate(1); month0.setHours(0,0,0,0);
+  const refs = c => c.history.filter(h=>h.t==='referral');
+  const ranked = db.customers
+    .map(c => ({ c, total: refs(c).length, month: refs(c).filter(h=>h.ts>=+month0).length }))
+    .filter(r => r.total > 0)
+    .sort((a,b) => b.total - a.total || b.month - a.month || a.c.createdAt - b.c.createdAt);
+  if(!ranked.length){
+    return `<div class="empty">Ninguém indicou ainda. 🤝<br><br>Todo cliente tem um voucher na tela do cartão:
+      quando o amigo dele compra costela ou frango e apresenta o código no cadastro, o selo de indicação
+      entra sozinho — e o cliente aparece aqui.</div>`;
+  }
+  const max = ranked[0].total;
+  const medals = ['🥇','🥈','🥉'];
+  const rows = ranked.slice(0,20).map((r,i)=>`
+    <button class="client-row rank-row ${i===0?'rank-top':''}" data-open="${esc(r.c.id)}">
+      <span class="rank-pos">${medals[i] || (i+1)+'º'}</span>
+      <div class="who"><b>${esc(r.c.name)}</b><span>${esc(r.c.code)}</span>
+        <div class="rank-bar"><i style="width:${Math.max(8, Math.round(r.total/max*100))}%"></i></div>
+      </div>
+      <span class="rank-count"><b>${r.total}</b> ${r.total===1?'indicação':'indicações'}${r.month?`<em>+${r.month} no mês</em>`:''}</span>
+    </button>`).join('');
+  const totalRefs = ranked.reduce((n,r)=>n+r.total,0);
+  return `<div class="panel" style="padding:14px">
+      <h3>🏆 Quem mais indica</h3>
+      <p class="muted" style="font-size:13px;margin:0">${totalRefs} ${totalRefs===1?'cliente novo veio':'clientes novos vieram'} por indicação. Toque num nome para abrir a ficha.</p>
+    </div>
+    <div class="client-list">${rows}</div>`;
 }
 
 function adminAjustes(){
