@@ -19,21 +19,23 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
   da promoção, para o cliente escanear e cair direto na tela do cartão.
 - O endereço usado nos QR é o "Endereço público do app" (Ajustes); vazio = o endereço atual.
 
-**Envio por WhatsApp (instância PRÓPRIA, API não oficial)**
-- Este app é de outra operação e **não usa a instância oficial (Meta) do Co-pilot**.
-  Ele usa uma instância dedicada de API não oficial (formato uazapi: `POST {url}/send/text`,
-  header `token`, body `{number, text}`).
-- **Para ligar:** crie a instância no seu provedor, abra Admin › Ajustes › "Envio por
-  WhatsApp", cole a URL e o token e toque em "Salvar instância no servidor". Pronto —
-  a partir daí, todo cliente cadastrado com telefone recebe o cartão automático,
-  e a ficha do cliente tem o botão "📲 Enviar cartão no WhatsApp".
-- Enquanto a instância não estiver configurada (ou se o envio falhar), o app tem um
-  plano B que sempre funciona: abre o WhatsApp do aparelho com a mensagem pronta.
-- Backend: edge function `jj-fidelidade` (em `microsaas-clean/supabase/functions/`),
-  já deployada. Credenciais ficam no servidor (`app_settings.jj_uazapi_url/_token`),
-  nunca no navegador. Ações: `send_card`, `config`, `status`.
-- Proteção: chave em `app_settings.jj_wa_key` + máx. 1 envio por telefone a cada 10 min.
-  A chave fica no app (Ajustes › Avançado); para trocar, atualize a coluna no banco e no app.
+**Envio por WhatsApp — modo grátis (padrão)**
+- Sem custo de API: o app **abre o WhatsApp do próprio aparelho** com a mensagem do
+  cartão prontinha (link `wa.me`) — é só tocar em enviar. Funciona ao cadastrar cliente
+  com telefone e no botão "📲 Enviar cartão no WhatsApp" da ficha.
+- **Envio automático por API é opcional e fica guardado para o futuro:** a edge function
+  `jj-fidelidade` (em `microsaas-clean/supabase/functions/`, já deployada, formato
+  uazapi) continua pronta. Se um dia contratar uma instância, preencha endpoint + chave
+  em Admin › Ajustes › Avançado e cole a URL/token da instância via action `config`.
+  Com os campos em branco (padrão), nada é chamado e nada é cobrado.
+
+**Leitura de QR no balcão**
+- Botão **📷** ao lado da busca (Admin › Clientes): abre a câmera, lê o QR do cartão do
+  cliente (ou do convite) e abre a ficha direto — dar selo vira questão de segundos.
+- Usa o leitor nativo do navegador (BarcodeDetector — Chrome/Android, que é o cenário
+  do balcão); onde não houver suporte, o app avisa e a busca por código resolve.
+- Os QR do app são gerados por biblioteca **embutida no próprio arquivo** (qrcode.js,
+  MIT) — nada de CDN: funciona offline e em qualquer hospedagem.
 
 **Gamificação de indicação (indique e ganhe +1 selo)**
 - Todo cliente tem um **voucher de indicação** (o próprio código do cartão) na tela do
