@@ -19,16 +19,21 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
   da promoção, para o cliente escanear e cair direto na tela do cartão.
 - O endereço usado nos QR é o "Endereço público do app" (Ajustes); vazio = o endereço atual.
 
-**Envio por WhatsApp (instância oficial do Co-pilot)**
-- Ao cadastrar cliente com telefone, o link do cartão vai automático no WhatsApp dele.
-- Na ficha do cliente há o botão "📲 Enviar cartão no WhatsApp"; se o envio direto falhar,
-  o app abre o WhatsApp do aparelho com a mensagem pronta (plano B que sempre funciona).
-- Backend: edge function `jj-fidelidade` (em `microsaas-clean/supabase/functions/`), na
-  mesma instância Meta do Co-pilot. Dentro da janela de 24h vai texto livre; fora dela vai
-  o template UTILITY `jj_fidelidade_cartao` (criado via `{action:"setup"}`; precisa estar
-  APPROVED pela Meta — confira em Ajustes › "Testar conexão").
+**Envio por WhatsApp (instância PRÓPRIA, API não oficial)**
+- Este app é de outra operação e **não usa a instância oficial (Meta) do Co-pilot**.
+  Ele usa uma instância dedicada de API não oficial (formato uazapi: `POST {url}/send/text`,
+  header `token`, body `{number, text}`).
+- **Para ligar:** crie a instância no seu provedor, abra Admin › Ajustes › "Envio por
+  WhatsApp", cole a URL e o token e toque em "Salvar instância no servidor". Pronto —
+  a partir daí, todo cliente cadastrado com telefone recebe o cartão automático,
+  e a ficha do cliente tem o botão "📲 Enviar cartão no WhatsApp".
+- Enquanto a instância não estiver configurada (ou se o envio falhar), o app tem um
+  plano B que sempre funciona: abre o WhatsApp do aparelho com a mensagem pronta.
+- Backend: edge function `jj-fidelidade` (em `microsaas-clean/supabase/functions/`),
+  já deployada. Credenciais ficam no servidor (`app_settings.jj_uazapi_url/_token`),
+  nunca no navegador. Ações: `send_card`, `config`, `status`.
 - Proteção: chave em `app_settings.jj_wa_key` + máx. 1 envio por telefone a cada 10 min.
-  A chave fica no app (Ajustes); para trocar, atualize a coluna no banco e no app.
+  A chave fica no app (Ajustes › Avançado); para trocar, atualize a coluna no banco e no app.
 
 **Aba "Admin" (dono)**
 - Protegida por PIN de 4 dígitos (inicial: `1234` — troque em Ajustes).

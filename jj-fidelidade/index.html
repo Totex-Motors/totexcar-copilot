@@ -447,6 +447,10 @@ async function sendCardWA(c, opts){
     const j = await r.json().catch(()=>({}));
     if(j.ok){ toast('📲 Cartão enviado no WhatsApp de '+c.name+'!'); return; }
     if(j.error==='aguarde_10min'){ toast('Já foi enviado há pouco — aguarde uns minutos.'); return; }
+    if(j.error==='instancia_nao_configurada'){
+      if(opts.silent){ toast('WhatsApp ainda não configurado (Ajustes) — use o botão na ficha do cliente.'); return; }
+      waFallback(c, 'Instância ainda não configurada'); return;
+    }
     if(opts.silent){ toast('Não consegui enviar automático — use o botão WhatsApp no cliente.'); return; }
     waFallback(c, 'O envio direto falhou');
   }catch(e){
@@ -652,11 +656,18 @@ function adminAjustes(){
       <input id="stAppUrl" placeholder="${esc(appUrl()||'https://seu-endereco.vercel.app')}" value="${esc(s.appUrl||'')}"></div>
   </div>
   <div class="panel">
-    <h3>Envio por WhatsApp</h3>
-    <p class="muted" style="font-size:13px;margin:0">Usa a instância oficial (Meta) já conectada. Ao cadastrar cliente com telefone, o cartão vai automático no WhatsApp dele.</p>
-    <div class="field"><label for="stWaEp">Endpoint de envio</label><input id="stWaEp" value="${esc(s.waEndpoint||'')}"></div>
-    <div class="field"><label for="stWaKey">Chave de envio</label><input id="stWaKey" value="${esc(s.waKey||'')}"></div>
-    <button class="btn btn-ghost btn-block" data-act="testWA">Testar conexão / status do template</button>
+    <h3>Envio por WhatsApp (instância própria)</h3>
+    <p class="muted" style="font-size:13px;margin:0">Cole aqui a <b>URL</b> e o <b>token</b> da sua instância de WhatsApp (API não oficial, formato uazapi) quando criar. Fica salvo no servidor — depois disso, todo cliente cadastrado com telefone recebe o cartão automático no WhatsApp.</p>
+    <div class="field"><label for="stUzUrl">URL da instância</label><input id="stUzUrl" placeholder="https://sua-instancia.uazapi.com" autocomplete="off"></div>
+    <div class="field"><label for="stUzTok">Token da instância</label><input id="stUzTok" placeholder="cole o token aqui" autocomplete="off"></div>
+    <button class="btn btn-primary btn-block" data-act="saveInstance">Salvar instância no servidor</button>
+    <button class="btn btn-ghost btn-block" data-act="testWA">Ver status da instância</button>
+    <details style="font-size:13px;color:var(--cream-dim)"><summary style="cursor:pointer;font-weight:800">Avançado (endpoint e chave)</summary>
+      <div style="display:flex;flex-direction:column;gap:10px;padding-top:10px">
+        <div class="field"><label for="stWaEp">Endpoint de envio</label><input id="stWaEp" value="${esc(s.waEndpoint||'')}"></div>
+        <div class="field"><label for="stWaKey">Chave de envio</label><input id="stWaKey" value="${esc(s.waKey||'')}"></div>
+      </div>
+    </details>
   </div>
   <div class="panel">
     <h3>Regras do cartão</h3>
@@ -799,16 +810,37 @@ function action(act){
     case 'sendWA': if(c) sendCardWA(c); break;
     case 'printCard': if(c) printPoster(c); break;
     case 'printPoster': printPoster(null); break;
-    case 'testWA':{
+    case 'saveInstance':{
+      const uzUrl = $app.querySelector('#stUzUrl').value.trim();
+      const uzTok = $app.querySelector('#stUzTok').value.trim();
       const ep = $app.querySelector('#stWaEp').value.trim(), k = $app.querySelector('#stWaKey').value.trim();
-      if(!ep || !k){ toast('Preencha endpoint e chave.'); return; }
-      toast('Testando…');
-      fetch(ep, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'setup', k}) })
+      if(!uzUrl && !uzTok){ toast('Cole a URL e o token da instância.'); return; }
+      if(!ep || !k){ toast('Preencha endpoint e chave em Avançado.'); return; }
+      toast('Salvando instância…');
+      const body = { action:'config', k };
+      if(uzUrl) body.uazapi_url = uzUrl;
+      if(uzTok) body.uazapi_token = uzTok;
+      fetch(ep, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
         .then(r=>r.json())
         .then(j=>{
           if(!j.ok){ toast('Falhou: '+(j.error||'erro desconhecido')); return; }
-          toast(j.status==='APPROVED' ? '✅ Conectado — template aprovado!' :
-                '🟡 Conectado — template '+j.status+' (aguardando aprovação da Meta)');
+          $app.querySelector('#stUzUrl').value=''; $app.querySelector('#stUzTok').value='';
+          toast(j.configured ? '✅ Instância salva — WhatsApp pronto pra enviar!' :
+                '🟡 Salvo — falta '+(j.url_set===false?'a URL':'o token')+' pra completar.');
+        })
+        .catch(()=>toast('Sem conexão com o servidor.'));
+      break;
+    }
+    case 'testWA':{
+      const ep = $app.querySelector('#stWaEp').value.trim(), k = $app.querySelector('#stWaKey').value.trim();
+      if(!ep || !k){ toast('Preencha endpoint e chave em Avançado.'); return; }
+      toast('Consultando…');
+      fetch(ep, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'status', k}) })
+        .then(r=>r.json())
+        .then(j=>{
+          if(!j.ok){ toast('Falhou: '+(j.error||'erro desconhecido')); return; }
+          toast(j.configured ? '✅ Instância configurada — envio ligado!' :
+                '🟡 Falta configurar a instância (URL e token acima).');
         })
         .catch(()=>toast('Sem conexão com o endpoint.'));
       break;
