@@ -16,12 +16,12 @@ on:
       - 'jj-fidelidade/**'
   workflow_dispatch:
 
+# NÃO exportar VERCEL_ORG_ID como env: com ela setada o CLI exige também
+# VERCEL_PROJECT_ID (e apontaria pro projeto do Co-pilot). O escopo do time
+# vai por --scope na linha de comando.
 concurrency:
   group: deploy-jj
   cancel-in-progress: true
-
-env:
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
 
 jobs:
   deploy:
@@ -40,11 +40,16 @@ jobs:
 
       - name: Deploy (site estático, projeto jjespetos)
         run: |
+          set -o pipefail
           # pasta de deploy com o nome do projeto (o --yes cria o projeto com esse nome)
           mkdir -p /tmp/jjespetos
           cp jj-fidelidade/index.html /tmp/jjespetos/index.html
           cd /tmp/jjespetos
-          vercel deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee deploy.log
+          vercel deploy --prod --yes \
+            --scope "${{ secrets.VERCEL_ORG_ID }}" \
+            --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee deploy.log
+          URL=$(grep -Eo 'https://[a-z0-9.-]+\.vercel\.app' deploy.log | tail -1)
           echo "----------------------------------------"
-          echo "URL de produção (alias do projeto):"
-          vercel inspect "$(grep -o 'https://[^ ]*\.vercel\.app' deploy.log | tail -1)" --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | grep -i -A5 'alias\|url' || true
+          echo "Deployment: $URL"
+          echo "Aliases de produção do projeto:"
+          vercel inspect "$URL" --scope "${{ secrets.VERCEL_ORG_ID }}" --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | sed -n '1,40p' || true
