@@ -430,8 +430,10 @@ const DEFAULTS = {
   settings:{ pin:'1234', goal:10, reward:'um almoço completo grátis',
     rule:'Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!',
     appUrl:'',      // endereço público do app (usado nos QR e na mensagem); vazio = o endereço atual
-    waEndpoint:'',  // vazio = modo grátis: abre o WhatsApp do aparelho com a mensagem pronta
-    waKey:'' },
+    waApi:false,    // false = envio grátis (abre o WhatsApp); true = automático pela instância de API
+    // endpoint + chave: conectam o BANCO NA NUVEM (e o envio por API, se ligado)
+    waEndpoint:'https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/jj-fidelidade',
+    waKey:'64d10fcbb90742423a67440828c853b7' },
   seq: 1,
   customers: []
 };
@@ -441,6 +443,9 @@ function load(){
     const raw = localStorage.getItem(LS_KEY);
     if(raw){ const d = JSON.parse(raw);
       d.settings = Object.assign({}, DEFAULTS.settings, d.settings||{});
+      // endpoint/chave vazios (versões antigas) quebrariam a nuvem — restaura o padrão
+      if(!d.settings.waEndpoint) d.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
+      if(!d.settings.waKey) d.settings.waKey = DEFAULTS.settings.waKey;
       d.customers = d.customers||[]; d.seq = d.seq||1; return d; }
   }catch(e){}
   // primeiro uso: um cliente de exemplo, igual ao cartão da foto
@@ -519,7 +524,7 @@ async function sendCardWA(c, opts){
   opts = opts || {};
   const ep = (db.settings.waEndpoint||'').trim(), k = (db.settings.waKey||'').trim(), url = cardUrl(c.code);
   if(!c.phone){ if(!opts.silent) toast('Este cliente não tem telefone cadastrado.'); return; }
-  if(!ep || !k){ if(!opts.silent) waFallback(c); return; } // modo grátis: abre o WhatsApp direto
+  if(!db.settings.waApi || !ep || !k){ if(!opts.silent) waFallback(c); return; } // modo grátis: abre o WhatsApp direto
   if(!url){ if(!opts.silent) toast('Defina o endereço público do app em Ajustes.'); return; }
   toast('Enviando cartão no WhatsApp…');
   try{
@@ -613,6 +618,102 @@ function printPoster(c){
   document.body.classList.add('printing');
   setTimeout(()=>{ window.print(); document.body.classList.remove('printing'); }, 250);
 }
+
+/* =====================================================================
+   NUVEM — o banco de dados de verdade. O login do admin puxa o estado da
+   nuvem (fonte da verdade); toda mudança agenda um push. O celular do
+   cliente busca só o próprio cartão (card_pull, sem PIN). localStorage
+   vira cache/fallback: se a nuvem cair, o app segue local e re-tenta.
+   ===================================================================== */
+let authPin = null;      // PIN validado no login (autoriza pull/push)
+let cloudOk = null;      // null = ainda não tentou, true = sincronizado, false = falhou
+let syncTimer = null;
+
+function syncCfg(){
+  const s = db.settings;
+  return (s.waEndpoint||'').trim() && (s.waKey||'').trim()
+    ? { ep: s.waEndpoint.trim(), k: s.waKey.trim() } : null;
+}
+function cloudBadgeText(){
+  return cloudOk === true ? '☁️ Dados sincronizados na nuvem'
+       : cloudOk === false ? '⚠️ Sem nuvem agora — salvo neste aparelho, tentando de novo'
+       : '☁️ Conectando à nuvem…';
+}
+function updateCloudBadge(){
+  const el = document.getElementById('cloudBadge');
+  if(el) el.textContent = cloudBadgeText();
+}
+function scheduleSync(){
+  if(!syncCfg() || !authPin) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(pushState, 700);
+}
+async function pushState(){
+  const cfg = syncCfg(); if(!cfg || !authPin) return;
+  try{
+    const r = await fetch(cfg.ep, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'state_push', k: cfg.k, pin: authPin, data: db }) });
+    const j = await r.json().catch(()=>({}));
+    cloudOk = !!j.ok;
+    if(j.ok) authPin = db.settings.pin;                 // PIN novo passa a valer após gravado
+    else if(j.error==='pin_invalido') toast('⚠️ PIN diferente do da nuvem — dados não sincronizados.');
+    else scheduleSync();                                // erro transitório: tenta de novo
+  }catch(e){ cloudOk = false; scheduleSync(); }
+  updateCloudBadge();
+}
+async function pullState(pin){
+  const cfg = syncCfg(); if(!cfg) return { status:'sem_config', hadData:false };
+  try{
+    const r = await fetch(cfg.ep, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'state_pull', k: cfg.k, pin }) });
+    const j = await r.json().catch(()=>({}));
+    if(j.ok){
+      cloudOk = true;
+      if(j.data && Array.isArray(j.data.customers)){
+        j.data.settings = Object.assign({}, DEFAULTS.settings, j.data.settings||{});
+        if(!j.data.settings.waEndpoint) j.data.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
+        if(!j.data.settings.waKey) j.data.settings.waKey = DEFAULTS.settings.waKey;
+        j.data.seq = Math.max(j.data.seq||1, db.seq||1);
+        db = j.data; save(db);
+        return { status:'ok', hadData:true };
+      }
+      return { status:'ok', hadData:false };            // nuvem ainda vazia (primeiro uso)
+    }
+    if(j.error==='pin_invalido') return { status:'pin', hadData:true };
+    cloudOk = false; return { status:'erro', hadData:false };
+  }catch(e){ cloudOk = false; return { status:'off', hadData:false }; }
+}
+/* cartão do cliente em qualquer aparelho: busca só o próprio cartão na nuvem */
+function upsertRemoteCard(j){
+  let c = db.customers.find(x=>x.code===j.customer.code);
+  if(!c){
+    c = { id:j.customer.code, code:j.customer.code, name:j.customer.name, phone:'',
+          stamps:0, redeemed:0, createdAt:Date.now(), history:[] };
+    db.customers.push(c);
+  }
+  c.name = j.customer.name; c.stamps = j.customer.stamps|0; c.redeemed = j.customer.redeemed|0;
+  if(j.rules){
+    if(j.rules.goal) db.settings.goal = j.rules.goal;
+    if(j.rules.reward) db.settings.reward = j.rules.reward;
+    if(j.rules.rule) db.settings.rule = j.rules.rule;
+  }
+  save(db);
+  return c;
+}
+async function remoteFind(q, quiet){
+  const cfg = syncCfg(); if(!cfg){ if(!quiet) toast('Cartão não encontrado. Confira o código.'); return; }
+  try{
+    const r = await fetch(cfg.ep, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'card_pull', k: cfg.k, code: String(q).trim() }) });
+    const j = await r.json().catch(()=>({}));
+    if(j.ok && j.found){
+      const c = upsertRemoteCard(j);
+      state.cardCode = c.code; localStorage.setItem(LS_KEY+':mycard', c.code);
+      state.tab='card'; render();
+    } else if(!quiet) toast('Cartão não encontrado. Confira o código.');
+  }catch(e){ if(!quiet) toast('Sem conexão — tente de novo.'); }
+}
+function refreshCard(){ if(state.cardCode) remoteFind(state.cardCode, true); }
 
 /* explosão de faíscas — dispara no ponto do toque quando o selo é dado.
    Canvas temporário ACIMA de tudo, remove-se sozinho quando a última faísca apaga. */
@@ -911,6 +1012,7 @@ function viewAdmin(){
       <div class="stat"><b>${stampsMonth}</b><span>selos no mês</span></div>
       <div class="stat"><b>${redeemed}</b><span>prêmios dados</span></div>
     </div>
+    <p class="muted" id="cloudBadge" style="font-size:12px;text-align:center;margin:-4px 0 0">${cloudBadgeText()}</p>
     <div class="admin-sub">
       <button data-sub="clientes" class="${state.adminSub==='clientes'?'active':''}">Clientes</button>
       <button data-sub="novo" class="${state.adminSub==='novo'?'active':''}">+ Novo</button>
@@ -995,13 +1097,17 @@ function adminAjustes(){
       <input id="stAppUrl" placeholder="${esc(appUrl()||'https://seu-endereco.vercel.app')}" value="${esc(s.appUrl||'')}"></div>
   </div>
   <div class="panel">
-    <h3>WhatsApp — modo grátis (redirecionamento)</h3>
-    <p class="muted" style="font-size:13px;margin:0">Sem custo de API: o app <b>abre o WhatsApp deste aparelho</b> com a mensagem do cartão prontinha — é só tocar em enviar. Funciona ao cadastrar cliente com telefone e no botão "📲" da ficha de cada cliente.</p>
-    <details style="font-size:13px;color:var(--cream-dim)"><summary style="cursor:pointer;font-weight:800">Avançado — envio automático por API (opcional, tem custo)</summary>
+    <h3>WhatsApp</h3>
+    <div class="field"><label for="stWaMode">Modo de envio do cartão</label>
+      <select id="stWaMode">
+        <option value="free" ${!s.waApi?'selected':''}>Grátis — abre o WhatsApp com a mensagem pronta</option>
+        <option value="api" ${s.waApi?'selected':''}>Automático — pela instância de API (tem custo)</option>
+      </select></div>
+    <details style="font-size:13px;color:var(--cream-dim)"><summary style="cursor:pointer;font-weight:800">Avançado — servidor de dados e envio</summary>
       <div style="display:flex;flex-direction:column;gap:10px;padding-top:10px">
-        <p class="muted" style="font-size:12px;margin:0">Deixe em branco para continuar no modo grátis. Se um dia contratar uma instância de WhatsApp, preencha e salve as regras.</p>
-        <div class="field"><label for="stWaEp">Endpoint de envio</label><input id="stWaEp" value="${esc(s.waEndpoint||'')}" placeholder="vazio = modo grátis"></div>
-        <div class="field"><label for="stWaKey">Chave de envio</label><input id="stWaKey" value="${esc(s.waKey||'')}" placeholder="vazio = modo grátis"></div>
+        <p class="muted" style="font-size:12px;margin:0">⚠️ Endpoint e chave conectam o <b>banco de dados na nuvem</b> (clientes e selos) e o envio por API. Não apague — se ficarem vazios, o app volta ao padrão sozinho.</p>
+        <div class="field"><label for="stWaEp">Endpoint</label><input id="stWaEp" value="${esc(s.waEndpoint||'')}"></div>
+        <div class="field"><label for="stWaKey">Chave</label><input id="stWaKey" value="${esc(s.waKey||'')}"></div>
       </div>
     </details>
   </div>
@@ -1073,7 +1179,7 @@ function viewPin(){
     <p class="muted" style="text-align:center">Digite o PIN para abrir o painel.</p>
     <div class="pin-box ${state.pinErr?'shake':''}">
       <div class="pin-dots">${dots}</div>
-      <p class="pin-err">${state.pinErr?'PIN errado. Tenta de novo.':''}</p>
+      <p class="pin-err">${state.pinErr?'PIN errado. Tenta de novo.':state.pinBusy?'Conectando à nuvem…':''}</p>
       <div class="pin-pad">${keys.map(k=>`<button data-key="${k}">${k==='ok'?'✓':k}</button>`).join('')}</div>
       <p class="muted" style="font-size:12px">PIN inicial: 1234 — troque em Ajustes.</p>
     </div>
@@ -1116,10 +1222,24 @@ function pinKey(k){
          if(state.pinBuf.length===4){ checkPin(); return; } }
   render();
 }
-function checkPin(){
-  if(state.pinBuf === db.settings.pin){ state.adminOk = true; state.pinBuf=''; state.pinErr=false; }
-  else { state.pinErr = true; state.pinBuf=''; }
+async function checkPin(){
+  if(state.pinBusy) return;
+  const pin = state.pinBuf; state.pinBuf='';
+  state.pinBusy = true; state.pinErr = false; render();
+  // nuvem primeiro: é a fonte da verdade dos clientes e selos
+  const res = await pullState(pin);
+  state.pinBusy = false;
+  if(res.status === 'ok' && res.hadData){
+    state.adminOk = true; authPin = pin;
+  } else if(res.status === 'pin'){
+    state.pinErr = true;
+  } else {
+    // nuvem vazia ou fora do ar: valida local; o primeiro push cria o banco
+    if(pin === db.settings.pin){ state.adminOk = true; authPin = pin; scheduleSync(); }
+    else state.pinErr = true;
+  }
   render();
+  updateCloudBadge();
 }
 
 function action(act){
@@ -1128,7 +1248,7 @@ function action(act){
     case 'find':{
       const v = $app.querySelector('#findCard').value;
       const found = byCodeOrPhone(v);
-      if(!found){ toast('Cartão não encontrado. Confira o código.'); return; }
+      if(!found){ toast('Buscando seu cartão…'); remoteFind(v); return; }
       state.cardCode = found.code;
       localStorage.setItem(LS_KEY+':mycard', found.code);
       render(); break;
@@ -1170,11 +1290,11 @@ function action(act){
           }
         }
       }
-      db.customers.push(nc); save(db);
+      db.customers.push(nc); save(db); scheduleSync();
       state.adminSub='clientes'; state.detail = nc.id; state.search='';
       render(); toast(`Cartão ${nc.code} criado para ${nc.name}!`+refMsg);
       if(nc.phone){
-        const api = (db.settings.waEndpoint||'').trim() && (db.settings.waKey||'').trim();
+        const api = db.settings.waApi && (db.settings.waEndpoint||'').trim() && (db.settings.waKey||'').trim();
         if(api) sendCardWA(nc, {silent:true});  // envio automático por API (opcional)
         else waFallback(nc);                    // modo grátis: abre o WhatsApp com a mensagem pronta
       }
@@ -1186,7 +1306,7 @@ function action(act){
     case 'scan': scanCard(); break;
     case 'stamp':{
       if(!c) return;
-      c.stamps++; c.history.push({t:'stamp', ts:Date.now()}); save(db);
+      c.stamps++; c.history.push({t:'stamp', ts:Date.now()}); save(db); scheduleSync();
       render();
       const full = c.stamps >= db.settings.goal;
       sparkBurst(lastTap.x, lastTap.y, full); // 🔥 explosão de faíscas no +1 (maior ao completar)
@@ -1197,12 +1317,12 @@ function action(act){
       if(!c || c.stamps<=0) return;
       c.stamps--;
       for(let i=c.history.length-1;i>=0;i--){ if(c.history[i].t==='stamp'||c.history[i].t==='referral'){ c.history.splice(i,1); break; } }
-      save(db); render(); break;
+      save(db); scheduleSync(); render(); break;
     }
     case 'redeem':{
       if(!c) return;
       if(!confirm(`Entregar ${db.settings.reward} para ${c.name} e zerar o cartão?`)) return;
-      c.stamps = 0; c.redeemed++; c.history.push({t:'redeem', ts:Date.now()}); save(db);
+      c.stamps = 0; c.redeemed++; c.history.push({t:'redeem', ts:Date.now()}); save(db); scheduleSync();
       render();
       sparkBurst(lastTap.x, lastTap.y, true); // 🏆 chuva de faíscas dourada no prêmio
       toast(`🏆 Prêmio entregue para ${c.name}!`); break;
@@ -1210,7 +1330,7 @@ function action(act){
     case 'delClient':{
       if(!c) return;
       if(!confirm(`Excluir ${c.name} (${c.code})? Isso apaga o histórico.`)) return;
-      db.customers = db.customers.filter(x=>x.id!==c.id); save(db);
+      db.customers = db.customers.filter(x=>x.id!==c.id); save(db); scheduleSync();
       state.detail=null; render(); toast('Cliente excluído.'); break;
     }
     case 'saveSettings':{
@@ -1218,15 +1338,16 @@ function action(act){
       db.settings.reward = $app.querySelector('#stReward').value.trim()||DEFAULTS.settings.reward;
       db.settings.rule = $app.querySelector('#stRule').value.trim()||DEFAULTS.settings.rule;
       db.settings.appUrl = $app.querySelector('#stAppUrl').value.trim();
-      db.settings.waEndpoint = $app.querySelector('#stWaEp').value.trim();
-      db.settings.waKey = $app.querySelector('#stWaKey').value.trim();
+      db.settings.waApi = $app.querySelector('#stWaMode').value === 'api';
+      db.settings.waEndpoint = $app.querySelector('#stWaEp').value.trim() || DEFAULTS.settings.waEndpoint;
+      db.settings.waKey = $app.querySelector('#stWaKey').value.trim() || DEFAULTS.settings.waKey;
       db.customers.forEach(x=>{ if(x.stamps>db.settings.goal) x.stamps=db.settings.goal; });
-      save(db); render(); toast('Regras salvas!'); break;
+      save(db); scheduleSync(); render(); toast('Regras salvas!'); break;
     }
     case 'savePin':{
       const p = $app.querySelector('#stPin').value.trim();
       if(!/^\d{4}$/.test(p)){ toast('O PIN precisa ter 4 números.'); return; }
-      db.settings.pin = p; save(db); toast('PIN atualizado!'); break;
+      db.settings.pin = p; save(db); scheduleSync(); toast('PIN atualizado!'); break;
     }
     case 'export':{
       const blob = new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
@@ -1248,7 +1369,7 @@ function importBackup(e){
       if(!Array.isArray(d.customers)) throw new Error('formato');
       d.settings = Object.assign({}, DEFAULTS.settings, d.settings||{});
       d.seq = d.seq || (d.customers.length+1);
-      db = d; save(db); render(); toast('Backup importado!');
+      db = d; save(db); scheduleSync(); render(); toast('Backup importado!');
     }catch(err){ toast('Arquivo inválido — use um backup exportado daqui.'); }
   };
   r.readAsText(f);
@@ -1464,6 +1585,10 @@ if(urlInvite){
 }
 
 render();
+
+// nuvem: cartão do cliente sempre fresco em qualquer aparelho
+if(urlCode && !byCodeOrPhone(urlCode)) remoteFind(urlCode, true); // veio por QR e não está neste aparelho
+else if(state.cardCode) refreshCard();
 })();
 </script>
 

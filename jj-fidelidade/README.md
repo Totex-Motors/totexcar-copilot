@@ -87,16 +87,21 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
 
 Teste local: `npx http-server jj-fidelidade` e abra o endereço que aparecer.
 
-## Limitações desta v1 (importante, sem enganação)
+## Banco de dados na nuvem (v2)
 
-Os dados ficam no **localStorage do aparelho que usa a página**. Ou seja:
+Os clientes e selos ficam salvos num **banco na nuvem** (Supabase, tabela `jj_state`,
+via edge function `jj-fidelidade`):
 
-- O painel do dono funciona 100% no celular/tablet do balcão.
-- O cliente só vê o cartão atualizado **no mesmo aparelho** onde os selos foram dados —
-  em outro aparelho a página não compartilha dados (não há servidor).
-- Por isso existe o backup em Ajustes: exporte o JSON de vez em quando.
-
-**Evolução natural (v2):** trocar o localStorage por um Supabase (tabelas `customers` e
-`stamp_events` + uma edge function), aí o cartão do cliente atualiza em qualquer
-aparelho e dá para mandar o selo por WhatsApp. A estrutura do código já separa dados
-(`load/save/makeCustomer`) da interface para essa troca ser simples.
+- **Login do admin = sincronização**: o PIN é validado contra a nuvem e o estado
+  completo é puxado; cada mudança (cadastro, selo, prêmio, ajustes) é gravada de
+  volta automaticamente (badge "☁️ Dados sincronizados" no painel).
+- **O cliente vê o cartão em qualquer aparelho**: a busca por código/telefone e a
+  chegada por QR consultam a nuvem (`card_pull` — retorna só nome/código/selos do
+  próprio cartão, sem telefone nem histórico de outros clientes).
+- **Offline não trava**: sem internet o app segue no cache local (localStorage) e
+  re-tenta a sincronização sozinho; o backup JSON dos Ajustes continua existindo.
+- Proteções: chave do serviço + PIN do admin exigido para ler/gravar o estado
+  completo (o PIN da nuvem é a fonte da verdade; trocar o PIN atualiza a nuvem).
+- Modelo: blob único (1 balcão escreve, clientes só leem o próprio cartão) — o
+  tamanho de uma churrascaria cabe com folga; se um dia houver múltiplos caixas
+  simultâneos, o passo seguinte é quebrar em tabelas por cliente.
