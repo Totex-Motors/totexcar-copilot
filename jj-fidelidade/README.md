@@ -52,6 +52,12 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
   total de indicações e quantas no mês), com o total de clientes novos vindos por
   indicação; tocar num nome abre a ficha do cliente.
 
+**Clima de churrasqueira**
+- Fogo animado na base da tela (canvas leve, ~60fps): chamas dançando, brasas
+  voando e fumaça subindo, mais o logo com as chamas tremeluzindo. Pausa quando a
+  aba fica oculta e vira um brilho parado para quem prefere menos animação
+  (`prefers-reduced-motion`).
+
 **Aba "Admin" (dono)**
 - Protegida por PIN de 4 dígitos (inicial: `1234` — troque em Ajustes).
 - Resumo: total de clientes, selos dados no mês, prêmios entregues.
