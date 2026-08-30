@@ -78,12 +78,14 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
 3. Completou 10 → **🏆 Entregar prêmio e zerar cartão**.
 4. O cliente pode abrir a mesma página no celular dele e ver o cartão pelo código/telefone.
 
-## Como publicar
+## Onde está no ar
 
-É um arquivo estático — serve em qualquer hospedagem:
+**https://jjespetos.vercel.app** — projeto próprio na Vercel, deployado pelo workflow
+`.github/workflows/deploy-jj.yml` a cada push na main que mude `jj-fidelidade/`
+(ou manualmente por workflow_dispatch). O endereço antigo
+`totexcarco-pilot.vercel.app/jj/` redireciona pra cá preservando `?c=`/`?i=`.
 
-- **Vercel/Netlify:** arraste a pasta `jj-fidelidade/` e pronto.
-- **Teste local:** `npx http-server jj-fidelidade` e abra o endereço que aparecer.
+Teste local: `npx http-server jj-fidelidade` e abra o endereço que aparecer.
 
 ## Limitações desta v1 (importante, sem enganação)
 
