@@ -87,6 +87,19 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
 
 Teste local: `npx http-server jj-fidelidade` e abra o endereço que aparecer.
 
+## Auto-atualização (sem cache velho)
+
+Como o app é publicado várias vezes, o navegador de alguns celulares guardava uma
+versão antiga em cache e o cliente ficava sem recursos novos (ex.: "não abre o cartão"
+porque a versão velha não buscava na nuvem). Resolvido em duas camadas:
+
+- **Cabeçalhos anti-cache** no deploy (`vercel.json`): o HTML e o `v.txt` vão como
+  `no-store` — o navegador sempre pega a versão fresca; o `og.jpg` segue cacheável.
+- **Carimbo de versão + auto-reload**: cada build injeta um id em `APP_BUILD` e publica
+  o mesmo id em `/v.txt`. O app checa o `v.txt` (no load, ao voltar pra aba e a cada
+  5 min) e, se houver versão nova, recarrega sozinho — com trava anti-loop. Assim
+  nenhum cliente fica preso numa versão antiga.
+
 ## Banco de dados na nuvem (v2)
 
 Os clientes e selos ficam salvos num **banco na nuvem** (Supabase, tabela `jj_state`,
