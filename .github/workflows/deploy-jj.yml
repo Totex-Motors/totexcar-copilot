@@ -43,9 +43,17 @@ jobs:
           set -o pipefail
           # pasta de deploy com o nome do projeto (o --yes cria o projeto com esse nome)
           mkdir -p /tmp/jjespetos
-          cp jj-fidelidade/index.html /tmp/jjespetos/index.html
+          # carimba a versão (auto-atualização dos clientes) e publica o mesmo id em v.txt
+          BUILD=$(date -u +%Y%m%d%H%M%S)
+          sed "s/const APP_BUILD = 'DEV';/const APP_BUILD = '$BUILD';/" jj-fidelidade/index.html > /tmp/jjespetos/index.html
+          printf '%s' "$BUILD" > /tmp/jjespetos/v.txt
           cp jj-fidelidade/og.jpg /tmp/jjespetos/og.jpg   # imagem do card de compartilhamento (Open Graph)
+          # anti-cache: HTML e v.txt nunca ficam presos numa versão velha; og.jpg segue cacheável
+          NS='no-store, max-age=0, must-revalidate'
+          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/v.txt","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" > /tmp/jjespetos/vercel.json
+          cat /tmp/jjespetos/vercel.json
           cd /tmp/jjespetos
+          echo "BUILD=$BUILD"
           vercel deploy --prod --yes \
             --scope "${{ secrets.VERCEL_ORG_ID }}" \
             --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee deploy.log

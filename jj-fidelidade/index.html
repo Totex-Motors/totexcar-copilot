@@ -437,6 +437,22 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
 (function(){
 'use strict';
 
+// Carimbo da versão (o deploy troca 'DEV' por um id real). Serve pra AUTO-ATUALIZAR
+// clientes que ficaram com uma versão antiga em cache — some com o "não abre o cartão".
+const APP_BUILD = 'DEV';
+async function autoUpdate(){
+  if(APP_BUILD === 'DEV') return;                 // build local: não faz nada
+  try{
+    const r = await fetch('v.txt?cb=' + Date.now(), { cache: 'no-store' });
+    if(!r.ok) return;
+    const server = (await r.text()).trim();
+    if(server && server !== APP_BUILD){
+      const n = +(sessionStorage.getItem('jj_upd') || 0);
+      if(n < 2){ sessionStorage.setItem('jj_upd', String(n + 1)); location.reload(); }
+    }
+  }catch(e){ /* offline: ignora, tenta na próxima */ }
+}
+
 const LS_KEY = 'jj_fidelidade_v1';
 const DEFAULTS = {
   settings:{ pin:'123456', goal:10, reward:'um almoço completo grátis',
@@ -1640,6 +1656,11 @@ if(urlInvite){
 }
 
 render();
+
+// auto-atualização: pega versão nova sem o cliente precisar limpar cache
+autoUpdate();
+setInterval(autoUpdate, 300000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) autoUpdate(); });
 
 // nuvem: cartão do cliente sempre fresco em qualquer aparelho
 if(urlCode && !byCodeOrPhone(urlCode)) remoteFind(urlCode, true); // veio por QR e não está neste aparelho
