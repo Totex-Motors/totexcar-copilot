@@ -127,6 +127,12 @@ Deno.serve(async (req) => {
     const data = p.data;
     if (!data || !Array.isArray(data.customers) || !data.settings) return json({ ok: false, error: "dados_invalidos" }, 400);
     if (JSON.stringify(data).length > 2_000_000) return json({ ok: false, error: "dados_grandes" }, 400);
+    // guarda de servidor: nunca aceita o cliente-demo "Junior" (JJ-0001) — protege
+    // a base mesmo se um aparelho com versão antiga tentar re-subir o demo
+    const isDemo = (c: any) => c && c.code === "JJ-0001" && String(c.name || "").trim().toLowerCase() === "junior"
+      && !c.phone && !c.referredBy && !c.redeemed
+      && (Array.isArray(c.history) ? c.history.every((h: any) => h.t === "stamp") : true);
+    data.customers = data.customers.filter((c: any) => !isDemo(c));
     const { error } = await admin.from("jj_state").upsert({ id: 1, data, updated_at: new Date().toISOString() });
     if (error) { console.error("JJ state_push falhou:", error); return json({ ok: false, error: "falha_ao_salvar" }, 500); }
     return json({ ok: true });
