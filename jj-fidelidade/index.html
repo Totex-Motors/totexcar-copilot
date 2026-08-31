@@ -474,19 +474,19 @@ function load(){
       // endpoint/chave vazios (versões antigas) quebrariam a nuvem — restaura o padrão
       if(!d.settings.waEndpoint) d.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
       if(!d.settings.waKey) d.settings.waKey = DEFAULTS.settings.waKey;
-      d.customers = d.customers||[]; d.seq = d.seq||1; return d; }
+      d.customers = (d.customers||[]).filter(c=>!isDemoJunior(c)); // limpa o cliente-demo antigo
+      d.seq = d.seq||1; return d; }
   }catch(e){}
-  // primeiro uso: um cliente de exemplo, igual ao cartão da foto
-  const d = JSON.parse(JSON.stringify(DEFAULTS));
-  const c = makeCustomer(d, 'Junior', '');
-  c.stamps = 2;
-  c.history = [
-    {t:'stamp', ts:Date.now()-86400000*9},
-    {t:'stamp', ts:Date.now()-86400000*2}
-  ];
-  d.customers.push(c);
+  const d = JSON.parse(JSON.stringify(DEFAULTS)); // primeiro uso: começa VAZIO (sem cliente-demo)
   save(d);
   return d;
+}
+// assinatura do antigo cliente-demo "Junior" (JJ-0001) que era criado sozinho —
+// nunca é tratado como cliente real nem sobe pra nuvem
+function isDemoJunior(c){
+  return !!c && c.code === 'JJ-0001' && String(c.name||'').trim().toLowerCase() === 'junior'
+    && !c.phone && !c.referredBy && !c.redeemed
+    && (c.history||[]).every(h => h.t === 'stamp');
 }
 function save(d){ try{ localStorage.setItem(LS_KEY, JSON.stringify(d)); }catch(e){} }
 
@@ -725,6 +725,7 @@ async function pullState(pin){
         // chegou à nuvem) NÃO pode sumir no pull — entra na nuvem agora.
         let merged = 0;
         for(const lc of db.customers){
+          if(isDemoJunior(lc)) continue;               // cliente-demo nunca sobe pra nuvem
           const cc = cloud.customers.find(x => x.code === lc.code);
           if(!cc){
             cloud.customers.push(lc); merged++;
@@ -778,6 +779,22 @@ async function remoteFind(q, quiet){
   }catch(e){ if(!quiet) toast('Sem conexão — tente de novo.'); }
 }
 function refreshCard(){ if(state.cardCode && !celebrating) remoteFind(state.cardCode, true); }
+
+/* monta e abre a mensagem de convite de indicação (cliente ou balcão) */
+function shareInvite(c){
+  if(!c){ toast('Abra o cartão de um cliente para convidar.'); return; }
+  const first = (c.name||'').trim().split(/\s+/)[0];
+  const link = inviteUrl(c);
+  // só emojis do plano básico (⭐ ➡): os "altos" viram "?" no wa.me de alguns Androids
+  const msg =
+    '*Bora comer na J.J Espetos?* ⭐\n\n'
+    + 'Compra *1 costela no bafo ou 1 frango* e apresenta meu voucher *'+c.code+'* no balcão.\n\n'
+    + 'Você já começa seu cartão fidelidade — juntando *'+db.settings.goal+' selos* você ganha *'
+    + db.settings.reward+'*!\n\n'
+    + (link ? '➡ Abre seu voucher aqui:\n'+link+'\n\n' : '')
+    + '— '+first;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
 
 /* ============ CELEBRAÇÃO NO CARTÃO DO CLIENTE ============
    Selo novo detectado (na nuvem ou ao abrir o cartão): a bolinha em chamas
@@ -1272,6 +1289,11 @@ function modalDetail(){
         <button class="btn btn-ghost" style="padding:10px" data-act="printCard">🖨️ Imprimir QR deste cartão</button>
       </div>
     </div></div>
+    <div class="panel" style="padding:14px;gap:10px">
+      <h3>🤝 Indicação</h3>
+      <p class="muted" style="font-size:13px;margin:0">Voucher deste cliente: <b>${esc(c.code)}</b>. Ele indica um amigo, o amigo compra costela ou frango e apresenta este código no cadastro — aí ${esc((c.name||'').split(/\s+/)[0]||'ele')} ganha <b>+1 selo</b>.</p>
+      <button class="btn btn-ghost btn-block" data-act="shareInviteAdmin">📲 Compartilhar voucher de indicação</button>
+    </div>
     <div class="panel" style="padding:14px">
       <h3>Histórico</h3>
       ${hist ? `<ul class="history">${hist}</ul>` : `<p class="muted" style="font-size:13px">Sem movimentos ainda.</p>`}
@@ -1364,21 +1386,8 @@ function action(act){
     }
     case 'forget':
       state.cardCode=''; localStorage.removeItem(LS_KEY+':mycard'); render(); break;
-    case 'shareInvite':{
-      const me = byCodeOrPhone(state.cardCode); if(!me) return;
-      const first = (me.name||'').trim().split(/\s+/)[0];
-      const link = inviteUrl(me);
-      // só emojis do plano básico (⭐ ➡): os "altos" viram "interrogação" no wa.me de alguns Androids
-      const msg =
-        '*Bora comer na J.J Espetos?* ⭐\n\n'
-        + 'Compra *1 costela no bafo ou 1 frango* e apresenta meu voucher *'+me.code+'* no balcão.\n\n'
-        + 'Você já começa seu cartão fidelidade — juntando *'+db.settings.goal+' selos* você ganha *'
-        + db.settings.reward+'*!\n\n'
-        + (link ? '➡ Abre seu voucher aqui:\n'+link+'\n\n' : '')
-        + '— '+first;
-      window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
-      break;
-    }
+    case 'shareInvite': shareInvite(byCodeOrPhone(state.cardCode)); break;
+    case 'shareInviteAdmin': shareInvite(c); break;
     case 'dismissInvite':
       state.invite=null; localStorage.removeItem(LS_KEY+':invite'); render(); break;
     case 'lock':
