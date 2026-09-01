@@ -86,19 +86,19 @@
   h1{font-family:var(--disp);font-weight:700;font-size:clamp(42px,6vw,74px);line-height:1.0;letter-spacing:-.035em}
   h1 .grad{background:linear-gradient(120deg,var(--amber),var(--flame) 60%,var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
   h1 .ln{display:block;overflow:hidden}
-  h1 .ln span{display:block;transform:translateY(110%);animation:rise .9s cubic-bezier(.2,.7,.2,1) forwards}
+  h1 .ln span{display:block;animation:rise .9s cubic-bezier(.2,.7,.2,1) both}
   h1 .ln:nth-child(2) span{animation-delay:.09s}
   h1 .ln:nth-child(3) span{animation-delay:.18s}
-  @keyframes rise{to{transform:none}}
-  .dek{font-size:19px;line-height:1.5;color:var(--ink-2);max-width:34ch;margin-top:26px;opacity:0;animation:fadeup .8s .5s forwards}
+  @keyframes rise{from{transform:translateY(110%)}to{transform:none}}
+  .dek{font-size:19px;line-height:1.5;color:var(--ink-2);max-width:34ch;margin-top:26px;opacity:1;animation:fadeup .8s .5s backwards}
   @keyframes fadeup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
-  .hcta{display:flex;gap:14px;align-items:center;margin-top:34px;flex-wrap:wrap;opacity:0;animation:fadeup .8s .65s forwards}
-  .reassure{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:24px;font-family:var(--mono);font-size:12px;color:var(--ink-3);opacity:0;animation:fadeup .8s .8s forwards}
+  .hcta{display:flex;gap:14px;align-items:center;margin-top:34px;flex-wrap:wrap;opacity:1;animation:fadeup .8s .65s backwards}
+  .reassure{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:24px;font-family:var(--mono);font-size:12px;color:var(--ink-3);opacity:1;animation:fadeup .8s .8s backwards}
   .reassure span{display:inline-flex;align-items:center;gap:7px}
   .reassure svg{width:14px;height:14px;color:var(--ember)}
 
   /* phone */
-  .phone-wrap{position:relative;display:flex;justify-content:center;opacity:0;animation:fadeup 1s .55s forwards}
+  .phone-wrap{position:relative;display:flex;justify-content:center;opacity:1;animation:fadeup 1s .55s backwards}
   .phone{width:300px;background:linear-gradient(160deg,#221812,#0d0906);border-radius:40px;padding:13px;box-shadow:0 40px 90px -30px rgba(255,77,23,.5),0 0 0 1px rgba(255,255,255,.06),inset 0 1px 0 rgba(255,255,255,.06);position:relative;animation:sway 7s ease-in-out infinite}
   @keyframes sway{0%,100%{transform:translateY(0) rotate(-.4deg)}50%{transform:translateY(-12px) rotate(.4deg)}}
   .phone::before{content:"";position:absolute;top:22px;left:50%;transform:translateX(-50%);width:80px;height:5px;background:#000;border-radius:100px;opacity:.6;z-index:3}
@@ -247,19 +247,40 @@
     .steps{grid-template-columns:1fr}
   }
   @media(max-width:680px){
-    .wrap{padding:0 20px} .navin{padding:16px 20px} nav.scr .navin{padding:12px 20px}
-    .navlinks a:not(.btn){display:none} .navlinks{gap:14px}
-    .brand small{display:none}
-    section{padding:72px 0}
-    .hero{padding:44px 0 40px}
-    .hcta{flex-direction:column;align-items:stretch} .hcta .btn{justify-content:center;width:100%}
+    .wrap{padding:0 20px} .navin{padding:15px 20px} nav.scr .navin{padding:12px 20px}
+    .navlinks a:not(.btn){display:none} .navlinks{gap:12px}
+    .brand{font-size:16px} .brand small{display:none} .mark{width:34px;height:34px}
+    .navlinks .btn{padding:11px 17px;font-size:11.5px}
+    section{padding:74px 0}
+    /* herói mobile: centrado e respirando */
+    .hero{padding:32px 0 44px}
+    .hgrid{text-align:center;gap:36px}
+    .ey{margin-bottom:18px;font-size:11px;letter-spacing:.2em}
+    h1{font-size:clamp(33px,9vw,44px);letter-spacing:-.03em}
+    .dek{margin:20px auto 0;max-width:36ch;font-size:17.5px}
+    .hcta{flex-direction:column;align-items:stretch;margin-top:28px}
+    .hcta .btn{justify-content:center;width:100%}
+    .reassure{justify-content:center;gap:8px 18px;margin-top:22px}
+    .phone-wrap{margin-top:2px} .phone{width:252px}
+    h2{font-size:clamp(26px,7vw,34px)}
+    .sub2{font-size:16.5px}
+    .mtrack span{font-size:18px;gap:34px} .mtrack span::after{font-size:10px}
+    .marquee{margin-top:40px}
+    .gift{padding:30px 22px} .gift .badge{width:88px;height:88px;border-radius:22px} .gift h3{font-size:24px}
     .probs,.feats,.tiers{grid-template-columns:1fr}
     .tier.hot{transform:none} .tier.hot:hover{transform:translateY(-4px)}
     .stats{grid-template-columns:1fr 1fr}
-    .marquee{margin-top:44px}
-    .final{padding:52px 26px}
+    .roi{gap:24px}
+    .quote .q{font-size:22px} .quote .qm{font-size:60px}
+    .final{padding:52px 24px}
+    .final h2{font-size:28px} .final p{font-size:17px}
+    footer .frow{flex-direction:column;align-items:flex-start;gap:16px}
   }
-  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}[data-reveal]{opacity:1;transform:none}}
+  /* Movimento reduzido: mantém TODO o conteúdo visível (nunca esconde) e só acalma os loops ambientes */
+  @media(prefers-reduced-motion:reduce){
+    .blob,.phone,.mtrack,#embers{animation:none!important}
+    [data-reveal]{opacity:1!important;transform:none!important}
+  }
 </style>
 </head>
 <body>
@@ -559,9 +580,15 @@
 
   var reduce=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-  // scroll reveal
-  var io=new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} }); },{threshold:.12,rootMargin:'0px 0px -8% 0px'});
-  document.querySelectorAll('[data-reveal]').forEach(function(el,i){ el.style.transitionDelay=(Math.min(i%4,3)*0.07)+'s'; io.observe(el); });
+  // scroll reveal — à prova de falhas: nada fica preso invisível
+  var rev=document.querySelectorAll('[data-reveal]');
+  var showAll=function(){ for(var i=0;i<rev.length;i++)rev[i].classList.add('in'); };
+  if(reduce || !('IntersectionObserver' in window)){ showAll(); }
+  else{
+    var io=new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} }); },{threshold:.12,rootMargin:'0px 0px -8% 0px'});
+    rev.forEach(function(el,i){ el.style.transitionDelay=(Math.min(i%4,3)*0.07)+'s'; io.observe(el); });
+    setTimeout(showAll,4000); // rede de segurança
+  }
 
   // glow que segue o cursor nos cards
   document.querySelectorAll('.card').forEach(function(c){
