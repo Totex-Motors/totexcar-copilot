@@ -44,10 +44,11 @@ jobs:
           # pasta de deploy com o nome do projeto (o --yes cria o projeto com esse nome)
           mkdir -p /tmp/totexfidelidade
           cp fidelidade/index.html /tmp/totexfidelidade/index.html
+          cp fidelidade/guia.html /tmp/totexfidelidade/guia.html
           cp fidelidade/og.jpg /tmp/totexfidelidade/og.jpg
-          # anti-cache: o HTML sempre fresco; a og.jpg segue cacheável
+          # anti-cache: os HTML sempre frescos; a og.jpg segue cacheável
           NS='no-store, max-age=0, must-revalidate'
-          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" > /tmp/totexfidelidade/vercel.json
+          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/guia.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" > /tmp/totexfidelidade/vercel.json
           cat /tmp/totexfidelidade/vercel.json
           cd /tmp/totexfidelidade
           vercel deploy --prod --yes \

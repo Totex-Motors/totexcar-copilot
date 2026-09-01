@@ -10,5 +10,7 @@ ogshot.mjs
 crop.mjs
 navcrop.mjs
 finalshot.mjs
+guiashot.mjs
 shot-*.png
 crop-*.png
+guia-full.png
