@@ -10,7 +10,7 @@ import { dirname, resolve } from 'node:path'
 
 const SRC = resolve('Main.dc.html')
 const OUT = resolve('../fidelidade/index.html')
-const SITE = 'https://fidelidade.vercel.app'
+const SITE = 'https://cartao-fidelidade.vercel.app'
 
 let body = readFileSync(SRC, 'utf8')
 

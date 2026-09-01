@@ -2,9 +2,9 @@ name: Deploy Fidelidade (página de vendas)
 
 # Deploy da página de vendas do Cartão Fidelidade (fidelidade/) como projeto
 # PRÓPRIO na Vercel — separado do totexcar-copilot e do jjespetos. O projeto é
-# criado/atualizado pelo nome do diretório de deploy ("fidelidade" →
-# https://fidelidade.vercel.app, se o subdomínio estiver livre; senão a Vercel
-# escolhe um sufixo e a URL sai no log).
+# criado/atualizado pelo nome do diretório de deploy ("cartao-fidelidade" →
+# https://cartao-fidelidade.vercel.app, se o subdomínio estiver livre; senão a
+# Vercel escolhe um sufixo e a URL sai no log).
 #
 # Dispara no push da main quando fidelidade/ muda, e manualmente (workflow_dispatch).
 # Reusa os mesmos segredos do deploy principal: VERCEL_TOKEN e VERCEL_ORG_ID
@@ -38,18 +38,18 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
-      - name: Deploy (site estático, projeto fidelidade)
+      - name: Deploy (site estático, projeto cartao-fidelidade)
         run: |
           set -o pipefail
           # pasta de deploy com o nome do projeto (o --yes cria o projeto com esse nome)
-          mkdir -p /tmp/fidelidade
-          cp fidelidade/index.html /tmp/fidelidade/index.html
-          cp fidelidade/og.jpg /tmp/fidelidade/og.jpg
+          mkdir -p /tmp/cartao-fidelidade
+          cp fidelidade/index.html /tmp/cartao-fidelidade/index.html
+          cp fidelidade/og.jpg /tmp/cartao-fidelidade/og.jpg
           # anti-cache: o HTML sempre fresco; a og.jpg segue cacheável
           NS='no-store, max-age=0, must-revalidate'
-          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" > /tmp/fidelidade/vercel.json
-          cat /tmp/fidelidade/vercel.json
-          cd /tmp/fidelidade
+          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" > /tmp/cartao-fidelidade/vercel.json
+          cat /tmp/cartao-fidelidade/vercel.json
+          cd /tmp/cartao-fidelidade
           vercel deploy --prod --yes \
             --scope "${{ secrets.VERCEL_ORG_ID }}" \
             --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee deploy.log
