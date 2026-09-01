@@ -14,9 +14,23 @@ Vercel escolhe um sufixo e a URL sai no log do deploy).
 
 ## Botões
 
-Todos os CTAs e os botões dos planos abrem o WhatsApp **(11) 94744-8137** com uma
-mensagem pronta por plano (`a.wa[data-msg]` → link `wa.me` montado por um script
-inline). A navegação do topo usa âncoras (`#como-funciona`, `#recursos`, `#planos`).
+- **Planos → checkout (Asaas):** os botões "Assinar …" (`a.co[data-plan]`) chamam a
+  edge function pública `fidelidade-checkout` (Supabase, projeto do Co-pilot) e
+  redirecionam pro checkout do Asaas (PIX + cartão). Se a chamada falhar, caem no
+  WhatsApp. O retorno `?status=success|cancel` mostra um banner. O pagamento cai no
+  Asaas com `externalReference` `fidelidade:<plano>:<ciclo>` e a ativação do cartão da
+  loja é **manual** (o webhook do Co-pilot ignora essa referência).
+- **Trial / dúvidas → WhatsApp:** "Começar grátis" (topo) e a linha abaixo dos planos
+  abrem o WhatsApp **(11) 94744-8137** com mensagem pronta (`a.wa[data-msg]`).
+- **Guia:** link no topo e botão em "Como funciona" abrem `guia.html` (como o dono
+  administra e como o cliente usa).
+- Navegação do topo por âncoras (`#como-funciona`, `#recursos`, `#planos`).
+
+## guia.html
+
+Página standalone de ajuda (mesma identidade), escrita à mão — parte "Para você, dono"
+(entrar no Admin, cadastrar, dar selo, indicação, prêmio, QR/cartaz, ranking, ajustes) e
+"Para o seu cliente" (abrir o cartão, juntar selos, indicar, resgatar) + FAQ.
 
 ## De onde vem / como regenerar
 

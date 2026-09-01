@@ -118,12 +118,41 @@ ${fontBlock}
 ${body.trimEnd()}
 <script>
 (function(){
-  var P = 'https://wa.me/5511947448137';
-  var links = document.querySelectorAll('a.wa[data-msg]');
-  for (var i = 0; i < links.length; i++) {
-    var a = links[i];
-    a.href = P + '?text=' + encodeURIComponent(a.getAttribute('data-msg'));
-  }
+  var WA = 'https://wa.me/5511947448137';
+  var CO = 'https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/fidelidade-checkout';
+  // monta os links de WhatsApp a partir do data-msg
+  document.querySelectorAll('a.wa[data-msg]').forEach(function(a){
+    a.href = WA + '?text=' + encodeURIComponent(a.getAttribute('data-msg'));
+  });
+  // botões de plano: abrem o checkout (Asaas). Se falhar, caem no WhatsApp.
+  document.querySelectorAll('a.co[data-plan]').forEach(function(a){
+    a.addEventListener('click', function(ev){
+      ev.preventDefault();
+      var plan = a.getAttribute('data-plan'), wa = a.href, old = a.textContent;
+      a.style.pointerEvents = 'none'; a.textContent = 'Abrindo checkout…';
+      var back = function(){ window.open(wa, '_blank'); a.style.pointerEvents = ''; a.textContent = old; };
+      fetch(CO, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ plan:plan, cycle:'monthly' }) })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d && d.ok && d.url) { window.location.href = d.url; } else { back(); } })
+        .catch(back);
+    });
+  });
+  // banner de retorno do checkout (?status=success|cancel)
+  try {
+    var st = new URLSearchParams(location.search).get('status');
+    if (st === 'success' || st === 'cancel') {
+      var b = document.createElement('div');
+      b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;padding:16px 20px;text-align:center;font:600 14px/1.45 ui-monospace,Menlo,monospace;color:#fff;background:' + (st === 'success' ? '#4f7a3a' : '#a8560f');
+      b.textContent = st === 'success'
+        ? '\\u2713 Pagamento recebido! Em breve ativamos seu Cartão Fidelidade e falamos no seu WhatsApp.'
+        : 'Checkout cancelado. Quando quiser, é só escolher um plano de novo.';
+      var c = document.createElement('button');
+      c.textContent = '\\u2715';
+      c.style.cssText = 'margin-left:14px;background:none;border:0;color:#fff;font-size:16px;cursor:pointer';
+      c.onclick = function(){ b.remove(); };
+      b.appendChild(c); document.body.appendChild(b);
+    }
+  } catch (e) {}
 })();
 </script>
 </body>
