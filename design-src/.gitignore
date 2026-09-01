@@ -9,5 +9,6 @@ shot.mjs
 ogshot.mjs
 crop.mjs
 navcrop.mjs
+finalshot.mjs
 shot-*.png
 crop-*.png
