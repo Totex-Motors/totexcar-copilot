@@ -217,7 +217,7 @@
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Selos, QR, cartaz e indicação</li>
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Suporte no WhatsApp</li>
         </ul>
-        <a class="btn ghost wa" data-msg="Oi! Sou o Junior da J.J. Quero conversar sobre o plano Essencial (R$ 59/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Quero esse</a>
+        <a class="btn ghost co wa" data-plan="essencial" data-msg="Oi! Sou o Junior da J.J. Quero assinar o plano Essencial (R$ 59/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Essencial</a>
       </div>
       <div class="tier hot">
         <span class="tag">Mais indicado</span>
@@ -230,7 +230,7 @@
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Relatórios: quem voltou, quem sumiu</li>
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Exportação da base de clientes</li>
         </ul>
-        <a class="btn pri wa" data-msg="Oi! Sou o Junior da J.J. Quero conversar sobre o plano Crescimento (R$ 89/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Quero esse</a>
+        <a class="btn pri co wa" data-plan="crescimento" data-msg="Oi! Sou o Junior da J.J. Quero assinar o plano Crescimento (R$ 89/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Crescimento</a>
       </div>
       <div class="tier">
         <span class="tname">Automação</span>
@@ -242,7 +242,7 @@
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Mensagem automática pra quem sumiu</li>
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Aniversário e prêmio no WhatsApp</li>
         </ul>
-        <a class="btn ghost wa" data-msg="Oi! Sou o Junior da J.J. Quero conversar sobre o plano Automação (R$ 149/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Quero esse</a>
+        <a class="btn ghost co wa" data-plan="ilimitado" data-msg="Oi! Sou o Junior da J.J. Quero assinar o plano Automação (R$ 149/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Automação</a>
       </div>
     </div>
     <p class="plnote"><b>1º mês grátis</b> · sem fidelidade, cancela quando quiser · no anual, 2 meses grátis</p>
@@ -283,7 +283,19 @@
 <script>
 (function(){
   var WA='https://wa.me/5511947448137';
+  var CO='https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/fidelidade-checkout';
   document.querySelectorAll('a.wa[data-msg]').forEach(function(a){ a.href=WA+'?text='+encodeURIComponent(a.getAttribute('data-msg')); });
+  // botões de plano: abrem o checkout do Asaas; se falhar, caem no WhatsApp
+  document.querySelectorAll('a.co[data-plan]').forEach(function(a){
+    a.addEventListener('click',function(ev){
+      ev.preventDefault();
+      var plan=a.getAttribute('data-plan'), wa=a.href, old=a.textContent;
+      a.style.pointerEvents='none'; a.textContent='Abrindo checkout…';
+      var back=function(){ window.open(wa,'_blank'); a.style.pointerEvents=''; a.textContent=old; };
+      fetch(CO,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan,cycle:'monthly'})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.url){window.location.href=d.url;} else {back();} }).catch(back);
+    });
+  });
 })();
 </script>
 </body>
