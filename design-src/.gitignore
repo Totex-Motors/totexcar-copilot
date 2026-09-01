@@ -1,0 +1,10 @@
+# Canvas gerado pelo seed-canvas.mjs (payload do editor, ~2.5MB) — regenerável
+# a partir das fontes abaixo; publicado como Artifact, não versionado aqui.
+*.html
+!*.dc.html
+!og.html
+
+# Scratch de verificação (screenshots + scripts do Playwright)
+shot.mjs
+ogshot.mjs
+shot-*.png
