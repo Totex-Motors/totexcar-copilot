@@ -2,3 +2,9 @@
 # a partir das fontes abaixo; publicado como Artifact, não versionado aqui.
 *.html
 !*.dc.html
+!og.html
+
+# Scratch de verificação (screenshots + scripts do Playwright)
+shot.mjs
+ogshot.mjs
+shot-*.png

@@ -1,0 +1,60 @@
+name: Deploy Fidelidade (página de vendas)
+
+# Deploy da página de vendas do Cartão Fidelidade (fidelidade/) como projeto
+# PRÓPRIO na Vercel — separado do totexcar-copilot e do jjespetos. O projeto é
+# criado/atualizado pelo nome do diretório de deploy ("fidelidade" →
+# https://fidelidade.vercel.app, se o subdomínio estiver livre; senão a Vercel
+# escolhe um sufixo e a URL sai no log).
+#
+# Dispara no push da main quando fidelidade/ muda, e manualmente (workflow_dispatch).
+# Reusa os mesmos segredos do deploy principal: VERCEL_TOKEN e VERCEL_ORG_ID
+# (NÃO seta VERCEL_PROJECT_ID — isso apontaria pro projeto do Co-pilot).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'fidelidade/**'
+  workflow_dispatch:
+
+# NÃO exportar VERCEL_ORG_ID como env: com ela setada o CLI exige também
+# VERCEL_PROJECT_ID. O escopo do time vai por --scope na linha de comando.
+concurrency:
+  group: deploy-fidelidade
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Vercel (fidelidade)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy (site estático, projeto fidelidade)
+        run: |
+          set -o pipefail
+          # pasta de deploy com o nome do projeto (o --yes cria o projeto com esse nome)
+          mkdir -p /tmp/fidelidade
+          cp fidelidade/index.html /tmp/fidelidade/index.html
+          cp fidelidade/og.jpg /tmp/fidelidade/og.jpg
+          # anti-cache: o HTML sempre fresco; a og.jpg segue cacheável
+          NS='no-store, max-age=0, must-revalidate'
+          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" > /tmp/fidelidade/vercel.json
+          cat /tmp/fidelidade/vercel.json
+          cd /tmp/fidelidade
+          vercel deploy --prod --yes \
+            --scope "${{ secrets.VERCEL_ORG_ID }}" \
+            --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee deploy.log
+          URL=$(grep -Eo 'https://[a-z0-9.-]+\.vercel\.app' deploy.log | tail -1)
+          echo "----------------------------------------"
+          echo "Deployment: $URL"
+          echo "Aliases de produção do projeto:"
+          vercel inspect "$URL" --scope "${{ secrets.VERCEL_ORG_ID }}" --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | sed -n '1,40p' || true
