@@ -9,8 +9,8 @@ de um arquivo (`index.html`), sem backend.
 Deployada como projeto próprio na Vercel pelo workflow
 `.github/workflows/deploy-fidelidade.yml`, a cada push na `main` que mude
 `fidelidade/` (ou manualmente por `workflow_dispatch`). O endereço-alvo é
-**https://fidelidade.vercel.app** (se o subdomínio estiver livre; senão a Vercel
-escolhe um sufixo e a URL sai no log do deploy).
+**https://cartao-fidelidade.vercel.app** (se o subdomínio estiver livre; senão a
+Vercel escolhe um sufixo e a URL sai no log do deploy).
 
 ## Botões
 
