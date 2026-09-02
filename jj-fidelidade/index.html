@@ -457,6 +457,8 @@ const LS_KEY = 'jj_fidelidade_v1';
 const DEFAULTS = {
   settings:{ pin:'123456', goal:10, reward:'um almoço completo grátis',
     rule:'Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!',
+    plan:'ilimitado',   // plano da loja → limite de clientes (essencial 50 / crescimento 150 / ilimitado)
+    operadorPin:'',     // PIN do balcão (operador, ex.: o Junior); vazio = desativado. Só o dono muda plano/PINs.
     appUrl:'',      // endereço público do app (usado nos QR e na mensagem); vazio = o endereço atual
     waApi:false,    // false = envio grátis (abre o WhatsApp); true = automático pela instância de API
     // endpoint + chave: conectam o BANCO NA NUVEM (e o envio por API, se ligado)
@@ -496,6 +498,14 @@ function makeCustomer(d, name, phone){
            stamps:0, redeemed:0, createdAt: Date.now(), history:[] };
 }
 
+// planos e trava de limite de clientes
+const PLAN_MAX  = { essencial:50, crescimento:150, ilimitado:Infinity };
+const PLAN_NAME = { essencial:'Essencial', crescimento:'Crescimento', ilimitado:'Ilimitado' };
+function planMax(){ const m = PLAN_MAX[db.settings.plan]; return m===undefined ? Infinity : m; }
+function planName(){ return PLAN_NAME[db.settings.plan] || 'Ilimitado'; }
+function realCount(){ return db.customers.filter(c=>!isDemoJunior(c)).length; }
+function atLimit(){ return realCount() >= planMax(); }
+
 let db = load();
 let state = {
   tab:'card',            // card | admin
@@ -505,6 +515,7 @@ let state = {
   cardCode: localStorage.getItem(LS_KEY+':mycard') || '',
   invite: (function(){ try{ return JSON.parse(localStorage.getItem(LS_KEY+':invite')||'null'); }catch(e){ return null; } })(),
   detail:null,           // id do cliente aberto no modal
+  role:null,             // 'super' (dono) | 'operador' (balcão, ex.: Junior)
   pinBuf:'', pinErr:false
 };
 
@@ -701,8 +712,9 @@ async function pushState(){
       body: JSON.stringify({ action:'state_push', k: cfg.k, pin: authPin, data: db }) });
     const j = await r.json().catch(()=>({}));
     cloudOk = !!j.ok;
-    if(j.ok) authPin = db.settings.pin;                 // PIN novo passa a valer após gravado
+    if(j.ok) authPin = (state.role==='operador') ? (db.settings.operadorPin||authPin) : db.settings.pin; // PIN novo passa a valer após gravado
     else if(j.error==='pin_invalido') toast('⚠️ PIN diferente do da nuvem — dados não sincronizados.');
+    else if(j.error==='limite_plano') toast('🔒 Limite de clientes do plano atingido — esse cadastro não foi salvo na nuvem.');
     else scheduleSync();                                // erro transitório: tenta de novo
   }catch(e){ cloudOk = false; scheduleSync(); }
   updateCloudBadge();
@@ -1134,7 +1146,7 @@ function viewAdmin(){
   return `<main>
     <h1 class="screen-title">Painel da churrasqueira</h1>
     <div class="stats">
-      <div class="stat"><b>${db.customers.length}</b><span>clientes</span></div>
+      <div class="stat"><b>${realCount()}</b><span>${planMax()!==Infinity ? 'de '+planMax()+' clientes' : 'clientes'}</span></div>
       <div class="stat"><b>${stampsMonth}</b><span>selos no mês</span></div>
       <div class="stat"><b>${redeemed}</b><span>prêmios dados</span></div>
     </div>
@@ -1172,13 +1184,18 @@ function adminClientes(){
 }
 
 function adminNovo(){
+  const locked = atLimit();
+  const limitNote = locked
+    ? `<p class="muted" style="color:var(--danger);font-weight:800;font-size:13px;margin:0">🔒 Limite de ${planMax()} clientes do plano ${esc(planName())} atingido. Fale com o Totex pra liberar mais.</p>`
+    : (planMax()!==Infinity ? `<p class="muted" style="font-size:13px;margin:0">Plano <b>${esc(planName())}</b> — ${realCount()} de ${planMax()} clientes cadastrados.</p>` : '');
   return `<div class="panel">
     <h3>Cadastrar cliente</h3>
+    ${limitNote}
     <div class="field"><label for="npName">Nome *</label><input id="npName" placeholder="Ex.: Junior" autocomplete="off"></div>
     <div class="field"><label for="npPhone">Telefone / WhatsApp</label><input id="npPhone" inputmode="tel" placeholder="(11) 99999-9999" autocomplete="off"></div>
     <div class="field"><label for="npRef">Voucher de indicação (se o cliente apresentou)</label><input id="npRef" placeholder="JJ-0001" autocomplete="off" style="text-transform:uppercase"></div>
     <p class="muted" style="font-size:13px;margin:0">🤝 Com voucher válido, <b>quem indicou ganha +1 selo automático</b> — vale na primeira compra de costela ou frango do indicado.</p>
-    <button class="btn btn-primary btn-block" data-act="create">Criar cartão</button>
+    <button class="btn btn-primary btn-block" data-act="create" ${locked?'disabled style="opacity:.5;cursor:not-allowed"':''}>Criar cartão</button>
     <p class="muted" style="font-size:13px">Com telefone preenchido, o link do cartão vai <b>automático no WhatsApp do cliente</b>. Ele também pode abrir pela aba “Meu Cartão” (código ou telefone) ou escaneando o QR.</p>
   </div>`;
 }
@@ -1215,6 +1232,7 @@ function adminRanking(){
 
 function adminAjustes(){
   const s = db.settings;
+  const isSuper = state.role === 'super';
   return `<div class="panel">
     <h3>QR e divulgação</h3>
     <p class="muted" style="font-size:13px;margin:0">Imprima o cartaz e deixe no balcão: o cliente escaneia e cai direto na tela do cartão.</p>
@@ -1222,6 +1240,15 @@ function adminAjustes(){
     <div class="field"><label for="stAppUrl">Endereço público do app (usado nos QR e no WhatsApp)</label>
       <input id="stAppUrl" placeholder="${esc(appUrl()||'https://seu-endereco.vercel.app')}" value="${esc(s.appUrl||'')}"></div>
   </div>
+  <div class="panel">
+    <h3>Regras do cartão</h3>
+    <div class="field"><label for="stGoal">Selos para ganhar o prêmio</label>
+      <select id="stGoal">${[5,6,8,10,12,15].map(n=>`<option ${n===s.goal?'selected':''}>${n}</option>`).join('')}</select></div>
+    <div class="field"><label for="stReward">Prêmio</label><input id="stReward" value="${esc(s.reward)}"></div>
+    <div class="field"><label for="stRule">Texto que aparece no cartão</label><input id="stRule" value="${esc(s.rule)}"></div>
+    <button class="btn btn-primary btn-block" data-act="saveSettings">Salvar regras</button>
+  </div>
+  ${isSuper ? `
   <div class="panel">
     <h3>WhatsApp</h3>
     <div class="field"><label for="stWaMode">Modo de envio do cartão</label>
@@ -1237,25 +1264,33 @@ function adminAjustes(){
       </div>
     </details>
   </div>
-  <div class="panel">
-    <h3>Regras do cartão</h3>
-    <div class="field"><label for="stGoal">Selos para ganhar o prêmio</label>
-      <select id="stGoal">${[5,6,8,10,12,15].map(n=>`<option ${n===s.goal?'selected':''}>${n}</option>`).join('')}</select></div>
-    <div class="field"><label for="stReward">Prêmio</label><input id="stReward" value="${esc(s.reward)}"></div>
-    <div class="field"><label for="stRule">Texto que aparece no cartão</label><input id="stRule" value="${esc(s.rule)}"></div>
-    <button class="btn btn-primary btn-block" data-act="saveSettings">Salvar regras</button>
+  <div class="panel" style="border:1.5px solid var(--ember)">
+    <h3>Plano &amp; acesso do balcão <span class="muted" style="font-weight:700;font-size:12px">(só o dono)</span></h3>
+    <div class="field"><label for="stPlan">Plano da loja — limite de clientes</label>
+      <select id="stPlan">
+        <option value="essencial" ${s.plan==='essencial'?'selected':''}>Essencial — até 50 clientes</option>
+        <option value="crescimento" ${s.plan==='crescimento'?'selected':''}>Crescimento — até 150 clientes</option>
+        <option value="ilimitado" ${(s.plan==='ilimitado'||!s.plan)?'selected':''}>Ilimitado — sem limite</option>
+      </select></div>
+    <div class="field"><label for="stOpPin">PIN do balcão / operador (6 dígitos, vazio = desativado)</label>
+      <input id="stOpPin" inputmode="numeric" maxlength="6" placeholder="ex.: 102030" value="${esc(s.operadorPin||'')}"></div>
+    <button class="btn btn-primary btn-block" data-act="saveAccess">Salvar plano e acesso</button>
+    <p class="muted" style="font-size:12px;margin:4px 0 0">Quem entra com o PIN do operador cuida do balcão (cadastrar, dar selo, prêmio), mas <b>não vê esta seção</b> — nem plano, nem PINs, nem backup.</p>
   </div>
   <div class="panel">
     <h3>Segurança</h3>
-    <div class="field"><label for="stPin">PIN do admin (6 dígitos)</label><input id="stPin" inputmode="numeric" maxlength="6" value="${esc(s.pin)}"></div>
-    <button class="btn btn-ghost btn-block" data-act="savePin">Trocar PIN</button>
+    <div class="field"><label for="stPin">PIN do dono (6 dígitos)</label><input id="stPin" inputmode="numeric" maxlength="6" value="${esc(s.pin)}"></div>
+    <button class="btn btn-ghost btn-block" data-act="savePin">Trocar PIN do dono</button>
   </div>
   <div class="panel">
     <h3>Backup</h3>
     <p class="muted" style="font-size:13px">Os dados ficam salvos neste aparelho. Exporte de vez em quando para não perder nada.</p>
     <button class="btn btn-ghost btn-block" data-act="export">Exportar dados (JSON)</button>
     <div class="field"><label for="impFile">Importar backup</label><input id="impFile" type="file" accept="application/json"></div>
-  </div>`;
+  </div>` : `
+  <div class="panel">
+    <p class="muted" style="font-size:13px;margin:0">Você está no acesso de <b>balcão</b>. Plano, PINs e backup ficam com o dono.</p>
+  </div>`}`;
 }
 
 function modalDetail(){
@@ -1361,12 +1396,14 @@ async function checkPin(){
   state.pinBusy = false;
   if(res.status === 'ok' && res.hadData){
     state.adminOk = true; authPin = pin;
+    state.role = (pin === db.settings.pin) ? 'super' : 'operador';
     if(res.merged){ scheduleSync(); toast('☁️ '+res.merged+' registro(s) deste aparelho enviados pra nuvem.'); }
   } else if(res.status === 'pin'){
     state.pinErr = true;
   } else {
     // nuvem vazia ou fora do ar: valida local; o primeiro push cria o banco
-    if(pin === db.settings.pin){ state.adminOk = true; authPin = pin; scheduleSync(); }
+    if(pin === db.settings.pin){ state.adminOk = true; authPin = pin; state.role='super'; scheduleSync(); }
+    else if(db.settings.operadorPin && pin === db.settings.operadorPin){ state.adminOk = true; authPin = pin; state.role='operador'; scheduleSync(); }
     else state.pinErr = true;
   }
   render();
@@ -1391,11 +1428,12 @@ function action(act){
     case 'dismissInvite':
       state.invite=null; localStorage.removeItem(LS_KEY+':invite'); render(); break;
     case 'lock':
-      state.adminOk=false; state.pinBuf=''; render(); break;
+      state.adminOk=false; state.role=null; authPin=null; state.pinBuf=''; render(); break;
     case 'create':{
       const name = $app.querySelector('#npName').value.trim();
       const phone = $app.querySelector('#npPhone').value.trim();
       if(!name){ toast('Falta o nome do cliente.'); return; }
+      if(atLimit()){ toast('🔒 Limite de '+planMax()+' clientes do plano '+planName()+' atingido. Fale com o Totex pra liberar mais.'); return; }
       const refCode = ($app.querySelector('#npRef').value||'').trim().toUpperCase();
       const nc = makeCustomer(db, name, phone);
       let refMsg = '';
@@ -1459,18 +1497,30 @@ function action(act){
       db.settings.reward = $app.querySelector('#stReward').value.trim()||DEFAULTS.settings.reward;
       db.settings.rule = $app.querySelector('#stRule').value.trim()||DEFAULTS.settings.rule;
       db.settings.appUrl = $app.querySelector('#stAppUrl').value.trim();
-      db.settings.waApi = $app.querySelector('#stWaMode').value === 'api';
-      db.settings.waEndpoint = $app.querySelector('#stWaEp').value.trim() || DEFAULTS.settings.waEndpoint;
-      db.settings.waKey = $app.querySelector('#stWaKey').value.trim() || DEFAULTS.settings.waKey;
+      // campos de WhatsApp só existem no acesso do dono — lê se estiverem na tela
+      const waMode=$app.querySelector('#stWaMode'); if(waMode) db.settings.waApi = waMode.value==='api';
+      const waEp=$app.querySelector('#stWaEp'); if(waEp) db.settings.waEndpoint = waEp.value.trim() || DEFAULTS.settings.waEndpoint;
+      const waKey=$app.querySelector('#stWaKey'); if(waKey) db.settings.waKey = waKey.value.trim() || DEFAULTS.settings.waKey;
       db.customers.forEach(x=>{ if(x.stamps>db.settings.goal) x.stamps=db.settings.goal; });
       save(db); scheduleSync(); render(); toast('Regras salvas!'); break;
     }
+    case 'saveAccess':{
+      if(state.role!=='super') return;               // só o dono muda plano/PIN do operador
+      const plan = $app.querySelector('#stPlan').value;
+      db.settings.plan = ['essencial','crescimento','ilimitado'].includes(plan) ? plan : 'ilimitado';
+      const op = ($app.querySelector('#stOpPin').value||'').trim();
+      if(op && !/^\d{6}$/.test(op)){ toast('O PIN do operador precisa ter 6 números (ou vazio).'); return; }
+      db.settings.operadorPin = op;
+      save(db); scheduleSync(); render(); toast('Plano e acesso salvos!'); break;
+    }
     case 'savePin':{
+      if(state.role!=='super') return;
       const p = $app.querySelector('#stPin').value.trim();
       if(!/^\d{6}$/.test(p)){ toast('O PIN precisa ter 6 números.'); return; }
-      db.settings.pin = p; save(db); scheduleSync(); toast('PIN atualizado!'); break;
+      db.settings.pin = p; save(db); scheduleSync(); toast('PIN do dono atualizado!'); break;
     }
     case 'export':{
+      if(state.role!=='super') return;
       const blob = new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
