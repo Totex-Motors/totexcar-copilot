@@ -115,24 +115,50 @@ Deno.serve(async (req) => {
     return (data?.data && typeof data.data === "object" && Array.isArray(data.data.customers)) ? data.data : null;
   };
 
+  // Dois acessos ao Admin: o "dono do sistema" (settings.pin) e o "operador" do
+  // balcão (settings.operadorPin, ex.: o Junior). Ambos leem/gravam o estado; só
+  // o dono muda plano e PINs. A trava de plano vive no state_push.
+  const pinRole = (st: any, pin: string): "super" | "operador" | null => {
+    if (pin === String(st?.settings?.pin || "")) return "super";
+    if (st?.settings?.operadorPin && pin === String(st.settings.operadorPin)) return "operador";
+    return null;
+  };
+
   if (p.action === "state_pull") {
     const st = await loadState();
-    if (st && String(p.pin || "") !== String(st.settings?.pin || "")) return json({ ok: false, error: "pin_invalido" }, 403);
+    if (st && !pinRole(st, String(p.pin || ""))) return json({ ok: false, error: "pin_invalido" }, 403);
     return json({ ok: true, data: st });
   }
 
   if (p.action === "state_push") {
     const st = await loadState();
-    if (st && String(p.pin || "") !== String(st.settings?.pin || "")) return json({ ok: false, error: "pin_invalido" }, 403);
+    // sem estado ainda (bootstrap): quem grava é o dono; com estado, valida o PIN
+    const role = st ? pinRole(st, String(p.pin || "")) : "super";
+    if (st && !role) return json({ ok: false, error: "pin_invalido" }, 403);
     const data = p.data;
     if (!data || !Array.isArray(data.customers) || !data.settings) return json({ ok: false, error: "dados_invalidos" }, 400);
     if (JSON.stringify(data).length > 2_000_000) return json({ ok: false, error: "dados_grandes" }, 400);
+    // operador (balcão) NUNCA altera plano nem PINs — preserva do estado existente
+    if (role === "operador" && st) {
+      data.settings.pin = st.settings?.pin;
+      data.settings.operadorPin = st.settings?.operadorPin;
+      data.settings.plan = st.settings?.plan;
+    }
     // guarda de servidor: nunca aceita o cliente-demo "Junior" (JJ-0001) — protege
     // a base mesmo se um aparelho com versão antiga tentar re-subir o demo
     const isDemo = (c: any) => c && c.code === "JJ-0001" && String(c.name || "").trim().toLowerCase() === "junior"
       && !c.phone && !c.referredBy && !c.redeemed
       && (Array.isArray(c.history) ? c.history.every((h: any) => h.t === "stamp") : true);
     data.customers = data.customers.filter((c: any) => !isDemo(c));
+    // trava de plano: a base não pode CRESCER além do limite do plano
+    // (Essencial 50, Crescimento 150, Ilimitado sem teto). Selos/edições passam;
+    // só barra crescer o nº de clientes acima do teto.
+    const PLAN_MAX: Record<string, number> = { essencial: 50, crescimento: 150 };
+    const max = PLAN_MAX[String(data.settings.plan || "")] ?? Infinity;
+    const oldCount = st ? (st.customers || []).filter((c: any) => !isDemo(c)).length : 0;
+    if (data.customers.length > max && data.customers.length > oldCount) {
+      return json({ ok: false, error: "limite_plano", max, plan: data.settings.plan }, 409);
+    }
     const { error } = await admin.from("jj_state").upsert({ id: 1, data, updated_at: new Date().toISOString() });
     if (error) { console.error("JJ state_push falhou:", error); return json({ ok: false, error: "falha_ao_salvar" }, 500); }
     return json({ ok: true });
