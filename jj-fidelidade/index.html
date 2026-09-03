@@ -463,7 +463,13 @@ const DEFAULTS = {
     waApi:false,    // false = envio grátis (abre o WhatsApp); true = automático pela instância de API
     // endpoint + chave: conectam o BANCO NA NUVEM (e o envio por API, se ligado)
     waEndpoint:'https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/jj-fidelidade',
-    waKey:'64d10fcbb90742423a67440828c853b7' },
+    waKey:'64d10fcbb90742423a67440828c853b7',
+    // ===== IDENTIDADE DA MARCA (manifesto) — muda por cliente; o motor só lê =====
+    // Ausente/incompleto = usa estes padrões (a J.J). Um cliente novo troca só isto.
+    brand:{ name:'J.J Espetos', shortName:'J.J', legalName:'J.J Restaurante e Espetaria',
+      initials:'J.J', tagline:'ESPETOS', prefix:'JJ', appTitle:'J.J Fidelidade',
+      address:'Av. Tenente Marques, 06 — Polvilho, Cajamar',
+      colorEmber:'#e8862b', colorFlame:'#c93e18' } },
   seq: 1,
   customers: []
 };
@@ -476,6 +482,7 @@ function load(){
       // endpoint/chave vazios (versões antigas) quebrariam a nuvem — restaura o padrão
       if(!d.settings.waEndpoint) d.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
       if(!d.settings.waKey) d.settings.waKey = DEFAULTS.settings.waKey;
+      d.settings.brand = Object.assign({}, DEFAULTS.settings.brand, d.settings.brand||{});
       d.customers = (d.customers||[]).filter(c=>!isDemoJunior(c)); // limpa o cliente-demo antigo
       d.seq = d.seq||1; return d; }
   }catch(e){}
@@ -492,8 +499,11 @@ function isDemoJunior(c){
 }
 function save(d){ try{ localStorage.setItem(LS_KEY, JSON.stringify(d)); }catch(e){} }
 
+// identidade da marca em uso (com fallback para os padrões da J.J)
+function brand(){ return (db && db.settings && db.settings.brand) || DEFAULTS.settings.brand; }
+
 function makeCustomer(d, name, phone){
-  const code = 'JJ-' + String(d.seq++).padStart(4,'0');
+  const code = ((d.settings.brand && d.settings.brand.prefix) || 'JJ') + '-' + String(d.seq++).padStart(4,'0');
   return { id: code, code, name: name.trim(), phone: (phone||'').trim(),
            stamps:0, redeemed:0, createdAt: Date.now(), history:[] };
 }
@@ -599,15 +609,16 @@ function waFallback(c, why){
   // ATENÇÃO: só emojis do plano básico Unicode (⭐ ✅ ➡) — emojis "altos" (🔥 etc.)
   // são mutilados pelo wa.me?text= em alguns Androids e viram interrogação.
   const link = cardUrl(c.code);
+  const B = brand();
   const msg =
     'Olá, *'+c.name+'*! ⭐\n\n'
-    + 'Seu *Cartão Fidelidade J.J Espetos* está pronto.\n\n'
+    + 'Seu *Cartão Fidelidade '+B.name+'* está pronto.\n\n'
     + '*Cartão:* '+c.code+'\n'
     + '*Selos:* '+c.stamps+' de '+db.settings.goal+'\n\n'
     + (link ? '➡ Acompanhe seus selos e seu prêmio:\n'+link+'\n\n' : '')
     + db.settings.rule+'\n\n'
-    + '_J.J Restaurante e Espetaria_\n'
-    + 'Av. Tenente Marquês, 06 — Polvilho, Cajamar';
+    + '_'+B.legalName+'_\n'
+    + B.address;
   if(why) toast(why+' — abrindo seu WhatsApp…');
   window.open('https://wa.me/'+phone55(c.phone)+'?text='+encodeURIComponent(msg), '_blank');
 }
@@ -669,7 +680,7 @@ function printPoster(c){
       ? 'Aponte a câmera do celular para o código acima<br>e acompanhe seus selos e seu prêmio.'
       : 'Aponte a câmera do celular para o código acima,<br>digite o código do seu cartão e acompanhe seus selos.'}</div>
     <div class="p-rule">${esc(db.settings.rule)}</div>
-    <div class="p-addr">J.J Espetos · Av. Tenente Marques, 06 — Polvilho, Cajamar</div>`;
+    <div class="p-addr">${esc(brand().name)} · ${esc(brand().address)}</div>`;
   renderQRs(poster);
   if(!url){ toast('Defina o endereço público do app em Ajustes antes de imprimir.'); return; }
   document.body.classList.add('printing');
@@ -732,6 +743,7 @@ async function pullState(pin){
         cloud.settings = Object.assign({}, DEFAULTS.settings, cloud.settings||{});
         if(!cloud.settings.waEndpoint) cloud.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
         if(!cloud.settings.waKey) cloud.settings.waKey = DEFAULTS.settings.waKey;
+        cloud.settings.brand = Object.assign({}, DEFAULTS.settings.brand, cloud.settings.brand||{});
         cloud.seq = Math.max(cloud.seq||1, db.seq||1);
         // FUSÃO anti-perda: cliente que só existe neste aparelho (push que não
         // chegou à nuvem) NÃO pode sumir no pull — entra na nuvem agora.
@@ -744,7 +756,7 @@ async function pullState(pin){
           } else if(cc.name !== lc.name){
             // colisão de código (numeração recomeçou num aparelho zerado): recodifica o local
             const nc = Object.assign({}, lc);
-            nc.code = 'JJ-' + String(cloud.seq++).padStart(4,'0'); nc.id = nc.code;
+            nc.code = ((cloud.settings.brand && cloud.settings.brand.prefix) || 'JJ') + '-' + String(cloud.seq++).padStart(4,'0'); nc.id = nc.code;
             cloud.customers.push(nc); merged++;
           } else if((lc.history||[]).length > (cc.history||[]).length){
             Object.assign(cc, lc); merged++;            // local mais adiantado (selo não sincado)
@@ -799,7 +811,7 @@ function shareInvite(c){
   const link = inviteUrl(c);
   // só emojis do plano básico (⭐ ➡): os "altos" viram "?" no wa.me de alguns Androids
   const msg =
-    '*Bora comer na J.J Espetos?* ⭐\n\n'
+    '*Bora comer na '+brand().name+'?* ⭐\n\n'
     + 'Compra *1 costela no bafo ou 1 frango* e apresenta meu voucher *'+c.code+'* no balcão.\n\n'
     + 'Você já começa seu cartão fidelidade — juntando *'+db.settings.goal+' selos* você ganha *'
     + db.settings.reward+'*!\n\n'
@@ -912,7 +924,7 @@ function toast(msg){
 }
 
 /* selo carimbado: adesivo escuro com J.J e chamas, igual ao físico */
-const STAMP_SVG = `
+function stampSvg(b){ return `
 <svg viewBox="0 0 100 100" aria-hidden="true">
   <defs>
     <radialGradient id="sg" cx="38%" cy="30%" r="80%">
@@ -920,13 +932,14 @@ const STAMP_SVG = `
     </radialGradient>
   </defs>
   <circle cx="50" cy="50" r="49" fill="url(#sg)"/>
-  <circle cx="50" cy="50" r="46" fill="none" stroke="#e8862b" stroke-opacity=".35" stroke-width="1.5"/>
-  <path d="M22 88 Q28 70 33 78 Q36 62 44 74 Q48 58 55 72 Q60 60 66 76 Q71 66 78 88 Z" fill="#c93e18"/>
-  <path d="M30 88 Q35 76 40 82 Q45 70 51 80 Q56 70 61 82 Q65 76 70 88 Z" fill="#e8862b"/>
+  <circle cx="50" cy="50" r="46" fill="none" stroke="${b.colorEmber}" stroke-opacity=".35" stroke-width="1.5"/>
+  <path d="M22 88 Q28 70 33 78 Q36 62 44 74 Q48 58 55 72 Q60 60 66 76 Q71 66 78 88 Z" fill="${b.colorFlame}"/>
+  <path d="M30 88 Q35 76 40 82 Q45 70 51 80 Q56 70 61 82 Q65 76 70 88 Z" fill="${b.colorEmber}"/>
   <path d="M38 88 Q43 80 47 85 Q51 78 56 85 Q59 81 62 88 Z" fill="#f5c04e"/>
-  <text x="50" y="52" text-anchor="middle" font-family="'Alfa Slab One',Georgia,serif" font-size="26" fill="#e8862b">J.J</text>
-  <text x="50" y="64" text-anchor="middle" font-family="'Nunito Sans',sans-serif" font-weight="800" font-size="8.5" letter-spacing="2" fill="#f0a45a">ESPETOS</text>
-</svg>`;
+  <text x="50" y="52" text-anchor="middle" font-family="'Alfa Slab One',Georgia,serif" font-size="26" fill="${b.colorEmber}">${b.initials}</text>
+  <text x="50" y="64" text-anchor="middle" font-family="'Nunito Sans',sans-serif" font-weight="800" font-size="8.5" letter-spacing="2" fill="#f0a45a">${b.tagline}</text>
+</svg>`; }
+let STAMP_SVG = stampSvg(DEFAULTS.settings.brand);
 
 /* =====================================================================
    FireSlots — FOGO REAL simulado (algoritmo de propagação de calor do
@@ -1028,17 +1041,31 @@ const FireSlots = (function(){
   return { collect, makeSim, step, paint, MAXH, PAL, reduced };
 })();
 
-const LOGO_SVG = `
+function logoSvg(b){ return `
 <svg class="logo-mark" viewBox="0 0 100 100" aria-hidden="true">
-  <circle cx="50" cy="50" r="48" fill="#1c0f07" stroke="#e8862b" stroke-opacity=".4" stroke-width="2"/>
-  <path d="M20 90 Q28 66 34 76 Q38 58 46 72 Q50 54 57 70 Q62 58 68 74 Q74 64 80 90 Z" fill="#c93e18"/>
-  <path d="M30 90 Q36 76 41 82 Q46 68 52 80 Q57 70 62 82 Q67 76 72 90 Z" fill="#e8862b"/>
-  <text x="50" y="50" text-anchor="middle" font-family="'Alfa Slab One',Georgia,serif" font-size="28" fill="#e8862b">J.J</text>
-  <text x="50" y="63" text-anchor="middle" font-family="'Nunito Sans',sans-serif" font-weight="800" font-size="9" letter-spacing="2" fill="#f0a45a">ESPETOS</text>
-</svg>`;
+  <circle cx="50" cy="50" r="48" fill="#1c0f07" stroke="${b.colorEmber}" stroke-opacity=".4" stroke-width="2"/>
+  <path d="M20 90 Q28 66 34 76 Q38 58 46 72 Q50 54 57 70 Q62 58 68 74 Q74 64 80 90 Z" fill="${b.colorFlame}"/>
+  <path d="M30 90 Q36 76 41 82 Q46 68 52 80 Q57 70 62 82 Q67 76 72 90 Z" fill="${b.colorEmber}"/>
+  <text x="50" y="50" text-anchor="middle" font-family="'Alfa Slab One',Georgia,serif" font-size="28" fill="${b.colorEmber}">${b.initials}</text>
+  <text x="50" y="63" text-anchor="middle" font-family="'Nunito Sans',sans-serif" font-weight="800" font-size="9" letter-spacing="2" fill="#f0a45a">${b.tagline}</text>
+</svg>`; }
+let LOGO_SVG = logoSvg(DEFAULTS.settings.brand);
+
+// aplica a identidade da marca no runtime: título, cores de acento e logos.
+// Padrões = J.J, então sem manifesto o app fica idêntico ao de hoje.
+function applyBrand(){
+  const b = brand();
+  document.title = b.appTitle || ((b.name||'') + ' · Fidelidade');
+  const rs = document.documentElement.style;
+  if(b.colorEmber) rs.setProperty('--ember', b.colorEmber);
+  if(b.colorFlame) rs.setProperty('--flame', b.colorFlame);
+  STAMP_SVG = stampSvg(b);
+  LOGO_SVG  = logoSvg(b);
+}
 
 /* ---------- renderização ---------- */
 function render(){
+  applyBrand();
   document.getElementById('tabCard').classList.toggle('active', state.tab==='card');
   document.getElementById('tabAdmin').classList.toggle('active', state.tab==='admin');
   $app.classList.toggle('wide', state.tab==='admin' && state.adminOk);
@@ -1050,7 +1077,7 @@ function render(){
 
 function topBar(){
   return `<header class="top">${LOGO_SVG}
-    <div class="brand"><b>J.J Espetos</b><span>Fidelidade</span></div>
+    <div class="brand"><b>${esc(brand().name)}</b><span>Fidelidade</span></div>
     <div class="spacer"></div>
     ${state.tab==='admin' && state.adminOk ? `<button class="pill-btn" data-act="lock">Sair</button>`:''}
   </header>`;
@@ -1064,28 +1091,28 @@ function viewCard(){
     return `<main>
       <div class="invite-hero">
         <div class="iv-eyebrow">Voucher de indicação</div>
-        <div class="iv-title">${iv.name ? esc(iv.name)+' te chamou pra comer na J.J!' : 'Você foi convidado pra comer na J.J!'}</div>
+        <div class="iv-title">${iv.name ? esc(iv.name)+' te chamou pra comer na '+esc(brand().shortName)+'!' : 'Você foi convidado pra comer na '+esc(brand().shortName)+'!'}</div>
         <div class="voucher-code">${esc(iv.code)}</div>
         <p class="iv-rule">Compre <b>1 costela no bafo ou 1 frango</b> e <b>mostre esta tela no balcão</b>.<br>
         Você já começa seu cartão fidelidade — e ${iv.name ? esc(iv.name) : 'quem te indicou'} ganha <b>+1 selo</b>. 🔥</p>
       </div>
-      <p class="footer-note">J.J Espetos · Av. Tenente Marques, 06 — Polvilho, Cajamar</p>
+      <p class="footer-note">${esc(brand().name)} · ${esc(brand().address)}</p>
       <button class="btn btn-ghost btn-block" data-act="dismissInvite">Já tenho cartão / abrir outro cartão</button>
     </main>`;
   }
   if(!c){
     return `<main>
       <h1 class="screen-title">Seu cartão fidelidade, agora no celular</h1>
-      <p class="muted">Digite o código do seu cartão (está escrito nele, ex.: <b>JJ-0001</b>) ou o telefone que você deixou no balcão.</p>
+      <p class="muted">Digite o código do seu cartão (está escrito nele, ex.: <b>${esc(brand().prefix)}-0001</b>) ou o telefone que você deixou no balcão.</p>
       <div class="panel">
         <div class="field">
           <label for="findCard">Código ou telefone</label>
-          <input id="findCard" inputmode="text" autocomplete="off" placeholder="JJ-0001 ou (11) 99999-9999">
+          <input id="findCard" inputmode="text" autocomplete="off" placeholder="${esc(brand().prefix)}-0001 ou (11) 99999-9999">
         </div>
         <button class="btn btn-primary btn-block" data-act="find">Abrir meu cartão</button>
-        <p class="muted" style="font-size:13px">Ainda não tem cartão? Peça no balcão da J.J Espetos — é grátis.</p>
+        <p class="muted" style="font-size:13px">Ainda não tem cartão? Peça no balcão da ${esc(brand().name)} — é grátis.</p>
       </div>
-      <p class="footer-note">Av. Tenente Marques, 06 — Polvilho, Cajamar</p>
+      <p class="footer-note">${esc(brand().address)}</p>
     </main>`;
   }
   const goal = db.settings.goal;
@@ -1122,7 +1149,7 @@ function viewCard(){
       <p class="qr-hint"><b>Leve seu cartão com você:</b> aponte a câmera de outro celular para este código e o cartão abre lá.</p>
     </div></div>
     <button class="btn btn-ghost btn-block" data-act="forget">Trocar de cartão</button>
-    <p class="footer-note">Obrigado pela preferência! · Av. Tenente Marques, 06 — Polvilho, Cajamar</p>
+    <p class="footer-note">Obrigado pela preferência! · ${esc(brand().address)}</p>
   </main>`;
 }
 function STAMP_ICON_MINI(){

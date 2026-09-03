@@ -69,6 +69,15 @@ da fábrica: manifesto fora da régua não passa.
 
 ---
 
-Próximas fases (quando quiser): **1** — o motor lê o manifesto por cliente; **2** — um
-agente monta o manifesto a partir de 5 perguntas; **3** — a fábrica completa. Esta pasta
-é a Fase 0 e não altera nada do que já está no ar.
+## Fase 1 (feita) — o motor lê a marca do manifesto
+
+O app (`../jj-fidelidade/index.html`) agora tem um bloco `brand` dentro de
+`settings` (nome, sigla, iniciais do selo, prefixo do código, endereço, cores de
+acento). Todo texto/logo/cor de marca que era fixo no código passou a ser lido desse
+bloco, com os valores da J.J como padrão — **sem manifesto, o app fica idêntico ao de
+hoje**. Um cliente básico novo troca só esse bloco (via nuvem por tenant) e o mesmo
+motor já mostra a marca dele. Falta ainda ligar cada tenant a um deploy próprio
+(as tags `<head>`/og são definidas no deploy de cada loja).
+
+Próximas fases: **2** — um agente monta o manifesto a partir de 5 perguntas;
+**3** — a fábrica completa.
