@@ -1,0 +1,67 @@
+{
+  "$schema": "../manifest.schema.json",
+  "tenant": "moura-alfaiataria",
+  "brand": {
+    "name": "Clube Moura",
+    "logo": "moura-signature.png",
+    "colors": {
+      "primary": "#C9A24B",
+      "ink": "#F1ECE3"
+    },
+    "font": ""
+  },
+  "copy": {
+    "headline": "Elegância que recompensa",
+    "cardName": "Clube Moura"
+  },
+  "plan": "ilimitado",
+  "goal": 7,
+  "reward": "Gravata Premium",
+  "rule": "Cada R$ 300 em compras vale 1 Signature. Complete e desbloqueie sua recompensa.",
+  "channels": {
+    "appUrl": "",
+    "whatsappApi": false
+  },
+  "engine": {
+    "version": "1.0.0",
+    "roles": ["dono", "operador"]
+  },
+  "secrets": {
+    "store": "supabase",
+    "keys": ["pin", "operadorPin"]
+  },
+
+  "tier": "premium",
+  "unit": {
+    "singular": "Signature",
+    "plural": "Signatures",
+    "icon": "medalhao"
+  },
+  "capabilities": {
+    "rewardsCatalog": {
+      "enabled": true,
+      "items": [
+        { "name": "Ajuste Especial", "required": 3, "active": true },
+        { "name": "Meia Premium", "required": 5, "active": true },
+        { "name": "Gravata Premium", "required": 7, "active": true },
+        { "name": "Camisa Selecionada", "required": 10, "active": true },
+        { "name": "Experiência VIP", "required": 15, "active": true }
+      ]
+    },
+    "tiers": {
+      "enabled": true,
+      "levels": [
+        { "id": "member", "name": "Moura Member", "threshold": 0 },
+        { "id": "select", "name": "Moura Select", "threshold": 7 },
+        { "id": "black", "name": "Moura Black", "threshold": 15 }
+      ]
+    },
+    "referral": {
+      "enabled": true,
+      "bonus": 2,
+      "antiFraud": ["autoindicacao", "cpf_duplicado", "telefone_duplicado", "recompensa_duplicada", "indicacao_circular"]
+    },
+    "missions": { "enabled": true },
+    "ledger": { "enabled": true }
+  }
+}

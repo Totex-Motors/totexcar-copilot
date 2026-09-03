@@ -14,7 +14,26 @@ código nova por cliente.
 | Arquivo | O que é |
 |---|---|
 | `manifest.schema.json` | A **régua**. Todo manifesto de cliente tem que obedecer a ela. É o que impede a bagunça. |
-| `clientes/jj-espetos.manifest.json` | O primeiro cliente (a J.J), descrito no formato-padrão. É o modelo para os próximos. |
+| `clientes/jj-espetos.manifest.json` | Cliente **básico** (a J.J): um selo, uma recompensa. O modelo mais simples. |
+| `clientes/moura-alfaiataria.manifest.json` | Cliente **premium** (Clube Moura): mesmo motor, com níveis, indicação, catálogo de recompensas e ledger ligados. |
+| `clientes/assets/moura-referencia-visual.png` | Arte aprovada da Moura, referência de design do template premium. |
+
+## Básico × Premium — um motor só, capacidades opcionais
+
+O campo `tier` do manifesto escolhe o perfil:
+
+- **`basico`** (ex.: J.J) — um selo (`carimbo`), uma meta, uma recompensa. Nada mais liga.
+- **`premium`** (ex.: Moura) — o mesmo motor, com interruptores opcionais no bloco
+  `capabilities`: catálogo de recompensas, níveis (Member/Select/Black), indicação com
+  anti-fraude, missões e ledger auditável. O `unit` renomeia o selo (na Moura vira
+  "Signature").
+
+**Importante:** premium **não** é outro sistema. É o mesmo motor lendo mais campos do
+manifesto. Cada capacidade nova nasce como um interruptor reutilizável — todo cliente
+premium futuro pode ligar — nunca como código de um cliente só. Foi por isso que a
+Moura **não** foi construída como o app Next.js separado que um rascunho externo
+sugeriu: dois códigos seriam o fim do padrão. Ganhamos as boas ideias (ledger, níveis,
+indicação) dentro do nosso motor.
 
 ## Como um cliente novo nasce
 

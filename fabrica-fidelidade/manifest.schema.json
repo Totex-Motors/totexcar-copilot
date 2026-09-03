@@ -106,6 +106,105 @@
           "uniqueItems": true
         }
       }
+    },
+
+    "tier": {
+      "type": "string",
+      "enum": ["basico", "premium"],
+      "default": "basico",
+      "description": "Perfil do motor. 'basico' = cartão simples (ex.: J.J): um selo, uma recompensa. 'premium' = liga as capacidades avançadas abaixo (ex.: Moura): níveis, indicação, catálogo, ledger. UM motor só; este campo apenas escolhe quais partes ligam."
+    },
+    "unit": {
+      "type": "object",
+      "description": "O nome de marca do 'carimbo'. Na J.J é 'carimbo'; na Moura é 'Signature'. Só rótulo — a lógica de contar é a mesma no motor.",
+      "additionalProperties": false,
+      "required": ["singular", "plural"],
+      "properties": {
+        "singular": { "type": "string", "maxLength": 30, "description": "Ex.: carimbo, Signature." },
+        "plural": { "type": "string", "maxLength": 30, "description": "Ex.: carimbos, Signatures." },
+        "icon": { "type": "string", "description": "Estilo do selo. Ex.: medalhao, estrela, carimbo. Opcional." }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Capacidades OPCIONAIS do tier premium. Cada uma é um interruptor que o motor lê. Ausente ou enabled=false = desligada (o comportamento é o do básico). É assim que o motor cresce UMA vez e serve a todos: nada aqui vira código por cliente.",
+      "additionalProperties": false,
+      "properties": {
+        "rewardsCatalog": {
+          "type": "object",
+          "description": "Várias recompensas com custos diferentes (em vez de uma só). Ex.: Moura tem gravata=7, camisa=10.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "required"],
+                "properties": {
+                  "name": { "type": "string", "maxLength": 60 },
+                  "required": { "type": "integer", "minimum": 1, "description": "Quantas unidades para resgatar." },
+                  "description": { "type": "string", "maxLength": 120 },
+                  "active": { "type": "boolean", "default": true }
+                }
+              }
+            }
+          }
+        },
+        "tiers": {
+          "type": "object",
+          "description": "Níveis de relacionamento (ex.: Member / Select / Black). Thresholds configuráveis.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "levels": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "name", "threshold"],
+                "properties": {
+                  "id": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+                  "name": { "type": "string", "maxLength": 40 },
+                  "threshold": { "type": "integer", "minimum": 0, "description": "Unidades acumuladas para entrar neste nível." }
+                }
+              }
+            }
+          }
+        },
+        "referral": {
+          "type": "object",
+          "description": "Indicação: cada cliente ganha link/QR; amigo que compra gera bônus.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "bonus": { "type": "integer", "minimum": 0, "description": "Unidades bônus quando a indicação converte." },
+            "antiFraud": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["autoindicacao", "cpf_duplicado", "telefone_duplicado", "recompensa_duplicada", "indicacao_circular"] },
+              "uniqueItems": true
+            }
+          }
+        },
+        "missions": {
+          "type": "object",
+          "description": "Campanhas que direcionam comportamento (ex.: 'monte um look' = +2).",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "ledger": {
+          "type": "object",
+          "description": "Livro-razão auditável: cada crédito/débito de unidade é uma transação. Fonte da verdade do saldo (não confia num campo solto). Recomendado sempre que houver indicação ou resgate.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": { "enabled": { "type": "boolean" } }
+        }
+      }
     }
   }
 }
