@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://totexmotors.com/fabrica-fidelidade/manifest.schema.json",
+  "title": "Manifesto de cliente — Cartão Fidelidade",
+  "description": "A régua que TODO cliente do cartão-fidelidade obedece. O mesmo motor (app + edge function) lê este arquivo e se comporta. Um comércio novo = um manifesto novo, nunca código novo. Segredos (PINs, chaves) NÃO ficam aqui — ficam no Supabase por cliente.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant", "brand", "copy", "plan", "goal", "reward", "rule", "channels", "engine"],
+  "properties": {
+    "tenant": {
+      "type": "string",
+      "description": "Identificador único do cliente. Vira o subdomínio. Só letras minúsculas, números e hífen.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 40
+    },
+    "brand": {
+      "type": "object",
+      "description": "A identidade visual do comércio.",
+      "additionalProperties": false,
+      "required": ["name", "colors"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 60, "description": "Nome que aparece pro cliente final. Ex.: J.J Espetos." },
+        "logo": { "type": "string", "description": "Nome do arquivo de logo. Vazio = sem logo." },
+        "colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["primary"],
+          "properties": {
+            "primary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "Cor principal da marca (hex)." },
+            "ink": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "Cor do texto (hex). Opcional." }
+          }
+        },
+        "font": { "type": "string", "description": "Fonte da marca. Opcional; vazio = fonte padrão do motor." }
+      }
+    },
+    "copy": {
+      "type": "object",
+      "description": "Os textos que o cliente vê.",
+      "additionalProperties": false,
+      "required": ["headline"],
+      "properties": {
+        "headline": { "type": "string", "minLength": 1, "maxLength": 80, "description": "Chamada principal. Ex.: Junte espetos, ganhe espeto." },
+        "cardName": { "type": "string", "maxLength": 40, "description": "Nome do cartão. Ex.: Cartão do Espeto. Opcional." }
+      }
+    },
+    "plan": {
+      "type": "string",
+      "enum": ["essencial", "crescimento", "ilimitado"],
+      "description": "Plano contratado. O motor aplica a trava de clientes: essencial=50, crescimento=150, ilimitado=∞."
+    },
+    "goal": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Quantos carimbos (ou pontos) para ganhar a recompensa."
+    },
+    "reward": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "description": "O que o cliente ganha ao completar a meta. Ex.: um almoço completo grátis."
+    },
+    "rule": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "A regra em uma frase, mostrada ao cliente. Ex.: Compre 10 costelas e ganhe um almoço grátis."
+    },
+    "channels": {
+      "type": "object",
+      "description": "Onde o cartão vive e como fala com o cliente.",
+      "additionalProperties": false,
+      "required": ["appUrl"],
+      "properties": {
+        "appUrl": { "type": "string", "description": "Endereço público do app. Ex.: jjespetos.vercel.app. Vazio = endereço atual." },
+        "whatsappApi": { "type": "boolean", "default": false, "description": "false = envio grátis (abre o WhatsApp); true = automático pela API." }
+      }
+    },
+    "engine": {
+      "type": "object",
+      "description": "Bloco que o MOTOR governa. O cliente só declara; a lógica é fixa e igual pra todos.",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "description": "Versão do motor que este cliente roda. Ex.: 1.0.0." },
+        "roles": {
+          "type": "array",
+          "description": "Papéis de acesso suportados. O motor decide o que cada um pode; aqui só se declara quais existem.",
+          "items": { "type": "string", "enum": ["dono", "operador"] },
+          "uniqueItems": true,
+          "default": ["dono"]
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "description": "PONTEIRO, não valor. Diz ONDE os segredos deste cliente estão guardados — nunca o segredo em si. Os valores (PIN do dono, PIN do balcão, chave da nuvem) vivem no Supabase por cliente e NUNCA entram neste arquivo versionado.",
+      "additionalProperties": false,
+      "properties": {
+        "store": { "type": "string", "enum": ["supabase"], "description": "Onde os segredos moram." },
+        "keys": {
+          "type": "array",
+          "description": "Quais segredos este cliente tem (só os nomes, para conferência).",
+          "items": { "type": "string", "enum": ["pin", "operadorPin", "waKey", "waEndpoint"] },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

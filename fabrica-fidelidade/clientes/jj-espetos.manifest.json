@@ -1,0 +1,33 @@
+{
+  "$schema": "../manifest.schema.json",
+  "tenant": "jj-espetos",
+  "brand": {
+    "name": "J.J Espetos",
+    "logo": "",
+    "colors": {
+      "primary": "#C2410C",
+      "ink": "#241F1A"
+    },
+    "font": ""
+  },
+  "copy": {
+    "headline": "Junte espetos, ganhe um almoço",
+    "cardName": "Cartão do Espeto"
+  },
+  "plan": "essencial",
+  "goal": 10,
+  "reward": "um almoço completo grátis",
+  "rule": "Compre 10 costelas no bafo ou 10 frangos e ganhe um almoço completo grátis!",
+  "channels": {
+    "appUrl": "jjespetos.vercel.app",
+    "whatsappApi": false
+  },
+  "engine": {
+    "version": "1.0.0",
+    "roles": ["dono", "operador"]
+  },
+  "secrets": {
+    "store": "supabase",
+    "keys": ["pin", "operadorPin", "waKey", "waEndpoint"]
+  }
+}
