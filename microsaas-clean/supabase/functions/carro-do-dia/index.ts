@@ -172,20 +172,22 @@ async function montaPost(settings: any, v: any): Promise<{ post: string; preco: 
   return { post, preco: preco || null, link, foto: carFoto(v) };
 }
 
-// escolhe o carro do dia: nunca repete os últimos 14 dias; abaixo da FIPE e recém-chegado na frente
-async function escolheCarro(forcarId?: string): Promise<any | null> {
+// candidatos do dia, ranqueados: nunca repete os últimos 14 dias; abaixo da FIPE e recém-chegado
+// na frente. Devolve uma lista — se a foto do 1º estiver morta, o post tenta o próximo.
+async function escolheCarros(forcarId?: string): Promise<any[]> {
   if (forcarId) {
     try {
       const res = await fetch(`${MKT}/api/vehicles/${encodeURIComponent(forcarId)}`, { headers: { Accept: "application/json" } });
-      return res.ok ? await res.json() : null;
-    } catch { return null; }
+      const v = res.ok ? await res.json() : null;
+      return v?.id ? [v] : [];
+    } catch { return []; }
   }
   let lote: any[] = [];
   try {
     const res = await fetch(`${MKT}/api/vehicles?limit=200`, { headers: { Accept: "application/json" } });
     const d = await res.json();
     lote = Array.isArray(d?.data) ? d.data : [];
-  } catch { return null; }
+  } catch { return []; }
   const desde = new Date(Date.now() - 14 * 24 * 3600_000).toISOString();
   const recentes = await sbSelect(`canal_posts?posted_at=gte.${desde}&select=car_id`);
   const jaPostados = new Set(recentes.map((r: any) => r.car_id));
@@ -193,14 +195,22 @@ async function escolheCarro(forcarId?: string): Promise<any | null> {
   const novos = cands.filter((v: any) => !jaPostados.has(v.id));
   if (novos.length) cands = novos; // se o estoque inteiro já rodou, recomeça a rotação
   const semanaAtras = Date.now() - 7 * 24 * 3600_000;
-  let melhor: any = null, melhorScore = -1;
-  for (const v of cands) {
+  const ranqueados = cands.map((v: any) => {
     const abaixoFipe = Number(v.fipePrice) > 0 && Number(v.price) < Number(v.fipePrice);
     const recem = v.createdAt && new Date(v.createdAt).getTime() > semanaAtras;
-    const score = (abaixoFipe ? 2 : 0) + (recem ? 1 : 0) + Math.random();
-    if (score > melhorScore) { melhorScore = score; melhor = v; }
-  }
-  return melhor;
+    return { v, score: (abaixoFipe ? 2 : 0) + (recem ? 1 : 0) + Math.random() };
+  }).sort((a: any, b: any) => b.score - a.score);
+  return ranqueados.map((r: any) => r.v).slice(0, 5);
+}
+
+// a foto está viva? valida na MESMA url que a uazapi vai baixar (weserv devolve o 404 da origem)
+const fotoNormalizada = (foto: string) =>
+  `https://images.weserv.nl/?url=${encodeURIComponent("ssl:" + foto.replace(/^https?:\/\//i, ""))}&w=1280&output=jpg&q=85`;
+async function fotoViva(fotoJpg: string): Promise<boolean> {
+  try {
+    const res = await fetch(fotoJpg, { headers: { Range: "bytes=0-99" } });
+    return res.ok;
+  } catch { return false; }
 }
 
 Deno.serve(async (req) => {
@@ -237,33 +247,47 @@ Deno.serve(async (req) => {
     return json({ dica: "procure o id terminado em @newsletter do canal Totex Motors", tentativas });
   }
 
-  // escolhe o carro e monta o post (preview e post compartilham isso)
-  const carro = await escolheCarro(url.searchParams.get("car") || undefined);
-  if (!carro) return json({ error: "sem_carro_elegivel" }, 404);
-  const gerado = await montaPost(cfg, carro);
-  const resumo = { carro: `${carNome(carro)} ${carro.year || ""}`.trim(), car_id: carro.id, ...gerado };
+  // candidatos ranqueados (preview usa o 1º; post tenta os próximos se a foto estiver morta)
+  const candidatos = await escolheCarros(url.searchParams.get("car") || undefined);
+  if (!candidatos.length) return json({ error: "sem_carro_elegivel" }, 404);
 
-  if (job === "preview") return json({ ok: true, preview: true, ...resumo });
+  if (job === "preview") {
+    const carro = candidatos[0];
+    const gerado = await montaPost(cfg, carro);
+    return json({ ok: true, preview: true, carro: `${carNome(carro)} ${carro.year || ""}`.trim(), car_id: carro.id, ...gerado });
+  }
 
   // POST de verdade: exige config completa + autopost ligado (cron roda sempre; aqui é o portão)
-  if (!cfg.canal_autopost) return json({ ok: true, skipped: "canal_autopost desligado", ...resumo });
+  if (!cfg.canal_autopost) return json({ ok: true, skipped: "canal_autopost desligado" });
   if (!uazUrl || !uazToken || !cfg.canal_newsletter_id) {
-    return json({ ok: false, error: "uazapi/newsletter não configurados", ...resumo }, 400);
+    return json({ ok: false, error: "uazapi/newsletter não configurados" }, 400);
   }
-  let ok = false, detalhe = "";
-  // foto normalizada pra JPEG (weserv): hosts de estoque servem .webp e MIME quebrado (BNDV)
-  const fotoJpg = gerado.foto
-    ? `https://images.weserv.nl/?url=${encodeURIComponent("ssl:" + gerado.foto.replace(/^https?:\/\//i, ""))}&w=1280&output=jpg&q=85`
-    : "";
-  try {
-    const res = await fetch(`${uazUrl}/send/media`, {
-      method: "POST", headers: { "content-type": "application/json", token: uazToken },
-      body: JSON.stringify({ number: cfg.canal_newsletter_id, type: "image", file: fotoJpg || gerado.foto, text: gerado.post }),
-    });
-    detalhe = (await res.text()).slice(0, 1000);
-    ok = res.ok;
-  } catch (e) { detalhe = String(e); }
-  await sbInsert("canal_posts", { car_id: carro.id, code: gerado.link.split("/o/")[1] || null, ok, raw: { detalhe: detalhe.slice(0, 500) } });
-  console.log(`carro-do-dia: ${ok ? "publicado" : "FALHOU"} — ${resumo.carro} — ${detalhe.slice(0, 200)}`);
-  return json({ ok, detalhe, ...resumo }, ok ? 200 : 502);
+
+  const pulados: string[] = [];
+  for (const carro of candidatos) {
+    const nomeC = `${carNome(carro)} ${carro.year || ""}`.trim();
+    // foto validada ANTES de gastar IA — na mesma URL que a uazapi vai baixar (12h de hoje
+    // falhou exatamente assim: anúncio com imagem morta na origem → uazapi 404)
+    const fotoJpg = fotoNormalizada(carFoto(carro));
+    if (!(await fotoViva(fotoJpg))) {
+      pulados.push(nomeC);
+      await sbInsert("canal_posts", { car_id: carro.id, ok: false, raw: { detalhe: "foto morta na origem — carro pulado" } });
+      continue;
+    }
+    const gerado = await montaPost(cfg, carro);
+    let ok = false, detalhe = "";
+    try {
+      const res = await fetch(`${uazUrl}/send/media`, {
+        method: "POST", headers: { "content-type": "application/json", token: uazToken },
+        body: JSON.stringify({ number: cfg.canal_newsletter_id, type: "image", file: fotoJpg, text: gerado.post }),
+      });
+      detalhe = (await res.text()).slice(0, 1000);
+      ok = res.ok;
+    } catch (e) { detalhe = String(e); }
+    await sbInsert("canal_posts", { car_id: carro.id, code: gerado.link.split("/o/")[1] || null, ok, raw: { detalhe: detalhe.slice(0, 500) } });
+    console.log(`carro-do-dia: ${ok ? "publicado" : "FALHOU"} — ${nomeC} — ${detalhe.slice(0, 200)}`);
+    if (ok) return json({ ok, carro: nomeC, car_id: carro.id, pulados, ...gerado });
+    pulados.push(nomeC); // envio falhou: tenta o próximo candidato
+  }
+  return json({ ok: false, error: "nenhum candidato publicável", pulados }, 502);
 });
