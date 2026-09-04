@@ -1,20 +1,32 @@
 // TotexCar Co-pilot — link do CANAL com prévia rica (foto do carro) → abre o Co-pilot.
-// Uso: GET /functions/v1/oferta?c=<idDoCarro>  (sem c = vitrine geral).
+// Uso:  GET /functions/v1/oferta?s=<codeCurto>   (via rewrite bonito do app: /o/<code>)
+//       GET /functions/v1/oferta?c=<idDoCarro>   (forma antiga, continua valendo)
+//       sem parâmetro = vitrine geral (rewrite /oferta).
 //
 // Negociação por User-Agent (evita o bug de "mostrar o código-fonte" no navegador do WhatsApp):
 //  • ROBÔ de preview (facebookexternalhit / WhatsApp bot / etc.): recebe HTML com Open Graph
 //    (og:image = foto do carro em JPEG 1200x630 via images.weserv.nl) → o card do post mostra a foto.
-//  • PESSOA (navegador real): recebe um 302 direto pro wa.me com "#oferta <id>" → abre o Co-pilot
-//    naquele carro + a vitrine (origem=canal). Redirect no nível HTTP = não depende de JS/meta.
+//  • PESSOA (navegador real): recebe um 302 direto pro wa.me com uma mensagem HUMANA pré-preenchida
+//    ("Oi! Vi o <carro> no canal e quero ver tudo dele 🚗 #oferta <code>") — a pessoa entende o que
+//    vai acontecer e só aperta enviar. Redirect no nível HTTP = não depende de JS/meta.
 // Deploy com verify_jwt=false (link público).
 
 const WA = "5511963786699";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 const APP = (Deno.env.get("APP_URL") || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+const SB_URL = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
+const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 const brl = (v: unknown) => (v != null && Number(v) > 0 ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "");
+
+// "Toyota Corolla Corolla Cross XRX" → "Toyota Corolla Cross XRX" (a versão muitas vezes já traz o modelo)
+function carNome(v: any): string {
+  const brand = String(v?.brand || "").trim(), model = String(v?.model || "").trim(), ver = String(v?.version || "").trim();
+  const dup = model && ver.toLowerCase().startsWith(model.toLowerCase());
+  return [brand, dup ? "" : model, ver].filter(Boolean).join(" ").trim();
+}
 
 // prefere foto NÃO-webp; qualquer foto é normalizada pra JPEG 1200x630 no preview
 function pickImage(v: any): string {
@@ -32,35 +44,72 @@ function isHumanBrowser(ua: string): boolean {
   return true;
 }
 
+// code curto (/o/<code>) → id do carro, via PostgREST com service role
+async function resolveCode(code: string): Promise<string | null> {
+  if (!SB_URL || !SB_KEY) return null;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/oferta_links?code=eq.${encodeURIComponent(code)}&select=car_id&limit=1`, {
+      headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}` },
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows?.[0]?.car_id || null;
+  } catch { return null; }
+}
+
+async function fetchVehicle(carId: string, timeoutMs = 2500): Promise<any | null> {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
+    const res = await fetch(`${MARKETPLACE}/api/vehicles/${encodeURIComponent(carId)}`, {
+      headers: { Accept: "application/json" }, signal: ctl.signal,
+    });
+    clearTimeout(t);
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  const c = (url.searchParams.get("c") || "").trim();
-  const deepLink = `https://wa.me/${WA}?text=${encodeURIComponent(c ? `#oferta ${c}` : "#oferta")}`;
+  const code = (url.searchParams.get("s") || "").trim().toLowerCase();
+  let carId = (url.searchParams.get("c") || "").trim();
+  if (!carId && code) carId = (await resolveCode(code)) || "";
 
-  // PESSOA → 302 direto pro Co-pilot (não renderiza HTML, não tem bug de "ver código")
+  // o gatilho leva o token MAIS CURTO que resolve o carro (o code do link bonito, se houver)
+  const token = code || carId;
+  const gatilho = token ? `#oferta ${token}` : "#oferta";
+
+  // PESSOA → 302 pro Co-pilot com mensagem humana pré-preenchida (é só apertar enviar)
   if (isHumanBrowser(req.headers.get("user-agent") || "")) {
+    let frase = token
+      ? `Oi! Vi um carro no canal e quero ver tudo dele 🚗 ${gatilho}`
+      : `Oi! Vim do canal e quero ver os carros 🚗 ${gatilho}`;
+    if (carId) {
+      const v = await fetchVehicle(carId, 1500);
+      const nome = v ? `${carNome(v)}${v.year ? ` ${v.year}` : ""}`.trim() : "";
+      if (nome) frase = `Oi! Vi o ${nome} no canal e quero ver tudo dele 🚗 ${gatilho}`;
+    }
+    const deepLink = `https://wa.me/${WA}?text=${encodeURIComponent(frase)}`;
     return new Response(null, { status: 302, headers: { Location: deepLink, "Cache-Control": "no-store" } });
   }
 
   // ROBÔ de preview → HTML com Open Graph (foto + título + preço)
+  const deepLink = `https://wa.me/${WA}?text=${encodeURIComponent(gatilho)}`;
   let title = "TotexMotors — o carro que você procura, no seu WhatsApp";
   let desc = "Toque pra ver os carros e falar com o Co-pilot. 🚗";
   let img = `${APP}/og-image.png`;
 
-  if (c) {
-    try {
-      const res = await fetch(`${MARKETPLACE}/api/vehicles/${encodeURIComponent(c)}`, { headers: { Accept: "application/json" } });
-      if (res.ok) {
-        const v = await res.json();
-        const t = [v.brand, v.model, v.version].filter(Boolean).join(" ").trim();
-        if (t) title = `${t}${v.year ? " " + v.year : ""}`;
-        const preco = brl(v.price);
-        const loja = v?.dealership?.name ? ` · ${v.dealership.name}` : "";
-        desc = `${preco ? preco + " · " : ""}Toque pra ver no WhatsApp 🚗${loja}`;
-        const im = pickImage(v);
-        if (im) img = `https://images.weserv.nl/?url=${encodeURIComponent("ssl:" + im.replace(/^https?:\/\//i, ""))}&w=1200&h=630&fit=cover&output=jpg&q=82`;
-      }
-    } catch { /* usa o default */ }
+  if (carId) {
+    const v = await fetchVehicle(carId);
+    if (v) {
+      const t = carNome(v);
+      if (t) title = `${t}${v.year ? " " + v.year : ""}`;
+      const preco = brl(v.price);
+      const loja = v?.dealership?.name ? ` · ${v.dealership.name}` : "";
+      desc = `${preco ? preco + " · " : ""}Toque pra ver no WhatsApp 🚗${loja}`;
+      const im = pickImage(v);
+      if (im) img = `https://images.weserv.nl/?url=${encodeURIComponent("ssl:" + im.replace(/^https?:\/\//i, ""))}&w=1200&h=630&fit=cover&output=jpg&q=82`;
+    }
   }
 
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">

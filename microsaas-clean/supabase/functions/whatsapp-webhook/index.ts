@@ -3012,7 +3012,12 @@ const OFERTA_RE = /#oferta(?:\s+([a-z0-9][a-z0-9-]{5,}))?/i;
 async function handleCanalOferta(phone: string, text: string, contactName?: string): Promise<boolean> {
   const m = String(text || "").match(OFERTA_RE);
   if (!m) return false;
-  const carroId = (m[1] || "").trim() || null;
+  let carroId = (m[1] || "").trim().toLowerCase() || null;
+  // token curto do link bonito (/o/<code>) → resolve pro id real do carro (ids do marketplace têm 20+ chars)
+  if (carroId && carroId.length <= 10) {
+    const { data: ln } = await supabase.from("oferta_links").select("car_id").eq("code", carroId).maybeSingle();
+    if (ln?.car_id) carroId = ln.car_id;
+  }
   try {
     const parsed = { loja: "geral", promotor: "canal", origem: "canal", carro: carroId, nome: contactName || null };
     const { data: leadRow } = await supabase.from("whatsapp_events").insert({
