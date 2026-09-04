@@ -443,6 +443,10 @@ Deno.serve(async (req) => {
           + `Escreva SÓ o corpo criativo de um post de Canal do WhatsApp sobre o carro dos FATOS, exatamente nesta estrutura `
           + `(sem preço, sem link, sem hashtags — o sistema completa depois):\n`
           + `- 1 linha de abertura magnética NESTE ângulo (crie a sua, não copie o exemplo; PROIBIDO usar "para tudo" ou "olha essa nave"): ${abertura}\n`
+          + `  A abertura DEVE ser contextualizada NESTE carro específico — pense no perfil dele (SUV híbrido premium = sofisticação, `
+          + `silêncio, economia; picape = trabalho e força; hatch = cidade e economia; esportivo = emoção) e escreva algo que SÓ faria `
+          + `sentido pra esse carro. PROIBIDO frase genérica que serviria pra qualquer produto ou fora do universo automotivo `
+          + `(ex.: "tecnologia na palma da sua mão").\n`
           + `- 1 a 2 linhas apresentando o carro com entusiasmo (modelo e ano)\n`
           + `- a linha "Confira por que ele vai ser seu:" seguida de 3 itens começando com ✅, cada um transformando um fato `
           + `em benefício real (ex.: câmbio automático → conforto total no trânsito)\n`
