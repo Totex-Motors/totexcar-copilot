@@ -884,10 +884,17 @@ async function imageMediaId(s: any, url: string): Promise<string | null> {
   } catch (e) { console.error("imageMediaId:", e); return null; }
 }
 
+// "Honda Civic Civic Sedan EX" → "Honda Civic Sedan EX" (a versão muitas vezes repete o modelo)
+function carNome(v: any): string {
+  const brand = String(v?.brand || "").trim(), model = String(v?.model || "").trim(), ver = String(v?.version || "").trim();
+  const dup = model && ver.toLowerCase().startsWith(model.toLowerCase());
+  return [brand, dup ? "" : model, ver].filter(Boolean).join(" ").trim();
+}
+
 // resumo compacto de um carro pro chat (com link rastreável ?ref do dono → comissão do Indique)
 function mktResumo(v: any, refCode?: string | null) {
   return {
-    carro: [v.brand, v.model, v.version].filter(Boolean).join(" "),
+    carro: carNome(v),
     ano: v.year, km: v.mileage, preco: v.price, fipe: v.fipePrice ?? null,
     cor: v.color || null, cambio: v.transmission || null, loja: v.dealership?.name || null,
     img: carImg(v),
@@ -1000,7 +1007,7 @@ async function sendCarShowcase(phone: string, cars: any[], refCode?: string | nu
     if (!img) continue;
     const mediaId = (await imageMediaId(s, img)) || undefined; // sempre via media id (MIME correto)
     if (!mediaId) continue; // sem media id não entrega — pula
-    const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+    const titulo = carNome(v);
     const km = Number(v.mileage) > 0 ? ` · ${Number(v.mileage).toLocaleString("pt-BR")} km` : "";
     const fipe = v.fipePrice && Number(v.price) < Number(v.fipePrice) ? " · 🔥 abaixo da FIPE" : "";
     const link = `${MARKETPLACE_URL}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
@@ -3031,13 +3038,21 @@ async function handleCanalOferta(phone: string, text: string, contactName?: stri
         const res = await fetch(`${MARKETPLACE_URL}/api/vehicles/${encodeURIComponent(carroId)}`, { headers: { Accept: "application/json" } });
         if (res.ok) {
           const v = await res.json();
-          const img = carImg(v);
-          if (img) {
-            const sHl = await getSettings();
-            const mediaId = (await imageMediaId(sHl, img)) || undefined;
-            const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
-            const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
-            if (mediaId) await waSendImage(sHl, phone, img, `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o do canal — fotos e ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`, mediaId);
+          const sHl = await getSettings();
+          const titulo = carNome(v);
+          const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
+          // ÁLBUM: até 5 fotos DESTE carro direto no chat — o cliente vê o carro sem clicar em nada.
+          // Uploads em paralelo (cache wa_media_cache), envio em ordem pra capa chegar primeiro.
+          const todas = (Array.isArray(v.images) ? v.images : []).map((i: any) => i?.url).filter(Boolean);
+          const capa = carImg(v) || todas[0] || "";
+          const fotos = [capa, ...todas.filter((u: string) => u !== capa)].filter(Boolean).slice(0, 5);
+          const medias = await Promise.all(fotos.map((u: string) => imageMediaId(sHl, u)));
+          for (let i = 0; i < fotos.length; i++) {
+            if (!medias[i]) continue;
+            const legenda = i === 0
+              ? `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o do canal — ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`
+              : undefined;
+            await waSendImage(sHl, phone, fotos[i], legenda, medias[i] || undefined);
           }
         }
       } catch { /* segue pra vitrine */ }
@@ -3073,7 +3088,7 @@ async function handleStandLead(phone: string, text: string, contactName?: string
           if (img) {
             const sHl = await getSettings();
             const mediaId = (await imageMediaId(sHl, img)) || undefined; // sempre via media id (MIME correto)
-            const titulo = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+            const titulo = carNome(v);
             const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
             if (mediaId) await waSendImage(sHl, phone, img,
               `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o que você viu no stand — fotos e ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`, mediaId);
