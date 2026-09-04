@@ -447,7 +447,7 @@ Deno.serve(async (req) => {
           + `silêncio, economia; picape = trabalho e força; hatch = cidade e economia; esportivo = emoção) e escreva algo que SÓ faria `
           + `sentido pra esse carro. PROIBIDO frase genérica que serviria pra qualquer produto ou fora do universo automotivo `
           + `(ex.: "tecnologia na palma da sua mão").\n`
-          + `- 1 a 2 linhas apresentando o carro com entusiasmo (modelo e ano)\n`
+          + `- pule UMA linha em branco e escreva 1 a 2 linhas apresentando o carro com entusiasmo (modelo e ano)\n`
           + `- a linha "Confira por que ele vai ser seu:" seguida de 3 itens começando com ✅, cada um transformando um fato `
           + `em benefício real (ex.: câmbio automático → conforto total no trânsito)\n`
           + `- 1 linha final: toda a confiança da TotexMotors com a tradição da ${loja || "loja parceira"} 💎\n\n`
@@ -477,7 +477,7 @@ Deno.serve(async (req) => {
             "Acabou de estacionar no estoque e já está roubando a cena! ✨",
             "Se você piscar, esse aqui vai embora... 👀",
           ];
-          corpo = `${fixas[Math.floor(Math.random() * fixas.length)]}\n`
+          corpo = `${fixas[Math.floor(Math.random() * fixas.length)]}\n\n`
             + `Chegou ${nomeAno} no nosso estoque — daqueles que não ficam parados na vitrine!\n\n`
             + `Confira por que ele vai ser seu:\n${bullets.slice(0, 3).join("\n")}\n\n`
             + `Toda a confiança da TotexMotors com a tradição da ${loja || "nossa loja parceira"}! 💎`;
