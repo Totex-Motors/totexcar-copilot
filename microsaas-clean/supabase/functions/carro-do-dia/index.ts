@@ -251,10 +251,14 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "uazapi/newsletter não configurados", ...resumo }, 400);
   }
   let ok = false, detalhe = "";
+  // foto normalizada pra JPEG (weserv): hosts de estoque servem .webp e MIME quebrado (BNDV)
+  const fotoJpg = gerado.foto
+    ? `https://images.weserv.nl/?url=${encodeURIComponent("ssl:" + gerado.foto.replace(/^https?:\/\//i, ""))}&w=1280&output=jpg&q=85`
+    : "";
   try {
     const res = await fetch(`${uazUrl}/send/media`, {
       method: "POST", headers: { "content-type": "application/json", token: uazToken },
-      body: JSON.stringify({ number: cfg.canal_newsletter_id, type: "image", file: gerado.foto, text: gerado.post }),
+      body: JSON.stringify({ number: cfg.canal_newsletter_id, type: "image", file: fotoJpg || gerado.foto, text: gerado.post }),
     });
     detalhe = (await res.text()).slice(0, 1000);
     ok = res.ok;
