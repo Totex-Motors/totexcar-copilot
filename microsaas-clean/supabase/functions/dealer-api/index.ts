@@ -424,12 +424,25 @@ Deno.serve(async (req) => {
         const abaixoFipe = fipeNum > 0 && precoNum > 0 && precoNum < fipeNum;
         if (abaixoFipe) fatos.push("Está anunciado ABAIXO da tabela FIPE");
 
+        // a abertura é SORTEADA por código a cada post — senão a IA repete o mesmo exemplo pra sempre
+        const aberturas = [
+          `humor de assistente/robô, como a Lu do Magalu (ex.: "Meus sensores detectaram nível MÁXIMO de carro dos sonhos! 🤖")`,
+          `radar de oportunidade apitando (ex.: "Meu radar de oportunidade apitou agora há pouco... 🚨")`,
+          `pergunta emocional que conecta com o sonho (ex.: "Sabe aquele sonho de subir num SUV potente e só dirigir?")`,
+          `celebração de recém-chegado (ex.: "Acabou de estacionar no estoque e já está roubando a cena! ✨")`,
+          `provocação amiga de urgência (ex.: "Se você piscar, esse aqui vai embora...")`,
+          `convite de amigo próximo contando novidade (ex.: "Chega mais, que hoje a novidade é daquelas! 😍")`,
+          `"algoritmo aprovou" (ex.: "Meu algoritmo da felicidade aprovou esse aqui com nota 10! ✅")`,
+          `cena do dia a dia com o carro (ex.: "Imagina chegar na sexta, entrar nele e esquecer a semana...")`,
+        ];
+        const abertura = aberturas[Math.floor(Math.random() * aberturas.length)];
+
         const sys = `Você é a alma da TotexMotors! Seu estilo é inspirado na Lu do Magalu: sempre útil, muito animada, `
           + `usa emojis de forma inteligente e trata o cliente como um amigo próximo. Você não vende só carros; vende a `
           + `realização de um sonho e a segurança de uma grande marca.\n\n`
           + `Escreva SÓ o corpo criativo de um post de Canal do WhatsApp sobre o carro dos FATOS, exatamente nesta estrutura `
           + `(sem preço, sem link, sem hashtags — o sistema completa depois):\n`
-          + `- 1 linha de abertura magnética (ex.: "Gente, para tudo e olha essa nave! 🚀")\n`
+          + `- 1 linha de abertura magnética NESTE ângulo (crie a sua, não copie o exemplo; PROIBIDO usar "para tudo" ou "olha essa nave"): ${abertura}\n`
           + `- 1 a 2 linhas apresentando o carro com entusiasmo (modelo e ano)\n`
           + `- a linha "Confira por que ele vai ser seu:" seguida de 3 itens começando com ✅, cada um transformando um fato `
           + `em benefício real (ex.: câmbio automático → conforto total no trânsito)\n`
@@ -454,16 +467,23 @@ Deno.serve(async (req) => {
           if (Number(v.mileage) > 0) bullets.push(`✅ ${Number(v.mileage).toLocaleString("pt-BR")} km — ainda tem muita estrada boa pela frente`);
           if (v.transmission && /auto/i.test(String(v.transmission))) bullets.push("✅ Câmbio automático: conforto total no trânsito de todo dia");
           bullets.push("✅ Procedência verificada e atendimento premium", "✅ Você vê tudo pelo WhatsApp, sem sair de casa");
-          corpo = `Gente, para tudo e olha essa nave! 🚀\n`
+          const fixas = [
+            "Meus sensores detectaram nível máximo de carro dos sonhos! 🤖",
+            "Meu radar de oportunidade acabou de apitar! 🚨",
+            "Acabou de estacionar no estoque e já está roubando a cena! ✨",
+            "Se você piscar, esse aqui vai embora... 👀",
+          ];
+          corpo = `${fixas[Math.floor(Math.random() * fixas.length)]}\n`
             + `Chegou ${nomeAno} no nosso estoque — daqueles que não ficam parados na vitrine!\n\n`
             + `Confira por que ele vai ser seu:\n${bullets.slice(0, 3).join("\n")}\n\n`
             + `Toda a confiança da TotexMotors com a tradição da ${loja || "nossa loja parceira"}! 💎`;
         }
 
         const marcaTag = v.brand ? ` #${String(v.brand).replace(/[^\p{L}\p{N}]/gu, "")}` : "";
+        const chamadas = ["Não perde tempo, gente!", "Corre, que carro bom é peça única!", "Quem vê primeiro, leva!", "Bora ver de pertinho?"];
         const post = corpo
           + (preco ? `\n\n💰 Por apenas: ${preco}` : "")
-          + `\n\nNão perde tempo, gente! Toca no link e é só apertar *enviar* na mensagem que já vem prontinha — te mostro tudo desse carro no WhatsApp 😉\n👉 ${link}`
+          + `\n\n${chamadas[Math.floor(Math.random() * chamadas.length)]} Toca no link e é só apertar *enviar* na mensagem que já vem prontinha — te mostro tudo desse carro no WhatsApp 😉\n👉 ${link}`
           + `\n\n#TotexMotors #CarroDosSonhos #OfertaDaSemana${marcaTag}`;
         const foto = (Array.isArray(v.images) ? (v.images.find((i: any) => i?.isPrimary) || v.images[0])?.url : "") || null;
         return json({ ok: true, post, preco: preco || null, link, foto });
