@@ -112,6 +112,33 @@ async function aiDraft(settings: any, brief: string, storeName: string): Promise
   return aiText(settings, sys, `Objetivo da mensagem: ${brief}`);
 }
 
+// "Toyota Corolla Corolla Cross XRX" → "Toyota Corolla Cross XRX" (a versão muitas vezes repete o modelo)
+function carNome(v: any): string {
+  const brand = String(v?.brand || "").trim(), model = String(v?.model || "").trim(), ver = String(v?.version || "").trim();
+  const dup = model && ver.toLowerCase().startsWith(model.toLowerCase());
+  return [brand, dup ? "" : model, ver].filter(Boolean).join(" ").trim();
+}
+
+const codeAlfabeto = "abcdefghijklmnopqrstuvwxyz0123456789";
+const novoCode = () =>
+  Array.from(crypto.getRandomValues(new Uint8Array(6))).map((b) => codeAlfabeto[b % 36]).join("");
+
+// garante um code curto (/o/<code>) por carro — reusa o existente, cria os que faltarem
+async function ofertaCodes(carIds: string[]): Promise<Record<string, string>> {
+  const byCar: Record<string, string> = {};
+  if (!carIds.length) return byCar;
+  try {
+    const { data: ex } = await admin.from("oferta_links").select("code, car_id").in("car_id", carIds);
+    (ex || []).forEach((r: any) => { if (!byCar[r.car_id]) byCar[r.car_id] = r.code; });
+    const faltam = carIds.filter((id) => !byCar[id]).map((id) => ({ code: novoCode(), car_id: id }));
+    if (faltam.length) {
+      const { error } = await admin.from("oferta_links").insert(faltam);
+      if (!error) faltam.forEach((f) => { byCar[f.car_id] = f.code; });
+    }
+  } catch { /* sem code → quem chamar cai no link longo */ }
+  return byCar;
+}
+
 // Monta a lista de destinatários (enriquecida) de uma loja, conforme o público escolhido
 async function recipientsFor(adminClient: any, dealership: string | null, audience: string, clientId?: string, clientIds?: string[]) {
   let q = adminClient.from("users")
@@ -355,6 +382,9 @@ Deno.serve(async (req) => {
             return { id: v.id, brand: v.brand, model: v.model, version: v.version, year: v.year, price: v.price, photo: img };
           });
         } catch { /* devolve vazio */ }
+        // code curto por carro → o painel monta o link bonito /o/<code> (sem "supabase" na cara)
+        const codes = await ofertaCodes(cars.map((c: any) => c.id));
+        cars = cars.map((c: any) => ({ ...c, code: codes[c.id] || null }));
         return json({ ok: true, slug, loja_nome: lojaNome, wa_number: "5511963786699", cars });
       }
 
@@ -372,13 +402,17 @@ Deno.serve(async (req) => {
         } catch { /* v fica nulo */ }
         if (!v?.id) return json({ error: "carro_nao_encontrado" }, 404);
 
-        const nome = [v.brand, v.model, v.version].filter(Boolean).join(" ").trim() || "esse carro";
+        const nome = carNome(v) || "esse carro";
         const nomeAno = `${nome}${v.year ? ` ${v.year}` : ""}`;
         const precoNum = Number(v.price);
         const preco = precoNum > 0 ? `R$ ${precoNum.toLocaleString("pt-BR")}` : "";
         const loja = v?.dealership?.name || me.dealership || "";
+        // link CURTO no domínio do app (/o/<code>) — nada de "supabase" nem código gigante na cara do cliente
+        const { data: stApp } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
+        const appUrl = (stApp?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+        const codeMap = await ofertaCodes([carId]);
         const base = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
-        const link = `${base}/functions/v1/oferta?c=${encodeURIComponent(carId)}`;
+        const link = codeMap[carId] ? `${appUrl}/o/${codeMap[carId]}` : `${base}/functions/v1/oferta?c=${encodeURIComponent(carId)}`;
 
         // fatos verificados do anúncio (SEM preço) — é só com isso que a IA pode trabalhar
         const fatos: string[] = [`Carro: ${nomeAno}`];
@@ -429,7 +463,7 @@ Deno.serve(async (req) => {
         const marcaTag = v.brand ? ` #${String(v.brand).replace(/[^\p{L}\p{N}]/gu, "")}` : "";
         const post = corpo
           + (preco ? `\n\n💰 Por apenas: ${preco}` : "")
-          + `\n\nNão perde tempo, gente! Vem viver essa experiência:\n👉 Saiba mais: ${link}`
+          + `\n\nNão perde tempo, gente! Toca no link e é só apertar *enviar* na mensagem que já vem prontinha — te mostro tudo desse carro no WhatsApp 😉\n👉 ${link}`
           + `\n\n#TotexMotors #CarroDosSonhos #OfertaDaSemana${marcaTag}`;
         const foto = (Array.isArray(v.images) ? (v.images.find((i: any) => i?.isPrimary) || v.images[0])?.url : "") || null;
         return json({ ok: true, post, preco: preco || null, link, foto });

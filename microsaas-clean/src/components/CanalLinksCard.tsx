@@ -32,8 +32,10 @@ export function CanalLinksCard() {
     }
   };
 
-  const linkGeral = OFERTA_BASE;
-  const linkCarro = (id: string) => `${OFERTA_BASE}?c=${encodeURIComponent(id)}`;
+  // link curto no domínio do app (/o/<code> via rewrite da Vercel) — passa confiança;
+  // se o carro ainda não tiver code, cai no link longo direto na função (funciona igual)
+  const linkGeral = `${window.location.origin}/oferta`;
+  const linkCarro = (c: any) => c?.code ? `${window.location.origin}/o/${c.code}` : `${OFERTA_BASE}?c=${encodeURIComponent(c.id)}`;
   const copiar = async (link: string, label: string) => {
     try {
       await navigator.clipboard.writeText(link);
@@ -102,7 +104,7 @@ export function CanalLinksCard() {
                   {gerandoPost === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Post
                 </Button>
                 <Button size="sm" variant="secondary" className="gap-1.5 shrink-0"
-                  onClick={() => copiar(linkCarro(c.id), [c.brand, c.model].filter(Boolean).join(" "))}>
+                  onClick={() => copiar(linkCarro(c), [c.brand, c.model].filter(Boolean).join(" "))}>
                   <Copy className="w-3.5 h-3.5" /> Copiar link
                 </Button>
               </div>
