@@ -1,6 +1,6 @@
 // TotexCar — "CARRO DO DIA" no Canal do WhatsApp, 100% dentro de casa (sem n8n).
 //
-// O pg_cron chama 2x/dia → a função escolhe um carro do marketplace (rotação: não repete quem
+// O pg_cron chama 4x/dia (9h, 12h, 16h e 19h BRT) → a função escolhe um carro do marketplace (rotação: não repete quem
 // saiu nos últimos 14 dias; prioriza abaixo da FIPE e recém-chegados) → escreve a legenda no
 // estilo da marca (mesmo motor do botão "Post ✨": IA só na parte criativa, preço e link por
 // código) → publica FOTO + legenda no Canal via uazapi.
@@ -133,7 +133,7 @@ async function montaPost(settings: any, v: any): Promise<{ post: string; preco: 
     + `silêncio, economia; picape = trabalho e força; hatch = cidade e economia; esportivo = emoção) e escreva algo que SÓ faria `
     + `sentido pra esse carro. PROIBIDO frase genérica que serviria pra qualquer produto ou fora do universo automotivo `
     + `(ex.: "tecnologia na palma da sua mão").\n`
-    + `- 1 a 2 linhas apresentando o carro com entusiasmo (modelo e ano)\n`
+    + `- pule UMA linha em branco e escreva 1 a 2 linhas apresentando o carro com entusiasmo (modelo e ano)\n`
     + `- a linha "Confira por que ele vai ser seu:" seguida de 3 itens começando com ✅, cada um transformando um fato `
     + `em benefício real (ex.: câmbio automático → conforto total no trânsito)\n`
     + `- 1 linha final: toda a confiança da TotexMotors com a tradição da ${loja || "loja parceira"} 💎\n\n`
@@ -157,7 +157,7 @@ async function montaPost(settings: any, v: any): Promise<{ post: string; preco: 
       "Acabou de estacionar no estoque e já está roubando a cena! ✨",
       "Se você piscar, esse aqui vai embora... 👀",
     ];
-    corpo = `${fixas[Math.floor(Math.random() * fixas.length)]}\n`
+    corpo = `${fixas[Math.floor(Math.random() * fixas.length)]}\n\n`
       + `Chegou ${nomeAno} no nosso estoque — daqueles que não ficam parados na vitrine!\n\n`
       + `Confira por que ele vai ser seu:\n${bullets.slice(0, 3).join("\n")}\n\n`
       + `Toda a confiança da TotexMotors com a tradição da ${loja || "nossa loja parceira"}! 💎`;
