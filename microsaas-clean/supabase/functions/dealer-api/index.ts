@@ -65,25 +65,19 @@ function personalize(template: string, c: any): string {
     .replace(/\{loja\}/gi, c.dealership || "");
 }
 
-// Gera um rascunho de mensagem com o provedor de IA configurado (texto puro)
-async function aiDraft(settings: any, brief: string, storeName: string): Promise<string> {
+// Chama o provedor de IA configurado com um par sistema/usuário qualquer (texto puro)
+async function aiText(settings: any, sys: string, user: string, maxTokens = 400): Promise<string> {
   const provider = settings?.ai_provider || "anthropic";
   const model = settings?.ai_model || "claude-opus-4-8";
   const key = provider === "openai" ? settings?.openai_api_key
     : provider === "gemini" ? settings?.gemini_api_key : settings?.anthropic_api_key;
   if (!key) throw new Error("ai_key_not_configured");
 
-  const sys = `Você escreve mensagens curtas de WhatsApp para uma loja de carros chamada "${storeName || "a loja"}" `
-    + `enviar aos clientes dela (donos de carro). Tom cordial, brasileiro, direto, no máximo 4 linhas, 1 emoji no máximo. `
-    + `Use EXATAMENTE estas variáveis quando fizer sentido (serão trocadas depois): {nome}, {veiculo}, {placa}, {vencimento}, {dias}, {loja}. `
-    + `Não invente dados nem coloque colchetes além dessas variáveis. Responda SOMENTE com o texto da mensagem.`;
-  const user = `Objetivo da mensagem: ${brief}`;
-
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model, max_tokens: 400, messages: [{ role: "system", content: sys }, { role: "user", content: user }] }),
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: "system", content: sys }, { role: "user", content: user }] }),
     });
     if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
     const j = await res.json();
@@ -102,11 +96,20 @@ async function aiDraft(settings: any, brief: string, storeName: string): Promise
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model, max_tokens: 400, system: sys, messages: [{ role: "user", content: user }] }),
+    body: JSON.stringify({ model, max_tokens: maxTokens, system: sys, messages: [{ role: "user", content: user }] }),
   });
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
   const j = await res.json();
   return ((j.content || []).find((b: any) => b.type === "text")?.text || "").trim();
+}
+
+// Gera um rascunho de mensagem de WhatsApp pros clientes da loja (usa aiText)
+async function aiDraft(settings: any, brief: string, storeName: string): Promise<string> {
+  const sys = `Você escreve mensagens curtas de WhatsApp para uma loja de carros chamada "${storeName || "a loja"}" `
+    + `enviar aos clientes dela (donos de carro). Tom cordial, brasileiro, direto, no máximo 4 linhas, 1 emoji no máximo. `
+    + `Use EXATAMENTE estas variáveis quando fizer sentido (serão trocadas depois): {nome}, {veiculo}, {placa}, {vencimento}, {dias}, {loja}. `
+    + `Não invente dados nem coloque colchetes além dessas variáveis. Responda SOMENTE com o texto da mensagem.`;
+  return aiText(settings, sys, `Objetivo da mensagem: ${brief}`);
 }
 
 // Monta a lista de destinatários (enriquecida) de uma loja, conforme o público escolhido
@@ -353,6 +356,83 @@ Deno.serve(async (req) => {
           });
         } catch { /* devolve vazio */ }
         return json({ ok: true, slug, loja_nome: lojaNome, wa_number: "5511963786699", cars });
+      }
+
+      // POST PRONTO PRO CANAL: legenda animada (estilo "Lu do Magalu") pra colar junto da foto.
+      // Anti-preço-inventado por DESENHO: a IA escreve só a parte criativa a partir de fatos reais
+      // do anúncio e NUNCA recebe o preço; preço e link entram por código, copiados do marketplace.
+      case "canal_post": {
+        const carId = String(p.car || "").trim();
+        if (!carId) return json({ error: "car_required" }, 400);
+        const MKT = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
+        let v: any = null;
+        try {
+          const res = await fetch(`${MKT}/api/vehicles/${encodeURIComponent(carId)}`, { headers: { Accept: "application/json" } });
+          if (res.ok) v = await res.json();
+        } catch { /* v fica nulo */ }
+        if (!v?.id) return json({ error: "carro_nao_encontrado" }, 404);
+
+        const nome = [v.brand, v.model, v.version].filter(Boolean).join(" ").trim() || "esse carro";
+        const nomeAno = `${nome}${v.year ? ` ${v.year}` : ""}`;
+        const precoNum = Number(v.price);
+        const preco = precoNum > 0 ? `R$ ${precoNum.toLocaleString("pt-BR")}` : "";
+        const loja = v?.dealership?.name || me.dealership || "";
+        const base = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
+        const link = `${base}/functions/v1/oferta?c=${encodeURIComponent(carId)}`;
+
+        // fatos verificados do anúncio (SEM preço) — é só com isso que a IA pode trabalhar
+        const fatos: string[] = [`Carro: ${nomeAno}`];
+        if (Number(v.mileage) > 0) fatos.push(`Quilometragem: ${Number(v.mileage).toLocaleString("pt-BR")} km`);
+        if (v.transmission) fatos.push(`Câmbio: ${v.transmission}`);
+        if (v.fuel || v.fuelType) fatos.push(`Combustível: ${v.fuel || v.fuelType}`);
+        if (v.color) fatos.push(`Cor: ${v.color}`);
+        const fipeNum = Number(v.fipePrice);
+        const abaixoFipe = fipeNum > 0 && precoNum > 0 && precoNum < fipeNum;
+        if (abaixoFipe) fatos.push("Está anunciado ABAIXO da tabela FIPE");
+
+        const sys = `Você é a alma da TotexMotors! Seu estilo é inspirado na Lu do Magalu: sempre útil, muito animada, `
+          + `usa emojis de forma inteligente e trata o cliente como um amigo próximo. Você não vende só carros; vende a `
+          + `realização de um sonho e a segurança de uma grande marca.\n\n`
+          + `Escreva SÓ o corpo criativo de um post de Canal do WhatsApp sobre o carro dos FATOS, exatamente nesta estrutura `
+          + `(sem preço, sem link, sem hashtags — o sistema completa depois):\n`
+          + `- 1 linha de abertura magnética (ex.: "Gente, para tudo e olha essa nave! 🚀")\n`
+          + `- 1 a 2 linhas apresentando o carro com entusiasmo (modelo e ano)\n`
+          + `- a linha "Confira por que ele vai ser seu:" seguida de 3 itens começando com ✅, cada um transformando um fato `
+          + `em benefício real (ex.: câmbio automático → conforto total no trânsito)\n`
+          + `- 1 linha final: toda a confiança da TotexMotors com a tradição da ${loja || "loja parceira"} 💎\n\n`
+          + `REGRAS DURAS: use SOMENTE os fatos fornecidos — NUNCA invente motor, equipamento, consumo ou qualquer número. `
+          + `Se faltar fato técnico, os ✅ podem falar de procedência verificada, atendimento premium e de ver tudo pelo WhatsApp. `
+          + `NUNCA mencione preço nem valores em R$. Responda SOMENTE com o texto do post.`;
+
+        let corpo = "";
+        try {
+          const { data: settings } = await admin.from("app_settings")
+            .select("ai_provider, ai_model, anthropic_api_key, openai_api_key, gemini_api_key").eq("id", 1).single();
+          corpo = await aiText(settings, sys, `FATOS DO ANÚNCIO:\n${fatos.join("\n")}`, 600);
+        } catch (e) { console.error("canal_post ai:", e); }
+        // cinto e suspensório: se mesmo assim vier linha com valor em R$, ela cai fora
+        corpo = corpo.split("\n").filter((l) => !/R\$\s*\d/.test(l)).join("\n").trim();
+
+        if (!corpo) {
+          // sem IA configurada (ou falhou): modelo fixo com os mesmos fatos reais
+          const bullets: string[] = [];
+          if (abaixoFipe) bullets.push("✅ Anunciado ABAIXO da tabela FIPE — oportunidade de verdade");
+          if (Number(v.mileage) > 0) bullets.push(`✅ ${Number(v.mileage).toLocaleString("pt-BR")} km — ainda tem muita estrada boa pela frente`);
+          if (v.transmission && /auto/i.test(String(v.transmission))) bullets.push("✅ Câmbio automático: conforto total no trânsito de todo dia");
+          bullets.push("✅ Procedência verificada e atendimento premium", "✅ Você vê tudo pelo WhatsApp, sem sair de casa");
+          corpo = `Gente, para tudo e olha essa nave! 🚀\n`
+            + `Chegou ${nomeAno} no nosso estoque — daqueles que não ficam parados na vitrine!\n\n`
+            + `Confira por que ele vai ser seu:\n${bullets.slice(0, 3).join("\n")}\n\n`
+            + `Toda a confiança da TotexMotors com a tradição da ${loja || "nossa loja parceira"}! 💎`;
+        }
+
+        const marcaTag = v.brand ? ` #${String(v.brand).replace(/[^\p{L}\p{N}]/gu, "")}` : "";
+        const post = corpo
+          + (preco ? `\n\n💰 Por apenas: ${preco}` : "")
+          + `\n\nNão perde tempo, gente! Vem viver essa experiência:\n👉 Saiba mais: ${link}`
+          + `\n\n#TotexMotors #CarroDosSonhos #OfertaDaSemana${marcaTag}`;
+        const foto = (Array.isArray(v.images) ? (v.images.find((i: any) => i?.isPrimary) || v.images[0])?.url : "") || null;
+        return json({ ok: true, post, preco: preco || null, link, foto });
       }
 
       case "list_clients": {
