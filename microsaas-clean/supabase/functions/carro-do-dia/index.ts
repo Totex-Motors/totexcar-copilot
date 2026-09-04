@@ -92,7 +92,7 @@ async function ofertaCode(carId: string): Promise<string | null> {
 
 // legenda estilo Lu — idêntica ao botão "Post ✨" do painel (abertura sorteada + contextualizada;
 // a IA nunca vê o preço; linha com R$ escrita pela IA é descartada)
-async function montaPost(settings: any, v: any): Promise<{ post: string; preco: string | null; link: string; foto: string }> {
+async function montaPost(settings: any, v: any, temaFipe = false): Promise<{ post: string; preco: string | null; link: string; foto: string }> {
   const nome = carNome(v) || "esse carro";
   const nomeAno = `${nome}${v.year ? ` ${v.year}` : ""}`;
   const precoNum = Number(v.price);
@@ -121,7 +121,9 @@ async function montaPost(settings: any, v: any): Promise<{ post: string; preco: 
     `"algoritmo aprovou" (ex.: "Meu algoritmo da felicidade aprovou esse aqui com nota 10! ✅")`,
     `cena do dia a dia com o carro (ex.: "Imagina chegar na sexta, entrar nele e esquecer a semana...")`,
   ];
-  const abertura = aberturas[Math.floor(Math.random() * aberturas.length)];
+  // no tema "Abaixo da FIPE" (19h) a abertura é sempre de oportunidade/urgência — é o post-hábito do canal
+  const pool = temaFipe && abaixoFipe ? [aberturas[1], aberturas[4]] : aberturas;
+  const abertura = pool[Math.floor(Math.random() * pool.length)];
 
   const sys = `Você é a alma da TotexMotors! Seu estilo é inspirado na Lu do Magalu: sempre útil, muito animada, `
     + `usa emojis de forma inteligente e trata o cliente como um amigo próximo. Você não vende só carros; vende a `
@@ -165,16 +167,21 @@ async function montaPost(settings: any, v: any): Promise<{ post: string; preco: 
 
   const marcaTag = v.brand ? ` #${String(v.brand).replace(/[^\p{L}\p{N}]/gu, "")}` : "";
   const chamadas = ["Não perde tempo, gente!", "Corre, que carro bom é peça única!", "Quem vê primeiro, leva!", "Bora ver de pertinho?"];
-  const post = corpo
-    + (preco ? `\n\n💰 Por apenas: ${preco}` : "")
+  // selo do post das 19h: números REAIS do anúncio (preço e FIPE vêm do marketplace)
+  const selo = temaFipe && abaixoFipe ? `🔥 *ABAIXO DA FIPE* — a oportunidade do dia\n\n` : "";
+  const linhaFipe = temaFipe && abaixoFipe
+    ? `\n📉 Tabela FIPE: R$ ${fipeNum.toLocaleString("pt-BR")} — você paga *R$ ${(fipeNum - precoNum).toLocaleString("pt-BR")} abaixo*`
+    : "";
+  const post = selo + corpo
+    + (preco ? `\n\n💰 Por apenas: ${preco}${linhaFipe}` : "")
     + `\n\n${chamadas[Math.floor(Math.random() * chamadas.length)]} Toca no link e é só apertar *enviar* na mensagem que já vem prontinha — te mostro tudo desse carro no WhatsApp 😉\n👉 ${link}`
-    + `\n\n#TotexMotors #CarroDosSonhos #OfertaDaSemana${marcaTag}`;
+    + `\n\n#TotexMotors #CarroDosSonhos #OfertaDaSemana${temaFipe && abaixoFipe ? " #AbaixoDaFipe" : ""}${marcaTag}`;
   return { post, preco: preco || null, link, foto: carFoto(v) };
 }
 
 // candidatos do dia, ranqueados: nunca repete os últimos 14 dias; abaixo da FIPE e recém-chegado
 // na frente. Devolve uma lista — se a foto do 1º estiver morta, o post tenta o próximo.
-async function escolheCarros(forcarId?: string): Promise<any[]> {
+async function escolheCarros(forcarId?: string, temaFipe = false): Promise<any[]> {
   if (forcarId) {
     try {
       const res = await fetch(`${MKT}/api/vehicles/${encodeURIComponent(forcarId)}`, { headers: { Accept: "application/json" } });
@@ -194,6 +201,11 @@ async function escolheCarros(forcarId?: string): Promise<any[]> {
   let cands = lote.filter((v: any) => v?.id && Number(v.price) > 0 && carFoto(v));
   const novos = cands.filter((v: any) => !jaPostados.has(v.id));
   if (novos.length) cands = novos; // se o estoque inteiro já rodou, recomeça a rotação
+  if (temaFipe) {
+    // post das 19h: só quem está de fato abaixo da tabela; sem nenhum, degrada pro ranking normal
+    const soFipe = cands.filter((v: any) => Number(v.fipePrice) > 0 && Number(v.price) < Number(v.fipePrice));
+    if (soFipe.length) cands = soFipe;
+  }
   const semanaAtras = Date.now() - 7 * 24 * 3600_000;
   const ranqueados = cands.map((v: any) => {
     const abaixoFipe = Number(v.fipePrice) > 0 && Number(v.price) < Number(v.fipePrice);
@@ -247,13 +259,16 @@ Deno.serve(async (req) => {
     return json({ dica: "procure o id terminado em @newsletter do canal Totex Motors", tentativas });
   }
 
+  // tema=fipe → o post das 19h ("🔥 Abaixo da FIPE"): seleção e selo próprios
+  const temaFipe = (url.searchParams.get("tema") || "").toLowerCase() === "fipe";
+
   // candidatos ranqueados (preview usa o 1º; post tenta os próximos se a foto estiver morta)
-  const candidatos = await escolheCarros(url.searchParams.get("car") || undefined);
+  const candidatos = await escolheCarros(url.searchParams.get("car") || undefined, temaFipe);
   if (!candidatos.length) return json({ error: "sem_carro_elegivel" }, 404);
 
   if (job === "preview") {
     const carro = candidatos[0];
-    const gerado = await montaPost(cfg, carro);
+    const gerado = await montaPost(cfg, carro, temaFipe);
     return json({ ok: true, preview: true, carro: `${carNome(carro)} ${carro.year || ""}`.trim(), car_id: carro.id, ...gerado });
   }
 
@@ -274,7 +289,7 @@ Deno.serve(async (req) => {
       await sbInsert("canal_posts", { car_id: carro.id, ok: false, raw: { detalhe: "foto morta na origem — carro pulado" } });
       continue;
     }
-    const gerado = await montaPost(cfg, carro);
+    const gerado = await montaPost(cfg, carro, temaFipe);
     let ok = false, detalhe = "";
     try {
       const res = await fetch(`${uazUrl}/send/media`, {
