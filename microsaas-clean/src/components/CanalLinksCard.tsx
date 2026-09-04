@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
-import { Radio, Copy, Loader2, Link2 } from "lucide-react";
+import { Radio, Copy, Loader2, Link2, Sparkles } from "lucide-react";
 
 const brl = (v: any) => (v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "consulte");
 
@@ -17,6 +17,7 @@ const OFERTA_BASE = "https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/ofert
 export function CanalLinksCard() {
   const [loading, setLoading] = useState(false);
   const [cars, setCars] = useState<any[] | null>(null);
+  const [gerandoPost, setGerandoPost] = useState<string | null>(null);
 
   const carregar = async () => {
     setLoading(true);
@@ -42,6 +43,22 @@ export function CanalLinksCard() {
     }
   };
 
+  // Legenda pronta (estilo Lu do Magalu) gerada no servidor — o preço vem DO ANÚNCIO, nunca da IA.
+  const copiarPost = async (id: string, label: string) => {
+    setGerandoPost(id);
+    try {
+      const { data, error } = await supabase.functions.invoke("dealer-api", { body: { action: "canal_post", car: id } });
+      const post = (data as any)?.post;
+      if (error || !post) throw error || new Error((data as any)?.error || "sem_post");
+      await navigator.clipboard.writeText(post);
+      toast({ title: "Post copiado ✨", description: `${label} — cola no Canal junto com a foto do carro.` });
+    } catch (e: any) {
+      toast({ title: "Não consegui gerar o post", description: String(e?.message || e), variant: "destructive" });
+    } finally {
+      setGerandoPost(null);
+    }
+  };
+
   return (
     <Card className="border-0 shadow-premium-md">
       <CardContent className="p-4 space-y-3">
@@ -49,9 +66,9 @@ export function CanalLinksCard() {
           <div>
             <div className="font-semibold flex items-center gap-2"><Radio className="w-5 h-5 text-primary" /> Links do Canal do WhatsApp</div>
             <p className="text-sm text-muted-foreground mt-1">
-              Copia o link e <strong>cola no post do Canal</strong> — o WhatsApp monta o card sozinho, com a
-              <strong> foto, o modelo e o preço</strong> do carro. Quem tocar cai no Co-pilot naquele carro (marcado
-              <strong> origem canal</strong> pra medir o funil).
+              <strong>Post ✨</strong> escreve a legenda pronta no estilo animado da marca (com o preço certo, direto
+              do anúncio) — cola no Canal junto com a foto do carro. <strong>Copiar link</strong> dá só o link com
+              prévia. Quem tocar cai no Co-pilot naquele carro (marcado <strong>origem canal</strong> pra medir o funil).
             </p>
           </div>
           <Button variant="outline" className="gap-2 h-9 shrink-0" onClick={() => copiar(linkGeral, "Link geral do Canal")}>
@@ -80,6 +97,10 @@ export function CanalLinksCard() {
                   <div className="font-medium text-sm truncate">{[c.brand, c.model].filter(Boolean).join(" ")} {c.year || ""}</div>
                   <div className="text-xs text-muted-foreground">{brl(c.price)}</div>
                 </div>
+                <Button size="sm" className="gap-1.5 shrink-0" disabled={gerandoPost === c.id}
+                  onClick={() => copiarPost(c.id, [c.brand, c.model].filter(Boolean).join(" "))}>
+                  {gerandoPost === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Post
+                </Button>
                 <Button size="sm" variant="secondary" className="gap-1.5 shrink-0"
                   onClick={() => copiar(linkCarro(c.id), [c.brand, c.model].filter(Boolean).join(" "))}>
                   <Copy className="w-3.5 h-3.5" /> Copiar link
