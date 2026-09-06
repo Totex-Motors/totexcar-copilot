@@ -445,6 +445,7 @@
   .sorteio-num{display:flex;align-items:baseline;gap:8px}
   .sorteio-num b{font-family:var(--display);font-weight:400;font-size:34px;color:var(--ember);line-height:1}
   .sorteio-num span{color:var(--cream-dim);font-size:13px;font-weight:700}
+  .ig-btn{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
 
   /* ===== PRATELEIRA: CATÁLOGO ===== */
   .cat-head{display:flex;align-items:center;gap:10px;margin:2px 0 10px}
@@ -571,6 +572,9 @@ function hasSorteio(){ const s=caps().sorteios; return !!(s && s.enabled); }
 function money(v){ const n=Number(v); if(!isFinite(n)) return ''; return 'R$ '+n.toFixed(2).replace('.',','); }
 // só os dígitos (usado no WhatsApp da loja no catálogo)
 function onlyDigits(v){ return String(v==null?'':v).replace(/\D/g,''); }
+// Instagram da loja (URL completa) + ícone
+function igUrl(){ return (brand().instagram||'').trim(); }
+const IG_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="flex:none"><path fill="currentColor" d="M12 2.2c3.2 0 3.6 0 4.9.07 1.17.05 1.8.25 2.23.42.56.22.96.48 1.38.9.42.42.68.82.9 1.38.17.42.37 1.06.42 2.23.06 1.27.07 1.65.07 4.85s0 3.58-.07 4.85c-.05 1.17-.25 1.8-.42 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.17-1.06.37-2.23.42-1.27.06-1.65.07-4.9.07s-3.63 0-4.9-.07c-1.17-.05-1.8-.25-2.23-.42a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.17-.42-.37-1.06-.42-2.23C2.2 15.6 2.2 15.2 2.2 12s0-3.58.07-4.85C2.32 5.98 2.52 5.35 2.7 4.92c.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.17 1.06-.37 2.23-.42C8.48 2.2 8.86 2.2 12 2.2Zm0 1.98c-3.14 0-3.5 0-4.74.07-.9.04-1.38.19-1.7.32-.43.16-.74.36-1.06.68-.32.32-.52.63-.68 1.06-.13.32-.28.8-.32 1.7C3.43 9.24 3.43 9.6 3.43 12s0 2.76.07 4c.04.9.19 1.38.32 1.7.16.43.36.74.68 1.06.32.32.63.52 1.06.68.32.13.8.28 1.7.32 1.24.07 1.6.07 4.74.07s3.5 0 4.74-.07c.9-.04 1.38-.19 1.7-.32.43-.16.74-.36 1.06-.68.32-.32.52-.63.68-1.06.13-.32.28-.8.32-1.7.07-1.24.07-1.6.07-4s0-2.76-.07-4c-.04-.9-.19-1.38-.32-1.7a2.86 2.86 0 0 0-.68-1.06 2.86 2.86 0 0 0-1.06-.68c-.32-.13-.8-.28-1.7-.32-1.24-.07-1.6-.07-4.74-.07Zm0 3.37a4.45 4.45 0 1 1 0 8.9 4.45 4.45 0 0 1 0-8.9Zm0 1.98a2.47 2.47 0 1 0 0 4.94 2.47 2.47 0 0 0 0-4.94Zm5.66-2.2a1.04 1.04 0 1 1-2.08 0 1.04 1.04 0 0 1 2.08 0Z"/></svg>';
 
 function makeCustomer(d, name, phone){
   const code = ((d.settings.brand && d.settings.brand.prefix) || 'JJ') + '-' + String(d.seq++).padStart(4,'0');
@@ -1234,6 +1238,7 @@ function viewCard(){
            <p>Você ganhou ${esc(db.settings.reward)}. Mostre esta tela no balcão para resgatar.</p></div>`
       : `<p class="progress-note">${STAMP_ICON_MINI()} <span><b>${shown} de ${goal}</b> selos — faltam <b>${goal-shown}</b> para ${esc(db.settings.reward)}</span></p>`}
     ${hasCatalog() ? `<button class="btn btn-ghost btn-block" data-act="openCatalog">🍗 Ver o cardápio</button>` : ''}
+    ${igUrl() ? `<a class="btn btn-ghost btn-block ig-btn" href="${esc(igUrl())}" target="_blank" rel="noopener">${IG_SVG} Siga no Instagram</a>` : ''}
     ${hasSorteio() ? sorteioPanel(c) : ''}
     <div class="panel">
       <h3>🤝 Indique um amigo e ganhe +1 selo</h3>
@@ -1267,11 +1272,14 @@ function sorteioPanel(c){
   const how = rule==='por_compra' ? 'Cada compra vale 1 número da sorte.'
             : rule==='por_cadastro' ? 'Você já está concorrendo com 1 número.'
             : 'Cada selo do seu cartão vale 1 número — quanto mais você compra, mais chances!';
+  const needFollow = !!igUrl();
   return `<div class="panel sorteio">
     <h3>🎟️ Sorteio ${esc(brand().shortName || brand().name)}</h3>
     ${s.prize ? `<p class="sorteio-prize">Concorra a <b>${esc(s.prize)}</b></p>` : ''}
     <div class="sorteio-num"><b>${tickets}</b><span>${tickets===1?'número da sorte':'números da sorte'}</span></div>
     <p class="muted" style="font-size:13px;margin:.4em 0 0">${how}${s.drawAt ? ' Sorteio em <b>'+esc(s.drawAt)+'</b>.' : ''}</p>
+    ${needFollow ? `<p class="muted" style="font-size:13px;margin:.5em 0 .3em">📸 Para concorrer, <b>siga a gente no Instagram</b>:</p>
+    <a class="btn btn-primary btn-block ig-btn" href="${esc(igUrl())}" target="_blank" rel="noopener">${IG_SVG} Seguir @${esc((brand().instagramHandle||'').replace(/^@/,'')||'')}</a>` : ''}
   </div>`;
 }
 
