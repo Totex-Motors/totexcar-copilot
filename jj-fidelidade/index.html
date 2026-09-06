@@ -474,9 +474,9 @@ const DEFAULTS = {
   customers: []
 };
 
-// INJEÇÃO POR-CLIENTE (deploy da fábrica): um <script>window.__TENANT__={settings:{...}}</script>
-// no <head> sobrescreve os padrões (marca, chave da nuvem, meta, recompensa...) para este
-// cliente. Sem isso, nada muda — a J.J segue idêntica.
+// INJEÇÃO POR-CLIENTE (deploy da fábrica): o build injeta um window.__TENANT__ = {settings:{...}}
+// no cabeçalho da página e isso sobrescreve os padrões (marca, chave da nuvem, meta,
+// recompensa...) para este cliente. Sem isso, nada muda — a J.J segue idêntica.
 try{
   var T = (typeof window!=='undefined') ? window.__TENANT__ : null;
   if(T && T.settings){
