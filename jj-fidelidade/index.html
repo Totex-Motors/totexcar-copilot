@@ -474,6 +474,19 @@ const DEFAULTS = {
   customers: []
 };
 
+// INJEÇÃO POR-CLIENTE (deploy da fábrica): um <script>window.__TENANT__={settings:{...}}</script>
+// no <head> sobrescreve os padrões (marca, chave da nuvem, meta, recompensa...) para este
+// cliente. Sem isso, nada muda — a J.J segue idêntica.
+try{
+  var T = (typeof window!=='undefined') ? window.__TENANT__ : null;
+  if(T && T.settings){
+    var baseBrand = DEFAULTS.settings.brand;
+    var tBrand = T.settings.brand;
+    Object.assign(DEFAULTS.settings, T.settings);
+    DEFAULTS.settings.brand = Object.assign({}, baseBrand, tBrand||{});
+  }
+}catch(e){}
+
 function load(){
   try{
     const raw = localStorage.getItem(LS_KEY);
