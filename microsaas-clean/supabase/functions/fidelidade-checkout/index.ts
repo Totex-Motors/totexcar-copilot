@@ -66,12 +66,27 @@ Deno.serve(async (req) => {
   try { p = await req.json(); } catch { /* corpo vazio */ }
 
   const tenantKey = String(p.tenant || "").trim().toLowerCase() || DEFAULT_TENANT;
-  const tenant = TENANTS[tenantKey];
-  if (!tenant) return json({ ok: false, error: "loja_invalida" }, 400);
   const planKey = String(p.plan || "").trim().toLowerCase();
-  const plan = tenant.plans[planKey];
-  if (!plan) return json({ ok: false, error: "plano_invalido" }, 400);
   const cycle: "monthly" | "annual" = p.cycle === "annual" ? "annual" : "monthly";
+
+  // Loja: as legadas (jj/brasa) têm preços fixos aqui; qualquer cliente da FÁBRICA
+  // tem os preços no próprio estado (fidelidade_state.data.fabrica.landing.plans).
+  let tenantLabel = "";
+  let plan: Plan | undefined = TENANTS[tenantKey]?.plans[planKey];
+  if (TENANTS[tenantKey]) {
+    tenantLabel = TENANTS[tenantKey].label;
+  } else {
+    const { data: srow } = await admin.from("fidelidade_state").select("data").eq("tenant", tenantKey).maybeSingle();
+    const st = srow?.data;
+    const plans = st?.fabrica?.landing?.plans;
+    if (!Array.isArray(plans)) return json({ ok: false, error: "loja_invalida" }, 400);
+    const pl = plans.find((x: any) => String(x.key || "").toLowerCase() === planKey);
+    const monthly = pl ? Number(pl.price) : NaN;
+    if (!pl || !isFinite(monthly) || monthly <= 0) return json({ ok: false, error: "plano_invalido" }, 400);
+    plan = { name: String(pl.name || planKey), monthly, annual: Math.round(monthly * 10) };
+    tenantLabel = st?.settings?.brand?.shortName || st?.settings?.brand?.name || "";
+  }
+  if (!plan) return json({ ok: false, error: "plano_invalido" }, 400);
   const value = cycle === "annual" ? plan.annual : plan.monthly;
 
   const { data: s } = await admin.from("app_settings")
@@ -87,8 +102,8 @@ Deno.serve(async (req) => {
   if ((recent?.length || 0) >= 5) return json({ ok: false, error: "muitas_tentativas" }, 429);
 
   const base = s?.asaas_sandbox ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
-  const nome = `Fidelidade ${tenant.label} ${plan.name}`.replace(/\s+/g, " ").trim().slice(0, 30);
-  const nomeDesc = `Cartão Fidelidade ${tenant.label} ${plan.name}`.replace(/\s+/g, " ").trim();
+  const nome = `Fidelidade ${tenantLabel} ${plan.name}`.replace(/\s+/g, " ").trim().slice(0, 30);
+  const nomeDesc = `Cartão Fidelidade ${tenantLabel} ${plan.name}`.replace(/\s+/g, " ").trim();
   // externalReference identifica a loja p/ o fulfillment manual; a J.J mantém o formato legado
   const extRef = tenantKey === DEFAULT_TENANT
     ? `fidelidade:${planKey}:${cycle}`

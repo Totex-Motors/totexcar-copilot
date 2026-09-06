@@ -52,9 +52,13 @@ jobs:
           cp fidelidade/jj-home.jpg /tmp/totexfidelidade/jj-home.jpg
           cp fidelidade/brasa-home.jpg /tmp/totexfidelidade/brasa-home.jpg
           cp fidelidade/brasa-logo.png /tmp/totexfidelidade/brasa-logo.png
+          # FÁBRICA: painel interno + geradores + cópia do MOTOR (o painel busca app-engine.html pra montar o app de cada cliente)
+          cp fidelidade/fabrica.html /tmp/totexfidelidade/fabrica.html
+          cp fidelidade/fabrica-generators.js /tmp/totexfidelidade/fabrica-generators.js
+          cp jj-fidelidade/index.html /tmp/totexfidelidade/app-engine.html
           # anti-cache: os HTML sempre frescos; as imagens seguem cacheáveis
           NS='no-store, max-age=0, must-revalidate'
-          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/guia.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/jj.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/brasa.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/brasa-guia.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" "$NS" "$NS" "$NS" > /tmp/totexfidelidade/vercel.json
+          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/guia.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/jj.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/brasa.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/brasa-guia.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/fabrica.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/fabrica-generators.js","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/app-engine.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" "$NS" "$NS" "$NS" "$NS" "$NS" "$NS" > /tmp/totexfidelidade/vercel.json
           cat /tmp/totexfidelidade/vercel.json
           cd /tmp/totexfidelidade
           vercel deploy --prod --yes \

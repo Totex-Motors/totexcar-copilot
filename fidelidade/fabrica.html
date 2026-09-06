@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fábrica · Cartão Fidelidade Totex</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0f1115">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%8F%AD</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@500;600&display=swap">
+<style>
+  :root{
+    --bg:#0f1115; --bg2:#161a21; --panel:#1b202a; --panel2:#212836; --line:#2a3140; --line2:#38445a;
+    --ink:#eef2f8; --ink2:#aab4c5; --ink3:#7a8699; --acc:#e8951b; --acc2:#e01e1e; --good:#4fb67a; --bad:#e5484d;
+    --sans:'Inter',system-ui,'Segoe UI',sans-serif; --mono:'Spline Sans Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--acc);text-decoration:none}
+  h1,h2,h3{letter-spacing:-.01em}
+  .mono{font-family:var(--mono)}
+  .muted{color:var(--ink3)}
+  input,select,textarea,button{font-family:inherit;font-size:14px}
+  input,select,textarea{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:9px 11px;color:var(--ink);outline:none}
+  input:focus,select,textarea:focus{border-color:var(--line2)}
+  textarea{min-height:64px;resize:vertical}
+  label.lbl{display:block;font-size:11px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;margin:0 0 5px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);border-radius:9px;padding:9px 15px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.12s}
+  .btn:hover{border-color:var(--ink3)}
+  .btn.pri{background:linear-gradient(120deg,var(--acc),var(--acc2));border:0;color:#fff}
+  .btn.pri:hover{filter:brightness(1.06)}
+  .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:8px}
+  .btn.danger{color:#ffb4b4;border-color:#5a2b2f}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>*{flex:1;min-width:0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media(max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
+  .field{margin-bottom:12px}
+  .chk{display:flex;align-items:center;gap:9px;cursor:pointer;font-weight:600}
+  .chk input{width:auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+  .card h3{font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:9px}
+  .pill{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:100px;background:var(--panel2);color:var(--ink2)}
+  .pill.on{background:rgba(79,182,122,.16);color:#7fe0a3}
+  .pill.off{background:rgba(122,134,153,.14);color:var(--ink3)}
+  .swatch{width:22px;height:22px;border-radius:6px;border:1px solid var(--line2);flex:none}
+  .photo{display:flex;align-items:center;gap:12px}
+  .photo .prev{width:56px;height:56px;border-radius:10px;background:var(--bg2) center/cover no-repeat;border:1px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink3)}
+  /* topbar */
+  header.top{position:sticky;top:0;z-index:20;background:rgba(15,17,21,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:14px}
+  header.top .logo{font-weight:800;font-size:16px;display:flex;align-items:center;gap:8px}
+  header.top .sp{flex:1}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 20px 80px}
+  /* login */
+  .login{max-width:380px;margin:12vh auto;padding:0 20px;text-align:center}
+  .login .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:30px 26px;margin-top:20px;text-align:left}
+  /* list */
+  .clist{display:flex;flex-direction:column;gap:10px}
+  .crow{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;transition:.12s}
+  .crow:hover{border-color:var(--line2);background:var(--panel2)}
+  .crow .nm{font-weight:700;font-size:15px}
+  .crow .meta{font-size:12px;color:var(--ink3);display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
+  .crow .tags{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+  /* tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;position:sticky;top:57px;background:var(--bg);padding:10px 0;z-index:10}
+  .tabs button{background:var(--panel);border:1px solid var(--line);color:var(--ink2);border-radius:9px;padding:8px 13px;font-weight:600;cursor:pointer;font-size:13px}
+  .tabs button.on{background:linear-gradient(120deg,var(--acc),var(--acc2));border:0;color:#fff}
+  .item-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:11px;margin-bottom:10px}
+  .item-row .thumb{width:52px;height:52px;border-radius:9px;background:var(--panel2) center/cover no-repeat;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:20px;flex:none}
+  .plan-row{background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:10px}
+  .actions{position:sticky;bottom:0;background:linear-gradient(0deg,var(--bg) 70%,transparent);padding:16px 0 10px;display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .keybox{background:#10261a;border:1px solid #204d34;border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:12.5px;word-break:break-all;color:#9ff0bf;margin-top:10px}
+  /* toast */
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#0b0d11;border:1px solid var(--line2);color:var(--ink);padding:12px 18px;border-radius:10px;opacity:0;pointer-events:none;transition:.25s;z-index:100;max-width:90vw;text-align:center;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast.err{border-color:var(--bad)}
+  .hint{font-size:12px;color:var(--ink3);margin-top:5px}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const SB   = 'https://gkkjhnzkqhpgrwrmofev.supabase.co';
+const FAB  = SB + '/functions/v1/fidelidade-fabrica';
+const FID  = SB + '/functions/v1/fidelidade';
+const CO   = SB + '/functions/v1/fidelidade-checkout';
+const ENGINE_URL = './app-engine.html';                 // motor (mesmo domínio do deploy)
+const ENGINE_FALLBACK = 'https://totexfidelidade.vercel.app/app-engine.html';
+const TOTEX_WA = '5511947448137';
+const LS = 'totex_fabrica_key';
+
+const $  = (s,r)=> (r||document).querySelector(s);
+const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const el = document.getElementById('root');
+let TOAST_T;
+function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='show'+(err?' err':''); clearTimeout(TOAST_T); TOAST_T=setTimeout(()=>t.className='',3200); }
+
+const state = { key:'', name:'', view:'login', tenants:[], cfg:null, wa_key:'', tab:'ident', busy:false, engineCache:'' };
+
+/* ---------------- API ---------------- */
+async function api(action, extra){
+  const body = Object.assign({ action, key: state.key }, extra||{});
+  const r = await fetch(FAB, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json().catch(()=>({ok:false,error:'resposta_invalida'}));
+  return j;
+}
+
+/* ---------------- config padrão ---------------- */
+function newCfg(){
+  return {
+    tenant:'',
+    settings:{
+      pin:'', operadorPin:'', plan:'essencial', goal:10, reward:'', rule:'', appUrl:'', waApi:false,
+      brand:{ name:'', shortName:'', legalName:'', initials:'', tagline:'', prefix:'', appTitle:'',
+        address:'', colorEmber:'#e8951b', colorFlame:'#e01e1e',
+        whatsapp:'', instagram:'', instagramHandle:'', logoImg:'', logoImgLight:'', stampImg:'' },
+      capabilities:{
+        catalog:{ enabled:false, orderWhatsapp:true, categories:[], items:[] },
+        sorteios:{ enabled:false, ticketRule:'por_selo', prize:'', drawAt:'' }
+      }
+    },
+    landing:{
+      enabled:true, checkout:'asaas', freeMonth:false, gift:false, giftText:'',
+      heroTitle:'', heroText:'', totexWhatsapp:TOTEX_WA, guideLink:true,
+      plans:[
+        { key:'essencial',   name:'Essencial',   price:89,  cap:'até 50 clientes',    hot:false },
+        { key:'crescimento', name:'Crescimento', price:129, cap:'até 100 clientes',   hot:true  },
+        { key:'ilimitado',   name:'Ilimitado',   price:169, cap:'clientes ilimitados', hot:false }
+      ]
+    }
+  };
+}
+// normaliza uma config vinda do get (settings+fabrica) para o modelo do painel
+function cfgFromGet(j){
+  const c = newCfg();
+  c.tenant = j.tenant || '';
+  const s = j.settings || {};
+  Object.assign(c.settings, { pin:s.pin||'', operadorPin:s.operadorPin||'', plan:s.plan||'essencial',
+    goal:s.goal||10, reward:s.reward||'', rule:s.rule||'', appUrl:s.appUrl||'', waApi:!!s.waApi });
+  Object.assign(c.settings.brand, s.brand||{});
+  const caps = s.capabilities||{};
+  c.settings.capabilities.catalog  = Object.assign(c.settings.capabilities.catalog,  caps.catalog||{});
+  c.settings.capabilities.sorteios = Object.assign(c.settings.capabilities.sorteios, caps.sorteios||{});
+  if(!Array.isArray(c.settings.capabilities.catalog.items)) c.settings.capabilities.catalog.items=[];
+  const land = (j.fabrica&&j.fabrica.landing) || null;
+  if(land) c.landing = Object.assign(newCfg().landing, land, { plans: Array.isArray(land.plans)&&land.plans.length?land.plans:newCfg().landing.plans });
+  return c;
+}
+
+/* ==================================================================== */
+/* RENDER                                                               */
+/* ==================================================================== */
+function render(){
+  if(state.view==='login')  return renderLogin();
+  if(state.view==='list')   return renderList();
+  if(state.view==='edit')   return renderEdit();
+}
+
+function renderLogin(){
+  el.innerHTML = `<div class="login">
+    <div style="font-size:40px">🏭</div>
+    <h1 style="font-size:24px;margin-top:8px">Fábrica do Cartão Fidelidade</h1>
+    <p class="muted" style="margin-top:6px">Painel interno da Totex. Configure e provisione clientes.</p>
+    <div class="box">
+      <div class="field"><label class="lbl">Chave de admin</label>
+        <input id="lg_key" type="password" placeholder="cole a chave da fábrica" autocomplete="off"></div>
+      <button class="btn pri" style="width:100%" id="lg_go">Entrar</button>
+      <p class="hint">A chave fica só neste navegador. Sem ela, nada é acessível.</p>
+    </div>
+  </div>`;
+  const go = async ()=>{
+    const k = $('#lg_key').value.trim(); if(!k){ toast('Cole a chave.',1); return; }
+    state.key = k; const j = await api('login');
+    if(!j.ok){ state.key=''; toast('Chave inválida.',1); return; }
+    state.name = j.name||'Totex'; try{ localStorage.setItem(LS,k); }catch(e){}
+    await loadList();
+  };
+  $('#lg_go').onclick = go;
+  $('#lg_key').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+}
+
+async function loadList(){
+  const j = await api('list');
+  if(!j.ok){ toast('Erro ao listar.',1); return; }
+  state.tenants = j.tenants||[]; state.view='list'; render();
+}
+
+function topbar(){
+  return `<header class="top">
+    <div class="logo">🏭 Fábrica <span class="muted" style="font-weight:600">· Fidelidade</span></div>
+    <div class="sp"></div>
+    <span class="muted mono" style="font-size:12px">${esc(state.name)}</span>
+    <button class="btn sm" id="tb_out">Sair</button>
+  </header>`;
+}
+function bindTop(){ const o=$('#tb_out'); if(o) o.onclick=()=>{ try{localStorage.removeItem(LS);}catch(e){} state.key='';state.view='login';render(); }; }
+
+function renderList(){
+  const rows = state.tenants.length ? state.tenants.map(t=>`
+    <div class="crow" data-open="${esc(t.tenant)}">
+      <div>
+        <div class="nm">${esc(t.name)} ${t.active?'':'<span class="pill off">desligado</span>'}</div>
+        <div class="meta"><span class="mono">${esc(t.tenant)}</span> · plano ${esc(t.plan||'—')} · ${t.customers} cliente(s)</div>
+      </div>
+      <div class="tags">
+        <span class="pill ${t.hasCatalog?'on':'off'}">cardápio</span>
+        <span class="pill ${t.hasSorteio?'on':'off'}">sorteio</span>
+        <span class="pill ${t.hasLanding?'on':'off'}">landing</span>
+      </div>
+    </div>`).join('') : `<p class="muted">Nenhum cliente ainda. Crie o primeiro.</p>`;
+  el.innerHTML = topbar() + `<div class="wrap">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <h1 style="font-size:20px">Clientes</h1><div style="flex:1"></div>
+      <button class="btn pri" id="ls_new">+ Novo cliente</button>
+    </div>
+    <div class="clist">${rows}</div>
+  </div>`;
+  bindTop();
+  $('#ls_new').onclick = ()=>{ state.cfg=newCfg(); state.wa_key=''; state.tab='ident'; state.view='edit'; render(); };
+  $$('.crow').forEach(r=> r.onclick = async ()=>{
+    const j = await api('get',{ tenant:r.dataset.open });
+    if(!j.ok){ toast('Erro ao abrir.',1); return; }
+    state.cfg = cfgFromGet(j); state.wa_key = j.wa_key||''; state.tab='ident'; state.view='edit'; render();
+  });
+}
+
+/* ---------------- editor ---------------- */
+const TABS = [['ident','Identidade'],['brand','Marca'],['rules','Regras & Plano'],['shelf','Prateleira'],['landing','Landing']];
+function renderEdit(){
+  const c = state.cfg;
+  el.innerHTML = topbar() + `<div class="wrap">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+      <button class="btn sm" id="ed_back">← Clientes</button>
+      <h1 style="font-size:19px">${c.settings.brand.name ? esc(c.settings.brand.name) : 'Novo cliente'}</h1>
+      <div style="flex:1"></div>
+      ${state.wa_key?`<span class="pill on">provisionado</span>`:`<span class="pill off">rascunho</span>`}
+    </div>
+    <div class="tabs">${TABS.map(t=>`<button data-tab="${t[0]}" class="${state.tab===t[0]?'on':''}">${t[1]}</button>`).join('')}</div>
+    <div id="tabbody"></div>
+    <div class="actions">
+      <button class="btn pri" id="ac_prov">☁️ Provisionar na nuvem</button>
+      <button class="btn" id="ac_app" ${state.wa_key?'':'disabled'}>⬇️ App (index.html)</button>
+      <button class="btn" id="ac_land" ${c.landing.enabled?'':'disabled'}>⬇️ Landing</button>
+      <button class="btn" id="ac_guide">⬇️ Guia</button>
+      <button class="btn" id="ac_man">⬇️ Manifesto</button>
+    </div>
+    ${state.wa_key?`<div class="keybox">wa_key: ${esc(state.wa_key)}  ·  endpoint: ${FID}</div>`:''}
+  </div>`;
+  bindTop();
+  $('#ed_back').onclick = ()=>{ loadList(); };
+  $$('.tabs button').forEach(b=> b.onclick = ()=>{ readForm(); state.tab=b.dataset.tab; renderTab(); });
+  $('#ac_prov').onclick = provision;
+  $('#ac_app').onclick  = dlApp;
+  $('#ac_land').onclick = dlLanding;
+  $('#ac_guide').onclick= dlGuide;
+  $('#ac_man').onclick  = dlManifest;
+  renderTab();
+}
+
+function renderTab(){
+  const c = state.cfg, b = c.settings.brand, s = c.settings;
+  const body = $('#tabbody'); if(!body) return;
+  if(state.tab==='ident'){
+    body.innerHTML = `<div class="card"><h3>Identidade</h3>
+      <div class="grid2">
+        <div class="field"><label class="lbl">Slug (id na nuvem, ex.: brasa-caipira)</label>
+          <input id="f_tenant" value="${esc(c.tenant)}" ${state.wa_key?'disabled':''} placeholder="minha-loja"><div class="hint">só minúsculas, números e hífen. Não muda depois de provisionar.</div></div>
+        <div class="field"><label class="lbl">Nome da loja</label><input id="f_name" value="${esc(b.name)}" placeholder="Brasa Caipira"></div>
+        <div class="field"><label class="lbl">Nome curto</label><input id="f_short" value="${esc(b.shortName)}" placeholder="Brasa"></div>
+        <div class="field"><label class="lbl">Razão / nome legal</label><input id="f_legal" value="${esc(b.legalName)}" placeholder="Brasa Caipira Assados"></div>
+        <div class="field"><label class="lbl">Iniciais (fallback do selo)</label><input id="f_init" value="${esc(b.initials)}" placeholder="BC" maxlength="4"></div>
+        <div class="field"><label class="lbl">Prefixo do código (ex.: BC → BC-0001)</label><input id="f_prefix" value="${esc(b.prefix)}" placeholder="BC" maxlength="6" style="text-transform:uppercase"></div>
+        <div class="field"><label class="lbl">Tagline</label><input id="f_tag" value="${esc(b.tagline)}" placeholder="ASSADOS"></div>
+        <div class="field"><label class="lbl">Título do app (aba)</label><input id="f_apptitle" value="${esc(b.appTitle)}" placeholder="Brasa Caipira · Fidelidade"></div>
+        <div class="field"><label class="lbl">Endereço</label><input id="f_addr" value="${esc(b.address)}" placeholder="Rua ..., 000 — Cidade/UF"></div>
+        <div class="field"><label class="lbl">URL pública do app</label><input id="f_appurl" value="${esc(s.appUrl)}" placeholder="https://minha-loja.vercel.app"></div>
+        <div class="field"><label class="lbl">WhatsApp da loja (só números, com DDI 55)</label><input id="f_wa" value="${esc(b.whatsapp)}" placeholder="5511999990000"></div>
+        <div class="field"><label class="lbl">Instagram (URL)</label><input id="f_ig" value="${esc(b.instagram)}" placeholder="https://instagram.com/minhaloja"></div>
+        <div class="field"><label class="lbl">Instagram (@handle)</label><input id="f_ighandle" value="${esc(b.instagramHandle)}" placeholder="minhaloja"></div>
+      </div></div>`;
+  }
+  else if(state.tab==='brand'){
+    body.innerHTML = `<div class="card"><h3>Marca & cores</h3>
+      <div class="grid2">
+        <div class="field"><label class="lbl">Cor principal (ember)</label>
+          <div style="display:flex;gap:8px;align-items:center"><input id="f_ember" value="${esc(b.colorEmber)}" style="flex:1"><input type="color" id="f_ember_c" value="${esc(b.colorEmber)}" style="width:44px;padding:2px"></div></div>
+        <div class="field"><label class="lbl">Cor de destaque (flame)</label>
+          <div style="display:flex;gap:8px;align-items:center"><input id="f_flame" value="${esc(b.colorFlame)}" style="flex:1"><input type="color" id="f_flame_c" value="${esc(b.colorFlame)}" style="width:44px;padding:2px"></div></div>
+      </div>
+      <div class="hint" style="margin-bottom:14px">Faça o upload das imagens depois de definir o slug (elas vão pra nuvem com o nome da loja).</div>
+      ${photoField('Logo (fundo claro / topo)','logoImg', b.logoImg)}
+      ${photoField('Logo claro (fundo escuro)','logoImgLight', b.logoImgLight)}
+      ${photoField('Selo do carimbo (opcional)','stampImg', b.stampImg)}
+    </div>`;
+    bindColor('f_ember','f_ember_c'); bindColor('f_flame','f_flame_c');
+    bindPhotos();
+  }
+  else if(state.tab==='rules'){
+    body.innerHTML = `<div class="card"><h3>Regras & Plano</h3>
+      <div class="grid3">
+        <div class="field"><label class="lbl">Selos p/ o prêmio</label><input id="f_goal" type="number" min="3" max="20" value="${esc(s.goal)}"></div>
+        <div class="field"><label class="lbl">Plano (trava de clientes)</label>
+          <select id="f_plan">
+            <option value="essencial" ${s.plan==='essencial'?'selected':''}>Essencial (até 50)</option>
+            <option value="crescimento" ${s.plan==='crescimento'?'selected':''}>Crescimento (até 100)</option>
+            <option value="ilimitado" ${s.plan==='ilimitado'?'selected':''}>Ilimitado</option>
+          </select></div>
+        <div class="field"><label class="lbl">PIN do dono (6 díg.)</label><input id="f_pin" value="${esc(s.pin)}" maxlength="8" inputmode="numeric" placeholder="102030"></div>
+      </div>
+      <div class="field"><label class="lbl">Prêmio</label><input id="f_reward" value="${esc(s.reward)}" placeholder="um frango assado grátis"></div>
+      <div class="field"><label class="lbl">Regra (texto que aparece pro cliente)</label><textarea id="f_rule" placeholder="A cada compra ...">${esc(s.rule)}</textarea></div>
+      <div class="field"><label class="lbl">PIN do operador / balcão (opcional)</label><input id="f_oppin" value="${esc(s.operadorPin)}" maxlength="8" inputmode="numeric" placeholder="vazio = desativado"><div class="hint">O operador cadastra e dá selo, mas não vê plano, PINs, backup nem sorteio.</div></div>
+    </div>`;
+  }
+  else if(state.tab==='shelf'){
+    body.innerHTML = renderShelf();
+    bindShelf();
+  }
+  else if(state.tab==='landing'){
+    body.innerHTML = renderLanding();
+    bindLanding();
+  }
+}
+
+function photoField(label, key, val){
+  const bg = val ? `background-image:url('${esc(val)}')` : '';
+  return `<div class="field"><label class="lbl">${label}</label>
+    <div class="photo">
+      <div class="prev" data-prev="${key}" style="${bg}">${val?'':'sem foto'}</div>
+      <label class="btn sm">📷 Enviar<input type="file" accept="image/*" data-photo="${key}" hidden></label>
+      ${val?`<button class="btn sm danger" data-clearphoto="${key}">remover</button>`:''}
+    </div></div>`;
+}
+function bindColor(idText,idColor){
+  const t=$('#'+idText), c=$('#'+idColor); if(!t||!c) return;
+  c.addEventListener('input', ()=>{ t.value=c.value; });
+}
+function bindPhotos(){
+  $$('[data-photo]').forEach(inp=> inp.onchange = ()=> uploadPhoto(inp.dataset.photo, inp.files[0]));
+  $$('[data-clearphoto]').forEach(btn=> btn.onclick = ()=>{ setDeep(btn.dataset.clearphoto, ''); renderTab(); });
+}
+function setBrand(key,val){ state.cfg.settings.brand[key]=val; }
+function setDeep(key,val){ // só chaves de brand aqui
+  state.cfg.settings.brand[key]=val;
+}
+
+async function uploadPhoto(key, file){
+  if(!file) return;
+  readForm();
+  const t = state.cfg.tenant.trim().toLowerCase();
+  if(!t){ toast('Defina o slug (aba Identidade) antes de enviar imagens.',1); return; }
+  toast('Enviando imagem…');
+  try{
+    const dataUrl = await downscale(file, 900);
+    const j = await api('upload_photo', { tenant:t, dataUrl });
+    if(!j.ok){ toast('Falha no upload: '+(j.error||''),1); return; }
+    state.cfg.settings.brand[key] = j.url; renderTab(); toast('Imagem enviada ✓');
+  }catch(e){ toast('Erro ao processar a imagem.',1); }
+}
+function downscale(file, max){
+  return new Promise((res,rej)=>{
+    const isSvg = /svg/i.test(file.type);
+    const fr = new FileReader();
+    fr.onerror = rej;
+    fr.onload = ()=>{
+      if(isSvg){ res(fr.result); return; } // svg vai como está
+      const img = new Image();
+      img.onload = ()=>{
+        let {width:w,height:h}=img; const sc=Math.min(1, max/Math.max(w,h));
+        w=Math.round(w*sc); h=Math.round(h*sc);
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        const png=/png/i.test(file.type);
+        res(cv.toDataURL(png?'image/png':'image/jpeg', png?undefined:0.85));
+      };
+      img.onerror=rej; img.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+/* -------- prateleira (catálogo + sorteio) -------- */
+function renderShelf(){
+  const cat = state.cfg.settings.capabilities.catalog;
+  const sor = state.cfg.settings.capabilities.sorteios;
+  const items = (cat.items||[]).map((it,i)=>`
+    <div class="item-row">
+      <div class="thumb" data-iprev="${i}" style="${it.image?`background-image:url('${esc(it.image)}')`:''}">${it.image?'':'🍽️'}</div>
+      <div>
+        <div class="grid3">
+          <input data-i="${i}" data-k="name" value="${esc(it.name||'')}" placeholder="Nome do produto">
+          <input data-i="${i}" data-k="price" value="${esc(it.price!=null&&isFinite(it.price)?String(it.price).replace('.',','):'')}" placeholder="Preço (39,90)">
+          <input data-i="${i}" data-k="category" value="${esc(it.category||'')}" placeholder="Categoria">
+        </div>
+        <input data-i="${i}" data-k="description" value="${esc(it.description||'')}" placeholder="Descrição (opcional)" style="margin-top:8px">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <label class="btn sm">📷<input type="file" accept="image/*" data-iphoto="${i}" hidden></label>
+        <button class="btn sm danger" data-irem="${i}">✕</button>
+      </div>
+    </div>`).join('');
+  return `<div class="card"><h3>🍗 Cardápio (prateleira)</h3>
+    <label class="chk field"><input type="checkbox" id="f_cat_on" ${cat.enabled?'checked':''}> Cardápio ativo (aparece no app do cliente)</label>
+    <label class="chk field"><input type="checkbox" id="f_cat_wa" ${cat.orderWhatsapp!==false?'checked':''}> Permitir pedir no WhatsApp</label>
+    <div id="items">${items || '<p class="muted">Nenhum produto. Adicione o primeiro.</p>'}</div>
+    <button class="btn sm" id="f_cat_add">+ Adicionar produto</button>
+  </div>
+  <div class="card"><h3>🎟️ Sorteio</h3>
+    <label class="chk field"><input type="checkbox" id="f_sor_on" ${sor.enabled?'checked':''}> Sorteio ativo (aparece no cartão do cliente)</label>
+    <div class="grid2">
+      <div class="field"><label class="lbl">Prêmio</label><input id="f_sor_prize" value="${esc(sor.prize||'')}" placeholder="um Combo Família"></div>
+      <div class="field"><label class="lbl">Data / período</label><input id="f_sor_date" value="${esc(sor.drawAt||'')}" placeholder="todo fim de mês"></div>
+    </div>
+    <div class="hint">Cada selo é um número da sorte. Seguir o Instagram é pedido ao cliente na tela do cartão (na confiança).</div>
+  </div>`;
+}
+function bindShelf(){
+  const cat = state.cfg.settings.capabilities.catalog;
+  $('#f_cat_add').onclick = ()=>{ readForm(); cat.items.push({name:'',price:null,category:'',description:'',image:''}); renderTab(); };
+  $$('[data-irem]').forEach(b=> b.onclick=()=>{ readForm(); cat.items.splice(+b.dataset.irem,1); renderTab(); });
+  $$('[data-iphoto]').forEach(inp=> inp.onchange=()=> uploadItemPhoto(+inp.dataset.iphoto, inp.files[0]));
+}
+async function uploadItemPhoto(i, file){
+  if(!file) return; readForm();
+  const t = state.cfg.tenant.trim().toLowerCase();
+  if(!t){ toast('Defina o slug antes de enviar fotos.',1); return; }
+  toast('Enviando foto…');
+  try{
+    const dataUrl = await downscale(file, 800);
+    const j = await api('upload_photo', { tenant:t, dataUrl });
+    if(!j.ok){ toast('Falha no upload.',1); return; }
+    state.cfg.settings.capabilities.catalog.items[i].image = j.url; renderTab(); toast('Foto enviada ✓');
+  }catch(e){ toast('Erro na foto.',1); }
+}
+
+/* -------- landing -------- */
+function renderLanding(){
+  const L = state.cfg.landing;
+  const plans = (L.plans||[]).map((p,i)=>`
+    <div class="plan-row">
+      <div class="grid3">
+        <div><label class="lbl">Chave</label>
+          <select data-p="${i}" data-k="key">
+            <option value="essencial" ${p.key==='essencial'?'selected':''}>essencial</option>
+            <option value="crescimento" ${p.key==='crescimento'?'selected':''}>crescimento</option>
+            <option value="ilimitado" ${p.key==='ilimitado'?'selected':''}>ilimitado</option>
+          </select></div>
+        <div><label class="lbl">Nome</label><input data-p="${i}" data-k="name" value="${esc(p.name||'')}"></div>
+        <div><label class="lbl">Preço/mês (R$)</label><input data-p="${i}" data-k="price" value="${esc(p.price)}" inputmode="decimal"></div>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <div><label class="lbl">Legenda (ex.: até 50 clientes)</label><input data-p="${i}" data-k="cap" value="${esc(p.cap||'')}"></div>
+        <div style="display:flex;align-items:end;gap:12px">
+          <label class="chk" style="flex:1"><input type="checkbox" data-p="${i}" data-k="hot" ${p.hot?'checked':''}> Destaque ("mais indicado")</label>
+          <button class="btn sm danger" data-prem="${i}">remover</button>
+        </div>
+      </div>
+    </div>`).join('');
+  return `<div class="card"><h3>Landing (página de vendas)</h3>
+    <label class="chk field"><input type="checkbox" id="f_l_on" ${L.enabled?'checked':''}> Gerar landing pra este cliente</label>
+    <div class="grid2">
+      <div class="field"><label class="lbl">Checkout dos planos</label>
+        <select id="f_l_checkout">
+          <option value="asaas" ${L.checkout==='asaas'?'selected':''}>Asaas (PIX + cartão)</option>
+          <option value="whatsapp" ${L.checkout==='whatsapp'?'selected':''}>Só WhatsApp</option>
+        </select></div>
+      <div class="field"><label class="lbl">WhatsApp de vendas (Totex)</label><input id="f_l_wa" value="${esc(L.totexWhatsapp||TOTEX_WA)}"></div>
+    </div>
+    <div class="row" style="margin-bottom:12px">
+      <label class="chk"><input type="checkbox" id="f_l_free" ${L.freeMonth?'checked':''}> 1º mês grátis</label>
+      <label class="chk"><input type="checkbox" id="f_l_gift" ${L.gift?'checked':''}> Tem "presente"</label>
+      <label class="chk"><input type="checkbox" id="f_l_guide" ${L.guideLink?'checked':''}> Link do guia</label>
+    </div>
+    <div class="field"><label class="lbl">Texto do presente (se marcado)</label><input id="f_l_gifttext" value="${esc(L.giftText||'')}" placeholder="Ex.: o primeiro cartaz impresso é por nossa conta"></div>
+    <div class="field"><label class="lbl">Título do hero (vazio = automático)</label><input id="f_l_htitle" value="${esc(L.heroTitle||'')}" placeholder="O Cartão Fidelidade da {loja} já está no ar"></div>
+    <div class="field"><label class="lbl">Texto do hero (vazio = automático)</label><textarea id="f_l_htext" placeholder="deixe vazio pra usar o texto padrão">${esc(L.heroText||'')}</textarea></div>
+  </div>
+  <div class="card"><h3>Planos da landing</h3>
+    <div id="plans">${plans}</div>
+    <button class="btn sm" id="f_l_addplan" ${(L.plans||[]).length>=3?'disabled':''}>+ Adicionar plano (máx. 3)</button>
+    <div class="hint">Os preços aqui alimentam o checkout do Asaas deste cliente. A trava de clientes vem do "Plano" na aba Regras.</div>
+  </div>`;
+}
+function bindLanding(){
+  const L = state.cfg.landing;
+  $('#f_l_addplan').onclick = ()=>{ readForm(); if(L.plans.length<3){ L.plans.push({key:'ilimitado',name:'Novo plano',price:0,cap:'',hot:false}); renderTab(); } };
+  $$('[data-prem]').forEach(b=> b.onclick=()=>{ readForm(); L.plans.splice(+b.dataset.prem,1); renderTab(); });
+}
+
+/* ---------------- ler o formulário (DOM → cfg) ---------------- */
+function val(id){ const e=$('#'+id); return e?e.value:undefined; }
+function chk(id){ const e=$('#'+id); return e?e.checked:undefined; }
+function readForm(){
+  const c=state.cfg; if(!c) return; const b=c.settings.brand, s=c.settings;
+  if(state.tab==='ident'){
+    if(!state.wa_key && val('f_tenant')!=null) c.tenant = val('f_tenant').trim().toLowerCase();
+    b.name=val('f_name')??b.name; b.shortName=val('f_short')??b.shortName; b.legalName=val('f_legal')??b.legalName;
+    b.initials=val('f_init')??b.initials; b.prefix=(val('f_prefix')||'').toUpperCase()||b.prefix; b.tagline=val('f_tag')??b.tagline;
+    b.appTitle=val('f_apptitle')??b.appTitle; b.address=val('f_addr')??b.address; s.appUrl=val('f_appurl')??s.appUrl;
+    b.whatsapp=val('f_wa')??b.whatsapp; b.instagram=val('f_ig')??b.instagram; b.instagramHandle=(val('f_ighandle')||'').replace(/^@/,'')||b.instagramHandle;
+  }
+  else if(state.tab==='brand'){ b.colorEmber=val('f_ember')||b.colorEmber; b.colorFlame=val('f_flame')||b.colorFlame; }
+  else if(state.tab==='rules'){
+    s.goal=parseInt(val('f_goal')||'10',10)||10; s.plan=val('f_plan')||s.plan; s.pin=(val('f_pin')||'').trim();
+    s.reward=val('f_reward')??s.reward; s.rule=val('f_rule')??s.rule; s.operadorPin=(val('f_oppin')||'').trim();
+  }
+  else if(state.tab==='shelf'){
+    const cat=s.capabilities.catalog, sor=s.capabilities.sorteios;
+    if(chk('f_cat_on')!=null) cat.enabled=chk('f_cat_on'); if(chk('f_cat_wa')!=null) cat.orderWhatsapp=chk('f_cat_wa');
+    $$('#items [data-i]').forEach(inp=>{ const i=+inp.dataset.i,k=inp.dataset.k; if(!cat.items[i])return;
+      if(k==='price'){ let v=(inp.value||'').replace(/\s/g,''); v=v.includes(',')?v.replace(/\./g,'').replace(',','.'):v; const n=parseFloat(v); cat.items[i].price=isFinite(n)?n:null; }
+      else cat.items[i][k]=inp.value; });
+    if(chk('f_sor_on')!=null) sor.enabled=chk('f_sor_on'); sor.prize=val('f_sor_prize')??sor.prize; sor.drawAt=val('f_sor_date')??sor.drawAt;
+  }
+  else if(state.tab==='landing'){
+    const L=c.landing;
+    if(chk('f_l_on')!=null) L.enabled=chk('f_l_on'); L.checkout=val('f_l_checkout')||L.checkout; L.totexWhatsapp=(val('f_l_wa')||'').trim()||TOTEX_WA;
+    if(chk('f_l_free')!=null) L.freeMonth=chk('f_l_free'); if(chk('f_l_gift')!=null) L.gift=chk('f_l_gift'); if(chk('f_l_guide')!=null) L.guideLink=chk('f_l_guide');
+    L.giftText=val('f_l_gifttext')??L.giftText; L.heroTitle=val('f_l_htitle')??L.heroTitle; L.heroText=val('f_l_htext')??L.heroText;
+    $$('#plans [data-p]').forEach(inp=>{ const i=+inp.dataset.p,k=inp.dataset.k; if(!L.plans[i])return;
+      if(k==='hot') L.plans[i].hot=inp.checked;
+      else if(k==='price'){ let v=(inp.value||'').replace(',','.'); const n=parseFloat(v); L.plans[i].price=isFinite(n)?n:0; }
+      else L.plans[i][k]=inp.value; });
+  }
+}
+
+/* ---------------- ações ---------------- */
+function validateForProvision(){
+  readForm(); const c=state.cfg, b=c.settings.brand;
+  if(!/^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])$/.test(c.tenant)){ toast('Slug inválido (minúsculas, números e hífen).',1); state.tab='ident'; renderTab(); return false; }
+  if(!b.name.trim()){ toast('Falta o nome da loja.',1); state.tab='ident'; renderTab(); return false; }
+  if(!c.settings.pin || c.settings.pin.length<4){ toast('Defina o PIN do dono (na aba Regras).',1); state.tab='rules'; renderTab(); return false; }
+  if(!b.prefix.trim()) b.prefix = (b.initials||b.name.slice(0,2)).replace(/[^A-Za-z0-9]/g,'').toUpperCase().slice(0,4)||'LC';
+  if(!b.shortName.trim()) b.shortName=b.name;
+  if(!b.initials.trim()) b.initials=b.prefix;
+  return true;
+}
+async function provision(){
+  if(state.busy) return; if(!validateForProvision()) return;
+  state.busy=true; toast('Provisionando…');
+  const j = await api('provision', { tenant: state.cfg.tenant, config:{ settings: state.cfg.settings, landing: state.cfg.landing } });
+  state.busy=false;
+  if(!j.ok){ toast('Falha: '+(j.error||''),1); return; }
+  state.wa_key = j.wa_key; state.cfg.settings.waKey=j.wa_key; state.cfg.settings.waEndpoint=j.fidelidadeFn||FID;
+  toast('Cliente provisionado ✓ — já pode baixar app e landing.');
+  render();
+}
+function download(name, text, type){
+  const blob=new Blob([text],{type:type||'text/html;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function dlManifest(){ readForm();
+  const cfg={ tenant:state.cfg.tenant, settings:state.cfg.settings };
+  download(state.cfg.tenant+'.tenant.json', JSON.stringify(cfg,null,2), 'application/json');
+}
+async function fetchEngine(){
+  if(state.engineCache) return state.engineCache;
+  for(const u of [ENGINE_URL, ENGINE_FALLBACK]){
+    try{ const r=await fetch(u); if(r.ok){ const t=await r.text(); if(t.includes('__TENANT__')||t.includes('<title>')){ state.engineCache=t; return t; } } }catch(e){}
+  }
+  return '';
+}
+async function dlApp(){
+  if(!state.wa_key){ toast('Provisione primeiro (pra ter a chave).',1); return; }
+  readForm(); toast('Montando o app…');
+  const engine = await fetchEngine();
+  if(!engine){ toast('Não achei o motor (app-engine.html). Publique a fábrica e tente pela URL.',1); return; }
+  const cfg={ tenant:state.cfg.tenant, settings:state.cfg.settings };
+  const html = injectTenant(engine, cfg);
+  download('index.html', html);
+  toast('App gerado ✓');
+}
+function injectTenant(engine, cfg){
+  const inject = '<script>window.__TENANT__='+JSON.stringify(cfg).replace(/<\//g,'<\\/')+';<\/script>';
+  let html;
+  if(engine.includes('</head>')) html=engine.replace('</head>', inject+'\n</head>');
+  else if(engine.includes('<head>')) html=engine.replace('<head>', '<head>\n'+inject);
+  else html=engine.replace(/<script/, inject+'\n<script');
+  const b=cfg.settings.brand||{}, s=cfg.settings||{};
+  if(b.appTitle) html=html.replace(/<title>[^<]*<\/title>/, '<title>'+esc(b.appTitle)+'</title>');
+  return html;
+}
+function dlLanding(){ readForm();
+  if(!state.cfg.landing.enabled){ toast('Landing desligada nesta config.',1); return; }
+  download(state.cfg.tenant+'.html', buildLanding(state.cfg));
+  toast('Landing gerada ✓');
+}
+function dlGuide(){ readForm();
+  download(state.cfg.tenant+'-guia.html', buildGuide(state.cfg));
+  toast('Guia gerado ✓');
+}
+
+/* ==================================================================== */
+/* GERADORES: landing + guia                                            */
+/* (definidos em generators.js embutido abaixo)                         */
+/* ==================================================================== */
+
+/* boot */
+(function(){
+  try{ const k=localStorage.getItem(LS); if(k){ state.key=k; api('login').then(j=>{ if(j&&j.ok){ state.name=j.name||'Totex'; loadList(); } else { state.key=''; render(); } }); return; } }catch(e){}
+  render();
+})();
+</script>
+<script src="fabrica-generators.js"></script>
+</body>
+</html>
