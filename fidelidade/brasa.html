@@ -202,7 +202,7 @@
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Cardápio + sorteio no app</li>
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Suporte no WhatsApp</li>
         </ul>
-        <a class="btn ghost wa" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Essencial (R$ 89/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Essencial</a>
+        <a class="btn ghost co wa" data-plan="essencial" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Essencial (R$ 89/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Essencial</a>
       </div>
       <div class="tier hot">
         <span class="tag">Mais indicado</span>
@@ -216,7 +216,7 @@
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Relatórios: quem voltou, quem sumiu</li>
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Exportação da base de clientes</li>
         </ul>
-        <a class="btn pri wa" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Crescimento (R$ 129/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Crescimento</a>
+        <a class="btn pri co wa" data-plan="crescimento" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Crescimento (R$ 129/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Crescimento</a>
       </div>
       <div class="tier">
         <span class="tname">Ilimitado</span>
@@ -229,7 +229,7 @@
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Mensagem automática pra quem sumiu</li>
           <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Aniversário e prêmio no WhatsApp</li>
         </ul>
-        <a class="btn ghost wa" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Ilimitado (R$ 169/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Ilimitado</a>
+        <a class="btn ghost co wa" data-plan="ilimitado" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Ilimitado (R$ 169/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Ilimitado</a>
       </div>
     </div>
     <p class="plnote"><b>Sem fidelidade</b> · cancela quando quiser · fale comigo no WhatsApp pra assinar</p>
@@ -259,7 +259,19 @@
 <script>
 (function(){
   var WA='https://wa.me/5511947448137';
+  var CO='https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/fidelidade-checkout';
   document.querySelectorAll('a.wa[data-msg]').forEach(function(a){ a.href=WA+'?text='+encodeURIComponent(a.getAttribute('data-msg')); });
+  // botões de plano: abrem o checkout do Asaas (loja Brasa); se falhar, caem no WhatsApp
+  document.querySelectorAll('a.co[data-plan]').forEach(function(a){
+    a.addEventListener('click',function(ev){
+      ev.preventDefault();
+      var plan=a.getAttribute('data-plan'), wa=a.href, old=a.textContent;
+      a.style.pointerEvents='none'; a.textContent='Abrindo checkout…';
+      var back=function(){ window.open(wa,'_blank'); a.style.pointerEvents=''; a.textContent=old; };
+      fetch(CO,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan,cycle:'monthly',tenant:'brasa'})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.url){window.location.href=d.url;} else {back();} }).catch(back);
+    });
+  });
 })();
 </script>
 </body>
