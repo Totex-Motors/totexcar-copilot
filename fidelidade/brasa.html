@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brasa Caipira · seu Cartão Fidelidade</title>
+<meta name="description" content="O Cartão Fidelidade digital da Brasa Caipira Assados já está no ar — cartão de selos, cardápio, sorteio e indicação no celular. Veja funcionando e as opções pra manter no ar.">
+<meta name="theme-color" content="#e01e1e">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%94%A5</text></svg>">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Brasa Caipira · seu Cartão Fidelidade">
+<meta property="og:description" content="O Cartão Fidelidade digital da Brasa Caipira Assados já está no ar. Veja funcionando.">
+<meta property="og:image" content="https://totexfidelidade.vercel.app/brasa-home.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Spline+Sans+Mono:wght@500;600&display=swap">
+<style>
+  :root{
+    --paper:#f6f0e6; --paper-2:#efe7d6; --card:#fffdf8; --ink:#221810; --ink-2:#5c4b3a; --ink-3:#8a7862;
+    --line:#e4d8c3; --line-2:#cdbb9c; --ember:#e8951b; --ember-ink:#b45f00; --flame:#e01e1e; --good:#4f7a3a; --char:#181009;
+    --disp:'Bricolage Grotesque',system-ui,'Segoe UI',sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Spline Sans Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;background:var(--paper)}
+  body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  svg.i{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:block}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 28px}
+  .btn{font-family:var(--mono);font-weight:600;font-size:14px;letter-spacing:.01em;padding:14px 24px;border-radius:12px;border:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:9px;max-width:100%;white-space:normal;text-align:center;transition:transform .15s,box-shadow .2s}
+  .btn svg{width:17px;height:17px;flex:none}
+  .btn.pri{background:linear-gradient(150deg,var(--ember),var(--flame));color:#fff;box-shadow:0 10px 26px -8px rgba(224,30,30,.5)}
+  .btn.pri:hover{transform:translateY(-2px);box-shadow:0 16px 36px -8px rgba(224,30,30,.62)}
+  .btn.ghost{background:var(--card);color:var(--ink);border:1.5px solid var(--line-2)}
+  .btn.ghost:hover{transform:translateY(-2px);border-color:var(--ember)}
+  .btn.wapp{background:rgba(79,122,58,.1);color:var(--good);border:1.5px solid rgba(79,122,58,.3)}
+  .btn.lg{padding:17px 30px;font-size:15px}
+
+  /* topbar */
+  .top{border-bottom:1px solid var(--line)}
+  .topin{max-width:1060px;margin:0 auto;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{display:flex;align-items:center;gap:11px;font-family:var(--disp);font-weight:800;font-size:17px}
+  .mark-img{height:36px;width:auto;border-radius:8px;box-shadow:0 5px 14px rgba(224,30,30,.22);flex:none}
+  .brand small{display:block;font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin-top:2px}
+  .topcta{padding:11px 18px;font-size:13px}
+
+  /* hero */
+  .hero{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;padding:56px 0 48px}
+  .live-badge{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--flame);background:rgba(224,30,30,.1);border:1px solid rgba(224,30,30,.28);padding:8px 15px;border-radius:100px;margin-bottom:22px}
+  h1{font-family:var(--disp);font-weight:800;font-size:clamp(34px,5.2vw,52px);line-height:1.02;letter-spacing:-.025em;text-wrap:balance}
+  h1 em{font-style:normal;color:var(--flame)}
+  .dek{font-size:19px;color:var(--ink-2);margin-top:20px;max-width:42ch;line-height:1.5}
+  .hcta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+
+  .phone-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .phone{width:300px;max-width:82vw;background:linear-gradient(160deg,#2a1210,#120807);border-radius:38px;padding:12px;box-shadow:0 40px 80px -30px rgba(224,30,30,.5),0 0 0 1px rgba(0,0,0,.06);position:relative}
+  .phone::before{content:"";position:absolute;top:20px;left:50%;transform:translateX(-50%);width:74px;height:5px;background:#000;border-radius:100px;opacity:.5;z-index:3}
+  .screenbox{position:relative;border-radius:27px;overflow:hidden;background:#160b09;aspect-ratio:300/620}
+  .screenbox img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center}
+  .screenbox .tap{position:absolute;inset:0;z-index:2;display:block}
+  .live-tag{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--ink-3);display:inline-flex;align-items:center;gap:8px}
+  .live-tag .pulse{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 0 rgba(79,122,58,.5);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(79,122,58,.5)}70%{box-shadow:0 0 0 8px rgba(79,122,58,0)}100%{box-shadow:0 0 0 0 rgba(79,122,58,0)}}
+
+  section{padding:52px 0}
+  .eyebrow{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ember-ink);display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .eyebrow::before{content:"";width:26px;height:2px;background:var(--ember)}
+  h2{font-family:var(--disp);font-weight:800;font-size:clamp(26px,4vw,36px);line-height:1.06;letter-spacing:-.02em;text-wrap:balance}
+
+  .ess{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:30px}
+  .ec{background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:22px 22px;display:flex;gap:15px;align-items:flex-start}
+  .ec .ic{width:44px;height:44px;border-radius:12px;background:rgba(224,149,27,.14);color:var(--ember-ink);display:flex;align-items:center;justify-content:center;flex:none}
+  .ec b{font-family:var(--disp);font-weight:700;font-size:17px;display:block;margin-bottom:4px}
+  .ec p{color:var(--ink-2);font-size:15px;line-height:1.45}
+
+  /* planos */
+  .why{background:var(--card);border:1.5px solid var(--line-2);border-radius:16px;padding:24px 26px;margin-top:26px;color:var(--ink-2);font-size:16.5px;line-height:1.55}
+  .why b{color:var(--ink);font-weight:500}
+  .tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:22px;align-items:stretch}
+  .tier{background:var(--card);border:1.5px solid var(--line-2);border-radius:18px;padding:28px 24px;display:flex;flex-direction:column;gap:7px;position:relative}
+  .tier.hot{border-color:var(--ember);box-shadow:0 0 0 3px rgba(224,149,27,.18)}
+  .tag{position:absolute;top:-12px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;background:linear-gradient(150deg,var(--ember),var(--flame));color:#fff;padding:5px 14px;border-radius:100px;white-space:nowrap}
+  .tname{font-family:var(--disp);font-weight:700;font-size:19px}
+  .cap{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ember-ink);background:rgba(224,149,27,.12);padding:5px 11px;border-radius:8px;align-self:flex-start;margin-top:2px}
+  .price{font-family:var(--disp);font-weight:800;font-size:38px;line-height:1;margin:10px 0 2px;font-variant-numeric:tabular-nums}
+  .price small{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--ink-3)}
+  .who{font-size:14.5px;color:var(--ink-2);min-height:2.6em;margin-bottom:4px}
+  .tier ul{list-style:none;display:flex;flex-direction:column;gap:9px;font-size:14.5px;margin:6px 0 18px}
+  .tier ul li{padding-left:24px;position:relative}
+  .tier ul li svg{position:absolute;left:0;top:1px;width:16px;height:16px;color:var(--ember-ink)}
+  .tier .btn{margin-top:auto;width:100%}
+  .plnote{text-align:center;font-family:var(--mono);font-size:13px;color:var(--ink-2);margin-top:22px}
+  .plnote b{color:var(--ember-ink)}
+
+  /* final */
+  .final{text-align:center;background:var(--card);border:1.5px solid var(--line-2);border-radius:24px;padding:52px 32px;margin-top:8px}
+  .final h2{max-width:22ch;margin:0 auto}
+  .final p{color:var(--ink-2);font-size:18px;margin:14px auto 0;max-width:46ch}
+  .final .hcta{justify-content:center;margin-top:28px}
+
+  footer{border-top:1px solid var(--line);margin-top:52px;padding:36px 0 48px;text-align:center}
+  footer .sig{font-family:var(--disp);font-weight:700;font-size:18px;color:var(--ink)}
+  footer .ad{font-family:var(--mono);font-size:12.5px;color:var(--ink-3);margin-top:8px}
+
+  @media(max-width:860px){
+    .hero{grid-template-columns:1fr;gap:36px;text-align:center;padding:40px 0 44px}
+    .hero .live-badge{margin-left:auto;margin-right:auto}
+    .dek{margin-left:auto;margin-right:auto} .hcta{justify-content:center}
+    .phone-wrap{order:-1}
+    .ess{grid-template-columns:1fr}
+    .tiers{grid-template-columns:1fr}
+  }
+  @media(max-width:520px){
+    .wrap{padding:0 20px} .topin{padding:14px 20px}
+    .brand{font-size:15px;gap:9px} .mark-img{height:30px}
+    .topcta{padding:10px;border-radius:11px} .topcta .lbl{display:none}
+    .hcta .btn{width:100%}
+    .final{padding:40px 22px}
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="topin">
+    <div class="brand"><img class="mark-img" src="brasa-logo.png" alt="Brasa Caipira">Cartão Fidelidade<small>Brasa Caipira · por Totex</small></div>
+    <a class="btn wapp wa topcta" data-msg="Oi! Sou da Brasa Caipira. Vi a página do meu Cartão Fidelidade." href="https://wa.me/5511947448137" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg><span class="lbl">Falar no WhatsApp</span></a>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- HERO -->
+  <div class="hero">
+    <div>
+      <span class="live-badge"><span style="width:8px;height:8px;border-radius:50%;background:var(--good);display:inline-block"></span> Já está no ar</span>
+      <h1>O Cartão Fidelidade da Brasa Caipira já está <em>no ar.</em></h1>
+      <p class="dek">O cartão de selos da Brasa Caipira em versão digital: no celular, com cardápio, sorteio e indicação. Não se perde, traz o cliente de volta e ainda faz ele indicar amigo. Dá uma olhada funcionando aqui do lado. 👉</p>
+      <div class="hcta">
+        <a class="btn pri lg" href="https://brasacaipira.vercel.app/" target="_blank" rel="noopener">Ver o cartão funcionando <svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn ghost lg" href="#planos">Ver os planos</a>
+      </div>
+    </div>
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="screenbox">
+          <img src="brasa-home.jpg" alt="Tela inicial do Cartão Fidelidade da Brasa Caipira" loading="lazy">
+          <a class="tap" href="https://brasacaipira.vercel.app/" target="_blank" rel="noopener" aria-label="Abrir o cartão da Brasa Caipira"></a>
+        </div>
+      </div>
+      <span class="live-tag"><span class="pulse"></span>a tela inicial · toque pra abrir</span>
+    </div>
+  </div>
+
+  <!-- ESSENCIAL -->
+  <section>
+    <div class="eyebrow">O essencial</div>
+    <h2>O que ele faz pela Brasa Caipira</h2>
+    <div class="ess">
+      <div class="ec"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/></svg></div><div><b>Cartão de selos no celular</b><p>A cada frango, costela ou carne, um selo. Complete e ganhe — igual ao de papel, só que não se perde.</p></div></div>
+      <div class="ec"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><b>Cliente indica amigo</b><p>Cada cliente convida pelo WhatsApp e ganha +1 selo. Vira uma corrente que traz gente nova.</p></div></div>
+      <div class="ec"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M4 3h16a1 1 0 0 1 1 1v3H3V4a1 1 0 0 1 1-1zM3 7h18v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM8 11h8M8 15h5"/></svg></div><div><b>Cardápio + sorteio no app</b><p>O cliente vê o cardápio com foto e preço, pede no WhatsApp e concorre a prêmios pelo sorteio.</p></div></div>
+      <div class="ec"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM20 14h1M14 20h3v1"/></svg></div><div><b>QR e cartaz no balcão</b><p>Escaneia o QR e dá o selo em segundos. Tem cartaz pra imprimir e deixar no balcão.</p></div></div>
+    </div>
+  </section>
+
+  <!-- PLANOS -->
+  <section id="planos">
+    <div class="eyebrow">Pra manter no ar</div>
+    <h2>Os planos</h2>
+    <div class="why">
+      Pra ser 100% transparente: o cartão vive num <b>servidor</b> e num <b>banco de dados na nuvem</b>, com um custo mensal pra ficar sempre no ar, seguro e atualizado — e pra crescer com você. Sem fidelidade: <b>cancela quando quiser</b>.
+    </div>
+    <div class="tiers">
+      <div class="tier">
+        <span class="tname">Essencial</span>
+        <span class="cap">até 50 clientes</span>
+        <span class="price">R$ 89<small> /mês</small></span>
+        <span class="who">O cartão da Brasa no ar, completo e mantido.</span>
+        <ul>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><b>Até 50 clientes cadastrados</b></li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Servidor + banco na nuvem</li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Selos, QR, cartaz e indicação</li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Cardápio + sorteio no app</li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Suporte no WhatsApp</li>
+        </ul>
+        <a class="btn ghost wa" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Essencial (R$ 89/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Essencial</a>
+      </div>
+      <div class="tier hot">
+        <span class="tag">Mais indicado</span>
+        <span class="tname">Crescimento</span>
+        <span class="cap">até 100 clientes</span>
+        <span class="price">R$ 129<small> /mês</small></span>
+        <span class="who">Quando a base crescer e você quiser relatórios.</span>
+        <ul>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><b>Até 100 clientes cadastrados</b></li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Tudo do Essencial</li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Relatórios: quem voltou, quem sumiu</li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Exportação da base de clientes</li>
+        </ul>
+        <a class="btn pri wa" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Crescimento (R$ 129/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Crescimento</a>
+      </div>
+      <div class="tier">
+        <span class="tname">Ilimitado</span>
+        <span class="cap">clientes ilimitados</span>
+        <span class="price">R$ 169<small> /mês</small></span>
+        <span class="who">O sistema trazendo cliente de volta sozinho.</span>
+        <ul>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><b>Clientes ilimitados</b></li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Tudo do Crescimento</li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Mensagem automática pra quem sumiu</li>
+          <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Aniversário e prêmio no WhatsApp</li>
+        </ul>
+        <a class="btn ghost wa" data-msg="Oi! Sou da Brasa Caipira. Quero assinar o plano Ilimitado (R$ 169/mês)." href="https://wa.me/5511947448137" target="_blank" rel="noopener">Assinar Ilimitado</a>
+      </div>
+    </div>
+    <p class="plnote"><b>Sem fidelidade</b> · cancela quando quiser · fale comigo no WhatsApp pra assinar</p>
+  </section>
+
+  <!-- FINAL -->
+  <section>
+    <div class="final">
+      <div class="eyebrow" style="justify-content:center">Bora começar</div>
+      <h2>Abra o cartão e veja o fogo pegar 🔥</h2>
+      <p>Tá tudo pronto. Abra no celular, teste, e qualquer coisa me chama no WhatsApp.</p>
+      <div class="hcta">
+        <a class="btn pri lg" href="https://brasacaipira.vercel.app/" target="_blank" rel="noopener">Ver o cartão funcionando <svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn wapp lg wa" data-msg="Oi! Sou da Brasa Caipira. Vi a página do meu Cartão Fidelidade e quero falar com você." href="https://wa.me/5511947448137" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg>Falar comigo</a>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p class="sig">🔥 Feito com carinho pra Brasa Caipira Assados</p>
+    <p class="ad">Rua São Fernando, 203 — Barueri/SP · Cartão Fidelidade por Totex</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var WA='https://wa.me/5511947448137';
+  document.querySelectorAll('a.wa[data-msg]').forEach(function(a){ a.href=WA+'?text='+encodeURIComponent(a.getAttribute('data-msg')); });
+})();
+</script>
+</body>
+</html>
