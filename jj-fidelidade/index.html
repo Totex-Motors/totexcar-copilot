@@ -132,6 +132,7 @@
   }
   .lc-head{display:flex;align-items:flex-start;gap:clamp(6px,2vw,12px);position:relative}
   .lc-head .logo-mark{width:clamp(38px,11vw,52px);height:clamp(38px,11vw,52px)}
+  .lc-head .brand-badge-card{height:clamp(32px,8.5vw,42px);width:auto;border-radius:7px;flex:none;box-shadow:0 1px 3px rgba(0,0,0,.2)}
   .lc-title{flex:1;text-align:center;padding-top:2px;min-width:0}
   .lc-title .cartao{font-family:var(--display);font-weight:400;font-size:clamp(14px,4.6vw,20px);color:var(--ink);line-height:1}
   .lc-title .fide{font-family:var(--display);font-weight:400;font-size:clamp(19px,6.8vw,30px);color:var(--ember);letter-spacing:.5px;line-height:1.15;text-shadow:0 1px 0 rgba(255,255,255,.5)}
@@ -391,6 +392,7 @@
       padding:12mm 10mm;gap:6mm;
     }
     #poster .p-logo{width:34mm;height:34mm}
+    #poster .brand-badge-poster{width:62mm;height:auto;border-radius:3mm;margin:0 auto}
     #poster .p-cartao{font-family:var(--display);font-weight:400;font-size:26pt;color:#4a3226;line-height:1}
     #poster .p-fide{font-family:var(--display);font-weight:400;font-size:40pt;color:#e8862b;line-height:1.1}
     #poster .p-sub{font-size:14pt;font-weight:800;color:#4a3226;margin-top:2mm}
@@ -1081,11 +1083,14 @@ function applyBrand(){
 // desenhado. where = 'header' | 'card' | 'poster'.
 function brandLogo(where){
   const b = brand();
-  // a imagem do logo (fundo transparente, texto claro) só entra no CABEÇALHO, que é
-  // escuro. No cartão e no cartaz (fundo claro) o texto claro sumiria — ali fica o
-  // selo desenhado, que é tematizado nas cores da marca.
-  if(b.logoImg && where==='header'){
+  // CABEÇALHO (fundo escuro): usa o logo transparente de texto claro (brand.logoImg).
+  if(where==='header' && b.logoImg){
     return '<img class="brand-img-header" src="'+esc(b.logoImg)+'" alt="'+esc(b.name||'')+'">';
+  }
+  // CARTÃO e CARTAZ (fundo claro): usam a versão-badge (brand.logoImgLight), que já traz
+  // o próprio fundo, então lê bem no claro. Sem ela, cai no selo desenhado (tematizado).
+  if((where==='card' || where==='poster') && b.logoImgLight){
+    return '<img class="brand-badge brand-badge-'+where+'" src="'+esc(b.logoImgLight)+'" alt="'+esc(b.name||'')+'">';
   }
   return where==='poster' ? LOGO_SVG.replace('class="logo-mark"','class="p-logo"') : LOGO_SVG;
 }
