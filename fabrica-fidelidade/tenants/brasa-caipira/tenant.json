@@ -1,0 +1,27 @@
+{
+  "tenant": "brasa-caipira",
+  "settings": {
+    "pin": "102030",
+    "operadorPin": "",
+    "plan": "essencial",
+    "goal": 10,
+    "reward": "um frango assado grátis",
+    "rule": "A cada compra de frango, costela ou carnes em geral, ganhe 1 selo. Complete 10 e ganhe um frango assado grátis!",
+    "appUrl": "https://brasacaipira.vercel.app",
+    "waApi": false,
+    "waEndpoint": "https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/fidelidade",
+    "waKey": "5aeb3548e106741127d1bc3fe9c0f39c",
+    "brand": {
+      "name": "Brasa Caipira",
+      "shortName": "Brasa Caipira",
+      "legalName": "Brasa Caipira Assados",
+      "initials": "BC",
+      "tagline": "ASSADOS",
+      "prefix": "BC",
+      "appTitle": "Brasa Caipira · Fidelidade",
+      "address": "Rua São Fernando, 203 — Barueri/SP",
+      "colorEmber": "#F5A623",
+      "colorFlame": "#E01E1E"
+    }
+  }
+}

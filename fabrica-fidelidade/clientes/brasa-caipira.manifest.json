@@ -1,0 +1,50 @@
+{
+  "$schema": "../manifest.schema.json",
+  "tenant": "brasa-caipira",
+  "brand": {
+    "name": "Brasa Caipira",
+    "logo": "brasa-caipira-logo.png",
+    "colors": {
+      "primary": "#F5A623",
+      "ink": "#F3E8D2"
+    },
+    "font": "",
+    "address": "Rua São Fernando, 203 — Barueri/SP · CEP 06447-280"
+  },
+  "copy": {
+    "headline": "Frango, costela ou carnes em geral",
+    "cardName": "Cartão Brasa Caipira"
+  },
+  "plan": "essencial",
+  "goal": 10,
+  "reward": "um frango assado grátis",
+  "rule": "A cada compra de frango, costela ou carnes em geral, ganhe 1 selo. Complete 10 e ganhe um frango assado grátis!",
+  "channels": {
+    "appUrl": "",
+    "whatsapp": "5511913719400",
+    "instagram": "@brasacaipira",
+    "whatsappApi": false
+  },
+  "engine": {
+    "version": "1.0.0",
+    "roles": ["dono", "operador"]
+  },
+  "secrets": {
+    "store": "supabase",
+    "keys": ["pin", "waKey", "waEndpoint"]
+  },
+
+  "capabilities": {
+    "catalog": {
+      "enabled": true,
+      "orderWhatsapp": true,
+      "categories": [],
+      "items": []
+    },
+    "sorteios": {
+      "enabled": true,
+      "ticketRule": "por_selo",
+      "prize": ""
+    }
+  }
+}

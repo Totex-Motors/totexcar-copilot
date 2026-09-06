@@ -1,0 +1,67 @@
+name: Deploy Brasa Caipira (fidelidade)
+
+# Deploy do app Cartão Fidelidade do cliente Brasa Caipira Assados como projeto
+# PRÓPRIO na Vercel (brasacaipira → https://brasacaipira.vercel.app, se livre).
+# O app é GERADO pela fábrica: o mesmo motor (jj-fidelidade/index.html) + a config
+# do cliente (fabrica-fidelidade/tenants/brasa-caipira/tenant.json) via build-tenant.
+# A J.J tem o deploy dela em separado (deploy-jj.yml) e não é afetada.
+#
+# Dispara quando o motor OU a config do Brasa mudam, e manualmente.
+# Reusa os mesmos segredos: VERCEL_TOKEN e VERCEL_ORG_ID.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'jj-fidelidade/**'
+      - 'fabrica-fidelidade/build-tenant.mjs'
+      - 'fabrica-fidelidade/tenants/brasa-caipira/**'
+      - '.github/workflows/deploy-brasacaipira.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-brasacaipira
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Vercel (brasacaipira)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Build (motor + config do cliente) e deploy
+        run: |
+          set -o pipefail
+          mkdir -p /tmp/brasacaipira
+          BUILD=$(date -u +%Y%m%d%H%M%S)
+          # gera o index.html do Brasa a partir do motor + tenant.json (fábrica)
+          node fabrica-fidelidade/build-tenant.mjs \
+            jj-fidelidade/index.html \
+            fabrica-fidelidade/tenants/brasa-caipira/tenant.json \
+            /tmp/brasacaipira/index.html
+          # carimba a versão (auto-atualização dos clientes)
+          sed -i "s/const APP_BUILD = 'DEV';/const APP_BUILD = '$BUILD';/" /tmp/brasacaipira/index.html
+          printf '%s' "$BUILD" > /tmp/brasacaipira/v.txt
+          cp fabrica-fidelidade/tenants/brasa-caipira/og.jpg /tmp/brasacaipira/og.jpg
+          # anti-cache: HTML e v.txt sempre frescos; og.jpg cacheável
+          NS='no-store, max-age=0, must-revalidate'
+          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/v.txt","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" > /tmp/brasacaipira/vercel.json
+          cat /tmp/brasacaipira/vercel.json
+          cd /tmp/brasacaipira
+          echo "BUILD=$BUILD"
+          vercel deploy --prod --yes \
+            --scope "${{ secrets.VERCEL_ORG_ID }}" \
+            --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee deploy.log
+          URL=$(grep -Eo 'https://[a-z0-9.-]+\.vercel\.app' deploy.log | tail -1)
+          echo "----------------------------------------"
+          echo "Deployment: $URL"
+          vercel inspect "$URL" --scope "${{ secrets.VERCEL_ORG_ID }}" --token "${{ secrets.VERCEL_TOKEN }}" 2>&1 | sed -n '1,40p' || true

@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://totexmotors.com/fabrica-fidelidade/manifest.schema.json",
+  "title": "Manifesto de cliente — Cartão Fidelidade",
+  "description": "A régua que TODO cliente do cartão-fidelidade obedece. O mesmo motor (app + edge function) lê este arquivo e se comporta. Um comércio novo = um manifesto novo, nunca código novo. Segredos (PINs, chaves) NÃO ficam aqui — ficam no Supabase por cliente.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant", "brand", "copy", "plan", "goal", "reward", "rule", "channels", "engine"],
+  "properties": {
+    "tenant": {
+      "type": "string",
+      "description": "Identificador único do cliente. Vira o subdomínio. Só letras minúsculas, números e hífen.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 40
+    },
+    "brand": {
+      "type": "object",
+      "description": "A identidade visual do comércio.",
+      "additionalProperties": false,
+      "required": ["name", "colors"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 60, "description": "Nome que aparece pro cliente final. Ex.: J.J Espetos." },
+        "logo": { "type": "string", "description": "Nome do arquivo de logo. Vazio = sem logo." },
+        "colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["primary"],
+          "properties": {
+            "primary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "Cor principal da marca (hex)." },
+            "ink": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "Cor do texto (hex). Opcional." }
+          }
+        },
+        "font": { "type": "string", "description": "Fonte da marca. Opcional; vazio = fonte padrão do motor." },
+        "address": { "type": "string", "maxLength": 160, "description": "Endereço da loja (aparece no cartão e no cartaz impresso). Opcional." }
+      }
+    },
+    "copy": {
+      "type": "object",
+      "description": "Os textos que o cliente vê.",
+      "additionalProperties": false,
+      "required": ["headline"],
+      "properties": {
+        "headline": { "type": "string", "minLength": 1, "maxLength": 80, "description": "Chamada principal. Ex.: Junte espetos, ganhe espeto." },
+        "cardName": { "type": "string", "maxLength": 40, "description": "Nome do cartão. Ex.: Cartão do Espeto. Opcional." }
+      }
+    },
+    "plan": {
+      "type": "string",
+      "enum": ["essencial", "crescimento", "ilimitado"],
+      "description": "Plano contratado. O motor aplica a trava de clientes: essencial=50, crescimento=150, ilimitado=∞."
+    },
+    "goal": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Quantos carimbos (ou pontos) para ganhar a recompensa."
+    },
+    "reward": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "description": "O que o cliente ganha ao completar a meta. Ex.: um almoço completo grátis."
+    },
+    "rule": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "A regra em uma frase, mostrada ao cliente. Ex.: Compre 10 costelas e ganhe um almoço grátis."
+    },
+    "channels": {
+      "type": "object",
+      "description": "Onde o cartão vive e como fala com o cliente.",
+      "additionalProperties": false,
+      "required": ["appUrl"],
+      "properties": {
+        "appUrl": { "type": "string", "description": "Endereço público do app. Ex.: jjespetos.vercel.app. Vazio = endereço atual." },
+        "whatsapp": { "type": "string", "description": "Número de WhatsApp da loja (só dígitos com país+DDD, ex.: 5511913719400). Opcional." },
+        "instagram": { "type": "string", "description": "@ do Instagram da loja. Opcional." },
+        "whatsappApi": { "type": "boolean", "default": false, "description": "false = envio grátis (abre o WhatsApp); true = automático pela API." }
+      }
+    },
+    "engine": {
+      "type": "object",
+      "description": "Bloco que o MOTOR governa. O cliente só declara; a lógica é fixa e igual pra todos.",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "description": "Versão do motor que este cliente roda. Ex.: 1.0.0." },
+        "roles": {
+          "type": "array",
+          "description": "Papéis de acesso suportados. O motor decide o que cada um pode; aqui só se declara quais existem.",
+          "items": { "type": "string", "enum": ["dono", "operador"] },
+          "uniqueItems": true,
+          "default": ["dono"]
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "description": "PONTEIRO, não valor. Diz ONDE os segredos deste cliente estão guardados — nunca o segredo em si. Os valores (PIN do dono, PIN do balcão, chave da nuvem) vivem no Supabase por cliente e NUNCA entram neste arquivo versionado.",
+      "additionalProperties": false,
+      "properties": {
+        "store": { "type": "string", "enum": ["supabase"], "description": "Onde os segredos moram." },
+        "keys": {
+          "type": "array",
+          "description": "Quais segredos este cliente tem (só os nomes, para conferência).",
+          "items": { "type": "string", "enum": ["pin", "operadorPin", "waKey", "waEndpoint"] },
+          "uniqueItems": true
+        }
+      }
+    },
+
+    "tier": {
+      "type": "string",
+      "enum": ["basico", "premium"],
+      "default": "basico",
+      "description": "Perfil do motor. 'basico' = cartão simples (ex.: J.J): um selo, uma recompensa. 'premium' = liga as capacidades avançadas abaixo (ex.: Moura): níveis, indicação, catálogo, ledger. UM motor só; este campo apenas escolhe quais partes ligam."
+    },
+    "unit": {
+      "type": "object",
+      "description": "O nome de marca do 'carimbo'. Na J.J é 'carimbo'; na Moura é 'Signature'. Só rótulo — a lógica de contar é a mesma no motor.",
+      "additionalProperties": false,
+      "required": ["singular", "plural"],
+      "properties": {
+        "singular": { "type": "string", "maxLength": 30, "description": "Ex.: carimbo, Signature." },
+        "plural": { "type": "string", "maxLength": 30, "description": "Ex.: carimbos, Signatures." },
+        "icon": { "type": "string", "description": "Estilo do selo. Ex.: medalhao, estrela, carimbo. Opcional." }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "PRATELEIRA DE PRODUTOS — capacidades OPCIONAIS que a gente oferta. Cada uma é um interruptor que o motor lê; ausente ou enabled=false = desligada. Algumas são do bundle premium (tiers, referral, ledger, rewardsCatalog); catalog e sorteios são à la carte e podem ser vendidas até para um cliente básico. É assim que o motor cresce UMA vez e serve a todos: nada aqui vira código por cliente. Ver PRODUTOS.md.",
+      "additionalProperties": false,
+      "properties": {
+        "rewardsCatalog": {
+          "type": "object",
+          "description": "Várias recompensas com custos diferentes (em vez de uma só). Ex.: Moura tem gravata=7, camisa=10.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "required"],
+                "properties": {
+                  "name": { "type": "string", "maxLength": 60 },
+                  "required": { "type": "integer", "minimum": 1, "description": "Quantas unidades para resgatar." },
+                  "description": { "type": "string", "maxLength": 120 },
+                  "active": { "type": "boolean", "default": true }
+                }
+              }
+            }
+          }
+        },
+        "tiers": {
+          "type": "object",
+          "description": "Níveis de relacionamento (ex.: Member / Select / Black). Thresholds configuráveis.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "levels": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "name", "threshold"],
+                "properties": {
+                  "id": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+                  "name": { "type": "string", "maxLength": 40 },
+                  "threshold": { "type": "integer", "minimum": 0, "description": "Unidades acumuladas para entrar neste nível." }
+                }
+              }
+            }
+          }
+        },
+        "referral": {
+          "type": "object",
+          "description": "Indicação: cada cliente ganha link/QR; amigo que compra gera bônus.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "bonus": { "type": "integer", "minimum": 0, "description": "Unidades bônus quando a indicação converte." },
+            "antiFraud": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["autoindicacao", "cpf_duplicado", "telefone_duplicado", "recompensa_duplicada", "indicacao_circular"] },
+              "uniqueItems": true
+            }
+          }
+        },
+        "missions": {
+          "type": "object",
+          "description": "Campanhas que direcionam comportamento (ex.: 'monte um look' = +2).",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "ledger": {
+          "type": "object",
+          "description": "Livro-razão auditável: cada crédito/débito de unidade é uma transação. Fonte da verdade do saldo (não confia num campo solto). Recomendado sempre que houver indicação ou resgate.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "catalog": {
+          "type": "object",
+          "description": "À LA CARTE — Cardápio/vitrine de produtos com preço dentro do app. O cliente vê o que a loja vende; pode ter botão de pedir no WhatsApp. Serve para qualquer nicho (assados, pizzaria, pet shop...).",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "orderWhatsapp": { "type": "boolean", "default": true, "description": "Mostra botão 'Pedir no WhatsApp' em cada item." },
+            "categories": {
+              "type": "array",
+              "description": "Seções do cardápio, em ordem. Opcional; sem categorias, os itens aparecem numa lista só.",
+              "items": { "type": "string", "maxLength": 40 },
+              "uniqueItems": true
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "price"],
+                "properties": {
+                  "name": { "type": "string", "maxLength": 80 },
+                  "price": { "type": "number", "minimum": 0, "description": "Preço em reais. Ex.: 39.9" },
+                  "description": { "type": "string", "maxLength": 160 },
+                  "category": { "type": "string", "maxLength": 40, "description": "Deve constar em categories, se usado." },
+                  "image": { "type": "string", "description": "Nome do arquivo de foto. Opcional." },
+                  "active": { "type": "boolean", "default": true }
+                }
+              }
+            }
+          }
+        },
+        "sorteios": {
+          "type": "object",
+          "description": "À LA CARTE — Sorteios entre clientes do cartão. Cada selo (ou cadastro) vira um número da sorte; a loja sorteia um prêmio no período. Gera recorrência e engajamento.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "ticketRule": { "type": "string", "enum": ["por_selo", "por_cadastro", "por_compra"], "default": "por_selo", "description": "Como o cliente ganha números da sorte." },
+            "prize": { "type": "string", "maxLength": 120, "description": "O prêmio do sorteio atual. Ex.: um combo família." },
+            "drawAt": { "type": "string", "description": "Quando será o sorteio (texto livre ou data). Opcional." }
+          }
+        }
+      }
+    }
+  }
+}
