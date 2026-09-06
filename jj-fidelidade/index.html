@@ -549,15 +549,32 @@ try{
   }
 }catch(e){}
 
+// marca = IDENTIDADE do deploy. Com manifesto (window.__TENANT__), ele SEMPRE manda:
+// um cache antigo (ou de outra loja) nunca pode sobrescrever nome/prefixo/cores/logo.
+// Sem manifesto (J.J pura), mantém o comportamento antigo (defaults + cache).
+function hasManifest(){ try{ return !!(window.__TENANT__ && window.__TENANT__.settings && window.__TENANT__.settings.brand); }catch(e){ return false; } }
+function brandMerge(localBrand){
+  return hasManifest()
+    ? Object.assign({}, localBrand||{}, DEFAULTS.settings.brand)   // manifesto manda na identidade
+    : Object.assign({}, DEFAULTS.settings.brand, localBrand||{});
+}
 function load(){
   try{
     const raw = localStorage.getItem(LS_KEY);
-    if(raw){ const d = JSON.parse(raw);
+    if(raw){ let d = JSON.parse(raw);
+      // cache de OUTRA loja (deploy antigo/errado): o prefixo salvo não bate com o do
+      // manifesto. Descarta tudo pra não arrastar cliente-fantasma nem a marca errada.
+      const mPfx = String(DEFAULTS.settings.brand.prefix||'').toUpperCase();
+      const dPfx = String((d.settings&&d.settings.brand&&d.settings.brand.prefix)||'').toUpperCase();
+      if(hasManifest() && mPfx && dPfx && dPfx!==mPfx){
+        try{ localStorage.removeItem(LS_KEY+':mycard'); localStorage.removeItem(LS_KEY+':invite'); }catch(e){}
+        const fresh = JSON.parse(JSON.stringify(DEFAULTS)); save(fresh); return fresh;
+      }
       d.settings = Object.assign({}, DEFAULTS.settings, d.settings||{});
       // endpoint/chave vazios (versões antigas) quebrariam a nuvem — restaura o padrão
       if(!d.settings.waEndpoint) d.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
       if(!d.settings.waKey) d.settings.waKey = DEFAULTS.settings.waKey;
-      d.settings.brand = Object.assign({}, DEFAULTS.settings.brand, d.settings.brand||{});
+      d.settings.brand = brandMerge(d.settings.brand);
       if(!d.settings.capabilities) d.settings.capabilities = DEFAULTS.settings.capabilities;
       d.customers = (d.customers||[]).filter(c=>!isDemoJunior(c)); // limpa o cliente-demo antigo
       d.seq = d.seq||1; return d; }
@@ -834,7 +851,7 @@ async function pullState(pin){
         cloud.settings = Object.assign({}, DEFAULTS.settings, cloud.settings||{});
         if(!cloud.settings.waEndpoint) cloud.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
         if(!cloud.settings.waKey) cloud.settings.waKey = DEFAULTS.settings.waKey;
-        cloud.settings.brand = Object.assign({}, DEFAULTS.settings.brand, cloud.settings.brand||{});
+        cloud.settings.brand = brandMerge(cloud.settings.brand); // manifesto manda na identidade
         if(!cloud.settings.capabilities) cloud.settings.capabilities = DEFAULTS.settings.capabilities;
         cloud.seq = Math.max(cloud.seq||1, db.seq||1);
         // FUSÃO anti-perda: cliente que só existe neste aparelho (push que não
@@ -903,8 +920,8 @@ function shareInvite(c){
   const link = inviteUrl(c);
   // só emojis do plano básico (⭐ ➡): os "altos" viram "?" no wa.me de alguns Androids
   const msg =
-    '*Bora comer na '+brand().name+'?* ⭐\n\n'
-    + 'Compra *1 costela no bafo ou 1 frango* e apresenta meu voucher *'+c.code+'* no balcão.\n\n'
+    '*Bora pra '+brand().name+'?* ⭐\n\n'
+    + 'Faz sua primeira compra e apresenta meu voucher *'+c.code+'* no balcão.\n\n'
     + 'Você já começa seu cartão fidelidade — juntando *'+db.settings.goal+' selos* você ganha *'
     + db.settings.reward+'*!\n\n'
     + (link ? '➡ Abre seu voucher aqui:\n'+link+'\n\n' : '')
@@ -1203,7 +1220,7 @@ function viewCard(){
         <div class="iv-eyebrow">Voucher de indicação</div>
         <div class="iv-title">${iv.name ? esc(iv.name)+' te chamou pra comer na '+esc(brand().shortName)+'!' : 'Você foi convidado pra comer na '+esc(brand().shortName)+'!'}</div>
         <div class="voucher-code">${esc(iv.code)}</div>
-        <p class="iv-rule">Compre <b>1 costela no bafo ou 1 frango</b> e <b>mostre esta tela no balcão</b>.<br>
+        <p class="iv-rule">Faça sua <b>primeira compra</b> e <b>mostre esta tela no balcão</b>.<br>
         Você já começa seu cartão fidelidade — e ${iv.name ? esc(iv.name) : 'quem te indicou'} ganha <b>+1 selo</b>. 🔥</p>
       </div>
       <p class="footer-note">${esc(brand().name)} · ${esc(brand().address)}</p>
