@@ -120,6 +120,26 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ---------- upload de foto do cardápio (só o dono) → Supabase Storage ----------
+  if (p.action === "upload_photo") {
+    const st = await loadState();
+    const role = st ? pinRole(st, String(p.pin || "")) : "super";
+    if (st && role !== "super") return json({ ok: false, error: "pin_invalido" }, 403);
+    const dataUrl = String(p.dataUrl || "");
+    const m = dataUrl.match(/^data:(image\/(png|jpe?g|webp));base64,(.+)$/);
+    if (!m) return json({ ok: false, error: "imagem_invalida" }, 400);
+    let bytes: Uint8Array;
+    try { bytes = Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0)); }
+    catch { return json({ ok: false, error: "imagem_invalida" }, 400); }
+    if (bytes.length > 1_500_000) return json({ ok: false, error: "imagem_grande" }, 400);
+    const ext = m[2] === "png" ? "png" : m[2] === "webp" ? "webp" : "jpg";
+    const path = `${tenant}/${crypto.randomUUID()}.${ext}`;
+    const up = await admin.storage.from("fidelidade-fotos").upload(path, bytes, { contentType: m[1], upsert: false });
+    if (up.error) { console.error("upload_photo falhou:", tenant, up.error); return json({ ok: false, error: "falha_upload" }, 500); }
+    const { data } = admin.storage.from("fidelidade-fotos").getPublicUrl(path);
+    return json({ ok: true, url: data.publicUrl });
+  }
+
   // envio automático por API ainda não habilitado nesta função (clientes free usam wa.me no app)
   if (p.action === "send_card") return json({ ok: false, error: "envio_api_nao_configurado" });
 
