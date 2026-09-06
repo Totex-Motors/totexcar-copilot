@@ -913,6 +913,30 @@ async function remoteFind(q, quiet){
 }
 function refreshCard(){ if(state.cardCode && !celebrating) remoteFind(state.cardCode, true); }
 
+/* auto-cadastro do INDICADO: cria o cartão dele na nuvem (0 selos) e já abre.
+   O +1 do padrinho é dado no 1º selo (no app do dono). */
+async function remoteJoin(name, phone, ref){
+  const cfg = syncCfg(); if(!cfg){ toast('Sem conexão pra criar o cartão. Tente de novo.'); return; }
+  toast('Criando seu cartão…');
+  try{
+    const r = await fetch(cfg.ep, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'join', k: cfg.k, name, phone, ref: ref||'' }) });
+    const j = await r.json().catch(()=>({}));
+    if(j.ok && j.found){
+      const c = upsertRemoteCard(j);
+      c.phone = phone; save(db);                       // guarda o telefone pra reabrir fácil
+      state.invite = null; try{ localStorage.removeItem(LS_KEY+':invite'); }catch(e){}
+      state.cardCode = c.code; localStorage.setItem(LS_KEY+':mycard', c.code);
+      state.tab='card'; render();
+      toast(j.already ? 'Você já tinha um cartão — abrimos ele! 🔥' : 'Cartão criado! Bem-vindo(a) 🔥');
+    } else {
+      toast(j.error==='limite_plano' ? 'A loja atingiu o limite de clientes do plano.' :
+            j.error==='telefone_invalido' ? 'WhatsApp inválido — confira o número.' :
+            'Não deu pra criar agora. Tente de novo.');
+    }
+  }catch(e){ toast('Sem conexão — tente de novo.'); }
+}
+
 /* monta e abre a mensagem de convite de indicação (cliente ou balcão) */
 function shareInvite(c){
   if(!c){ toast('Abra o cartão de um cliente para convidar.'); return; }
@@ -1218,13 +1242,18 @@ function viewCard(){
     return `<main>
       <div class="invite-hero">
         <div class="iv-eyebrow">Voucher de indicação</div>
-        <div class="iv-title">${iv.name ? esc(iv.name)+' te chamou pra comer na '+esc(brand().shortName)+'!' : 'Você foi convidado pra comer na '+esc(brand().shortName)+'!'}</div>
+        <div class="iv-title">${iv.name ? esc(iv.name)+' te chamou pra '+esc(brand().shortName)+'!' : 'Você foi convidado pra '+esc(brand().shortName)+'!'}</div>
         <div class="voucher-code">${esc(iv.code)}</div>
-        <p class="iv-rule">Faça sua <b>primeira compra</b> e <b>mostre esta tela no balcão</b>.<br>
-        Você já começa seu cartão fidelidade — e ${iv.name ? esc(iv.name) : 'quem te indicou'} ganha <b>+1 selo</b>. 🔥</p>
+        <p class="iv-rule">Crie já o seu cartão fidelidade — é grátis. Na sua <b>primeira compra</b>, ${iv.name ? esc(iv.name) : 'quem te indicou'} ganha <b>+1 selo</b>. 🔥</p>
       </div>
-      <p class="footer-note">${esc(brand().name)} · ${esc(brand().address)}</p>
-      <button class="btn btn-ghost btn-block" data-act="dismissInvite">Já tenho cartão / abrir outro cartão</button>
+      <div class="panel">
+        <div class="field"><label for="jvName">Seu nome</label><input id="jvName" autocomplete="name" placeholder="Como você quer aparecer"></div>
+        <div class="field"><label for="jvPhone">Seu WhatsApp</label><input id="jvPhone" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-9999"></div>
+        <button class="btn btn-primary btn-block" data-act="joinInvite">🔥 Começar meu cartão</button>
+        <p class="muted" style="font-size:13px">É só pra criar o seu cartão — sem instalar nada. Depois é só mostrar no balcão a cada compra.</p>
+      </div>
+      <p class="footer-note">${esc(brand().name)}${brand().address?' · '+esc(brand().address):''}</p>
+      <button class="btn btn-ghost btn-block" data-act="dismissInvite">Já tenho cartão / abrir outro</button>
     </main>`;
   }
   if(!c){
@@ -1397,7 +1426,7 @@ function adminClientes(){
   const rows = list.map(c=>{
     const dots = Array.from({length:goal},(_,i)=>`<i class="${i<c.stamps?'on':''}"></i>`).join('');
     return `<button class="client-row" data-open="${esc(c.id)}">
-      <div class="who"><b>${esc(c.name)}</b><span>${esc(c.code)}${c.phone?' · '+esc(c.phone):''}</span></div>
+      <div class="who"><b>${esc(c.name)}${c.referredBy?' <span title="veio por indicação'+(c.referralPending?' (selo pendente)':'')+'">🤝'+(c.referralPending?'⏳':'')+'</span>':''}</b><span>${esc(c.code)}${c.phone?' · '+esc(c.phone):''}</span></div>
       <div class="dots">${dots}</div>
       <span class="row-count"><b>${c.stamps}</b>/${goal}</span>
     </button>`;
@@ -1623,7 +1652,7 @@ function modalDetail(){
       <span class="h-when">${fmtDate(h.ts)}</span></li>`).join('');
   return `<div class="overlay" data-close="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Cliente ${esc(c.name)}">
     <div class="sheet-head"><h2>${esc(c.name)}</h2><button class="close-x" data-close="1" aria-label="Fechar">✕</button></div>
-    <p class="muted" style="margin-top:-8px"><span style="font-family:var(--mono)">${esc(c.code)}</span>${c.phone?' · '+esc(c.phone):''} · cliente desde ${new Date(c.createdAt).toLocaleDateString('pt-BR')}${c.referredBy?' · veio por indicação ('+esc(c.referredBy)+')':''}</p>
+    <p class="muted" style="margin-top:-8px"><span style="font-family:var(--mono)">${esc(c.code)}</span>${c.phone?' · '+esc(c.phone):''} · cliente desde ${new Date(c.createdAt).toLocaleDateString('pt-BR')}${c.referredBy?' · veio por indicação ('+esc(c.referredBy)+')'+(c.referralPending?' — selo pendente até o 1º selo':''):''}</p>
     <div class="stats">
       <div class="stat"><b>${c.stamps}</b><span>selos agora</span></div>
       <div class="stat"><b>${goal}</b><span>meta</span></div>
@@ -1803,6 +1832,14 @@ function action(act, el){
       state.cardCode=''; localStorage.removeItem(LS_KEY+':mycard'); render(); break;
     case 'shareInvite': shareInvite(byCodeOrPhone(state.cardCode)); break;
     case 'shareInviteAdmin': shareInvite(c); break;
+    case 'joinInvite':{
+      const nm = ($app.querySelector('#jvName')?.value||'').trim();
+      const ph = ($app.querySelector('#jvPhone')?.value||'').trim();
+      if(nm.length<2){ toast('Digite o seu nome.'); return; }
+      if(ph.replace(/\D/g,'').length<8){ toast('Digite um WhatsApp válido.'); return; }
+      remoteJoin(nm, ph, state.invite && state.invite.code);
+      break;
+    }
     case 'dismissInvite':
       state.invite=null; localStorage.removeItem(LS_KEY+':invite'); render(); break;
     case 'lock':
@@ -1817,16 +1854,11 @@ function action(act, el){
       let refMsg = '';
       if(refCode){
         const ref = byCodeOrPhone(refCode);
-        if(!ref){ refMsg = ' Voucher '+refCode+' não encontrado — nenhum selo de indicação dado.'; }
+        if(!ref){ refMsg = ' Voucher '+refCode+' não encontrado — indicação não registrada.'; }
         else {
-          nc.referredBy = ref.code;
-          if(ref.stamps < db.settings.goal){
-            ref.stamps++;
-            ref.history.push({t:'referral', ts:Date.now(), friend: nc.name});
-            refMsg = ' 🤝 +1 selo para '+ref.name+' pela indicação!';
-          } else {
-            refMsg = ' Cartão de '+ref.name+' já está cheio — resgate o prêmio antes de somar o selo da indicação.';
-          }
+          // indicação fica PENDENTE: o +1 do padrinho entra no 1º selo deste cliente
+          nc.referredBy = ref.code; nc.referralPending = true;
+          refMsg = ' 🤝 Indicação de '+ref.name+' registrada — o selo dele entra no 1º selo de '+nc.name+'.';
         }
       }
       db.customers.push(nc); save(db); scheduleSync();
@@ -1845,10 +1877,20 @@ function action(act, el){
     case 'scan': scanCard(); break;
     case 'stamp':{
       if(!c) return;
-      c.stamps++; c.history.push({t:'stamp', ts:Date.now()}); save(db); scheduleSync();
-      render();
+      c.stamps++; c.history.push({t:'stamp', ts:Date.now()});
+      // crédito da INDICAÇÃO: no 1º selo do indicado, o padrinho ganha +1 (se não estiver cheio)
+      let refToast='';
+      if(c.referralPending && c.stamps===1 && c.referredBy){
+        c.referralPending=false;
+        const ref = db.customers.find(x=>String(x.code||'').toUpperCase()===String(c.referredBy).toUpperCase());
+        if(ref){
+          if(ref.stamps < db.settings.goal){ ref.stamps++; ref.history.push({t:'referral', ts:Date.now(), friend:c.name}); refToast=' · 🤝 +1 selo para '+ref.name+' pela indicação!'; }
+          else refToast=' · (cartão de '+ref.name+' já está cheio)';
+        }
+      }
+      save(db); scheduleSync(); render();
       const full = c.stamps >= db.settings.goal;
-      toast(full ? `🎉 ${c.name} completou o cartão!` : `Selo ${c.stamps}/${db.settings.goal} para ${c.name}`);
+      toast((full ? `🎉 ${c.name} completou o cartão!` : `Selo ${c.stamps}/${db.settings.goal} para ${c.name}`)+refToast);
       break;
     }
     case 'unstamp':{
