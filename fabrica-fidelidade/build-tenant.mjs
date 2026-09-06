@@ -22,8 +22,14 @@ const esc = (v) => String(v == null ? '' : v)
 // 1) injeta a config do cliente ANTES do resto (no fim do <head>), para o motor já
 //    subir com os padrões desta loja.
 const inject = `<script>window.__TENANT__=${JSON.stringify(cfg)};</script>`;
-let html = engine.replace('</head>', inject + '\n</head>');
-if (!html.includes('window.__TENANT__')) throw new Error('não achei </head> para injetar a config do cliente');
+// O motor é um HTML minimalista SEM </head>/<body> literais. Injeta logo após <head>;
+// se não houver, antes do 1º <script>. O guard verifica a ATRIBUIÇÃO (window.__TENANT__=),
+// que só a injeção produz — o código do motor referencia window.__TENANT__ sem "=".
+let html;
+if (engine.includes('</head>')) html = engine.replace('</head>', inject + '\n</head>');
+else if (engine.includes('<head>')) html = engine.replace('<head>', '<head>\n' + inject);
+else html = engine.replace(/<script/, inject + '\n<script');
+if (!html.includes('window.__TENANT__=')) throw new Error('falha ao injetar window.__TENANT__ no app do cliente');
 
 // 2) ajusta as tags estáticas do <head> (título e cartão de compartilhamento).
 if (b.appTitle) html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(b.appTitle)}</title>`);
