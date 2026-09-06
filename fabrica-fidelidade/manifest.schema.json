@@ -31,7 +31,8 @@
             "ink": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "Cor do texto (hex). Opcional." }
           }
         },
-        "font": { "type": "string", "description": "Fonte da marca. Opcional; vazio = fonte padrão do motor." }
+        "font": { "type": "string", "description": "Fonte da marca. Opcional; vazio = fonte padrão do motor." },
+        "address": { "type": "string", "maxLength": 160, "description": "Endereço da loja (aparece no cartão e no cartaz impresso). Opcional." }
       }
     },
     "copy": {
@@ -74,6 +75,8 @@
       "required": ["appUrl"],
       "properties": {
         "appUrl": { "type": "string", "description": "Endereço público do app. Ex.: jjespetos.vercel.app. Vazio = endereço atual." },
+        "whatsapp": { "type": "string", "description": "Número de WhatsApp da loja (só dígitos com país+DDD, ex.: 5511913719400). Opcional." },
+        "instagram": { "type": "string", "description": "@ do Instagram da loja. Opcional." },
         "whatsappApi": { "type": "boolean", "default": false, "description": "false = envio grátis (abre o WhatsApp); true = automático pela API." }
       }
     },
@@ -127,7 +130,7 @@
     },
     "capabilities": {
       "type": "object",
-      "description": "Capacidades OPCIONAIS do tier premium. Cada uma é um interruptor que o motor lê. Ausente ou enabled=false = desligada (o comportamento é o do básico). É assim que o motor cresce UMA vez e serve a todos: nada aqui vira código por cliente.",
+      "description": "PRATELEIRA DE PRODUTOS — capacidades OPCIONAIS que a gente oferta. Cada uma é um interruptor que o motor lê; ausente ou enabled=false = desligada. Algumas são do bundle premium (tiers, referral, ledger, rewardsCatalog); catalog e sorteios são à la carte e podem ser vendidas até para um cliente básico. É assim que o motor cresce UMA vez e serve a todos: nada aqui vira código por cliente. Ver PRODUTOS.md.",
       "additionalProperties": false,
       "properties": {
         "rewardsCatalog": {
@@ -203,6 +206,50 @@
           "additionalProperties": false,
           "required": ["enabled"],
           "properties": { "enabled": { "type": "boolean" } }
+        },
+        "catalog": {
+          "type": "object",
+          "description": "À LA CARTE — Cardápio/vitrine de produtos com preço dentro do app. O cliente vê o que a loja vende; pode ter botão de pedir no WhatsApp. Serve para qualquer nicho (assados, pizzaria, pet shop...).",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "orderWhatsapp": { "type": "boolean", "default": true, "description": "Mostra botão 'Pedir no WhatsApp' em cada item." },
+            "categories": {
+              "type": "array",
+              "description": "Seções do cardápio, em ordem. Opcional; sem categorias, os itens aparecem numa lista só.",
+              "items": { "type": "string", "maxLength": 40 },
+              "uniqueItems": true
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "price"],
+                "properties": {
+                  "name": { "type": "string", "maxLength": 80 },
+                  "price": { "type": "number", "minimum": 0, "description": "Preço em reais. Ex.: 39.9" },
+                  "description": { "type": "string", "maxLength": 160 },
+                  "category": { "type": "string", "maxLength": 40, "description": "Deve constar em categories, se usado." },
+                  "image": { "type": "string", "description": "Nome do arquivo de foto. Opcional." },
+                  "active": { "type": "boolean", "default": true }
+                }
+              }
+            }
+          }
+        },
+        "sorteios": {
+          "type": "object",
+          "description": "À LA CARTE — Sorteios entre clientes do cartão. Cada selo (ou cadastro) vira um número da sorte; a loja sorteia um prêmio no período. Gera recorrência e engajamento.",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "ticketRule": { "type": "string", "enum": ["por_selo", "por_cadastro", "por_compra"], "default": "por_selo", "description": "Como o cliente ganha números da sorte." },
+            "prize": { "type": "string", "maxLength": 120, "description": "O prêmio do sorteio atual. Ex.: um combo família." },
+            "drawAt": { "type": "string", "description": "Quando será o sorteio (texto livre ou data). Opcional." }
+          }
         }
       }
     }

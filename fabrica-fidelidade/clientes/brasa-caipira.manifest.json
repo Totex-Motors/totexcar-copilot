@@ -8,18 +8,21 @@
       "primary": "#F5A623",
       "ink": "#F3E8D2"
     },
-    "font": ""
+    "font": "",
+    "address": ""
   },
   "copy": {
-    "headline": "Junte selos, ganhe frango assado",
+    "headline": "Frango, costela ou carnes em geral",
     "cardName": "Cartão Brasa Caipira"
   },
   "plan": "essencial",
   "goal": 10,
   "reward": "um frango assado grátis",
-  "rule": "A cada frango assado que você comprar, ganha 1 selo. Complete 10 e ganhe 1 frango assado grátis!",
+  "rule": "A cada compra de frango, costela ou carnes em geral, ganhe 1 selo. Complete 10 e ganhe um frango assado grátis!",
   "channels": {
     "appUrl": "",
+    "whatsapp": "5511913719400",
+    "instagram": "@brasacaipira",
     "whatsappApi": false
   },
   "engine": {
@@ -29,5 +32,19 @@
   "secrets": {
     "store": "supabase",
     "keys": ["pin", "waKey", "waEndpoint"]
+  },
+
+  "capabilities": {
+    "catalog": {
+      "enabled": true,
+      "orderWhatsapp": true,
+      "categories": [],
+      "items": []
+    },
+    "sorteios": {
+      "enabled": true,
+      "ticketRule": "por_selo",
+      "prize": ""
+    }
   }
 }
