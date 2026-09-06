@@ -12,8 +12,8 @@ Legenda de status: ✅ pronto no motor · 🚧 no roadmap (motor ainda não lê)
 | **Trava de plano** | Limite de clientes (50 / 150 / ∞). | Todos | `plan` | ✅ |
 | **Marca própria** | Nome, cores, logo, textos, prefixo do cartão. | Todos | `brand` | ✅ |
 | **Acesso do balcão** | Dono + operador com senhas separadas. | Todos | `engine.roles` + `secrets` | ✅ |
-| **Catálogo** | Cardápio/vitrine com preço e botão "Pedir no WhatsApp". | À la carte | `capabilities.catalog` | 🚧 |
-| **Sorteios** | Cada selo vira número da sorte; a loja sorteia um prêmio. | À la carte | `capabilities.sorteios` | 🚧 |
+| **Catálogo** | Cardápio/vitrine com preço e botão "Pedir no WhatsApp". | À la carte | `capabilities.catalog` | ✅ |
+| **Sorteios** | Cada selo vira número da sorte; a loja sorteia um prêmio. | À la carte | `capabilities.sorteios` | ✅ |
 | **Catálogo de recompensas** | Vários prêmios com custos diferentes (não só um). | Premium | `capabilities.rewardsCatalog` | 🚧 |
 | **Níveis** | Member / Select / Black, com thresholds. | Premium | `capabilities.tiers` | 🚧 |
 | **Indicação** | Link/QR por cliente; amigo compra → bônus; anti-fraude. | Premium | `capabilities.referral` | 🚧 |
