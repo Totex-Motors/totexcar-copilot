@@ -54,7 +54,7 @@ jobs:
           cp fabrica-fidelidade/tenants/brasa-caipira/og.jpg /tmp/brasacaipira/og.jpg
           cp fabrica-fidelidade/tenants/brasa-caipira/logo.png /tmp/brasacaipira/logo.png
           cp fabrica-fidelidade/tenants/brasa-caipira/logo-badge.png /tmp/brasacaipira/logo-badge.png
-          cp fabrica-fidelidade/tenants/brasa-caipira/selo.png /tmp/brasacaipira/selo.png
+          cp fabrica-fidelidade/tenants/brasa-caipira/selo-full.png /tmp/brasacaipira/selo-full.png
           # anti-cache: HTML e v.txt sempre frescos; og.jpg cacheável
           NS='no-store, max-age=0, must-revalidate'
           printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/v.txt","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" > /tmp/brasacaipira/vercel.json
