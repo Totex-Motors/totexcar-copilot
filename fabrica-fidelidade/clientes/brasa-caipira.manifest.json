@@ -1,0 +1,33 @@
+{
+  "$schema": "../manifest.schema.json",
+  "tenant": "brasa-caipira",
+  "brand": {
+    "name": "Brasa Caipira",
+    "logo": "brasa-caipira-logo.png",
+    "colors": {
+      "primary": "#F5A623",
+      "ink": "#F3E8D2"
+    },
+    "font": ""
+  },
+  "copy": {
+    "headline": "Junte selos, ganhe frango assado",
+    "cardName": "Cartão Brasa Caipira"
+  },
+  "plan": "essencial",
+  "goal": 10,
+  "reward": "um frango assado grátis",
+  "rule": "A cada frango assado que você comprar, ganha 1 selo. Complete 10 e ganhe 1 frango assado grátis!",
+  "channels": {
+    "appUrl": "",
+    "whatsappApi": false
+  },
+  "engine": {
+    "version": "1.0.0",
+    "roles": ["dono", "operador"]
+  },
+  "secrets": {
+    "store": "supabase",
+    "keys": ["pin", "waKey", "waEndpoint"]
+  }
+}
