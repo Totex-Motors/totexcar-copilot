@@ -637,9 +637,10 @@ function matchPhone(a, b){
 const byCodeOrPhone = q => {
   q = q.trim().toLowerCase();
   if(!q) return null;
+  const pfx = String(brand().prefix||'').toLowerCase();  // prefixo da loja (jj, bc…), não fixo
   return db.customers.find(c =>
     c.code.toLowerCase() === q ||
-    c.code.toLowerCase() === ('jj-'+q).toLowerCase() ||
+    (pfx && c.code.toLowerCase() === (pfx+'-'+q)) ||
     matchPhone(c.phone, q)
   ) || null;
 };
@@ -1401,7 +1402,7 @@ function adminNovo(){
     ${limitNote}
     <div class="field"><label for="npName">Nome *</label><input id="npName" placeholder="Ex.: Junior" autocomplete="off"></div>
     <div class="field"><label for="npPhone">Telefone / WhatsApp</label><input id="npPhone" inputmode="tel" placeholder="(11) 99999-9999" autocomplete="off"></div>
-    <div class="field"><label for="npRef">Voucher de indicação (se o cliente apresentou)</label><input id="npRef" placeholder="JJ-0001" autocomplete="off" style="text-transform:uppercase"></div>
+    <div class="field"><label for="npRef">Voucher de indicação (se o cliente apresentou)</label><input id="npRef" placeholder="${esc(brand().prefix)}-0001" autocomplete="off" style="text-transform:uppercase"></div>
     <p class="muted" style="font-size:13px;margin:0">🤝 Com voucher válido, <b>quem indicou ganha +1 selo automático</b> — vale na primeira compra de costela ou frango do indicado.</p>
     <button class="btn btn-primary btn-block" data-act="create" ${locked?'disabled style="opacity:.5;cursor:not-allowed"':''}>Criar cartão</button>
     <p class="muted" style="font-size:13px">Com telefone preenchido, o link do cartão vai <b>automático no WhatsApp do cliente</b>. Ele também pode abrir pela aba “Meu Cartão” (código ou telefone) ou escaneando o QR.</p>
