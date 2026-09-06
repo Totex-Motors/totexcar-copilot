@@ -77,6 +77,7 @@
     padding:18px 20px 10px;
   }
   .logo-mark{width:46px;height:46px;flex:none}
+  header.top .brand-img-header{height:42px;width:auto;max-width:62vw;flex:none;display:block;object-fit:contain}
   .brand{display:flex;flex-direction:column;line-height:1.05}
   .brand b{font-family:var(--display);font-weight:400;font-size:19px;color:var(--ember);letter-spacing:.5px}
   .brand span{font-size:11px;letter-spacing:.28em;color:var(--cream-dim);text-transform:uppercase;font-weight:700}
@@ -684,7 +685,7 @@ function printPoster(c){
   const poster = document.getElementById('poster');
   const url = c ? cardUrl(c.code) : appUrl();
   poster.innerHTML = `
-    ${LOGO_SVG.replace('class="logo-mark"','class="p-logo"')}
+    ${brandLogo('poster')}
     <div><div class="p-cartao">Cartão</div><div class="p-fide">FIDELIDADE</div>
     <div class="p-sub">${c ? 'de '+esc(c.name)+' — agora no celular' : 'agora no seu celular'}</div></div>
     <div class="p-qr"><div data-qr="${esc(url)}" data-size="240"></div></div>
@@ -1076,6 +1077,19 @@ function applyBrand(){
   LOGO_SVG  = logoSvg(b);
 }
 
+// logo do cliente: usa a IMAGEM própria (brand.logoImg) quando houver; senão o selo
+// desenhado. where = 'header' | 'card' | 'poster'.
+function brandLogo(where){
+  const b = brand();
+  // a imagem do logo (fundo transparente, texto claro) só entra no CABEÇALHO, que é
+  // escuro. No cartão e no cartaz (fundo claro) o texto claro sumiria — ali fica o
+  // selo desenhado, que é tematizado nas cores da marca.
+  if(b.logoImg && where==='header'){
+    return '<img class="brand-img-header" src="'+esc(b.logoImg)+'" alt="'+esc(b.name||'')+'">';
+  }
+  return where==='poster' ? LOGO_SVG.replace('class="logo-mark"','class="p-logo"') : LOGO_SVG;
+}
+
 /* ---------- renderização ---------- */
 function render(){
   applyBrand();
@@ -1089,8 +1103,9 @@ function render(){
 }
 
 function topBar(){
-  return `<header class="top">${LOGO_SVG}
-    <div class="brand"><b>${esc(brand().name)}</b><span>Fidelidade</span></div>
+  const b = brand();
+  return `<header class="top">${brandLogo('header')}
+    ${b.logoImg ? '' : `<div class="brand"><b>${esc(b.name)}</b><span>Fidelidade</span></div>`}
     <div class="spacer"></div>
     ${state.tab==='admin' && state.adminOk ? `<button class="pill-btn" data-act="lock">Sair</button>`:''}
   </header>`;
@@ -1136,7 +1151,7 @@ function viewCard(){
   return `<main>
     <div class="loyalty-card ${full?'full':''}">
       <div class="lc-head">
-        ${LOGO_SVG}
+        ${brandLogo('card')}
         <div class="lc-title"><div class="cartao">Cartão</div><div class="fide">FIDELIDADE</div></div>
         <div><div class="lc-code">${esc(c.code)}</div><div class="lc-name">${esc(c.name)}</div></div>
       </div>
