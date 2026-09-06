@@ -72,6 +72,15 @@
   .ec b{font-family:var(--disp);font-weight:700;font-size:17px;display:block;margin-bottom:4px}
   .ec p{color:var(--ink-2);font-size:15px;line-height:1.45}
 
+  /* guia */
+  .guiacard{display:flex;align-items:center;gap:22px;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:26px 28px;flex-wrap:wrap;transition:transform .15s,border-color .2s}
+  .guiacard:hover{transform:translateY(-2px);border-color:var(--ember)}
+  .guiacard .ic{width:56px;height:56px;border-radius:15px;background:rgba(224,149,27,.14);color:var(--ember-ink);display:flex;align-items:center;justify-content:center;flex:none}
+  .guiacard .ic svg{width:28px;height:28px}
+  .guiacard .tx{flex:1;min-width:200px}
+  .guiacard b{font-family:var(--disp);font-weight:800;font-size:20px;display:block;margin-bottom:4px}
+  .guiacard p{color:var(--ink-2);font-size:15.5px}
+
   /* planos */
   .why{background:var(--card);border:1.5px solid var(--line-2);border-radius:16px;padding:24px 26px;margin-top:26px;color:var(--ink-2);font-size:16.5px;line-height:1.55}
   .why b{color:var(--ink);font-weight:500}
@@ -160,6 +169,17 @@
       <div class="ec"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M4 3h16a1 1 0 0 1 1 1v3H3V4a1 1 0 0 1 1-1zM3 7h18v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM8 11h8M8 15h5"/></svg></div><div><b>Cardápio + sorteio no app</b><p>O cliente vê o cardápio com foto e preço, pede no WhatsApp e concorre a prêmios pelo sorteio.</p></div></div>
       <div class="ec"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM20 14h1M14 20h3v1"/></svg></div><div><b>QR e cartaz no balcão</b><p>Escaneia o QR e dá o selo em segundos. Tem cartaz pra imprimir e deixar no balcão.</p></div></div>
     </div>
+  </section>
+
+  <!-- GUIA -->
+  <section style="padding-top:8px">
+    <div class="eyebrow">Rapidinho</div>
+    <h2 style="margin-bottom:22px">Como usar no dia a dia</h2>
+    <a class="guiacard" href="brasa-guia.html">
+      <span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+      <span class="tx"><b>Veja o guia com as telas numeradas</b><p>Passo a passo pra Brasa Caipira: dar selo, montar o cardápio, rodar o sorteio — e como o cliente usa o cartão.</p></span>
+      <span class="btn ghost" style="pointer-events:none">Abrir o guia <svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+    </a>
   </section>
 
   <!-- PLANOS -->
