@@ -192,6 +192,60 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ---------- auto-cadastro do INDICADO (público, sem PIN) ----------
+  // O amigo abre o link de indicação, põe nome + telefone e JÁ ENTRA: cria o cartão
+  // dele (0 selos) com referredBy + referralPending. O +1 do PADRINHO é dado depois,
+  // no 1º selo do indicado (no app do dono) — evita indicação falsa.
+  if (p.action === "join") {
+    const st = await loadState();
+    if (!st) return json({ ok: false, error: "loja_indisponivel" }, 400);
+    const name = String(p.name || "").trim().replace(/\s+/g, " ");
+    const phoneRaw = String(p.phone || "").trim();
+    const ref = String(p.ref || "").trim().toUpperCase();
+    if (name.length < 2) return json({ ok: false, error: "nome_invalido" }, 400);
+    const canon = (v: unknown) => { let d = onlyDigits(v); if (d.length > 11 && d.startsWith("55")) d = d.slice(2); return d; };
+    if (canon(phoneRaw).length < 8) return json({ ok: false, error: "telefone_invalido" }, 400);
+    const s2 = st.settings || {};
+    const rules = { goal: s2.goal || 10, reward: s2.reward || "", rule: s2.rule || "" };
+
+    // já tem cartão com esse telefone? devolve o existente (não duplica, não credita de novo)
+    const existing = (st.customers || []).find((x: any) => {
+      const a = canon(x.phone), b = canon(phoneRaw);
+      return a.length >= 8 && (a === b || a.slice(-8) === b.slice(-8));
+    });
+    if (existing) return json({ ok: true, found: true, already: true,
+      customer: { code: existing.code, name: existing.name, stamps: existing.stamps | 0, redeemed: existing.redeemed | 0 }, rules });
+
+    // anti-abuso leve: no máx. 8 cadastros por IP a cada 10 min
+    const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "0.0.0.0";
+    const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: recent } = await admin.from("whatsapp_events").select("id")
+      .eq("from_phone", ip).eq("kind", "jj_join").gte("created_at", since).limit(8);
+    if ((recent?.length || 0) >= 8) return json({ ok: false, error: "muitas_tentativas" }, 429);
+
+    // trava de plano da J.J (Essencial 50 / Crescimento 150 / Ilimitado sem teto)
+    const PLAN_MAX: Record<string, number> = { essencial: 50, crescimento: 150 };
+    const max = PLAN_MAX[String(s2.plan || "")] ?? Infinity;
+    if ((st.customers || []).length >= max) return json({ ok: false, error: "limite_plano", max }, 409);
+
+    const refCust = ref ? (st.customers || []).find((x: any) => String(x.code || "").toUpperCase() === ref) : null;
+
+    const prefix = String(s2.brand?.prefix || "JJ").toUpperCase();
+    const seq = Number.isFinite(st.seq) ? st.seq : 1;
+    const code = `${prefix}-${String(seq).padStart(4, "0")}`;
+    const nc: any = { id: code, code, name, phone: phoneRaw, stamps: 0, redeemed: 0,
+      createdAt: Date.now(), history: [{ t: "join", ts: Date.now() }] };
+    if (refCust) { nc.referredBy = refCust.code; nc.referralPending = true; }
+    st.customers.push(nc);
+    st.seq = seq + 1;
+    const { error } = await admin.from("jj_state").upsert({ id: 1, data: st, updated_at: new Date().toISOString() });
+    if (error) { console.error("JJ join falhou:", error); return json({ ok: false, error: "falha_ao_salvar" }, 500); }
+    admin.from("whatsapp_events").insert({ from_phone: ip, kind: "jj_join", status: "created", raw: {},
+      parsed: { code, ref: refCust ? refCust.code : "" } }).then(() => {}, () => {});
+    return json({ ok: true, found: true, created: true,
+      customer: { code: nc.code, name: nc.name, stamps: 0, redeemed: 0 }, rules });
+  }
+
   // ---------- send_card: manda o cartão pro cliente ----------
   if (p.action === "send_card") {
     const to = onlyDigits(p.phone);
