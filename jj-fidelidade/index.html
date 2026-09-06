@@ -350,9 +350,10 @@
   }
   @keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
 
-  .admin-sub{display:flex;gap:6px}
+  .admin-sub{display:flex;flex-wrap:wrap;gap:6px}
   .admin-sub button{
-    flex:1;border:1px solid var(--line);background:transparent;color:var(--cream-dim);
+    flex:1 1 auto;min-width:84px;white-space:nowrap;
+    border:1px solid var(--line);background:transparent;color:var(--cream-dim);
     border-radius:12px;padding:10px;font-weight:800;font-size:13px;
   }
   .admin-sub button.active{background:var(--smoke-2);color:var(--ember);border-color:var(--ember)}
