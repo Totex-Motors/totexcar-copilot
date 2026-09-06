@@ -158,6 +158,17 @@
     position:relative;
   }
   .slot svg{width:100%;height:100%;display:block;border-radius:50%}
+  /* selo por IMAGEM da marca (ex.: Brasa) — preenche a bolinha e carimba com a mesma animação */
+  .slot .stamp-img{width:100%;height:100%;display:block;border-radius:50%;object-fit:cover}
+  .slot.stamped .stamp-img{animation:stampIn .45s cubic-bezier(.2,1.6,.4,1) both}
+  .slot.stamped:nth-child(even) .stamp-img{transform:rotate(4deg)}
+  /* bolinha vazia SEM fogo (quando a marca usa selo por imagem): placeholder limpo */
+  .slot.burning.noflame{
+    background:radial-gradient(circle at 35% 30%, #efe5cf, #e0d1b2 72%);
+    border:2px dashed rgba(74,50,38,.4);
+    box-shadow:inset 0 2px 6px rgba(74,50,38,.22);
+  }
+  .slot-empty{display:block;width:100%;height:100%;border-radius:50%}
   .slot.stamped svg{animation:stampIn .45s cubic-bezier(.2,1.6,.4,1) both}
   @keyframes stampIn{
     0%{transform:scale(2.1) rotate(-14deg);opacity:0}
@@ -1151,8 +1162,17 @@ function viewCard(){
   const goal = db.settings.goal;
   const shown = (c._show !== undefined) ? c._show : c.stamps;   // celebração em andamento
   const full = shown >= goal;
+  // selo do carimbo: imagem própria da marca (brand.stampImg) quando houver, senão o selo
+  // desenhado. O fogo animado das bolinhas VAZIAS continua normalmente — só sai se a marca
+  // pedir de propósito (brand.stampFire=false).
+  const _b = brand();
+  const filled = _b.stampImg ? `<img class="stamp-img" src="${esc(_b.stampImg)}" alt="">` : STAMP_SVG;
+  // o fogo animado nos vazios só sai se a marca pedir explicitamente (stampFire=false).
+  // Usar um selo por imagem NÃO tira o fogo — ele continua nas bolinhas vazias.
+  const noFire = _b.stampFire === false;
+  const empty  = noFire ? '<span class="slot-empty" aria-hidden="true"></span>' : '<canvas class="slot-fire" aria-hidden="true"></canvas>';
   const slots = Array.from({length:goal}, (_,i)=>
-    `<div class="slot ${i < shown ? 'stamped':'burning'}">${i < shown ? STAMP_SVG : '<canvas class="slot-fire" aria-hidden="true"></canvas>'}</div>`).join('');
+    `<div class="slot ${i < shown ? 'stamped':'burning'}${noFire?' noflame':''}">${i < shown ? filled : empty}</div>`).join('');
   return `<main>
     <div class="loyalty-card ${full?'full':''}">
       <div class="lc-head">
