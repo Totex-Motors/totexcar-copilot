@@ -437,6 +437,28 @@
     .stamp-grid{gap:9px}
     .pin-pad{grid-template-columns:repeat(3,64px)}
   }
+
+  /* ===== PRATELEIRA: SORTEIO ===== */
+  .panel.sorteio{border:1px solid var(--line);background:linear-gradient(180deg, rgba(232,134,43,.10), transparent 70%)}
+  .panel.sorteio h3{margin:0 0 6px}
+  .sorteio-prize{margin:0 0 8px;color:var(--cream);font-size:14px}
+  .sorteio-num{display:flex;align-items:baseline;gap:8px}
+  .sorteio-num b{font-family:var(--display);font-weight:400;font-size:34px;color:var(--ember);line-height:1}
+  .sorteio-num span{color:var(--cream-dim);font-size:13px;font-weight:700}
+
+  /* ===== PRATELEIRA: CATÁLOGO ===== */
+  .cat-head{display:flex;align-items:center;gap:10px;margin:2px 0 10px}
+  .cat-group{margin:0 0 16px}
+  .cat-cat{font-family:var(--display);font-weight:400;color:var(--ember);font-size:16px;letter-spacing:.4px;margin:6px 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px}
+  .cat-item{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}
+  .cat-item:last-child{border-bottom:none}
+  .cat-info{min-width:0;flex:1}
+  .cat-name{font-weight:700;color:var(--cream);font-size:15px}
+  .cat-desc{color:var(--cream-dim);font-size:12.5px;margin-top:2px;line-height:1.35}
+  .cat-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+  .cat-price{font-weight:800;color:var(--ember);font-size:15px;white-space:nowrap}
+  .cat-order{border:none;border-radius:8px;background:var(--ember);color:#231303;font-weight:800;font-size:12px;padding:6px 12px;cursor:pointer}
+  .cat-order:active{transform:scale(.96)}
 </style>
 
 <canvas id="fireCanvas" aria-hidden="true"></canvas>
@@ -492,7 +514,9 @@ const DEFAULTS = {
     brand:{ name:'J.J Espetos', shortName:'J.J', legalName:'J.J Restaurante e Espetaria',
       initials:'J.J', tagline:'ESPETOS', prefix:'JJ', appTitle:'J.J Fidelidade',
       address:'Av. Tenente Marques, 06 — Polvilho, Cajamar',
-      colorEmber:'#e8862b', colorFlame:'#c93e18' } },
+      colorEmber:'#e8862b', colorFlame:'#c93e18' },
+    // ===== PRATELEIRA (opcional, por cliente): catálogo e sorteio. Vazio = desligado. =====
+    capabilities:{} },
   seq: 1,
   customers: []
 };
@@ -519,6 +543,7 @@ function load(){
       if(!d.settings.waEndpoint) d.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
       if(!d.settings.waKey) d.settings.waKey = DEFAULTS.settings.waKey;
       d.settings.brand = Object.assign({}, DEFAULTS.settings.brand, d.settings.brand||{});
+      if(!d.settings.capabilities) d.settings.capabilities = DEFAULTS.settings.capabilities;
       d.customers = (d.customers||[]).filter(c=>!isDemoJunior(c)); // limpa o cliente-demo antigo
       d.seq = d.seq||1; return d; }
   }catch(e){}
@@ -537,6 +562,14 @@ function save(d){ try{ localStorage.setItem(LS_KEY, JSON.stringify(d)); }catch(e
 
 // identidade da marca em uso (com fallback para os padrões da J.J)
 function brand(){ return (db && db.settings && db.settings.brand) || DEFAULTS.settings.brand; }
+// capacidades opcionais da prateleira (catálogo, sorteio...) ligadas por cliente
+function caps(){ return (db && db.settings && db.settings.capabilities) || {}; }
+function hasCatalog(){ const c=caps().catalog; return !!(c && c.enabled); }
+function hasSorteio(){ const s=caps().sorteios; return !!(s && s.enabled); }
+// preço em reais: 39.9 -> "R$ 39,90"
+function money(v){ const n=Number(v); if(!isFinite(n)) return ''; return 'R$ '+n.toFixed(2).replace('.',','); }
+// só os dígitos (usado no WhatsApp da loja no catálogo)
+function onlyDigits(v){ return String(v==null?'':v).replace(/\D/g,''); }
 
 function makeCustomer(d, name, phone){
   const code = ((d.settings.brand && d.settings.brand.prefix) || 'JJ') + '-' + String(d.seq++).padStart(4,'0');
@@ -555,6 +588,7 @@ function atLimit(){ return realCount() >= planMax(); }
 let db = load();
 let state = {
   tab:'card',            // card | admin
+  custView:'card',       // card | catalog  (tela do cliente dentro da aba "Meu Cartão")
   adminOk:false,
   adminSub:'clientes',   // clientes | novo | ajustes
   search:'',
@@ -780,6 +814,7 @@ async function pullState(pin){
         if(!cloud.settings.waEndpoint) cloud.settings.waEndpoint = DEFAULTS.settings.waEndpoint;
         if(!cloud.settings.waKey) cloud.settings.waKey = DEFAULTS.settings.waKey;
         cloud.settings.brand = Object.assign({}, DEFAULTS.settings.brand, cloud.settings.brand||{});
+        if(!cloud.settings.capabilities) cloud.settings.capabilities = DEFAULTS.settings.capabilities;
         cloud.seq = Math.max(cloud.seq||1, db.seq||1);
         // FUSÃO anti-perda: cliente que só existe neste aparelho (push que não
         // chegou à nuvem) NÃO pode sumir no pull — entra na nuvem agora.
@@ -1121,7 +1156,8 @@ function render(){
   document.getElementById('tabCard').classList.toggle('active', state.tab==='card');
   document.getElementById('tabAdmin').classList.toggle('active', state.tab==='admin');
   $app.classList.toggle('wide', state.tab==='admin' && state.adminOk);
-  $app.innerHTML = topBar() + (state.tab==='card' ? viewCard() : viewAdmin());
+  const cardArea = (state.custView==='catalog' && hasCatalog()) ? viewCatalog() : viewCard();
+  $app.innerHTML = topBar() + (state.tab==='card' ? cardArea : viewAdmin());
   bind();
   renderQRs($app);
   FireSlots.collect();
@@ -1196,6 +1232,8 @@ function viewCard(){
       ? `<div class="reward-banner"><h2>Prêmio liberado! 🎉</h2>
            <p>Você ganhou ${esc(db.settings.reward)}. Mostre esta tela no balcão para resgatar.</p></div>`
       : `<p class="progress-note">${STAMP_ICON_MINI()} <span><b>${shown} de ${goal}</b> selos — faltam <b>${goal-shown}</b> para ${esc(db.settings.reward)}</span></p>`}
+    ${hasCatalog() ? `<button class="btn btn-ghost btn-block" data-act="openCatalog">🍗 Ver o cardápio</button>` : ''}
+    ${hasSorteio() ? sorteioPanel(c) : ''}
     <div class="panel">
       <h3>🤝 Indique um amigo e ganhe +1 selo</h3>
       <p class="muted" style="font-size:13px;margin:0">Seu amigo compra <b>1 costela no bafo ou 1 frango</b> e apresenta seu voucher no balcão — você ganha <b>+1 selo</b> na hora, e ele já começa o cartão dele.</p>
@@ -1216,6 +1254,60 @@ function viewCard(){
 }
 function STAMP_ICON_MINI(){
   return `<svg width="18" height="18" viewBox="0 0 100 100" style="flex:none"><circle cx="50" cy="50" r="48" fill="#1c0f07"/><path d="M25 88 Q34 62 42 76 Q48 56 58 74 Q66 62 75 88 Z" fill="#e8862b"/></svg>`;
+}
+
+/* ===== PRATELEIRA: SORTEIO (painel no cartão do cliente) ===== */
+function sorteioPanel(c){
+  const s = caps().sorteios || {};
+  const rule = s.ticketRule || 'por_selo';
+  const tickets = rule==='por_compra' ? (c.history||[]).filter(h=>h.t==='stamp'||h.t==='referral').length
+                : rule==='por_cadastro' ? 1
+                : (c.stamps|0);   // por_selo (padrão)
+  const how = rule==='por_compra' ? 'Cada compra vale 1 número da sorte.'
+            : rule==='por_cadastro' ? 'Você já está concorrendo com 1 número.'
+            : 'Cada selo do seu cartão vale 1 número — quanto mais você compra, mais chances!';
+  return `<div class="panel sorteio">
+    <h3>🎟️ Sorteio ${esc(brand().shortName || brand().name)}</h3>
+    ${s.prize ? `<p class="sorteio-prize">Concorra a <b>${esc(s.prize)}</b></p>` : ''}
+    <div class="sorteio-num"><b>${tickets}</b><span>${tickets===1?'número da sorte':'números da sorte'}</span></div>
+    <p class="muted" style="font-size:13px;margin:.4em 0 0">${how}${s.drawAt ? ' Sorteio em <b>'+esc(s.drawAt)+'</b>.' : ''}</p>
+  </div>`;
+}
+
+/* ===== PRATELEIRA: CATÁLOGO (tela do cliente) ===== */
+function catStoreWa(){ return onlyDigits(brand().whatsapp || ''); }
+function viewCatalog(){
+  const cat = caps().catalog || {};
+  const items = (cat.items||[]).filter(it=> it && it.active!==false);
+  const wa = catStoreWa();
+  const canOrder = cat.orderWhatsapp!==false && wa.length>=10;
+  const itemRow = (it)=>`
+    <div class="cat-item">
+      <div class="cat-info"><div class="cat-name">${esc(it.name)}</div>${it.description?`<div class="cat-desc">${esc(it.description)}</div>`:''}</div>
+      <div class="cat-right"><div class="cat-price">${money(it.price)}</div>${canOrder?`<button class="cat-order" data-act="orderItem" data-name="${esc(it.name)}">Pedir</button>`:''}</div>
+    </div>`;
+  // agrupa por categoria (na ordem declarada); itens sem categoria vão pro fim
+  let cats = (cat.categories&&cat.categories.length) ? cat.categories.slice() : [];
+  if(!cats.length){ cats = [...new Set(items.map(it=>it.category).filter(Boolean))]; }
+  let body='';
+  if(!items.length){ body = `<p class="muted" style="text-align:center;margin:24px 0">Cardápio chegando em breve. 🍗</p>`; }
+  else {
+    for(const cn of cats){
+      const its = items.filter(it=>(it.category||'')===cn);
+      if(its.length) body += `<div class="cat-group"><h3 class="cat-cat">${esc(cn)}</h3>${its.map(itemRow).join('')}</div>`;
+    }
+    const semCat = items.filter(it=> !it.category || !cats.includes(it.category));
+    if(semCat.length) body += `<div class="cat-group">${semCat.map(itemRow).join('')}</div>`;
+  }
+  return `<main>
+    <div class="cat-head">
+      <button class="pill-btn" data-act="closeCatalog">← Voltar</button>
+      <h1 class="screen-title" style="margin:0;text-align:left;flex:1">Cardápio</h1>
+    </div>
+    ${body}
+    ${canOrder ? `<button class="btn btn-primary btn-block" data-act="orderGeneral">📲 Fazer meu pedido no WhatsApp</button>` : ''}
+    <p class="footer-note">${esc(brand().name)} · ${esc(brand().address)}</p>
+  </main>`;
 }
 
 /* ===================== ADMIN ===================== */
@@ -1444,7 +1536,7 @@ function viewPin(){
 function bind(){
   $app.querySelectorAll('[data-act]').forEach(el=> el.addEventListener('click', (e)=>{
     lastTap = { x: e.clientX || 0, y: e.clientY || 0 };
-    action(el.dataset.act);
+    action(el.dataset.act, el);
   }));
   $app.querySelectorAll('[data-sub]').forEach(el=> el.addEventListener('click', ()=>{ state.adminSub = el.dataset.sub; render(); }));
   $app.querySelectorAll('[data-open]').forEach(el=> el.addEventListener('click', ()=>{ state.detail = el.dataset.open; render(); }));
@@ -1499,9 +1591,22 @@ async function checkPin(){
   updateCloudBadge();
 }
 
-function action(act){
+function action(act, el){
   const c = state.detail ? db.customers.find(x=>x.id===state.detail) : null;
   switch(act){
+    case 'openCatalog': state.custView='catalog'; window.scrollTo(0,0); render(); break;
+    case 'closeCatalog': state.custView='card'; render(); break;
+    case 'orderItem':{
+      const wa = onlyDigits(brand().whatsapp||''); if(wa.length<10){ toast('WhatsApp da loja não configurado.'); break; }
+      const nome = (el && el.dataset.name) || '';
+      const msg = 'Olá, '+brand().name+'! 🍗\nQuero pedir: *'+nome+'*.';
+      window.open('https://wa.me/'+(wa.length<=11?'55'+wa:wa)+'?text='+encodeURIComponent(msg), '_blank'); break;
+    }
+    case 'orderGeneral':{
+      const wa = onlyDigits(brand().whatsapp||''); if(wa.length<10){ toast('WhatsApp da loja não configurado.'); break; }
+      const msg = 'Olá, '+brand().name+'! 🍗\nQuero fazer um pedido.';
+      window.open('https://wa.me/'+(wa.length<=11?'55'+wa:wa)+'?text='+encodeURIComponent(msg), '_blank'); break;
+    }
     case 'find':{
       const v = $app.querySelector('#findCard').value;
       const found = byCodeOrPhone(v);
