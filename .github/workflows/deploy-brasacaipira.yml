@@ -55,6 +55,11 @@ jobs:
           cp fabrica-fidelidade/tenants/brasa-caipira/logo.png /tmp/brasacaipira/logo.png
           cp fabrica-fidelidade/tenants/brasa-caipira/logo-badge.png /tmp/brasacaipira/logo-badge.png
           cp fabrica-fidelidade/tenants/brasa-caipira/selo-full.png /tmp/brasacaipira/selo-full.png
+          # fotos do cardápio (se houver)
+          if [ -d fabrica-fidelidade/tenants/brasa-caipira/fotos ]; then
+            mkdir -p /tmp/brasacaipira/fotos
+            cp fabrica-fidelidade/tenants/brasa-caipira/fotos/* /tmp/brasacaipira/fotos/ 2>/dev/null || true
+          fi
           # anti-cache: HTML e v.txt sempre frescos; og.jpg cacheável
           NS='no-store, max-age=0, must-revalidate'
           printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/v.txt","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" > /tmp/brasacaipira/vercel.json

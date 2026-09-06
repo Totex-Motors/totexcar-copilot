@@ -33,14 +33,14 @@
         "orderWhatsapp": true,
         "categories": ["Assados", "Acompanhamentos", "Combos"],
         "items": [
-          { "name": "Frango assado inteiro", "price": 39.9, "description": "Temperado na brasa", "category": "Assados" },
-          { "name": "Meio frango assado", "price": 22.0, "category": "Assados" },
-          { "name": "Costela assada (kg)", "price": 69.9, "description": "No ponto, suculenta", "category": "Assados" },
+          { "name": "Frango assado inteiro", "price": 39.9, "description": "Temperado na brasa", "category": "Assados", "image": "fotos/frango-inteiro.jpg" },
+          { "name": "Meio frango assado", "price": 22.0, "category": "Assados", "image": "fotos/meio-frango.jpg" },
+          { "name": "Costela assada (kg)", "price": 69.9, "description": "No ponto, suculenta", "category": "Assados", "image": "fotos/costela.jpg" },
           { "name": "Linguiça assada", "price": 25.0, "category": "Assados" },
           { "name": "Farofa da casa", "price": 12.0, "category": "Acompanhamentos" },
           { "name": "Vinagrete", "price": 8.0, "category": "Acompanhamentos" },
           { "name": "Maionese caseira", "price": 15.0, "category": "Acompanhamentos" },
-          { "name": "Combo família", "price": 89.9, "description": "Frango + costela + 2 acompanhamentos", "category": "Combos" }
+          { "name": "Combo família", "price": 89.9, "description": "Frango + costela + 2 acompanhamentos", "category": "Combos", "image": "fotos/combo.jpg" }
         ]
       },
       "sorteios": {

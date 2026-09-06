@@ -452,6 +452,7 @@
   .cat-cat{font-family:var(--display);font-weight:400;color:var(--ember);font-size:16px;letter-spacing:.4px;margin:6px 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px}
   .cat-item{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}
   .cat-item:last-child{border-bottom:none}
+  .cat-thumb{width:66px;height:66px;border-radius:12px;object-fit:cover;flex:none;background:var(--smoke);box-shadow:0 1px 4px rgba(0,0,0,.35)}
   .cat-info{min-width:0;flex:1}
   .cat-name{font-weight:700;color:var(--cream);font-size:15px}
   .cat-desc{color:var(--cream-dim);font-size:12.5px;margin-top:2px;line-height:1.35}
@@ -1282,7 +1283,8 @@ function viewCatalog(){
   const wa = catStoreWa();
   const canOrder = cat.orderWhatsapp!==false && wa.length>=10;
   const itemRow = (it)=>`
-    <div class="cat-item">
+    <div class="cat-item${it.image?' has-thumb':''}">
+      ${it.image?`<img class="cat-thumb" src="${esc(it.image)}" alt="" loading="lazy">`:''}
       <div class="cat-info"><div class="cat-name">${esc(it.name)}</div>${it.description?`<div class="cat-desc">${esc(it.description)}</div>`:''}</div>
       <div class="cat-right"><div class="cat-price">${money(it.price)}</div>${canOrder?`<button class="cat-order" data-act="orderItem" data-name="${esc(it.name)}">Pedir</button>`:''}</div>
     </div>`;
