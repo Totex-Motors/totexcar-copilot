@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guia de uso · Cartão Fidelidade da Brasa Caipira</title>
+<meta name="description" content="Como o dono da Brasa Caipira administra o Cartão Fidelidade e como o cliente usa — tela por tela: selos, cardápio, sorteio e indicação.">
+<meta name="theme-color" content="#e01e1e">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%94%A5</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Spline+Sans+Mono:wght@500;600&display=swap">
+<style>
+  :root{
+    --bg:#f6f0e6; --bg-2:#efe7d6; --surface:#fffdf8; --ink:#221810; --ink-2:#5c4b3a; --ink-3:#8a7862;
+    --line:#e4d8c3; --line-2:#cdbb9c;
+    --ember:#e8951b; --flame:#e01e1e; --amber:#b45f00; --good:#4f7a3a;
+    --disp:'Bricolage Grotesque',system-ui,'Segoe UI',sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Spline Sans Mono',ui-monospace,monospace;
+    /* app claro (como o dono vê de verdade) */
+    --app:#fffdf8; --app-2:#f4ece0; --app-ink:#241a12; --app-ink2:#6b584a; --app-line:#e6dac6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;background:var(--bg)}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:rgba(224,30,30,.3);color:#fff}
+  svg.i{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:block}
+  svg.f{fill:currentColor;stroke:none;display:block}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 32px}
+
+  .top{position:sticky;top:0;z-index:50;background:rgba(246,240,230,.88);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+  .topin{max-width:1080px;margin:0 auto;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;gap:14px}
+  .brand{display:flex;align-items:center;gap:11px;font-family:var(--disp);font-weight:800;font-size:17px}
+  .mark-img{height:34px;width:auto;border-radius:9px;box-shadow:0 5px 14px rgba(224,30,30,.22);flex:none}
+  .back{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--amber);display:inline-flex;align-items:center;gap:7px}
+  .back svg{width:16px;height:16px}
+
+  .hero{padding:60px 0 10px;text-align:center}
+  .kick{font-family:var(--mono);font-size:11.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--ember);margin-bottom:16px}
+  h1{font-family:var(--disp);font-weight:800;font-size:clamp(34px,6vw,58px);line-height:1.02;letter-spacing:-.03em;text-wrap:balance}
+  h1 .grad{color:var(--flame)}
+  .lead{font-size:19px;color:var(--ink-2);max-width:58ch;margin:20px auto 0}
+  .jump{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:30px 0 0}
+  .chip{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--ink);background:var(--surface);border:1.5px solid var(--line-2);border-radius:100px;padding:12px 22px;display:inline-flex;align-items:center;gap:9px;transition:transform .2s,border-color .2s;box-shadow:0 6px 18px rgba(224,30,30,.05)}
+  .chip:hover{transform:translateY(-2px);border-color:rgba(232,149,27,.6)}
+  .chip svg{width:16px;height:16px;color:var(--ember)}
+
+  section{padding:60px 0}
+  .part-h{display:flex;align-items:center;gap:16px;margin-bottom:6px}
+  .part-h .bd{width:54px;height:54px;border-radius:15px;background:linear-gradient(150deg,var(--ember),var(--flame));color:#fff;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 0 32px -6px rgba(224,30,30,.7)}
+  .part-h .bd svg{width:27px;height:27px}
+  h2{font-family:var(--disp);font-weight:800;font-size:clamp(26px,4vw,38px);letter-spacing:-.02em}
+  .part-sub{color:var(--ink-2);font-size:17px;margin:2px 0 30px;padding-left:70px}
+  @media(max-width:640px){.part-sub{padding-left:0}}
+
+  /* bloco de tela numerada */
+  .screen-row{display:grid;grid-template-columns:320px 1fr;gap:44px;align-items:start;padding:34px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(160deg,var(--surface),var(--bg-2));margin-bottom:22px}
+  .screen-row .tt{font-family:var(--disp);font-weight:800;font-size:22px;margin-bottom:4px}
+  .screen-row .td{color:var(--ink-2);font-size:15.5px;margin-bottom:22px}
+  .legend{list-style:none;display:flex;flex-direction:column;gap:14px}
+  .legend li{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start}
+  .lnum{width:28px;height:28px;border-radius:50%;background:linear-gradient(150deg,var(--ember),var(--flame));color:#fff;font-family:var(--mono);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 4px 12px -2px rgba(224,30,30,.6)}
+  .legend b{font-family:var(--disp);font-weight:700;font-size:15.5px;color:var(--ink)}
+  .legend p{color:var(--ink-2);font-size:14.5px;line-height:1.45;margin-top:2px}
+
+  /* device + tela do app (clara, como o dono vê) */
+  .device{width:300px;margin:0 auto;background:linear-gradient(160deg,#241a12,#0d0906);border-radius:38px;padding:12px;box-shadow:0 30px 70px -24px rgba(224,30,30,.5),0 0 0 1px rgba(255,255,255,.06);position:sticky;top:90px}
+  .app{background:var(--app);color:var(--app-ink);border-radius:27px;overflow:hidden;position:relative;font-size:13px}
+  .app .bar{background:linear-gradient(120deg,var(--ember),var(--flame));color:#fff;padding:14px 16px;font-family:var(--disp);font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:space-between}
+  .app .bar .tag{font-family:var(--mono);font-size:9px;background:rgba(255,255,255,.22);padding:3px 8px;border-radius:6px;font-weight:400}
+  .app .body{padding:16px}
+  .fld{position:relative;margin-bottom:11px}
+  .fld label{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:#8a755d;margin-bottom:5px}
+  .inp{background:var(--app-2);border:1px solid var(--app-line);border-radius:9px;padding:10px 11px;color:var(--app-ink);font-size:13px;font-family:var(--body)}
+  .inp.ph{color:#9a866c}
+  .abtn{border-radius:10px;padding:11px;text-align:center;font-family:var(--disp);font-weight:700;font-size:12.5px;position:relative;display:flex;align-items:center;justify-content:center;gap:7px}
+  .abtn.pri{background:linear-gradient(120deg,var(--ember),var(--flame));color:#fff;box-shadow:0 6px 16px -4px rgba(224,30,30,.55)}
+  .abtn.sec{background:#fff;border:1.5px solid var(--app-line);color:var(--app-ink)}
+  .abtn.good{background:#eaf5e3;border:1.5px solid #bcdcac;color:#3c6a2a}
+  .abtn.ig{background:linear-gradient(120deg,#f09433,#e6683c 30%,#dc2743 60%,#bc1888);color:#fff}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .as-head{text-align:center;padding:6px 0 2px}
+  .as-head .nm{font-family:var(--disp);font-weight:800;font-size:16px}
+  .as-head .cd{font-family:var(--mono);font-size:9.5px;color:#8a755d;letter-spacing:.08em}
+  .aselos{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin:12px 0}
+  .asel{aspect-ratio:1;border-radius:50%;display:flex;align-items:center;justify-content:center}
+  .asel.on{background:radial-gradient(circle at 40% 30%,#ffbf66,#e8951b 55%,#b45f00);box-shadow:inset 0 1px 2px rgba(255,255,255,.5)}
+  .asel.on svg{width:11px;height:11px;fill:#fff}
+  .asel.off{border:1.4px dashed #d9b98f;background:radial-gradient(circle at 50% 130%,rgba(232,149,27,.18),transparent)}
+  .counter{text-align:center;font-family:var(--mono);font-size:11px;color:#8a755d;margin-bottom:10px}
+  .hist{background:var(--app-2);border-radius:9px;padding:9px 11px;font-size:11px;color:#6b584a;line-height:1.5}
+  .qr{width:64px;height:64px;margin:0 auto;border-radius:8px;background:
+     linear-gradient(90deg,#241a12 2px,transparent 2px) 0 0/8px 8px,
+     linear-gradient(#241a12 2px,transparent 2px) 0 0/8px 8px,#fff;border:5px solid #fff;box-shadow:0 0 0 1px var(--app-line)}
+  .vch{background:var(--app-2);border:1px dashed #d9b98f;border-radius:10px;padding:10px;text-align:center;font-family:var(--mono);font-weight:700;font-size:15px;color:var(--flame);letter-spacing:.06em}
+  .chk{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#6b584a;margin-bottom:11px;font-family:var(--mono)}
+  .chk .box{width:16px;height:16px;border-radius:4px;background:linear-gradient(120deg,var(--ember),var(--flame));color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none}
+
+  /* abas do admin */
+  .subtabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}
+  .subtabs span{font-family:var(--mono);font-size:9.5px;font-weight:600;padding:6px 9px;border-radius:7px;background:var(--app-2);color:#8a755d;white-space:nowrap}
+  .subtabs span.on{background:linear-gradient(120deg,var(--ember),var(--flame));color:#fff}
+
+  /* cardápio (admin) */
+  .cat-item{display:grid;grid-template-columns:40px 1fr auto;gap:10px;align-items:center;background:var(--app-2);border:1px solid var(--app-line);border-radius:10px;padding:8px;margin-bottom:8px}
+  .cat-thumb{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;background:radial-gradient(circle at 40% 30%,#ffd9a0,#e8951b 70%);flex:none}
+  .cat-info .nm{font-family:var(--disp);font-weight:700;font-size:12.5px;line-height:1.1}
+  .cat-info .pr{font-family:var(--mono);font-size:10px;color:#8a755d;margin-top:2px}
+  .cat-acts{display:flex;flex-direction:column;gap:4px}
+  .pillb{font-family:var(--mono);font-size:9px;font-weight:600;padding:4px 8px;border-radius:100px;background:#fff;border:1px solid var(--app-line);color:var(--app-ink)}
+  .pillb.dg{color:#b83535;border-color:#e6c3c3}
+  .cf-photo{display:flex;align-items:center;gap:9px}
+  .cf-prev{width:52px;height:52px;border-radius:9px;background:radial-gradient(circle at 40% 30%,#ffd9a0,#e8951b 70%);display:flex;align-items:center;justify-content:center;font-size:24px;flex:none}
+  .cf-pick{flex:1;background:#fff;border:1.5px solid var(--app-line);border-radius:9px;padding:9px;text-align:center;font-family:var(--disp);font-weight:700;font-size:11.5px}
+
+  /* sorteio (cliente) */
+  .lucky{background:linear-gradient(180deg,rgba(232,149,27,.12),transparent 75%);border:1px solid var(--app-line);border-radius:12px;padding:12px;text-align:center;margin-top:10px}
+  .lucky .tt2{font-family:var(--disp);font-weight:800;font-size:13px;margin-bottom:3px}
+  .lucky .num{font-family:var(--disp);font-weight:800;font-size:30px;color:var(--flame);line-height:1}
+  .lucky .lb{font-family:var(--mono);font-size:9px;color:#8a755d;text-transform:uppercase;letter-spacing:.06em}
+
+  /* pino numerado sobre a tela */
+  .pin{position:absolute;width:24px;height:24px;border-radius:50%;background:linear-gradient(150deg,var(--ember),var(--flame));color:#fff;font-family:var(--mono);font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 9px -1px rgba(224,30,30,.7),0 0 0 3px var(--app);z-index:6}
+
+  .note{background:rgba(79,122,58,.08);border:1px solid rgba(79,122,58,.24);border-left:4px solid var(--good);border-radius:12px;padding:18px 22px;margin-top:8px}
+  .note .l{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--good);margin-bottom:6px}
+  .note p{color:var(--ink-2);font-size:15px;line-height:1.5}
+  .note.warn{background:rgba(224,30,30,.06);border-color:rgba(224,30,30,.24);border-left-color:var(--flame)}
+  .note.warn .l{color:var(--flame)}
+  .divider{height:1px;background:var(--line);margin:6px 0}
+
+  .faq{max-width:820px;margin:20px auto 0}
+  .qa{border:1px solid var(--line);border-radius:14px;background:linear-gradient(160deg,var(--surface),var(--bg-2));margin-bottom:11px;padding:20px 22px}
+  .qa b{font-family:var(--disp);font-weight:700;font-size:17px;display:flex;gap:12px}
+  .qa b::before{content:"+";color:var(--flame);font-weight:800}
+  .qa p{color:var(--ink-2);font-size:15px;line-height:1.5;margin-top:7px;padding-left:22px}
+  .qa p b{color:var(--ink);font-weight:700;display:inline}
+  .qa p b::before{content:none}
+
+  .cta{position:relative;max-width:900px;margin:10px auto 0;border-radius:26px;padding:52px 32px;text-align:center;overflow:hidden;color:#fff;background:linear-gradient(150deg,var(--ember),var(--flame));box-shadow:0 26px 54px -20px rgba(224,30,30,.5)}
+  .cta h2{color:#fff;font-size:30px} .cta p{color:rgba(255,255,255,.92);font-size:16px;margin:12px auto 0;max-width:44ch}
+  .cta .btn{background:#fff;color:var(--flame)}
+  .btn{font-family:var(--mono);font-weight:700;font-size:14px;text-transform:uppercase;letter-spacing:.02em;padding:15px 28px;border-radius:100px;display:inline-flex;align-items:center;gap:9px;margin-top:24px}
+  .btn svg{width:17px;height:17px}
+  footer{border-top:1px solid var(--line);padding:32px 0 48px;text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--ink-3)}
+  footer a{color:var(--amber);font-weight:700}
+
+  @media(max-width:760px){
+    .wrap{padding:0 20px} .topin{padding:13px 20px}
+    .screen-row{grid-template-columns:1fr;gap:26px;padding:24px}
+    .device{position:relative;top:0}
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="topin">
+    <a class="brand" href="brasa.html"><img class="mark-img" src="brasa-logo.png" alt="Brasa Caipira">Cartão Fidelidade</a>
+    <a class="back" href="brasa.html"><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Voltar</a>
+  </div>
+</div>
+
+<main>
+  <div class="wrap">
+    <div class="hero">
+      <p class="kick">Guia de uso · tela por tela</p>
+      <h1>Como usar o Cartão da <span class="grad">Brasa Caipira</span></h1>
+      <p class="lead">Cada tela numerada, campo a campo: como <b>você, da Brasa, administra</b> no balcão — selos, cardápio e sorteio — e como o <b>seu cliente usa</b> no celular.</p>
+      <div class="jump">
+        <a class="chip" href="#dono"><svg class="i" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>Para você, dono</a>
+        <a class="chip" href="#cliente"><svg class="i" viewBox="0 0 24 24"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 7h8M8 12h8M8 17h5"/></svg>Para o cliente</a>
+      </div>
+    </div>
+
+    <!-- ===== DONO ===== -->
+    <section id="dono">
+      <div class="part-h"><span class="bd"><svg class="i" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg></span><h2>Para você, dono</h2></div>
+      <p class="part-sub">O balcão inteiro no celular. Entre no Admin com seu PIN de 6 dígitos e trabalhe daí — tudo salva na nuvem sozinho.</p>
+
+      <!-- TELA 1: cadastro -->
+      <div class="screen-row">
+        <div class="device"><div class="app">
+          <div class="bar">Novo cliente <span class="tag">ADMIN</span></div>
+          <div class="body">
+            <div class="fld"><span class="pin" style="top:16px;right:-10px">1</span><label>Nome</label><div class="inp">Maria Souza</div></div>
+            <div class="fld"><span class="pin" style="top:16px;right:-10px">2</span><label>WhatsApp</label><div class="inp">(11) 99999-0000</div></div>
+            <div class="fld"><span class="pin" style="top:16px;right:-10px">3</span><label>Voucher de indicação (opcional)</label><div class="inp ph">BC-0007</div></div>
+            <div class="abtn pri" style="margin:14px 0 9px"><span class="pin" style="top:-9px;right:-9px">4</span>Cadastrar cliente</div>
+            <div class="abtn sec"><span class="pin" style="top:-9px;right:-9px">5</span>📲 Enviar cartão no WhatsApp</div>
+          </div>
+        </div></div>
+        <div>
+          <div class="tt">Cadastrar um cliente</div>
+          <div class="td">A porta de entrada. Leva segundos e já manda o cartão pro cliente.</div>
+          <ul class="legend">
+            <li><span class="lnum">1</span><div><b>Nome</b><p>Como o cliente vai aparecer na sua busca e no cartão dele.</p></div></li>
+            <li><span class="lnum">2</span><div><b>WhatsApp</b><p>Pra localizar o cliente pelo telefone e pra enviar o cartão. É a "chave" dele.</p></div></li>
+            <li><span class="lnum">3</span><div><b>Voucher de indicação</b><p>Só quando o cliente veio indicado: ponha aqui o código de quem indicou. Dá <b>+1 selo automático</b> pra quem trouxe. Deixe vazio se não veio por indicação.</p></div></li>
+            <li><span class="lnum">4</span><div><b>Cadastrar cliente</b><p>Salva e gera o <b>código automático</b> (BC-0001, BC-0002…). Pronto — o cartão dele já existe.</p></div></li>
+            <li><span class="lnum">5</span><div><b>Enviar cartão no WhatsApp</b><p>Abre o WhatsApp do seu aparelho com a mensagem e o link prontos. É só tocar em enviar.</p></div></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- TELA 2: ficha / dar selo -->
+      <div class="screen-row">
+        <div class="device"><div class="app">
+          <div class="bar">Ficha do cliente <span class="tag">ADMIN</span></div>
+          <div class="body">
+            <div class="as-head" style="position:relative"><span class="pin" style="top:-4px;right:-10px">1</span><div class="nm">Maria Souza</div><div class="cd">BC-0008</div></div>
+            <div class="counter" style="position:relative"><span class="pin" style="top:-6px;right:64px">2</span>6 de 10 selos</div>
+            <div class="aselos">
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel off"></div><div class="asel off"></div><div class="asel off"></div><div class="asel off"></div>
+            </div>
+            <div class="row2" style="margin-bottom:8px">
+              <div class="abtn pri" style="position:relative"><span class="pin" style="top:-9px;right:-9px">3</span>🔥 +1 selo</div>
+              <div class="abtn sec" style="position:relative"><span class="pin" style="top:-9px;right:-9px">4</span>↩ Desfazer</div>
+            </div>
+            <div class="abtn good" style="margin-bottom:8px;position:relative"><span class="pin" style="top:-9px;right:-9px">5</span>🏆 Entregar prêmio e zerar</div>
+            <div class="row2">
+              <div class="hist" style="position:relative"><span class="pin" style="top:-8px;right:-8px">6</span>Histórico<br>🔥 selo · hoje<br>🤝 indicou João</div>
+              <div style="position:relative;text-align:center"><span class="pin" style="top:-8px;right:14px">7</span><div class="qr"></div><div style="font-family:var(--mono);font-size:8px;color:#8a755d;margin-top:4px">QR do cartão</div></div>
+            </div>
+          </div>
+        </div></div>
+        <div>
+          <div class="tt">Dar selo e entregar prêmio</div>
+          <div class="td">A tela que você mais usa. Cada frango, costela ou carne = um selo, aqui.</div>
+          <ul class="legend">
+            <li><span class="lnum">1</span><div><b>Código e nome</b><p>Confirma que é o cliente certo antes de dar o selo.</p></div></li>
+            <li><span class="lnum">2</span><div><b>Selos (x de 10)</b><p>Quanto ele já juntou. As bolinhas acesas são os selos; as apagadas, o que falta.</p></div></li>
+            <li><span class="lnum">3</span><div><b>🔥 +1 selo</b><p>O botão principal: cliente comprou → toque aqui. O fogo carimba na hora e o celular dele vê acender.</p></div></li>
+            <li><span class="lnum">4</span><div><b>↩ Desfazer</b><p>Deu selo errado? Remove o último. Tudo fica registrado no histórico.</p></div></li>
+            <li><span class="lnum">5</span><div><b>🏆 Entregar prêmio e zerar</b><p>Aparece quando completa os 10. Entrega o frango grátis, conta no histórico e o cartão volta do zero.</p></div></li>
+            <li><span class="lnum">6</span><div><b>Histórico</b><p>Todos os movimentos do cliente: selos, indicações e prêmios, com data.</p></div></li>
+            <li><span class="lnum">7</span><div><b>QR do cartão</b><p>Escaneie pra abrir o cartão dele em outro aparelho, ou imprima pra ele levar.</p></div></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- TELA 3: cardápio -->
+      <div class="screen-row">
+        <div class="device"><div class="app">
+          <div class="bar">Painel <span class="tag">ADMIN</span></div>
+          <div class="body">
+            <div class="subtabs"><span>Balcão</span><span>Clientes</span><span class="on">🍗 Cardápio</span><span>Ajustes</span></div>
+            <div style="font-family:var(--disp);font-weight:800;font-size:13px;margin-bottom:8px">🍗 Cardápio — produtos</div>
+            <div class="cat-item" style="position:relative"><span class="pin" style="top:-8px;left:30px">1</span><div class="cat-thumb">🍗</div><div class="cat-info"><div class="nm">Frango assado inteiro</div><div class="pr">Assados · R$ 39,90</div></div><div class="cat-acts"><span class="pillb">editar</span><span class="pillb dg">remover</span></div></div>
+            <div class="cat-item"><div class="cat-thumb">🥩</div><div class="cat-info"><div class="nm">Costela na brasa</div><div class="pr">Assados · R$ 54,90</div></div><div class="cat-acts"><span class="pillb">editar</span><span class="pillb dg">remover</span></div></div>
+            <div class="abtn pri" style="margin-top:10px;position:relative"><span class="pin" style="top:-9px;right:-9px">2</span>+ Adicionar produto</div>
+            <div style="border-top:1px dashed var(--app-line);margin:14px 0 10px"></div>
+            <div style="font-family:var(--disp);font-weight:800;font-size:13px;margin-bottom:8px">Novo produto</div>
+            <div class="fld"><label>Nome</label><div class="inp">Combo Família</div></div>
+            <div class="fld"><span class="pin" style="top:16px;right:-10px">3</span><label>Preço (R$)</label><div class="inp">89,90</div></div>
+            <div class="fld"><label>Categoria</label><div class="inp ph">Combos</div></div>
+            <div class="fld"><label>Foto</label>
+              <div class="cf-photo"><div class="cf-prev">🍖</div><div class="cf-pick" style="position:relative"><span class="pin" style="top:-9px;right:-9px">4</span>📷 Enviar foto</div></div>
+            </div>
+            <div class="abtn pri" style="position:relative"><span class="pin" style="top:-9px;right:-9px">5</span>Salvar produto</div>
+          </div>
+        </div></div>
+        <div>
+          <div class="tt">Montar o cardápio</div>
+          <div class="td">Na aba <b>🍗 Cardápio</b> você cria os pratos com preço e foto — é o que o cliente vê no app.</div>
+          <ul class="legend">
+            <li><span class="lnum">1</span><div><b>Seus produtos</b><p>A lista do que já está no cardápio. Cada um tem <b>editar</b> (mudar nome, preço ou foto) e <b>remover</b>.</p></div></li>
+            <li><span class="lnum">2</span><div><b>+ Adicionar produto</b><p>Abre o formulário em branco pra cadastrar um prato novo.</p></div></li>
+            <li><span class="lnum">3</span><div><b>Nome, Preço e Categoria</b><p>O essencial. Preço aceita vírgula (ex.: <b>39,90</b>). Categoria organiza (Assados, Acompanhamentos, Combos) — pode deixar vazia.</p></div></li>
+            <li><span class="lnum">4</span><div><b>📷 Enviar foto</b><p>Escolhe uma foto do celular. Ela sobe pra nuvem e vira a miniatura do prato. Dá muito mais vontade de pedir.</p></div></li>
+            <li><span class="lnum">5</span><div><b>Salvar produto</b><p>Guarda na nuvem e já aparece pro cliente na hora, no botão "Ver o cardápio".</p></div></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- TELA 4: sorteio -->
+      <div class="screen-row">
+        <div class="device"><div class="app">
+          <div class="bar">Ajustes · Sorteio <span class="tag">ADMIN</span></div>
+          <div class="body">
+            <div style="font-family:var(--disp);font-weight:800;font-size:13px;margin-bottom:8px">🎟️ Sorteio</div>
+            <div class="chk" style="position:relative"><span class="pin" style="top:-8px;left:-6px">1</span><span class="box">✓</span> Sorteio ativo (aparece no cartão do cliente)</div>
+            <div class="fld"><span class="pin" style="top:16px;right:-10px">2</span><label>Prêmio</label><div class="inp">um Combo Família</div></div>
+            <div class="fld"><span class="pin" style="top:16px;right:-10px">3</span><label>Data / período</label><div class="inp">todo fim de mês</div></div>
+            <div class="abtn pri" style="margin-bottom:8px;position:relative"><span class="pin" style="top:-9px;right:-9px">4</span>Salvar sorteio</div>
+            <div class="abtn sec" style="position:relative"><span class="pin" style="top:-9px;right:-9px">5</span>🎲 Sortear ganhador</div>
+            <div class="hist" style="margin-top:10px">O sorteio usa os selos como números da sorte (mais selos = mais chances). Seguir o Instagram é pedido ao cliente na tela do cartão.</div>
+          </div>
+        </div></div>
+        <div>
+          <div class="tt">Configurar e rodar o sorteio</div>
+          <div class="td">Você decide o prêmio e a data. Na hora, o app sorteia sozinho entre quem tem selos.</div>
+          <ul class="legend">
+            <li><span class="lnum">1</span><div><b>Sorteio ativo</b><p>Ligado, o bloco do sorteio aparece no cartão de cada cliente. Desligue pra esconder entre uma campanha e outra.</p></div></li>
+            <li><span class="lnum">2</span><div><b>Prêmio</b><p>O que vai ser sorteado — ex.: <b>um Combo Família</b>. Aparece pro cliente como "Concorra a…".</p></div></li>
+            <li><span class="lnum">3</span><div><b>Data / período</b><p>Quando será o sorteio. Pode ser uma data (30/09) ou um período ("todo fim de mês").</p></div></li>
+            <li><span class="lnum">4</span><div><b>Salvar sorteio</b><p>Guarda o prêmio e a data. Já atualiza no cartão dos clientes.</p></div></li>
+            <li><span class="lnum">5</span><div><b>🎲 Sortear ganhador</b><p>No dia, toque aqui: o app escolhe um ganhador na hora, dando <b>mais chance a quem tem mais selos</b>. Ele mostra o nome e o código.</p></div></li>
+          </ul>
+          <div class="note" style="margin-top:20px">
+            <div class="l">Como o cliente concorre</div>
+            <p>Cada selo é um número da sorte. Pra valer, pedimos que ele <b style="color:var(--ink)">siga a Brasa no Instagram</b> — o botão fica no cartão dele. A conferência do "seguiu" é na confiança.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TELA 5: ajustes -->
+      <div class="screen-row">
+        <div class="device"><div class="app">
+          <div class="bar">Ajustes <span class="tag">ADMIN</span></div>
+          <div class="body">
+            <div class="fld"><span class="pin" style="top:16px;right:-10px">1</span><label>Selos para ganhar o prêmio</label><div class="inp">10</div></div>
+            <div class="fld"><span class="pin" style="top:16px;right:-10px">2</span><label>Prêmio</label><div class="inp">um frango assado grátis</div></div>
+            <div class="abtn sec" style="margin-bottom:8px;position:relative"><span class="pin" style="top:-9px;right:-9px">3</span>🔑 Trocar PIN</div>
+            <div class="row2" style="margin-bottom:8px">
+              <div class="abtn sec" style="position:relative"><span class="pin" style="top:-9px;right:-9px">4</span>⬇️ Backup</div>
+              <div class="abtn sec">⬆️ Importar</div>
+            </div>
+            <div class="abtn pri" style="position:relative"><span class="pin" style="top:-9px;right:-9px">5</span>🖨️ Imprimir cartaz do balcão</div>
+          </div>
+        </div></div>
+        <div>
+          <div class="tt">Ajustes e cartaz</div>
+          <div class="td">Você configura uma vez e esquece. Backup e cartaz ficam aqui.</div>
+          <ul class="legend">
+            <li><span class="lnum">1</span><div><b>Selos para o prêmio</b><p>Quantos selos fecham o cartão. Padrão da Brasa: 10.</p></div></li>
+            <li><span class="lnum">2</span><div><b>Prêmio</b><p>O que o cliente ganha ao completar — ex.: <b>um frango assado grátis</b>. Aparece no cartão dele.</p></div></li>
+            <li><span class="lnum">3</span><div><b>Trocar PIN</b><p>Muda a senha de 6 dígitos do Admin. Guarde bem — é ela que protege sua base.</p></div></li>
+            <li><span class="lnum">4</span><div><b>Backup (exportar/importar)</b><p>Baixa um arquivo com todos os clientes, ou restaura de um backup. Rede de segurança extra.</p></div></li>
+            <li><span class="lnum">5</span><div><b>Imprimir cartaz do balcão</b><p>Gera um cartaz A4 com o QR e a regra pra colar no balcão. O cliente escaneia e já cai no cartão.</p></div></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="note">
+        <div class="l">Dica de ouro</div>
+        <p>Deixe a página aberta no celular do balcão, logada no Admin, o dia todo. Dar selo vira questão de segundos — e cada movimento já salva na nuvem, então você abre de qualquer aparelho com o seu PIN.</p>
+      </div>
+      <div class="note warn">
+        <div class="l">PIN do balcão (opcional)</div>
+        <p>Você pode dar um <b style="color:var(--ink)">PIN de operador</b> pra quem fica no balcão: essa pessoa cadastra cliente, dá selo e entrega prêmio — mas <b style="color:var(--ink)">não vê</b> plano, PINs, backup nem os ajustes de sorteio. Seu PIN de dono continua só com você.</p>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ===== CLIENTE ===== -->
+    <section id="cliente">
+      <div class="part-h"><span class="bd"><svg class="i" viewBox="0 0 24 24"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 7h8M8 12h8M8 17h5"/></svg></span><h2>Para o seu cliente</h2></div>
+      <p class="part-sub">Sem instalar nada — é um link que abre no navegador. Ele acessa pelo código ou pelo telefone.</p>
+
+      <!-- TELA 6: cartão do cliente -->
+      <div class="screen-row">
+        <div class="device"><div class="app">
+          <div class="bar" style="justify-content:center">Brasa Caipira</div>
+          <div class="body">
+            <div class="as-head"><div class="cd">SEU CARTÃO · BC-0008</div></div>
+            <div class="counter" style="position:relative;margin-top:8px"><span class="pin" style="top:-6px;right:44px">1</span>6 de 10 selos</div>
+            <div class="aselos">
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel on"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+              <div class="asel off"></div><div class="asel off"></div><div class="asel off"></div><div class="asel off"></div>
+            </div>
+            <div style="position:relative;text-align:center;font-family:var(--mono);font-size:10px;color:#8a755d;margin-bottom:10px"><span class="pin" style="top:-8px;right:24px">2</span>Faltam 4 pra ganhar 🍗</div>
+            <div class="vch" style="position:relative;margin-bottom:9px"><span class="pin" style="top:-9px;right:-9px">3</span>BC-0008</div>
+            <div class="abtn pri" style="margin-bottom:8px;position:relative"><span class="pin" style="top:-9px;right:-9px">4</span>🤝 Convidar amigo (+1 selo)</div>
+            <div class="abtn ig" style="position:relative"><span class="pin" style="top:-9px;right:-9px">5</span>📸 Siga no Instagram</div>
+            <div class="lucky" style="position:relative"><span class="pin" style="top:-9px;right:-9px">6</span><div class="tt2">🎟️ Sorteio Brasa Caipira</div><div style="font-size:10px;color:#6b584a;margin-bottom:4px">Concorra a <b>um Combo Família</b></div><div class="num">6</div><div class="lb">números da sorte</div></div>
+          </div>
+        </div></div>
+        <div>
+          <div class="tt">O cartão do cliente</div>
+          <div class="td">É o que ele vê no celular. Bonito, animado e impossível de perder.</div>
+          <ul class="legend">
+            <li><span class="lnum">1</span><div><b>Seus selos</b><p>As bolinhas acesas são os selos que ele já juntou. Ele mostra essa tela no balcão a cada compra.</p></div></li>
+            <li><span class="lnum">2</span><div><b>Quanto falta</b><p>Mostra quantos selos faltam pro prêmio — o empurrãozinho pra voltar.</p></div></li>
+            <li><span class="lnum">3</span><div><b>Código de indicação</b><p>O "voucher" dele. Quando um amigo usa esse código na 1ª compra, ele ganha <b>+1 selo</b>.</p></div></li>
+            <li><span class="lnum">4</span><div><b>Convidar amigo</b><p>Abre o WhatsApp com o convite pronto. Cada amigo que vem enche o cartão mais rápido.</p></div></li>
+            <li><span class="lnum">5</span><div><b>Siga no Instagram</b><p>Leva direto pro Instagram da Brasa. É o que ele faz pra concorrer ao sorteio.</p></div></li>
+            <li><span class="lnum">6</span><div><b>Sorteio</b><p>Cada selo vira um <b>número da sorte</b>. Quanto mais compra, mais chances no sorteio do Combo Família.</p></div></li>
+          </ul>
+          <div class="note" style="margin-top:20px">
+            <div class="l">E quando enche?</div>
+            <p>Ao completar os 10 selos, o cartão <b style="color:var(--ink)">acende</b> e mostra "prêmio liberado". É só mostrar a tela no balcão pra retirar o frango grátis — depois zera e começa de novo.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TELA 7: cardápio do cliente -->
+      <div class="screen-row">
+        <div class="device"><div class="app">
+          <div class="bar">Cardápio</div>
+          <div class="body">
+            <div class="cat-item" style="position:relative"><span class="pin" style="top:-8px;left:30px">1</span><div class="cat-thumb">🍗</div><div class="cat-info"><div class="nm">Frango assado inteiro</div><div class="pr">Temperado na brasa · R$ 39,90</div></div></div>
+            <div class="cat-item"><div class="cat-thumb">🥩</div><div class="cat-info"><div class="nm">Costela na brasa</div><div class="pr">No ponto certo · R$ 54,90</div></div></div>
+            <div class="cat-item"><div class="cat-thumb">🍖</div><div class="cat-info"><div class="nm">Combo Família</div><div class="pr">Combos · R$ 89,90</div></div></div>
+            <div class="abtn good" style="margin-top:10px;position:relative"><span class="pin" style="top:-9px;right:-9px">2</span>🛒 Pedir no WhatsApp</div>
+          </div>
+        </div></div>
+        <div>
+          <div class="tt">O cardápio no app</div>
+          <div class="td">O cliente toca em "Ver o cardápio" no cartão e vê tudo — com foto, preço e pedido pronto.</div>
+          <ul class="legend">
+            <li><span class="lnum">1</span><div><b>Os pratos</b><p>Cada item mostra a <b>foto</b>, o nome e o preço que você cadastrou no painel. Atualiza sozinho quando você muda.</p></div></li>
+            <li><span class="lnum">2</span><div><b>Pedir no WhatsApp</b><p>Abre o seu WhatsApp com o pedido já montado. O cliente só confirma — e a venda cai direto pra você.</p></div></li>
+          </ul>
+          <div class="note" style="margin-top:20px">
+            <div class="l">Tudo num lugar só</div>
+            <p>Cartão de selos, cardápio e sorteio vivem no <b style="color:var(--ink)">mesmo link</b>. O cliente abre uma vez e tem tudo da Brasa na mão.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- FAQ -->
+    <section style="padding-top:40px">
+      <h2 style="text-align:center;margin-bottom:8px">Perguntas rápidas</h2>
+      <div class="faq">
+        <div class="qa"><b>O cliente precisa baixar aplicativo?</b><p>Não. É um link no navegador. Nada pra instalar, nem pra você nem pra ele.</p></div>
+        <div class="qa"><b>Como coloco os pratos no cardápio?</b><p>No painel do Admin, aba <b>🍗 Cardápio</b>: "+ Adicionar produto", preencha nome e preço, envie a foto e salve. Aparece pro cliente na hora.</p></div>
+        <div class="qa"><b>Como sei quem seguiu o Instagram pro sorteio?</b><p>A conferência é <b>na confiança</b> — o app não tem como ler o Instagram. O botão pede pro cliente seguir, e o número da sorte vem dos selos.</p></div>
+        <div class="qa"><b>Esqueci meu PIN do Admin. E agora?</b><p>O PIN da nuvem é a fonte da verdade. Se perdeu, fale com o suporte no WhatsApp que a gente ajuda a redefinir com segurança.</p></div>
+        <div class="qa"><b>Perde os dados se trocar de celular?</b><p>Não — clientes, selos, cardápio e sorteio ficam na nuvem. Abra o link em qualquer aparelho e entre no Admin com o PIN.</p></div>
+        <div class="qa"><b>Dei um selo errado, dá pra desfazer?</b><p>Dá. Na ficha do cliente tem <b>Desfazer</b>, e todo movimento fica no histórico.</p></div>
+      </div>
+    </section>
+
+    <section style="padding-top:20px">
+      <div class="cta">
+        <h2>Ficou com dúvida?</h2>
+        <p>Chame a Totex no WhatsApp que a gente te ajuda a configurar e a tirar o máximo do cartão da Brasa Caipira.</p>
+        <a class="btn" href="https://wa.me/5511947448137?text=Ol%C3%A1!%20Sou%20da%20Brasa%20Caipira%20e%20tenho%20uma%20d%C3%BAvida%20sobre%20o%20Cart%C3%A3o%20Fidelidade." target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg>Falar no WhatsApp</a>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>Cartão Fidelidade da Brasa Caipira · por Totex — <a href="brasa.html">voltar pra página</a></footer>
+</body>
+</html>

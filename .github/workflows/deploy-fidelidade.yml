@@ -46,11 +46,15 @@ jobs:
           cp fidelidade/index.html /tmp/totexfidelidade/index.html
           cp fidelidade/guia.html /tmp/totexfidelidade/guia.html
           cp fidelidade/jj.html /tmp/totexfidelidade/jj.html
+          cp fidelidade/brasa.html /tmp/totexfidelidade/brasa.html
+          cp fidelidade/brasa-guia.html /tmp/totexfidelidade/brasa-guia.html
           cp fidelidade/og.jpg /tmp/totexfidelidade/og.jpg
           cp fidelidade/jj-home.jpg /tmp/totexfidelidade/jj-home.jpg
+          cp fidelidade/brasa-home.jpg /tmp/totexfidelidade/brasa-home.jpg
+          cp fidelidade/brasa-logo.png /tmp/totexfidelidade/brasa-logo.png
           # anti-cache: os HTML sempre frescos; as imagens seguem cacheáveis
           NS='no-store, max-age=0, must-revalidate'
-          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/guia.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/jj.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" "$NS" > /tmp/totexfidelidade/vercel.json
+          printf '{"headers":[{"source":"/","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/index.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/guia.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/jj.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/brasa.html","headers":[{"key":"Cache-Control","value":"%s"}]},{"source":"/brasa-guia.html","headers":[{"key":"Cache-Control","value":"%s"}]}]}' "$NS" "$NS" "$NS" "$NS" "$NS" "$NS" > /tmp/totexfidelidade/vercel.json
           cat /tmp/totexfidelidade/vercel.json
           cd /tmp/totexfidelidade
           vercel deploy --prod --yes \
