@@ -78,8 +78,8 @@ Deno.serve(async (req) => {
       data.settings.operadorPin = st.settings?.operadorPin;
       data.settings.plan = st.settings?.plan;
     }
-    // trava de plano: a base não pode CRESCER além do limite (Essencial 50 / Crescimento 150)
-    const PLAN_MAX: Record<string, number> = { essencial: 50, crescimento: 150 };
+    // trava de plano: a base não pode CRESCER além do limite (Essencial 50 / Crescimento 100)
+    const PLAN_MAX: Record<string, number> = { essencial: 50, crescimento: 100 };
     const max = PLAN_MAX[String(data.settings.plan || "")] ?? Infinity;
     const oldCount = st ? (st.customers || []).length : 0;
     if (data.customers.length > max && data.customers.length > oldCount) {

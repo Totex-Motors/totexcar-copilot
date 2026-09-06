@@ -12,8 +12,10 @@
 // loja. O webhook do Co-pilot (asaas-webhook) IGNORA essa referência (não é UUID nem
 // "vq:"), então nada do Co-pilot é afetado.
 //
-// POST JSON: { plan: "essencial"|"crescimento"|"ilimitado", cycle?: "monthly"|"annual" }
+// POST JSON: { plan: "essencial"|"crescimento"|"ilimitado", cycle?: "monthly"|"annual", tenant?: "jj"|"brasa" }
 //   → { ok:true, url } (link do checkout Asaas) | { ok:false, error }
+// tenant define os PREÇOS e identifica a loja no externalReference (o fulfillment é manual).
+// Sem tenant = "jj" (comportamento legado da J.J, inalterado).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -32,12 +34,29 @@ const json = (b: unknown, s = 200) =>
 const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const SITE = "https://totexfidelidade.vercel.app";
 
-// preços da página (anual = 2 meses grátis = mensal × 10)
-const PLANS: Record<string, { name: string; monthly: number; annual: number }> = {
-  essencial:   { name: "Essencial",   monthly: 59,  annual: 590 },
-  crescimento: { name: "Crescimento", monthly: 89,  annual: 890 },
-  ilimitado:   { name: "Ilimitado",   monthly: 149, annual: 1490 },
+// preços da página POR LOJA (anual = 2 meses grátis = mensal × 10)
+type Plan = { name: string; monthly: number; annual: number };
+const TENANTS: Record<string, { label: string; plans: Record<string, Plan> }> = {
+  // J.J Espetos — preços legados (inalterados)
+  jj: {
+    label: "",
+    plans: {
+      essencial:   { name: "Essencial",   monthly: 59,  annual: 590 },
+      crescimento: { name: "Crescimento", monthly: 89,  annual: 890 },
+      ilimitado:   { name: "Ilimitado",   monthly: 149, annual: 1490 },
+    },
+  },
+  // Brasa Caipira — a partir de R$ 89 (50 clientes), R$ 129 (100 clientes), R$ 169 (ilimitado)
+  brasa: {
+    label: "Brasa",
+    plans: {
+      essencial:   { name: "Essencial",   monthly: 89,  annual: 890 },
+      crescimento: { name: "Crescimento", monthly: 129, annual: 1290 },
+      ilimitado:   { name: "Ilimitado",   monthly: 169, annual: 1690 },
+    },
+  },
 };
+const DEFAULT_TENANT = "jj";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -46,8 +65,11 @@ Deno.serve(async (req) => {
   let p: any = {};
   try { p = await req.json(); } catch { /* corpo vazio */ }
 
+  const tenantKey = String(p.tenant || "").trim().toLowerCase() || DEFAULT_TENANT;
+  const tenant = TENANTS[tenantKey];
+  if (!tenant) return json({ ok: false, error: "loja_invalida" }, 400);
   const planKey = String(p.plan || "").trim().toLowerCase();
-  const plan = PLANS[planKey];
+  const plan = tenant.plans[planKey];
   if (!plan) return json({ ok: false, error: "plano_invalido" }, 400);
   const cycle: "monthly" | "annual" = p.cycle === "annual" ? "annual" : "monthly";
   const value = cycle === "annual" ? plan.annual : plan.monthly;
@@ -65,7 +87,12 @@ Deno.serve(async (req) => {
   if ((recent?.length || 0) >= 5) return json({ ok: false, error: "muitas_tentativas" }, 429);
 
   const base = s?.asaas_sandbox ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
-  const nome = `Fidelidade ${plan.name}`.slice(0, 30);
+  const nome = `Fidelidade ${tenant.label} ${plan.name}`.replace(/\s+/g, " ").trim().slice(0, 30);
+  const nomeDesc = `Cartão Fidelidade ${tenant.label} ${plan.name}`.replace(/\s+/g, " ").trim();
+  // externalReference identifica a loja p/ o fulfillment manual; a J.J mantém o formato legado
+  const extRef = tenantKey === DEFAULT_TENANT
+    ? `fidelidade:${planKey}:${cycle}`
+    : `fidelidade:${tenantKey}:${planKey}:${cycle}`;
   const body = {
     billingTypes: ["CREDIT_CARD", "PIX"],
     chargeTypes: ["DETACHED"],
@@ -73,10 +100,10 @@ Deno.serve(async (req) => {
     callback: { successUrl: `${SITE}/?status=success`, cancelUrl: `${SITE}/?status=cancel` },
     items: [{
       name: nome,
-      description: `Assinatura Cartão Fidelidade ${plan.name} (${cycle === "annual" ? "1 ano" : "1 mês"})`,
+      description: `Assinatura ${nomeDesc} (${cycle === "annual" ? "1 ano" : "1 mês"})`,
       quantity: 1, value, imageBase64: PIXEL,
     }],
-    externalReference: `fidelidade:${planKey}:${cycle}`,
+    externalReference: extRef,
   };
 
   try {
@@ -95,9 +122,9 @@ Deno.serve(async (req) => {
 
     await admin.from("whatsapp_events").insert({
       from_phone: ip, kind: "fidelidade_checkout", status: "created", raw: {},
-      parsed: { plan: planKey, cycle, value },
+      parsed: { tenant: tenantKey, plan: planKey, cycle, value },
     });
-    return json({ ok: true, url, value, plan: planKey, cycle });
+    return json({ ok: true, url, value, plan: planKey, cycle, tenant: tenantKey });
   } catch (e) {
     console.error("Fidelidade checkout erro:", e);
     return json({ ok: false, error: String((e as any)?.message || e) }, 500);
