@@ -160,9 +160,77 @@ function cfgFromGet(j){
 /* RENDER                                                               */
 /* ==================================================================== */
 function render(){
-  if(state.view==='login')  return renderLogin();
-  if(state.view==='list')   return renderList();
-  if(state.view==='edit')   return renderEdit();
+  if(state.view==='login')    return renderLogin();
+  if(state.view==='list')     return renderList();
+  if(state.view==='edit')     return renderEdit();
+  if(state.view==='payments') return renderPayments();
+}
+
+/* ---------------- assinaturas (pagamentos do Asaas) ---------------- */
+const PAY_ALIAS = { brasa:'brasa-caipira' };            // landing legada da Brasa usa "brasa"
+function daysSince(d){ if(!d) return Infinity; const t=Date.parse(d); return isNaN(t)?Infinity:Math.floor((Date.now()-t)/86400000); }
+function brl(n){ return 'R$ '+(Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtD(d){ if(!d) return '—'; const t=Date.parse(d); return isNaN(t)?'—':new Date(t).toLocaleDateString('pt-BR'); }
+async function renderPayments(){
+  el.innerHTML = topbar() + `<div class="wrap">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="btn sm" id="pm_back">← Clientes</button>
+      <h1 style="font-size:20px">💳 Assinaturas</h1><div style="flex:1"></div>
+      <select id="pm_days" style="width:auto">
+        <option value="60">últimos 60 dias</option>
+        <option value="120" selected>últimos 120 dias</option>
+        <option value="180">últimos 180 dias</option>
+        <option value="366">último ano</option>
+      </select>
+    </div>
+    <div id="pm_body"><p class="muted">Carregando pagamentos do Asaas…</p></div>
+  </div>`;
+  bindTop();
+  $('#pm_back').onclick = ()=> loadList();
+  $('#pm_days').onchange = ()=> loadPayments(+$('#pm_days').value);
+  loadPayments(120);
+}
+async function loadPayments(days){
+  const body = $('#pm_body'); if(body) body.innerHTML = '<p class="muted">Carregando pagamentos do Asaas…</p>';
+  const j = await api('payments', { days: days||120 });
+  if(!j || !j.ok){ if(body) body.innerHTML = '<p class="muted">Erro ao ler os pagamentos'+(j&&j.error?': '+esc(j.error):'')+'.</p>'; return; }
+  const DISPLAY = Object.assign({ jj:'J.J Espetos', brasa:'Brasa Caipira', 'brasa-caipira':'Brasa Caipira' }, j.names||{});
+  const rows = {};
+  const ensure = (k)=> rows[k] || (rows[k] = { key:k, name: DISPLAY[k]||k, active:true, grp:null });
+  (j.tenants||[]).forEach(t=>{ const r=ensure(t.tenant); r.active=t.active!==false; });
+  ensure('jj');                                   // J.J roda em backend próprio, mas paga pelo mesmo Asaas
+  Object.keys(j.byTenant||{}).forEach(k=>{
+    const nk = PAY_ALIAS[k]||k; const r=ensure(nk); const g=j.byTenant[k];
+    if(!r.grp) r.grp={count:0,total:0,last:'',lastValue:0,plano:''};
+    r.grp.count+=g.count; r.grp.total+=g.total;
+    if(!r.grp.last || String(g.last)>String(r.grp.last)){ r.grp.last=g.last; r.grp.lastValue=g.lastValue; r.grp.plano=g.plano; }
+  });
+  const list = Object.values(rows).sort((a,b)=> (a.grp?daysSince(a.grp.last):9e9) - (b.grp?daysSince(b.grp.last):9e9));
+  let emDia=0, atras=0, nunca=0, recebido=0;
+  const cards = list.map(r=>{
+    const ds = r.grp ? daysSince(r.grp.last) : Infinity;
+    let badge, cls;
+    if(!r.grp){ badge='⚪ Nunca pagou'; cls='off'; nunca++; }
+    else if(ds<=35){ badge='🟢 Em dia'; cls='on'; emDia++; }
+    else { badge='🟠 Atrasado ('+ds+'d)'; cls='off'; atras++; }
+    if(r.grp) recebido += r.grp.total;
+    return `<div class="crow" style="cursor:default">
+      <div>
+        <div class="nm">${esc(r.name)} ${r.active?'':'<span class="pill off">desligado</span>'}</div>
+        <div class="meta">${r.grp?('último: '+fmtD(r.grp.last)+' · '+brl(r.grp.lastValue)+(r.grp.plano?' · '+esc(r.grp.plano):'')+' · '+r.grp.count+'x'):'sem pagamento registrado'}</div>
+      </div>
+      <div class="tags"><span class="pill ${cls}">${badge}</span></div>
+    </div>`;
+  }).join('');
+  if(body) body.innerHTML = `
+    <div class="row" style="margin-bottom:14px">
+      <div class="card" style="margin:0;text-align:center"><div style="font-size:26px;font-weight:800">${emDia}</div><div class="muted">🟢 em dia</div></div>
+      <div class="card" style="margin:0;text-align:center"><div style="font-size:26px;font-weight:800">${atras}</div><div class="muted">🟠 atrasados</div></div>
+      <div class="card" style="margin:0;text-align:center"><div style="font-size:26px;font-weight:800">${nunca}</div><div class="muted">⚪ nunca pagaram</div></div>
+      <div class="card" style="margin:0;text-align:center"><div style="font-size:22px;font-weight:800">${brl(recebido)}</div><div class="muted">recebido no período</div></div>
+    </div>
+    <div class="clist">${cards}</div>
+    <p class="hint" style="margin-top:14px">"Em dia" = pagamento confirmado no Asaas nos últimos 35 dias. Cobrança é avulsa (não recorrente) — a renovação é o cliente pagar de novo. ${(!Object.keys(j.byTenant||{}).length)?'<b>Ainda não há pagamentos confirmados</b> no Asaas neste período.':''}</p>`;
 }
 
 function renderLogin(){
@@ -220,11 +288,13 @@ function renderList(){
   el.innerHTML = topbar() + `<div class="wrap">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
       <h1 style="font-size:20px">Clientes</h1><div style="flex:1"></div>
+      <button class="btn" id="ls_pay">💳 Assinaturas</button>
       <button class="btn pri" id="ls_new">+ Novo cliente</button>
     </div>
     <div class="clist">${rows}</div>
   </div>`;
   bindTop();
+  $('#ls_pay').onclick = ()=>{ state.view='payments'; render(); };
   $('#ls_new').onclick = ()=>{ state.cfg=newCfg(); state.wa_key=''; state.tab='ident'; state.view='edit'; render(); };
   $$('.crow').forEach(r=> r.onclick = async ()=>{
     const j = await api('get',{ tenant:r.dataset.open });

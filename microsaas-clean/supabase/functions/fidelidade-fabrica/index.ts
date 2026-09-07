@@ -167,6 +167,53 @@ Deno.serve(async (req) => {
     return json({ ok: true, tenant, active });
   }
 
+  // ---------- pagamentos (assinaturas): lê o Asaas e agrupa por loja ----------
+  // Os checkouts caem no Asaas com externalReference "fidelidade:<loja>:<plano>:<ciclo>"
+  // (ou "fidelidade:<plano>:<ciclo>" p/ a J.J legada). Aqui listamos os pagamentos
+  // PAGOS recentes e agrupamos por loja, pra saber quem está em dia.
+  if (action === "payments") {
+    const { data: cfg } = await admin.from("app_settings").select("asaas_api_key, asaas_sandbox").eq("id", 1).single();
+    const apiKey = cfg?.asaas_api_key;
+    if (!apiKey) return json({ ok: false, error: "asaas_nao_configurado" }, 400);
+    const base = cfg?.asaas_sandbox ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
+    const days = Math.min(Math.max(Number(p.days) || 120, 30), 366);
+    const ge = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const PAID = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"]);
+    const payments: any[] = [];
+    let offset = 0;
+    for (let i = 0; i < 6; i++) {
+      const url = `${base}/payments?limit=100&offset=${offset}&dateCreated%5Bge%5D=${ge}`;
+      let j: any = null;
+      try { const r = await fetch(url, { headers: { access_token: apiKey } }); if (!r.ok) break; j = await r.json(); }
+      catch { break; }
+      for (const pay of (j?.data || [])) {
+        const ref = String(pay.externalReference || "");
+        if (!ref.startsWith("fidelidade:")) continue;
+        if (!PAID.has(String(pay.status))) continue;
+        const parts = ref.split(":");
+        let t = "", plano = "", ciclo = "";
+        if (parts.length >= 4) { t = parts[1]; plano = parts[2]; ciclo = parts[3]; }
+        else { t = "jj"; plano = parts[1] || ""; ciclo = parts[2] || ""; }
+        payments.push({ tenant: t, plano, ciclo, value: Number(pay.value) || 0,
+          date: pay.paymentDate || pay.clientPaymentDate || pay.confirmedDate || pay.dateCreated || "",
+          status: pay.status, billingType: pay.billingType || "" });
+      }
+      if (!j?.hasMore) break;
+      offset += 100;
+    }
+    const byTenant: Record<string, any> = {};
+    for (const pay of payments) {
+      const g = byTenant[pay.tenant] || (byTenant[pay.tenant] = { tenant: pay.tenant, count: 0, total: 0, last: "", lastValue: 0, plano: "", ciclo: "" });
+      g.count++; g.total += pay.value;
+      if (!g.last || String(pay.date) > String(g.last)) { g.last = pay.date; g.lastValue = pay.value; g.plano = pay.plano; g.ciclo = pay.ciclo; }
+    }
+    const { data: tenants } = await admin.from("fidelidade_tenants").select("tenant, active");
+    const { data: states } = await admin.from("fidelidade_state").select("tenant, data");
+    const names: Record<string, string> = {};
+    (states || []).forEach((s: any) => { names[s.tenant] = s.data?.settings?.brand?.name || s.tenant; });
+    return json({ ok: true, days, byTenant, payments: payments.slice(0, 300), tenants: tenants || [], names });
+  }
+
   // ---------- troca a chave de admin da fábrica ----------
   if (action === "change_key") {
     const nk = String(p.newKey || "").trim();
