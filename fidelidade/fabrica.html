@@ -126,7 +126,9 @@ function newCfg(){
       capabilities:{
         catalog:{ enabled:false, orderWhatsapp:true, categories:[], items:[] },
         sorteios:{ enabled:false, ticketRule:'por_selo', prize:'', drawAt:'' }
-      }
+      },
+      billing:{ mode:'off', paidUntil:'', graceDays:0, checkout:{ tenant:'', plan:'essencial', cycle:'monthly' }, payLink:'' },
+      admins:[]
     },
     landing:{
       enabled:true, checkout:'asaas', freeMonth:false, gift:false, giftText:'',
@@ -151,6 +153,8 @@ function cfgFromGet(j){
   c.settings.capabilities.catalog  = Object.assign(c.settings.capabilities.catalog,  caps.catalog||{});
   c.settings.capabilities.sorteios = Object.assign(c.settings.capabilities.sorteios, caps.sorteios||{});
   if(!Array.isArray(c.settings.capabilities.catalog.items)) c.settings.capabilities.catalog.items=[];
+  if(s.billing) c.settings.billing = Object.assign(c.settings.billing, s.billing, { checkout: Object.assign(c.settings.billing.checkout, s.billing.checkout||{}) });
+  c.settings.admins = Array.isArray(s.admins) ? s.admins.slice() : [];
   const land = (j.fabrica&&j.fabrica.landing) || null;
   if(land) c.landing = Object.assign(newCfg().landing, land, { plans: Array.isArray(land.plans)&&land.plans.length?land.plans:newCfg().landing.plans });
   return c;
@@ -304,7 +308,7 @@ function renderList(){
 }
 
 /* ---------------- editor ---------------- */
-const TABS = [['ident','Identidade'],['brand','Marca'],['rules','Regras & Plano'],['shelf','Prateleira'],['landing','Landing']];
+const TABS = [['ident','Identidade'],['brand','Marca'],['rules','Regras & Plano'],['shelf','Prateleira'],['landing','Landing'],['billing','Cobrança & Admins']];
 function renderEdit(){
   const c = state.cfg;
   el.innerHTML = topbar() + `<div class="wrap">
@@ -399,6 +403,70 @@ function renderTab(){
     body.innerHTML = renderLanding();
     bindLanding();
   }
+  else if(state.tab==='billing'){
+    body.innerHTML = renderBilling();
+    bindBilling();
+  }
+}
+
+/* -------- cobrança + admins -------- */
+function renderBilling(){
+  const bl = state.cfg.settings.billing || (state.cfg.settings.billing={mode:'off',paidUntil:'',graceDays:0,checkout:{tenant:'',plan:'essencial',cycle:'monthly'},payLink:''});
+  const co = bl.checkout || (bl.checkout={tenant:'',plan:'essencial',cycle:'monthly'});
+  const admins = state.cfg.settings.admins || (state.cfg.settings.admins=[]);
+  const adminRows = admins.map((a,i)=>`
+    <div class="plan-row">
+      <div class="grid3">
+        <div><label class="lbl">Nome</label><input data-a="${i}" data-k="name" value="${esc(a.name||'')}"></div>
+        <div><label class="lbl">WhatsApp</label><input data-a="${i}" data-k="phone" value="${esc(a.phone||'')}"></div>
+        <div><label class="lbl">PIN</label><input data-a="${i}" data-k="pin" value="${esc(a.pin||'')}" maxlength="8" inputmode="numeric"></div>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <div><label class="lbl">Nível</label>
+          <select data-a="${i}" data-k="role">
+            <option value="super" ${a.role!=='operador'?'selected':''}>Admin completo (2º dono)</option>
+            <option value="operador" ${a.role==='operador'?'selected':''}>Operador de balcão</option>
+          </select></div>
+        <div style="display:flex;align-items:end"><button class="btn sm danger" data-arem="${i}">remover</button></div>
+      </div>
+    </div>`).join('');
+  return `<div class="card"><h3>💳 Cobrança</h3>
+    <div class="grid2">
+      <div class="field"><label class="lbl">Modo</label>
+        <select id="b_mode">
+          <option value="off" ${bl.mode!=='enforce'?'selected':''}>Desligado (nunca bloqueia — ex.: teste grátis)</option>
+          <option value="enforce" ${bl.mode==='enforce'?'selected':''}>Cobrança ativa (bloqueia o painel se vencer)</option>
+        </select></div>
+      <div class="field"><label class="lbl">Pago até (vencimento)</label><input id="b_paid" type="date" value="${esc(bl.paidUntil||'')}"></div>
+      <div class="field"><label class="lbl">Dias de tolerância após vencer</label><input id="b_grace" type="number" min="0" max="30" value="${esc(bl.graceDays||0)}"></div>
+      <div class="field"><label class="lbl">Link de pagamento fixo (opcional)</label><input id="b_link" value="${esc(bl.payLink||'')}" placeholder="deixe vazio p/ gerar no Asaas"></div>
+    </div>
+    <div class="hint" style="margin:-4px 0 12px">Sem link fixo, o botão "Pagar" gera o checkout do Asaas com a loja/plano abaixo.</div>
+    <div class="grid3">
+      <div class="field"><label class="lbl">Checkout: loja (tenant)</label><input id="b_ctenant" value="${esc(co.tenant||'')}" placeholder="ex.: brasa ou ${esc(state.cfg.tenant||'slug')}"></div>
+      <div class="field"><label class="lbl">Checkout: plano</label>
+        <select id="b_cplan">
+          <option value="essencial" ${co.plan==='essencial'?'selected':''}>essencial</option>
+          <option value="crescimento" ${co.plan==='crescimento'?'selected':''}>crescimento</option>
+          <option value="ilimitado" ${co.plan==='ilimitado'?'selected':''}>ilimitado</option>
+        </select></div>
+      <div class="field" style="display:flex;align-items:end;gap:8px">
+        <button class="btn sm" id="b_paid30" type="button">Pago +30 dias</button>
+      </div>
+    </div>
+    <div class="hint">Só afeta o <b>painel do dono</b>. O cartão do cliente continua funcionando mesmo bloqueado.</div>
+  </div>
+  <div class="card"><h3>👥 Admins da loja</h3>
+    <p class="hint" style="margin:-6px 0 10px">Além do dono principal (PIN nos Ajustes/Regras), você pode dar acesso a outras pessoas com PIN próprio.</p>
+    <div id="admins">${adminRows||'<p class="muted" style="font-size:13px">Nenhum admin extra.</p>'}</div>
+    <button class="btn sm" id="b_addadmin">+ Adicionar admin</button>
+  </div>`;
+}
+function bindBilling(){
+  const admins = state.cfg.settings.admins;
+  $('#b_paid30').onclick = ()=>{ readForm(); const d=new Date(Date.now()+30*86400000); state.cfg.settings.billing.paidUntil=d.toISOString().slice(0,10); renderTab(); };
+  $('#b_addadmin').onclick = ()=>{ readForm(); admins.push({name:'',phone:'',pin:'',role:'super'}); renderTab(); };
+  $$('[data-arem]').forEach(b=> b.onclick=()=>{ readForm(); admins.splice(+b.dataset.arem,1); renderTab(); });
 }
 
 function photoField(label, key, val){
@@ -600,6 +668,15 @@ function readForm(){
       if(k==='hot') L.plans[i].hot=inp.checked;
       else if(k==='price'){ let v=(inp.value||'').replace(',','.'); const n=parseFloat(v); L.plans[i].price=isFinite(n)?n:0; }
       else L.plans[i][k]=inp.value; });
+  }
+  else if(state.tab==='billing'){
+    const bl=s.billing||(s.billing={checkout:{}}); const co=bl.checkout||(bl.checkout={});
+    bl.mode=val('b_mode')||bl.mode; bl.paidUntil=val('b_paid')??bl.paidUntil;
+    bl.graceDays=parseInt(val('b_grace')||'0',10)||0; bl.payLink=(val('b_link')||'').trim();
+    co.tenant=(val('b_ctenant')||'').trim(); co.plan=val('b_cplan')||co.plan||'essencial'; co.cycle=co.cycle||'monthly';
+    (s.admins||[]).forEach((a,i)=>{
+      $$('#admins [data-a="'+i+'"]').forEach(inp=>{ a[inp.dataset.k]= inp.dataset.k==='pin' ? (inp.value||'').trim() : inp.value; });
+    });
   }
 }
 
