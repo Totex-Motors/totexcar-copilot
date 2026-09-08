@@ -37,9 +37,22 @@ async function resolveTenant(k: string): Promise<string | null> {
 }
 
 const pinRole = (st: any, pin: string): "super" | "operador" | null => {
-  if (pin === String(st?.settings?.pin || "")) return "super";
-  if (st?.settings?.operadorPin && pin === String(st.settings.operadorPin)) return "operador";
+  const s = st?.settings || {};
+  if (pin === String(s.pin || "")) return "super";
+  if (Array.isArray(s.admins)) {
+    const a = s.admins.find((x: any) => String(x.pin) === String(pin) && String(x.pin) !== "");
+    if (a) return a.role === "operador" ? "operador" : "super";  // admin nomeado (ex.: Erick) = dono
+  }
+  if (s.operadorPin && pin === String(s.operadorPin)) return "operador";
   return null;
+};
+// assinatura vencida? (só quando mode enforce) — usa o billing GRAVADO, não o que vem do cliente
+const billingOverdue = (st: any): boolean => {
+  const b = st?.settings?.billing;
+  if (!b || b.mode !== "enforce") return false;
+  const pu = b.paidUntil ? Date.parse(b.paidUntil) : NaN;
+  const grace = (Number(b.graceDays) || 0) * 86400000;
+  return isNaN(pu) || Date.now() > pu + grace;
 };
 
 Deno.serve(async (req) => {
@@ -69,6 +82,8 @@ Deno.serve(async (req) => {
     // bootstrap (loja nova sem estado): quem grava é o dono; com estado, valida o PIN
     const role = st ? pinRole(st, String(p.pin || "")) : "super";
     if (st && !role) return json({ ok: false, error: "pin_invalido" }, 403);
+    // cobrança: assinatura vencida (enforce) bloqueia a gravação do painel do dono
+    if (st && billingOverdue(st)) return json({ ok: false, error: "assinatura_pendente" }, 402);
     const data = p.data;
     if (!data || !Array.isArray(data.customers) || !data.settings) return json({ ok: false, error: "dados_invalidos" }, 400);
     if (JSON.stringify(data).length > 2_000_000) return json({ ok: false, error: "dados_grandes" }, 400);
@@ -77,6 +92,11 @@ Deno.serve(async (req) => {
       data.settings.pin = st.settings?.pin;
       data.settings.operadorPin = st.settings?.operadorPin;
       data.settings.plan = st.settings?.plan;
+    }
+    // cobrança e admins são controlados SÓ pela fábrica — o app nunca sobrescreve
+    if (st) {
+      data.settings.billing = st.settings?.billing;
+      data.settings.admins = st.settings?.admins;
     }
     // trava de plano: a base não pode CRESCER além do limite (Essencial 50 / Crescimento 100)
     const PLAN_MAX: Record<string, number> = { essencial: 50, crescimento: 100 };

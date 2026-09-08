@@ -124,6 +124,9 @@ Deno.serve(async (req) => {
     // força o endpoint/chave da nuvem certos (função multi-loja + a chave desta loja)
     settings.waEndpoint = FIDELIDADE_FN;
     settings.waKey = wa_key;
+    // preserva cobrança/admins se o painel não os enviou (evita apagar sem querer)
+    if (settings.billing === undefined && prev.settings?.billing) settings.billing = prev.settings.billing;
+    if (settings.admins === undefined && prev.settings?.admins) settings.admins = prev.settings.admins;
     const data = {
       settings,
       fabrica: { landing: cfg.landing || {}, updatedAt: new Date().toISOString() },

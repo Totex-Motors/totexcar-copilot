@@ -359,6 +359,10 @@
   .admin-sub button.active{background:var(--smoke-2);color:var(--ember);border-color:var(--ember)}
 
   .footer-note{text-align:center;font-size:12px;color:#8a6f57;padding:4px 20px 0}
+  .bill-warn{display:flex;align-items:center;gap:10px;justify-content:space-between;background:rgba(224,127,36,.14);border:1px solid rgba(224,127,36,.4);color:#8a5a12;border-radius:12px;padding:10px 14px;margin:0 0 14px;font-size:13.5px;font-weight:600}
+  .bill-warn .pill-btn{flex:none}
+  .paywall{max-width:420px;margin:6vh auto 0;text-align:center;padding:0 6px}
+  .paywall .pw-ic{font-size:52px;line-height:1}
 
   /* ---------- indicação ---------- */
   .voucher-code{
@@ -593,6 +597,21 @@ function isDemoJunior(c){
 function save(d){ try{ localStorage.setItem(LS_KEY, JSON.stringify(d)); }catch(e){} }
 
 // identidade da marca em uso (com fallback para os padrões da J.J)
+// papel do PIN: dono (super), operador, ou admin nomeado (settings.admins[]) — Erick, etc.
+function roleForPin(pin){
+  const s = (db && db.settings) || {};
+  if(pin === s.pin) return 'super';
+  const adm = (s.admins||[]).find(a=>String(a.pin)===String(pin));
+  if(adm) return adm.role==='operador' ? 'operador' : 'super';
+  if(s.operadorPin && pin === s.operadorPin) return 'operador';
+  return null;
+}
+// cobrança: bloqueia o PAINEL DO DONO quando a assinatura está vencida (mode enforce).
+// Só afeta o dono/operador — o cartão do cliente continua normal.
+function billingCfg(){ return (db && db.settings && db.settings.billing) || null; }
+function billingDaysLeft(){ const b=billingCfg(); if(!b) return Infinity; const pu=b.paidUntil?Date.parse(b.paidUntil):NaN; if(isNaN(pu)) return -Infinity; return Math.ceil((pu-Date.now())/86400000); }
+function billingBlocked(){ const b=billingCfg(); if(!b || b.mode!=='enforce') return false; const grace=(b.graceDays||0); return billingDaysLeft() < -grace; }
+function billingWarn(){ const b=billingCfg(); if(!b || b.mode!=='enforce' || billingBlocked()) return false; const d=billingDaysLeft(); return d<=7; }
 function brand(){ return (db && db.settings && db.settings.brand) || DEFAULTS.settings.brand; }
 // capacidades opcionais da prateleira (catálogo, sorteio...) ligadas por cliente
 function caps(){ return (db && db.settings && db.settings.capabilities) || {}; }
@@ -1382,9 +1401,36 @@ function viewCatalog(){
   </main>`;
 }
 
+/* ===================== COBRANÇA (paywall do painel) ===================== */
+function viewPaywall(){
+  const b = billingCfg()||{};
+  const venc = b.paidUntil ? new Date(Date.parse(b.paidUntil)).toLocaleDateString('pt-BR') : null;
+  return `<main>
+    <div class="paywall">
+      <div class="pw-ic">⏳</div>
+      <h1 class="screen-title" style="margin:8px 0 4px">Assinatura pendente</h1>
+      <p class="muted">Pra continuar usando o painel da <b>${esc(brand().name)}</b>, é preciso renovar a assinatura do Cartão Fidelidade.</p>
+      ${venc?`<p class="muted" style="font-size:13px;margin-top:6px">Venceu em ${venc}.</p>`:''}
+      <div class="panel" style="margin-top:16px">
+        <button class="btn btn-primary btn-block" data-act="payNow">💳 Pagar agora</button>
+        <button class="btn btn-ghost btn-block" data-act="payCheck" style="margin-top:8px">Já paguei — atualizar</button>
+        <button class="btn btn-ghost btn-block" data-act="lock" style="margin-top:8px">Sair</button>
+      </div>
+      <p class="footer-note">O cartão dos seus clientes continua funcionando normalmente. Dúvidas? Fale com a Totex.</p>
+    </div>
+  </main>`;
+}
+function payCheckoutUrl(){
+  const b = billingCfg()||{}; if(b.payLink) return {link:b.payLink};
+  const co = b.checkout||{}; const tnt = co.tenant||''; const plan = co.plan||db.settings.plan||'essencial';
+  const ep = (db.settings.waEndpoint||'').replace(/\/functions\/v1\/.*$/,'/functions/v1/fidelidade-checkout');
+  return { tnt, plan, cycle: co.cycle||'monthly', ep };
+}
+
 /* ===================== ADMIN ===================== */
 function viewAdmin(){
   if(!state.adminOk) return viewPin();
+  if(billingBlocked()) return viewPaywall();
   const s = db.settings;
   const month0 = new Date(); month0.setDate(1); month0.setHours(0,0,0,0);
   const stampsMonth = db.customers.reduce((n,c)=> n + c.history.filter(h=>(h.t==='stamp'||h.t==='referral') && h.ts>=+month0).length, 0);
@@ -1397,7 +1443,10 @@ function viewAdmin(){
   if(state.adminSub==='ajustes') body = adminAjustes();
   if(state.adminSub==='cardapio') body = adminCardapio();
 
+  const warn = billingWarn() ? (()=>{ const d=billingDaysLeft();
+    return `<div class="bill-warn"><span>⏳ Sua assinatura ${d>=0?('vence em <b>'+d+' dia'+(d===1?'':'s')+'</b>'):'está vencendo'}. Renove pra não bloquear o painel.</span><button class="pill-btn" data-act="payNow">Pagar</button></div>`; })() : '';
   return `<main>
+    ${warn}
     <h1 class="screen-title">Painel da churrasqueira</h1>
     <div class="stats">
       <div class="stat"><b>${realCount()}</b><span>${planMax()!==Infinity ? 'de '+planMax()+' clientes' : 'clientes'}</span></div>
@@ -1744,14 +1793,14 @@ async function checkPin(){
   state.pinBusy = false;
   if(res.status === 'ok' && res.hadData){
     state.adminOk = true; authPin = pin;
-    state.role = (pin === db.settings.pin) ? 'super' : 'operador';
+    state.role = roleForPin(pin) || 'operador';
     if(res.merged){ scheduleSync(); toast('☁️ '+res.merged+' registro(s) deste aparelho enviados pra nuvem.'); }
   } else if(res.status === 'pin'){
     state.pinErr = true;
   } else {
     // nuvem vazia ou fora do ar: valida local; o primeiro push cria o banco
-    if(pin === db.settings.pin){ state.adminOk = true; authPin = pin; state.role='super'; scheduleSync(); }
-    else if(db.settings.operadorPin && pin === db.settings.operadorPin){ state.adminOk = true; authPin = pin; state.role='operador'; scheduleSync(); }
+    const r = roleForPin(pin);
+    if(r){ state.adminOk = true; authPin = pin; state.role = r; scheduleSync(); }
     else state.pinErr = true;
   }
   render();
@@ -1842,6 +1891,22 @@ function action(act, el){
     }
     case 'dismissInvite':
       state.invite=null; localStorage.removeItem(LS_KEY+':invite'); render(); break;
+    case 'payNow':{
+      const pc = payCheckoutUrl();
+      if(pc.link){ window.open(pc.link,'_blank'); break; }
+      const waFall = ()=> window.open('https://wa.me/5511947448137?text='+encodeURIComponent('Quero renovar a assinatura do Cartão Fidelidade da '+brand().name),'_blank');
+      if(!pc.tnt || !pc.ep){ waFall(); break; }
+      toast('Abrindo pagamento…');
+      fetch(pc.ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tenant:pc.tnt,plan:pc.plan,cycle:pc.cycle})})
+        .then(r=>r.json()).then(d=>{ if(d&&d.ok&&d.url) window.location.href=d.url; else waFall(); }).catch(waFall);
+      break;
+    }
+    case 'payCheck':{
+      if(!authPin){ render(); break; }
+      toast('Atualizando…');
+      pullState(authPin).then(()=>{ render(); toast(billingBlocked() ? 'Ainda consta pendente. Se acabou de pagar, aguarde alguns minutos.' : 'Liberado! 🎉'); });
+      break;
+    }
     case 'lock':
       state.adminOk=false; state.role=null; authPin=null; state.pinBuf=''; render(); break;
     case 'create':{
