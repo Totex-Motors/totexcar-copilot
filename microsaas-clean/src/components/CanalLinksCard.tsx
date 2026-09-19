@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,25 @@ const brl = (v: any) => (v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` :
 // carro (marcado origem=canal). Cole o link no post do Canal — o WhatsApp monta o card sozinho.
 const OFERTA_BASE = "https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/oferta";
 
+// Lembra a lista de carros no próprio celular. Sem isso, ao sair pro WhatsApp colar o post e voltar,
+// o navegador descarta a página em 2º plano, ela recarrega do zero e a lista some (o lojista tinha
+// que clicar em "Carregar" de novo). Com o cache, a lista reaparece na hora. TTL de 12h.
+const LS_KEY = "totex_canal_cars_v1";
+const LS_TTL_MS = 12 * 60 * 60 * 1000;
+
+function lerCache(): any[] | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const { cars, at } = JSON.parse(raw);
+    if (!Array.isArray(cars) || !at || Date.now() - at > LS_TTL_MS) return null;
+    return cars;
+  } catch { return null; }
+}
+function salvarCache(cars: any[]) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ cars, at: Date.now() })); } catch { /* modo privado etc. */ }
+}
+
 // Gera os links do CANAL do WhatsApp por carro do estoque da loja. Reaproveita o action stand_qr_kit
 // do dealer-api (mesma lista de carros).
 export function CanalLinksCard() {
@@ -19,12 +38,17 @@ export function CanalLinksCard() {
   const [cars, setCars] = useState<any[] | null>(null);
   const [gerandoPost, setGerandoPost] = useState<string | null>(null);
 
+  // ao montar (inclusive quando o navegador recarrega a página ao voltar do WhatsApp): reidrata do cache
+  useEffect(() => { const c = lerCache(); if (c) setCars(c); }, []);
+
   const carregar = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("dealer-api", { body: { action: "stand_qr_kit" } });
       if (error) throw error;
-      setCars(((data as any)?.cars || []) as any[]);
+      const lista = ((data as any)?.cars || []) as any[];
+      setCars(lista);
+      salvarCache(lista);
     } catch (e: any) {
       toast({ title: "Não consegui carregar", description: String(e?.message || e), variant: "destructive" });
     } finally {
@@ -86,6 +110,14 @@ export function CanalLinksCard() {
 
         {cars && cars.length === 0 && (
           <p className="text-sm text-muted-foreground">Não achei estoque desta loja no marketplace.</p>
+        )}
+
+        {cars && cars.length > 0 && (
+          <div className="flex justify-end -mb-1">
+            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground" onClick={carregar} disabled={loading}>
+              <Loader2 className={`w-3.5 h-3.5 ${loading ? "animate-spin" : "hidden"}`} /> Atualizar lista
+            </Button>
+          </div>
         )}
 
         {cars && cars.length > 0 && (
