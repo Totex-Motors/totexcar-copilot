@@ -312,6 +312,49 @@ Deno.serve(async (req) => {
       case "me":
         return json({ ok: true, dealer: { id: me.id, name: me.name, email: me.email, role: me.role, dealership: me.dealership } });
 
+      // INDIQUE E GANHE (lado do lojista): lista indicações da loja, confirma venda indicada e libera comissão.
+      case "referral_list": {
+        let q = admin.from("referral_events")
+          .select("id, owner_id, referral_code, dealership, car_title, type, value, status, created_at, paid_at")
+          .order("created_at", { ascending: false }).limit(100);
+        if (writeStore) q = q.eq("dealership", writeStore);
+        const { data, error } = await q;
+        if (error) throw error;
+        const ids = [...new Set((data || []).map((e: any) => e.owner_id).filter(Boolean))];
+        const nomes: Record<string, string> = {};
+        if (ids.length) {
+          const { data: us } = await admin.from("users").select("id, name, phone").in("id", ids);
+          (us || []).forEach((u: any) => { nomes[u.id] = u.name || u.phone || "—"; });
+        }
+        return json({ ok: true, eventos: (data || []).map((e: any) => ({ ...e, indicador: nomes[e.owner_id] || e.referral_code || "—" })) });
+      }
+
+      // confirma que a indicação (lead) VIROU VENDA → cria o evento de comissão (a receber)
+      case "referral_confirm_sale": {
+        const leadId = p.lead_id, value = Number(p.value);
+        if (!leadId || !(value > 0)) return json({ error: "lead_id_e_valor_obrigatorios" }, 400);
+        const { data: lead } = await admin.from("referral_events").select("owner_id, referral_code, dealership, car_title, car_external_id").eq("id", leadId).single();
+        if (!lead?.owner_id) return json({ error: "lead_nao_encontrado" }, 404);
+        if (writeStore && lead.dealership && lead.dealership !== writeStore) return json({ error: "outra_loja" }, 403);
+        const { error } = await admin.from("referral_events").insert({
+          owner_id: lead.owner_id, referral_code: lead.referral_code, dealership: lead.dealership || writeStore || null,
+          car_external_id: lead.car_external_id, car_title: lead.car_title, type: "sale", value, status: "pending",
+        });
+        if (error) throw error;
+        return json({ ok: true });
+      }
+
+      // libera a comissão: move a venda de "a receber" (pending) para "pago"
+      case "referral_mark_paid": {
+        if (!p.id) return json({ error: "id_obrigatorio" }, 400);
+        let q = admin.from("referral_events").update({ status: "paid", paid_at: new Date().toISOString() })
+          .eq("id", p.id).eq("type", "sale");
+        if (writeStore) q = q.eq("dealership", writeStore);
+        const { error } = await q;
+        if (error) throw error;
+        return json({ ok: true });
+      }
+
       // FUNIL DO STAND da loja do lojista (por promotor). O stand usa SLUG; a loja é por NOME →
       // resolve nome→slug no marketplace. Admin sem escopo vê tudo; com ?dealership= filtra por nome.
       case "stand_report": {

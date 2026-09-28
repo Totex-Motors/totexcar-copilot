@@ -23,6 +23,21 @@ function shareToFriend(link: string, msg: string) {
   window.open(`https://wa.me/?text=${encodeURIComponent(`${msg} ${link}`)}`, "_blank", "noopener");
 }
 
+// Co-pilot da rede (API oficial) — o link de indicação abre a conversa JÁ no carro e com o crédito de quem indicou
+const COPILOT = "5511963786699";
+function copilotShareLink(carId: string, code?: string | null): string {
+  const inner = `Quero ver esse carro 🚗 #oferta ${carId}${code ? ` ind:${code}` : ""}`;
+  return `https://wa.me/${COPILOT}?text=${encodeURIComponent(inner)}`;
+}
+// compartilhar em 1 toque: usa a folha nativa do sistema (grupos, status, qualquer app); fallback = wa.me
+async function shareSmart(text: string, url: string) {
+  try {
+    if (typeof navigator !== "undefined" && (navigator as any).share) { await (navigator as any).share({ text, url }); return; }
+  } catch { return; /* usuário cancelou */ }
+  try { await navigator.clipboard?.writeText(`${text} ${url}`); } catch { /* */ }
+  window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank", "noopener");
+}
+
 export default function Indique() {
   const { userData, userId, loading } = useCurrentUser();
   const { data: feed, isLoading: loadingFeed } = useMarketplaceFeed(!!userId);
@@ -212,10 +227,13 @@ function CarCard({ car, code, storeName, offer, onCopy }: {
   offer: string;
   onCopy: (link: string) => void;
 }) {
-  const link = carReferralLink(car.url, code);
+  const mkLink = carReferralLink(car.url, code);           // ficha no marketplace (com ?ref)
+  const coLink = copilotShareLink(car.id, code);           // conversa no Co-pilot (crédito da indicação)
+  const preco = car.price != null ? brl(Number(car.price)) : "Consulte";
+  const post = `Olha esse ${car.title} (${preco}) na ${storeName}! Pela minha indicação você ganha ${offer}. Chama aqui que já te mostro tudo:`;
   return (
     <div className="rounded-xl border overflow-hidden flex flex-col">
-      <a href={link} target="_blank" rel="noreferrer" className="aspect-[3/2] bg-muted block">
+      <a href={mkLink} target="_blank" rel="noreferrer" className="aspect-[3/2] bg-muted block">
         {car.photo_url
           ? <img src={car.photo_url} alt={car.title} className="w-full h-full object-cover" loading="lazy" />
           : <div className="w-full h-full flex items-center justify-center text-muted-foreground"><Car className="w-10 h-10" /></div>}
@@ -223,19 +241,19 @@ function CarCard({ car, code, storeName, offer, onCopy }: {
       <div className="p-3 flex flex-col gap-1 flex-1">
         <p className="font-semibold truncate">{car.title}</p>
         {car.version && <p className="text-xs text-muted-foreground truncate">{car.version}</p>}
-        <p className="text-lg font-bold text-primary">{car.price != null ? brl(Number(car.price)) : "Consulte"}</p>
+        <p className="text-lg font-bold text-primary">{preco}</p>
         <p className="text-xs text-muted-foreground truncate">
           {[car.km != null ? `${Number(car.km).toLocaleString("pt-BR")} km` : null, car.color, car.fuel].filter(Boolean).join(" · ")}
         </p>
         <div className="flex gap-2 mt-2">
-          <Button size="sm" className="flex-1 bg-gradient-primary" onClick={() => shareToFriend(link, `Olha esse ${car.title} na ${storeName}! Pela minha indicação você ganha: ${offer}. Veja aqui:`)}>
+          <Button size="sm" className="flex-1 bg-gradient-primary" onClick={() => shareSmart(post, coLink)} title="Compartilhar em grupos, status ou pra um amigo">
             <Share2 className="w-4 h-4 mr-1.5" /> Indicar
           </Button>
-          <Button size="sm" variant="outline" onClick={() => onCopy(link)} title="Copiar link">
+          <Button size="sm" variant="outline" onClick={() => onCopy(`${post} ${coLink}`)} title="Copiar post pronto (cole no grupo ou status)">
             <Copy className="w-4 h-4" />
           </Button>
-          <Button size="sm" variant="outline" asChild title="Abrir no marketplace">
-            <a href={link} target="_blank" rel="noreferrer"><ExternalLink className="w-4 h-4" /></a>
+          <Button size="sm" variant="outline" asChild title="Abrir a ficha no marketplace">
+            <a href={mkLink} target="_blank" rel="noreferrer"><ExternalLink className="w-4 h-4" /></a>
           </Button>
         </div>
       </div>
