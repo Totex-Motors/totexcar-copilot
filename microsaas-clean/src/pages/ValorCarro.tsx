@@ -47,25 +47,22 @@ export default function ValorCarro() {
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center px-4 py-8" style={{ colorScheme: "dark" }}>
       <style>{`
-        @property --tvA { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
-        .tv-neon { position: relative; border-radius: 26px; isolation: isolate; }
-        /* ponto de luz neon percorrendo a borda do quadrado */
+        /* caixa com borda neon: gradiente girando por trás + face por cima (recorte = ponto que percorre) */
+        .tv-neon { position: relative; border-radius: 26px; padding: 2.5px; overflow: hidden;
+          background: rgba(47,230,214,.16); box-shadow: 0 0 32px rgba(47,230,214,.30); }
         .tv-neon::before {
-          content: ""; position: absolute; inset: -1.5px; border-radius: inherit; padding: 2.5px;
-          background: conic-gradient(from var(--tvA), transparent 0 62%, rgba(47,230,214,.35) 74%, rgba(47,230,214,.9) 84%, #f2fffd 89%, rgba(47,230,214,.9) 92%, transparent 100%);
-          -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-          -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-          mask-composite: exclude; animation: tvspin 3.4s linear infinite;
-          filter: drop-shadow(0 0 6px rgba(47,230,214,.8)); pointer-events: none; z-index: 2;
+          content: ""; position: absolute; left: 50%; top: 50%; width: 240%; aspect-ratio: 1;
+          transform: translate(-50%,-50%) rotate(0deg); z-index: 0;
+          background: conic-gradient(from 0deg, transparent 0 57%, rgba(47,230,214,.35) 72%, rgba(47,230,214,.9) 85%, #f2fffd 89%, rgba(47,230,214,.9) 93%, transparent 100%);
+          animation: tvspin 3.6s linear infinite;
         }
-        @keyframes tvspin { to { --tvA: 360deg; } }
+        @keyframes tvspin { to { transform: translate(-50%,-50%) rotate(360deg); } }
         @media (prefers-reduced-motion: reduce) { .tv-neon::before { animation: none; } }
-        /* borda 3D: bevel de luz em cima, sombra profunda embaixo + brilho externo */
+        /* face 3D: bevel de luz em cima, sombra profunda embaixo */
         .tv-face {
           position: relative; z-index: 1; border-radius: 24px; background: linear-gradient(160deg, #141414 0%, #0a0a0a 55%, #060606 100%);
-          border: 1px solid rgba(47,230,214,.28);
-          box-shadow: 0 0 30px rgba(47,230,214,.28), inset 0 1.5px 0 rgba(255,255,255,.10),
-            inset 0 -3px 12px rgba(0,0,0,.75), inset 2px 2px 6px rgba(47,230,214,.06), inset -2px -2px 8px rgba(0,0,0,.6);
+          box-shadow: inset 0 1.5px 0 rgba(255,255,255,.10), inset 0 -3px 12px rgba(0,0,0,.75),
+            inset 2px 2px 6px rgba(47,230,214,.06), inset -2px -2px 8px rgba(0,0,0,.6);
         }
       `}</style>
       <div className="w-full max-w-md flex flex-col items-center">
