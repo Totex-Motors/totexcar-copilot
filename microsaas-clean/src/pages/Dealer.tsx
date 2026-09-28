@@ -242,6 +242,7 @@ export default function Dealer() {
             <TabsTrigger value="recompras" className="gap-2"><Banknote className="w-4 h-4" /> Recompras</TabsTrigger>
             <TabsTrigger value="posvenda" className="gap-2"><HeartHandshake className="w-4 h-4" /> Sucesso do Cliente</TabsTrigger>
             <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
+            <TabsTrigger value="indicacoes" className="gap-2"><Gift className="w-4 h-4" /> Indicações</TabsTrigger>
           </TabsList>
 
           <TabsContent value="clientes" className="mt-6 space-y-6">
@@ -319,6 +320,10 @@ export default function Dealer() {
 
           <TabsContent value="stand" className="mt-6">
             <StandLeadsPanel source="dealer" dealership={viewStore} />
+          </TabsContent>
+
+          <TabsContent value="indicacoes" className="mt-6">
+            <ReferralTab />
           </TabsContent>
         </Tabs>
       </main>
@@ -1067,5 +1072,122 @@ function ClientSheet({ client, onClose }: { client: DealerClient | null; onClose
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+// INDIQUE E GANHE (lado do lojista): confirma a venda indicada e libera a comissão.
+// Lead = clique/interesse que veio por indicação; Venda = comissão a pagar (pending → paid).
+function ReferralTab() {
+  const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v) || 0);
+  const [eventos, setEventos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [valores, setValores] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const carregar = async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase.functions.invoke("dealer-api", { body: { action: "referral_list" } });
+      setEventos(((data as any)?.eventos) || []);
+    } catch { /* */ } finally { setLoading(false); }
+  };
+  useEffect(() => { carregar(); }, []);
+
+  const leads = eventos.filter((e) => e.type !== "sale");
+  const vendas = eventos.filter((e) => e.type === "sale");
+  const aReceber = vendas.filter((e) => e.status === "pending").reduce((s, e) => s + Number(e.value || 0), 0);
+  const pago = vendas.filter((e) => e.status === "paid").reduce((s, e) => s + Number(e.value || 0), 0);
+
+  const confirmarVenda = async (leadId: string) => {
+    const v = Number(String(valores[leadId] || "").replace(/[^\d,.-]/g, "").replace(".", "").replace(",", "."));
+    if (!(v > 0)) { toast({ title: "Informe o valor da comissão", variant: "destructive" }); return; }
+    setBusy(leadId);
+    try {
+      const { data } = await supabase.functions.invoke("dealer-api", { body: { action: "referral_confirm_sale", lead_id: leadId, value: v } });
+      if ((data as any)?.ok) { toast({ title: "Venda confirmada ✅", description: "Comissão lançada como 'a receber'." }); setValores((s) => ({ ...s, [leadId]: "" })); await carregar(); }
+      else toast({ title: "Não deu", description: String((data as any)?.error || ""), variant: "destructive" });
+    } catch (e: any) { toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }); }
+    finally { setBusy(null); }
+  };
+
+  const liberar = async (id: string) => {
+    setBusy(id);
+    try {
+      const { data } = await supabase.functions.invoke("dealer-api", { body: { action: "referral_mark_paid", id } });
+      if ((data as any)?.ok) { toast({ title: "Comissão liberada 💸", description: "Marcada como paga." }); await carregar(); }
+    } catch (e: any) { toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }); }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><Users className="w-4 h-4" /> Leads por indicação</div>
+          <div className="text-3xl font-bold mt-1">{leads.length}</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><Gift className="w-4 h-4" /> Vendas indicadas</div>
+          <div className="text-3xl font-bold mt-1">{vendas.length}</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><Wallet className="w-4 h-4" /> A pagar</div>
+          <div className="text-3xl font-bold mt-1 text-warning">{brl(aReceber)}</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><Wallet className="w-4 h-4" /> Já pago</div>
+          <div className="text-3xl font-bold mt-1 text-primary">{brl(pago)}</div>
+        </CardContent></Card>
+      </div>
+
+      {/* Leads por indicação → confirmar venda */}
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Gift className="w-5 h-5" /> Confirmar venda indicada</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          {loading ? <div className="p-8 text-center text-muted-foreground">Carregando...</div>
+            : leads.length ? (
+              <div className="divide-y divide-border">
+                {leads.map((e) => (
+                  <div key={e.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{e.car_title || "Carro indicado"}</p>
+                      <p className="text-xs text-muted-foreground">Indicado por <b className="text-foreground">{e.indicador}</b> · {new Date(e.created_at).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Input className="w-32" placeholder="Comissão R$" value={valores[e.id] || ""} onChange={(ev) => setValores((s) => ({ ...s, [e.id]: ev.target.value }))} />
+                      <Button size="sm" disabled={busy === e.id} onClick={() => confirmarVenda(e.id)}>Confirmar venda</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : <div className="p-8 text-center text-muted-foreground">Nenhum lead por indicação ainda. Quando alguém abrir um carro pelo link de indicação, ele aparece aqui.</div>}
+        </CardContent>
+      </Card>
+
+      {/* Comissões (a pagar / pagas) */}
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Wallet className="w-5 h-5" /> Comissões</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          {vendas.length ? (
+            <div className="divide-y divide-border">
+              {vendas.map((e) => (
+                <div key={e.id} className="flex items-center justify-between gap-3 p-4">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{e.car_title || "Venda indicada"}</p>
+                    <p className="text-xs text-muted-foreground">{e.indicador} · {new Date(e.created_at).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="font-semibold">{brl(e.value)}</span>
+                    {e.status === "paid"
+                      ? <Badge className="bg-green-500/15 text-green-600 border-0">pago</Badge>
+                      : <Button size="sm" variant="outline" disabled={busy === e.id} onClick={() => liberar(e.id)}>Liberar comissão</Button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <div className="p-8 text-center text-muted-foreground">Sem vendas indicadas ainda.</div>}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -3180,14 +3180,18 @@ async function handleCanalOferta(phone: string, text: string, contactName?: stri
     const { data: ln } = await supabase.from("oferta_links").select("car_id").eq("code", carroId).maybeSingle();
     if (ln?.car_id) carroId = ln.car_id;
   }
+  // Indique e Ganhe: "ind:<código>" no link → atribui a indicação a quem compartilhou (referral_events)
+  const indM = String(text || "").match(/\bind:([a-z0-9]{4,})\b/i);
+  const indCode = indM ? indM[1].toLowerCase() : null;
   try {
-    const parsed = { loja: "geral", promotor: "canal", origem: "canal", carro: carroId, nome: contactName || null };
+    const parsed = { loja: "geral", promotor: "canal", origem: indCode ? "indicacao" : "canal", carro: carroId, ind: indCode, nome: contactName || null };
     const { data: leadRow } = await supabase.from("whatsapp_events").insert({
       from_phone: phone, kind: "stand_lead", status: "processed", raw: { text }, parsed,
     }).select("id").single();
     const leadId = (leadRow as any)?.id || null;
     const nome = contactName ? `, ${contactName.split(" ")[0]}` : "";
-    await sendText(phone, `Opa${nome}! 👋 Que bom que veio do nosso canal. Já te mostro os carros — desliza pro lado e toca em *Ver carro* no que curtir. Ou me diz o que procura (ex.: "SUV até 80 mil", "Strada"). 🚗`);
+    await sendText(phone, `Opa${nome}! 👋 Que bom que veio${indCode ? " pela indicação de um amigo" : " do nosso canal"}. Já te mostro os carros — desliza pro lado e toca em *Ver carro* no que curtir. Ou me diz o que procura (ex.: "SUV até 80 mil", "Strada"). 🚗`);
+    let indTitle: string | null = null;
     if (carroId) {
       try {
         const res = await fetch(`${MARKETPLACE_URL}/api/vehicles/${encodeURIComponent(carroId)}`, { headers: { Accept: "application/json" } });
@@ -3195,6 +3199,7 @@ async function handleCanalOferta(phone: string, text: string, contactName?: stri
           const v = await res.json();
           const sHl = await getSettings();
           const titulo = carNome(v);
+          indTitle = titulo;
           const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
           // ÁLBUM: até 5 fotos DESTE carro direto no chat — o cliente vê o carro sem clicar em nada.
           // Uploads em paralelo (cache wa_media_cache), envio em ordem pra capa chegar primeiro.
@@ -3205,12 +3210,24 @@ async function handleCanalOferta(phone: string, text: string, contactName?: stri
           for (let i = 0; i < fotos.length; i++) {
             if (!medias[i]) continue;
             const legenda = i === 0
-              ? `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nEste é o do canal — ficha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`
+              ? `⭐ *${titulo}* ${v.year || ""}\n${preco}\n\nFicha completa: ${MARKETPLACE_URL}/veiculo/${v.id}`
               : undefined;
             await waSendImage(sHl, phone, fotos[i], legenda, medias[i] || undefined);
           }
         }
       } catch { /* segue pra vitrine */ }
+    }
+    // credita o LEAD ao indicador (só clique/lead aqui; a VENDA é confirmada pelo lojista no painel)
+    if (indCode) {
+      try {
+        const { data: indUser } = await supabase.from("users").select("id, dealership").ilike("referral_code", indCode).maybeSingle();
+        if (indUser?.id) {
+          await supabase.from("referral_events").insert({
+            owner_id: indUser.id, referral_code: indCode, dealership: indUser.dealership || null,
+            car_external_id: carroId, car_title: indTitle, type: "lead", value: 0, status: "logged",
+          });
+        }
+      } catch (e) { console.error("referral lead:", e); }
     }
     await standVitrine(phone, "geral", leadId, parsed, {});
     return true;
