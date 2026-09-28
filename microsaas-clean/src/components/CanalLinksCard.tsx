@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
-import { Radio, Copy, Loader2, Link2, Sparkles } from "lucide-react";
+import { Radio, Copy, Loader2, Link2, Sparkles, ShieldCheck, Shield } from "lucide-react";
 
 const brl = (v: any) => (v != null ? `R$ ${Number(v).toLocaleString("pt-BR")}` : "consulte");
 
@@ -37,6 +37,7 @@ export function CanalLinksCard() {
   const [loading, setLoading] = useState(false);
   const [cars, setCars] = useState<any[] | null>(null);
   const [gerandoPost, setGerandoPost] = useState<string | null>(null);
+  const [garantindo, setGarantindo] = useState<string | null>(null);
 
   // ao montar (inclusive quando o navegador recarrega a página ao voltar do WhatsApp): reidrata do cache
   useEffect(() => { const c = lerCache(); if (c) setCars(c); }, []);
@@ -69,6 +70,27 @@ export function CanalLinksCard() {
     }
   };
 
+  // "Eu garanto": marca que o lojista garante o estado do carro → o post pode AFIRMAR pintura/interior
+  // (sem isso, fala como convite). Atualiza a lista + o cache na hora.
+  const toggleGarantia = async (c: any) => {
+    const novo = !c.vouched;
+    setGarantindo(c.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("dealer-api", { body: { action: "canal_vouch", car: c.id, on: novo } });
+      if (error || !(data as any)?.ok) throw error || new Error("falhou");
+      setCars((prev) => {
+        const lista = (prev || []).map((x) => (x.id === c.id ? { ...x, vouched: novo } : x));
+        salvarCache(lista);
+        return lista;
+      });
+      toast({ title: novo ? "Estado garantido ✅" : "Garantia removida", description: novo ? "Os posts deste carro podem afirmar a conservação." : "Volta a falar do estado só como convite." });
+    } catch (e: any) {
+      toast({ title: "Não consegui salvar", description: String(e?.message || e), variant: "destructive" });
+    } finally {
+      setGarantindo(null);
+    }
+  };
+
   // Legenda pronta (estilo Lu do Magalu) gerada no servidor — o preço vem DO ANÚNCIO, nunca da IA.
   const copiarPost = async (id: string, label: string) => {
     setGerandoPost(id);
@@ -95,6 +117,8 @@ export function CanalLinksCard() {
               <strong>Post ✨</strong> escreve a legenda pronta no estilo animado da marca (com o preço certo, direto
               do anúncio) — cola no Canal junto com a foto do carro. <strong>Copiar link</strong> dá só o link com
               prévia. Quem tocar cai no Co-pilot naquele carro (marcado <strong>origem canal</strong> pra medir o funil).
+              <br /><strong>Eu garanto o estado</strong>: marque nos carros que você conferiu — só nesses o post
+              afirma "pintura impecável, interior preservado". Nos demais, ele fala do estado só como convite.
             </p>
           </div>
           <Button variant="outline" className="gap-2 h-9 shrink-0" onClick={() => copiar(linkGeral, "Link geral do Canal")}>
@@ -130,6 +154,11 @@ export function CanalLinksCard() {
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-sm truncate">{[c.brand, c.model].filter(Boolean).join(" ")} {c.year || ""}</div>
                   <div className="text-xs text-muted-foreground">{brl(c.price)}</div>
+                  <button type="button" onClick={() => toggleGarantia(c)} disabled={garantindo === c.id}
+                    className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition ${c.vouched ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+                    {garantindo === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : c.vouched ? <ShieldCheck className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                    {c.vouched ? "Estado garantido" : "Eu garanto o estado"}
+                  </button>
                 </div>
                 <Button size="sm" className="gap-1.5 shrink-0" disabled={gerandoPost === c.id}
                   onClick={() => copiarPost(c.id, [c.brand, c.model].filter(Boolean).join(" "))}>

@@ -384,8 +384,28 @@ Deno.serve(async (req) => {
         } catch { /* devolve vazio */ }
         // code curto por carro → o painel monta o link bonito /o/<code> (sem "supabase" na cara)
         const codes = await ofertaCodes(cars.map((c: any) => c.id));
-        cars = cars.map((c: any) => ({ ...c, code: codes[c.id] || null }));
+        // quais carros o lojista já garantiu (liga o botão "Eu garanto" do painel)
+        const idsQr = cars.map((c: any) => c.id);
+        let vouchedSet = new Set<string>();
+        if (idsQr.length) {
+          const { data: vs } = await admin.from("car_vouch").select("car_id").in("car_id", idsQr);
+          vouchedSet = new Set((vs || []).map((r: any) => r.car_id));
+        }
+        cars = cars.map((c: any) => ({ ...c, code: codes[c.id] || null, vouched: vouchedSet.has(c.id) }));
         return json({ ok: true, slug, loja_nome: lojaNome, wa_number: "5511963786699", cars });
+      }
+
+      // "EU GARANTO": o lojista marca/desmarca que garante pessoalmente o estado deste carro.
+      // Só com isso ligado o post pode AFIRMAR pintura/interior/conservação; sem, fala como convite.
+      case "canal_vouch": {
+        const carId = String(p.car || "").trim();
+        if (!carId) return json({ error: "car_required" }, 400);
+        if (p.on === false) {
+          await admin.from("car_vouch").delete().eq("car_id", carId);
+          return json({ ok: true, car: carId, vouched: false });
+        }
+        await admin.from("car_vouch").upsert({ car_id: carId, vouched_by: me.dealership || null });
+        return json({ ok: true, car: carId, vouched: true });
       }
 
       // POST PRONTO PRO CANAL: legenda animada (estilo "Lu do Magalu") pra colar junto da foto.
@@ -424,6 +444,10 @@ Deno.serve(async (req) => {
         const abaixoFipe = fipeNum > 0 && precoNum > 0 && precoNum < fipeNum;
         if (abaixoFipe) fatos.push("Está anunciado ABAIXO da tabela FIPE");
 
+        // o lojista garantiu o estado deste carro? (botão "Eu garanto" → tabela car_vouch)
+        const { data: vrow } = await admin.from("car_vouch").select("car_id").eq("car_id", carId).maybeSingle();
+        const vouched = !!vrow;
+
         // a abertura é SORTEADA por código a cada post — senão a IA repete o mesmo exemplo pra sempre
         const aberturas = [
           `humor de assistente/robô, como a Lu do Magalu (ex.: "Meus sensores detectaram nível MÁXIMO de carro dos sonhos! 🤖")`,
@@ -436,6 +460,7 @@ Deno.serve(async (req) => {
           `cena do dia a dia com o carro (ex.: "Imagina chegar na sexta, entrar nele e esquecer a semana...")`,
         ];
         const abertura = aberturas[Math.floor(Math.random() * aberturas.length)];
+        const nBullets = 3 + Math.floor(Math.random() * 3); // 3, 4 ou 5 — varia o tamanho da lista
 
         const sys = `Você é a alma da TotexMotors! Seu estilo é inspirado na Lu do Magalu: sempre útil, muito animada, `
           + `usa emojis de forma inteligente e trata o cliente como um amigo próximo. Você não vende só carros; vende a `
@@ -448,11 +473,15 @@ Deno.serve(async (req) => {
           + `sentido pra esse carro. PROIBIDO frase genérica que serviria pra qualquer produto ou fora do universo automotivo `
           + `(ex.: "tecnologia na palma da sua mão").\n`
           + `- pule UMA linha em branco e escreva 1 a 2 linhas apresentando o carro com entusiasmo (modelo e ano)\n`
-          + `- a linha "Confira por que ele vai ser seu:" seguida de 3 itens começando com ✅, cada um transformando um fato `
-          + `em benefício real (ex.: câmbio automático → conforto total no trânsito)\n`
+          + `- a linha "Confira por que ele vai ser seu:" seguida de EXATAMENTE ${nBullets} itens começando com ✅ (um por linha). `
+          + `MISTURE tipos diferentes — nunca só os fatos secos — e VARIE a cada post:\n`
+          + `   • FATO vira benefício (use só o que aparece nos FATOS): câmbio, flex, km baixo, cor, abaixo da FIPE;\n`
+          + `   • DESEJO/EMOÇÃO/METÁFORA: presença que chama atenção no semáforo, o prazer de dirigir, a viagem em família do Sul ao Norte sem medo, chegar com estilo, "foto não faz jus, ao vivo é outra conversa";\n`
+          + (vouched
+              ? `   • ESTADO (o lojista GARANTIU pessoalmente o estado deste carro): pode afirmar com vivacidade — pintura impecável de espelho, interior preservado e cheiroso, conservação acima da média.\n`
+              : `   • ESTADO/CONSERVAÇÃO: fale SEMPRE como CONVITE, nunca como afirmação ("vem ver de pertinho que impressiona", "ao vivo é outra conversa", "bora conferir a lataria?"). É PROIBIDO afirmar pintura/interior/conservação como fato — você não viu este carro.\n`)
           + `- 1 linha final: toda a confiança da TotexMotors com a tradição da ${loja || "loja parceira"} 💎\n\n`
-          + `REGRAS DURAS: use SOMENTE os fatos fornecidos — NUNCA invente motor, equipamento, consumo ou qualquer número. `
-          + `Se faltar fato técnico, os ✅ podem falar de procedência verificada, atendimento premium e de ver tudo pelo WhatsApp. `
+          + `REGRAS DURAS: use SOMENTE os fatos fornecidos — NUNCA invente motor, equipamento, consumo, potência ou qualquer número. `
           + `NUNCA mencione preço nem valores em R$. Responda SOMENTE com o texto do post.`;
 
         let corpo = "";
@@ -465,12 +494,22 @@ Deno.serve(async (req) => {
         corpo = corpo.split("\n").filter((l) => !/R\$\s*\d/.test(l)).join("\n").trim();
 
         if (!corpo) {
-          // sem IA configurada (ou falhou): modelo fixo com os mesmos fatos reais
+          // sem IA (ou falhou): banco de ✅ embaralhado — fatos reais + emoção/convite
           const bullets: string[] = [];
           if (abaixoFipe) bullets.push("✅ Anunciado ABAIXO da tabela FIPE — oportunidade de verdade");
           if (Number(v.mileage) > 0) bullets.push(`✅ ${Number(v.mileage).toLocaleString("pt-BR")} km — ainda tem muita estrada boa pela frente`);
           if (v.transmission && /auto/i.test(String(v.transmission))) bullets.push("✅ Câmbio automático: conforto total no trânsito de todo dia");
-          bullets.push("✅ Procedência verificada e atendimento premium", "✅ Você vê tudo pelo WhatsApp, sem sair de casa");
+          if (v.fuel || v.fuelType) bullets.push("✅ Flex: você escolhe gasolina ou etanol, sempre economizando");
+          const evocativos = [
+            "✅ Presença de sobra: chega no lugar e todo mundo olha",
+            "✅ Pronto pra estrada: do Sul ao Norte sem pensar duas vezes",
+            "✅ Feito pra família: espaço e conforto pra viagem inteira",
+            "✅ Foto não faz jus — ao vivo é outra conversa, vem ver de pertinho",
+            vouched ? "✅ Conservação acima da média: pintura de espelho e interior preservado" : "✅ Vem conferir a lataria de pertinho que impressiona",
+            "✅ Aquele friozinho de dar a volta no quarteirão só pra dirigir mais um pouco",
+          ];
+          for (let i = evocativos.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [evocativos[i], evocativos[j]] = [evocativos[j], evocativos[i]]; }
+          bullets.push("✅ Procedência verificada e atendimento premium", ...evocativos);
           const fixas = [
             "Meus sensores detectaram nível máximo de carro dos sonhos! 🤖",
             "Meu radar de oportunidade acabou de apitar! 🚨",
@@ -479,7 +518,7 @@ Deno.serve(async (req) => {
           ];
           corpo = `${fixas[Math.floor(Math.random() * fixas.length)]}\n\n`
             + `Chegou ${nomeAno} no nosso estoque — daqueles que não ficam parados na vitrine!\n\n`
-            + `Confira por que ele vai ser seu:\n${bullets.slice(0, 3).join("\n")}\n\n`
+            + `Confira por que ele vai ser seu:\n${bullets.slice(0, nBullets).join("\n")}\n\n`
             + `Toda a confiança da TotexMotors com a tradição da ${loja || "nossa loja parceira"}! 💎`;
         }
 
