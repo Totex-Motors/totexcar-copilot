@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Car, Search, MessageCircle, ChevronDown } from "lucide-react";
+import { Loader2, Car, Search, MessageCircle, ChevronDown, Bell } from "lucide-react";
 
 // Página PÚBLICA "Quanto vale o seu carro" — o QR do shopping cai aqui.
 // Visual dark + caixa em neon (glow teal). A pessoa digita a placa, vê o valor FIPE na hora
@@ -41,6 +41,14 @@ export default function ValorCarro() {
     const txt = res?.ok && res.valor
       ? `Oi! Vi que meu ${carro} vale ${res.valor} na FIPE (placa ${placa}). Quero saber mais 🚗`
       : `Oi! Quero saber quanto vale meu carro, placa ${placa} 🚗`;
+    return `https://wa.me/${WA}?text=${encodeURIComponent(txt)}`;
+  };
+
+  // opt-in do "Valor Vivo": leva pro WhatsApp já pedindo o acompanhamento mensal (a mensagem
+  // dispara a consulta + a oferta do botão "🔔 Pode avisar" no Co-pilot — consentimento explícito).
+  const waAcompanhar = () => {
+    const carro = res?.ok ? `${res.marca || ""} ${res.modelo || res.modelo_placa || ""}`.trim() : "";
+    const txt = `Quero acompanhar o valor do meu ${carro || "carro"} todo mês 🔔 (placa ${placa})`;
     return `https://wa.me/${WA}?text=${encodeURIComponent(txt)}`;
   };
 
@@ -150,8 +158,17 @@ export default function ValorCarro() {
                 <MessageCircle className="w-5 h-5" /> Quero vender ou avaliar pra trocar
               </button>
             </a>
+            {/* opt-in Valor Vivo: acompanhamento mensal grátis, no WhatsApp */}
+            <a href={waAcompanhar()} target="_blank" rel="noreferrer" className="block mt-2">
+              <button
+                className="w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2"
+                style={{ background: "transparent", color: NEON, border: `1.5px solid ${NEON}` }}
+              >
+                <Bell className="w-5 h-5" /> Me avise todo mês se o valor mudar
+              </button>
+            </a>
             <p className="text-[11px] text-neutral-500 text-center mt-2">
-              Continue no WhatsApp: te aviso quando seu carro valorizar e te ajudo a vender pelo melhor preço.
+              Grátis, no WhatsApp: te aviso quando seu carro valorizar (ou cair) e te ajudo a vender pelo melhor preço.
             </p>
           </div>
         )}
