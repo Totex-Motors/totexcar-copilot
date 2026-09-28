@@ -3011,6 +3011,56 @@ async function standVitrine(
   );
 }
 
+// ===================== QUANTO VALE MEU CARRO (placa → FIPE) =====================
+// Motor da versão grátis: a pessoa manda a PLACA e recebe o valor FIPE na hora (função quanto-vale,
+// que casa placa→modelo→valor na tabela FIPE local). Registra o dono do carro na base e faz a ponte
+// pra venda/troca. Placa sozinha OU "quanto vale/valor do meu carro" dispara.
+const PLACA_RE = /\b([A-Za-z]{3})[-\s]?(\d[A-Za-z0-9]\d{2})\b/;
+const VALE_RE = /(quanto\s+vale|quanto\s+custa\s+meu|valor\s+(do|de)\s+meu|vale\s+meu\s+carro|#\s*vale|fipe\s+do\s+meu|meu\s+carro\s+vale)/i;
+
+async function handleQuantoVale(phone: string, text: string, contactName?: string): Promise<boolean> {
+  const t = String(text || "");
+  const pm = t.match(PLACA_RE);
+  const placa = pm ? (pm[1] + pm[2]).toUpperCase() : null;
+  const pediuValor = VALE_RE.test(t);
+  // fora do contexto: sem placa e sem "quanto vale" → não é comigo
+  if (!placa && !pediuValor) return false;
+  // com placa mas texto longo e sem contexto de valor → provavelmente não é consulta de valor
+  if (placa && !pediuValor) {
+    const resto = t.replace(PLACA_RE, " ").replace(/[^a-zA-ZÀ-ÿ]/g, "");
+    if (resto.length > 12) return false;
+  }
+  const primeiro = contactName ? `, ${contactName.split(" ")[0]}` : "";
+
+  if (!placa) {
+    await sendText(phone, `Boa${primeiro}! 🚗 Me manda a *placa* do carro (ex.: ABC1D23) que eu já te digo quanto ele vale na tabela FIPE — na hora.`);
+    return true;
+  }
+
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/quanto-vale?placa=${encodeURIComponent(placa)}`, {
+      headers: { authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d?.ok || !d.valor) {
+      await sendText(phone, d?.error === "placa_nao_encontrada"
+        ? `Hmm, não achei essa placa 😕 Confere se digitou certinho (ex.: ABC1D23) e manda de novo.`
+        : `Não consegui o valor agora 🙏 Tenta de novo daqui a pouco.`);
+      return true;
+    }
+    const nome = `${d.marca || ""} ${d.modelo || d.modelo_placa || ""}`.replace(/\s+/g, " ").trim();
+    const msg = `Achei${primeiro}! 🚗\n\n*${nome}*${d.ano ? ` ${d.ano}` : ""}\n💰 Valor na tabela FIPE (${d.ref || "atual"}): *${d.valor}*\n\n`
+      + `Se esse não for exatamente o seu (versão/ano), me diz que eu ajusto. E se quiser, eu te ajudo a *vender* ou *avaliar pra trocar* — é só falar. 💬`;
+    await sendText(phone, msg);
+    // registra o dono do carro na base (com o carro e o valor) — alimenta o funil
+    await supabase.from("whatsapp_events").insert({
+      from_phone: phone, kind: "stand_lead", status: "processed", raw: { text },
+      parsed: { origem: "quanto_vale", placa, carro: nome, ano: d.ano || null, valor_fipe: d.valor_num || null, nome: contactName || null },
+    });
+    return true;
+  } catch (e) { console.error("handleQuantoVale:", e); await sendText(phone, `Não consegui o valor agora 🙏 Tenta de novo daqui a pouco.`); return true; }
+}
+
 // CANAL do WhatsApp: link "#oferta" (geral) ou "#oferta <carroId>" (carro do post). Abre a vitrine
 // da rede inteira e RASTREIA a origem (parsed.origem='canal') pro funil do piloto. Reaproveita a
 // máquina da vitrine (registra como stand_lead → paginação/"ver mais"/re-engajamento funcionam).
@@ -3452,6 +3502,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (await handleStandSearch(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_search", input: psText } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, stand_search: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // QUANTO VALE MEU CARRO — placa → valor FIPE na hora (versão grátis / hook de captação)
+      if (msg.kind !== "image" && await handleQuantoVale(msg.phone, psText, msg.contactName)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "quanto_vale", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, quanto_vale: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // CANAL do WhatsApp — link "#oferta" nos posts (rastreado como origem=canal)
       if (await handleCanalOferta(msg.phone, psText, msg.contactName)) {
