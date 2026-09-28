@@ -2,7 +2,8 @@
 // public.fipe_tabela (só carros). Roda no servidor — não trafega 30 mil linhas pelo cliente.
 // Vira o refresh MENSAL (cron). Protegido por ?secret=. Deploy verify_jwt=false.
 //
-// GET /functions/v1/fipe-sync?secret=...   → baixa o mês atual, troca a tabela inteira, devolve contagem.
+// GET /functions/v1/fipe-sync?secret=...&part=N&parts=M   → processa 1 fatia (evita estourar memória).
+//   part=0 limpa a tabela antes de inserir; chame part=0..M-1 pra popular tudo (ex.: parts=8).
 
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
 const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
@@ -31,10 +32,17 @@ Deno.serve(async (req) => {
   const iTipo = idx("tipo_veiculo"), iCod = idx("codigo_fipe"), iMod = idx("nome_modelo"), iMar = idx("nome_marca"),
     iComb = idx("nome_combustivel"), iSig = idx("sigla_combustivel"), iAno = idx("ano_modelo"), iZero = idx("zero_km"),
     iVal = idx("valor_centavos"), iMes = idx("mes_referencia"), iAnoRef = idx("ano_referencia");
+  const part = Math.max(0, parseInt(url.searchParams.get("part") || "0", 10) || 0);
+  const parts = Math.max(1, parseInt(url.searchParams.get("parts") || "8", 10) || 8);
+
+  // só as linhas de CARRO desta fatia (counter de carros % parts === part) → baixa memória
   const rows: any[] = [];
+  let carCount = 0;
   for (let k = 1; k < lines.length; k++) {
     const c = lines[k].split("\t");
     if (c[iTipo] !== "carro") continue;
+    const idxCar = carCount++;
+    if (idxCar % parts !== part) continue;
     const ano = parseInt(c[iAno], 10);
     rows.push({
       codigo_fipe: c[iCod], ano_modelo: Number.isFinite(ano) ? ano : 0,
@@ -46,12 +54,12 @@ Deno.serve(async (req) => {
       marca_norm: norm(c[iMar]), modelo_norm: norm(c[iMod]),
     });
   }
-  if (rows.length < 1000) return new Response(JSON.stringify({ ok: false, error: "poucos_carros", parsed: rows.length }), { status: 502, headers: { "content-type": "application/json" } });
 
-  // 3) troca a tabela inteira: limpa e insere em lotes
-  await fetch(`${SB}/rest/v1/fipe_tabela?codigo_fipe=neq.__none__`, { method: "DELETE", headers: H });
+  // part=0 limpa a tabela antes de começar
+  if (part === 0) await fetch(`${SB}/rest/v1/fipe_tabela?codigo_fipe=neq.__none__`, { method: "DELETE", headers: H });
+
   let inserted = 0;
-  const BATCH = 1000;
+  const BATCH = 500;
   for (let i = 0; i < rows.length; i += BATCH) {
     const slice = rows.slice(i, i + BATCH);
     const res = await fetch(`${SB}/rest/v1/fipe_tabela`, { method: "POST", headers: { ...H, prefer: "return=minimal" }, body: JSON.stringify(slice) });
@@ -59,6 +67,6 @@ Deno.serve(async (req) => {
     else console.error("fipe-sync insert:", res.status, (await res.text()).slice(0, 200));
   }
   const ref = rows[0] ? `${rows[0].ref_mes}/${rows[0].ref_ano}` : "?";
-  console.log(`fipe-sync: ${inserted}/${rows.length} carros (ref ${ref})`);
-  return new Response(JSON.stringify({ ok: true, carros: inserted, referencia: ref }), { headers: { "content-type": "application/json" } });
+  console.log(`fipe-sync part ${part}/${parts}: ${inserted} carros (total carros no arquivo: ${carCount}, ref ${ref})`);
+  return new Response(JSON.stringify({ ok: true, part, parts, inseridos: inserted, total_carros_arquivo: carCount, referencia: ref }), { headers: { "content-type": "application/json" } });
 });
