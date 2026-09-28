@@ -681,6 +681,61 @@ async function runStandNudges(): Promise<number> {
   return sent;
 }
 
+// ---------- VALOR VIVO (opt-in): aviso mensal do valor FIPE de quem consultou a placa ----------
+// Dispara SÓ quando a tabela FIPE virou de mês (compara a ref guardada com a ref atual da fipe_tabela).
+// Recalcula pelo codigo_fipe guardado — NÃO repaga a consulta de placa. Fora da janela de 24h → TEMPLATE
+// aprovado (valor_vivo_mensal, MARKETING). Se o template ainda não estiver aprovado no Meta, o 1º envio
+// falha e a rodada para (tenta de novo no próximo ciclo, sem queimar a fila).
+async function runValorVivo(): Promise<number> {
+  const now = Date.now();
+  const localHour = new Date(now - 3 * 3600_000).getUTCHours(); // BRT = UTC-3
+  if (localHour < 9 || localHour >= 20) return 0; // horário civil
+
+  // ref atual da tabela (após o fipe-sync mensal todas as linhas têm o mesmo mês/ano)
+  const { data: refRow } = await supabase.from("fipe_tabela").select("ref_mes, ref_ano").limit(1);
+  const rm = refRow?.[0]?.ref_mes, ra = refRow?.[0]?.ref_ano;
+  if (!rm || !ra) return 0;
+  const refStr = `${String(rm).padStart(2, "0")}/${ra}`;
+
+  // assinantes ativos que ainda não foram avisados desta referência
+  const { data: subs } = await supabase.from("valor_vivo_subs")
+    .select("id, phone, placa, carro, ano, codigo_fipe, valor_num, ref, nome")
+    .eq("active", true).or(`ref.is.null,ref.neq.${refStr}`)
+    .limit(40);
+  if (!subs?.length) return 0;
+
+  const brl = (n: number) => `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
+  const wa = await waS();
+  let sent = 0;
+
+  for (const s of subs) {
+    if (!s.codigo_fipe) continue;
+    // valor novo direto da fipe_tabela (grátis)
+    let q = supabase.from("fipe_tabela").select("valor_centavos, nome_modelo, ano_modelo").eq("codigo_fipe", s.codigo_fipe);
+    if (s.ano) q = q.eq("ano_modelo", s.ano);
+    const { data: rows } = await q.limit(1);
+    const row = rows?.[0];
+    if (!row?.valor_centavos) continue;
+
+    const novo = Math.round(row.valor_centavos / 100);
+    const old = Number(s.valor_num) || 0;
+    let tend: string;
+    if (!old) tend = "confira o valor atualizado";
+    else if (novo > old) tend = `subiu ${brl(novo - old)} 📈`;
+    else if (novo < old) tend = `caiu ${brl(old - novo)} 📉`;
+    else tend = "está estável";
+
+    const carro = s.carro || row.nome_modelo || "seu carro";
+    const nomeParam = s.nome ? `, ${String(s.nome).split(" ")[0]}` : "";
+    const ok = await waSendTemplate(wa, s.phone, "valor_vivo_mensal", [nomeParam, carro, brl(novo), tend]);
+    if (!ok) { console.error("valor_vivo: envio falhou (template aprovado no Meta?) — segura a rodada"); break; }
+
+    await supabase.from("valor_vivo_subs").update({ valor_num: novo, ref: refStr, last_sent_at: new Date().toISOString() }).eq("id", s.id);
+    sent++;
+  }
+  return sent;
+}
+
 Deno.serve(async (req) => {
   _wa = null;
   _ai = null;
@@ -695,6 +750,13 @@ Deno.serve(async (req) => {
     let n = 0;
     try { n = await runStandNudges(); } catch (e) { console.error("stand_nudge:", e); }
     return new Response(JSON.stringify({ ok: true, job: "stand_nudge", sent: n }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // job: aviso mensal do "Valor Vivo" (opt-in). Roda algumas vezes ao dia; só envia quando a FIPE virou de mês.
+  if (url.searchParams.get("job") === "valor_vivo") {
+    let n = 0;
+    try { n = await runValorVivo(); } catch (e) { console.error("valor_vivo:", e); }
+    return new Response(JSON.stringify({ ok: true, job: "valor_vivo", sent: n }), { headers: { "Content-Type": "application/json" } });
   }
 
   let sent = 0;

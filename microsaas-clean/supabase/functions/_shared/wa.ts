@@ -365,6 +365,15 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
     buttons: ["Ver agora", "Depois"],
     render: (p) => `Olá! ${p[0]}\n\n(Responda: *Ver agora* ou *Depois*)`,
   },
+  // ===================== MARKETING (opt-in) =====================
+  // "Valor Vivo": aviso mensal, SÓ pra quem pediu, quando o valor FIPE do carro mudou.
+  // {{1}} saudação/nome · {{2}} carro · {{3}} valor novo · {{4}} tendência (subiu/caiu/estável)
+  valor_vivo_mensal: {
+    category: "MARKETING",
+    body: "📊 Valor Vivo TotexMotors{{1}}: seu {{2}} agora vale {{3}} na tabela FIPE — {{4}}. Quer avaliar pra vender ou trocar sem dor de cabeça? É só tocar abaixo. 🚗",
+    buttons: ["Quero avaliar", "Parar avisos"],
+    render: (p) => `📊 *Valor Vivo TotexMotors*${p[0]}\n\nSeu *${p[1]}* agora vale *${p[2]}* na tabela FIPE — ${p[3]}.\n\nQuer avaliar pra vender ou trocar sem dor de cabeça? Responde *Quero avaliar*. (Pra parar os avisos, responda *Parar avisos*.)`,
+  },
   // ===================== UTILIDADE =====================
   vencimento_documento: {
     category: "UTILITY",

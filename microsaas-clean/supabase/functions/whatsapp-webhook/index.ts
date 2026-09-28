@@ -3052,13 +3052,71 @@ async function handleQuantoVale(phone: string, text: string, contactName?: strin
     const msg = `Achei${primeiro}! 🚗\n\n*${nome}*${d.ano ? ` ${d.ano}` : ""}\n💰 Valor na tabela FIPE (${d.ref || "atual"}): *${d.valor}*\n\n`
       + `Se esse não for exatamente o seu (versão/ano), me diz que eu ajusto. E se quiser, eu te ajudo a *vender* ou *avaliar pra trocar* — é só falar. 💬`;
     await sendText(phone, msg);
-    // registra o dono do carro na base (com o carro e o valor) — alimenta o funil
+    // registra o dono do carro na base (carro, valor e codigo_fipe) — alimenta o funil e o "Valor Vivo"
     await supabase.from("whatsapp_events").insert({
       from_phone: phone, kind: "stand_lead", status: "processed", raw: { text },
-      parsed: { origem: "quanto_vale", placa, carro: nome, ano: d.ano || null, valor_fipe: d.valor_num || null, nome: contactName || null },
+      parsed: { origem: "quanto_vale", placa, carro: nome, ano: d.ano || null, valor_fipe: d.valor_num || null, codigo_fipe: d.codigo_fipe || null, ref: d.ref || null, nome: contactName || null },
     });
+    // Valor Vivo: oferece o acompanhamento mensal (só se dá pra recalcular sozinho pelo codigo_fipe)
+    if (d.codigo_fipe) {
+      await sendMenu(phone, `Quer que eu fique de olho e te avise *1x por mês, de graça*, se o valor do seu ${nome} subir ou cair? 📈`, ["🔔 Pode avisar", "Agora não"]);
+    }
     return true;
   } catch (e) { console.error("handleQuantoVale:", e); await sendText(phone, `Não consegui o valor agora 🙏 Tenta de novo daqui a pouco.`); return true; }
+}
+
+// ---------- VALOR VIVO: opt-in/opt-out do acompanhamento mensal do valor FIPE ----------
+// O opt-in casa o botão "🔔 Pode avisar" com a ÚLTIMA consulta de placa da pessoa (janela 30min),
+// pegando o codigo_fipe pra recalcular todo mês sem repagar a consulta de placa. O aviso mensal
+// (job=valor_vivo em car-expiration-alerts) traz os botões "Quero avaliar"/"Parar avisos".
+const VV_SUB_RE = /🔔?\s*pode avisar|quero ser avisad|me avis[ae]\b|valor\s*vivo/i;
+const VV_UNSUB_RE = /parar\s+avis|n[aã]o\s+quero\s+mais\s+avis|cancelar\s+avis/i;
+const VV_DECLINE_RE = /^\s*agora n[aã]o\s*$/i;
+const VV_AVALIAR_RE = /^\s*quero avaliar\s*$/i;
+
+async function handleValorVivoOptin(phone: string, text: string, contactName?: string): Promise<boolean> {
+  const t = String(text || "");
+  const primeiro = contactName ? `, ${contactName.split(" ")[0]}` : "";
+
+  // opt-out (botão do aviso mensal ou texto livre) — sempre atende
+  if (VV_UNSUB_RE.test(t)) {
+    await supabase.from("valor_vivo_subs").update({ active: false }).eq("phone", phone);
+    await sendText(phone, `Prontinho${primeiro} 👍 Parei os avisos de valor. Quando quiser voltar, é só me mandar a placa e pedir de novo.`);
+    return true;
+  }
+
+  // "Quero avaliar" (botão do aviso mensal) → ponte pra venda/troca
+  if (VV_AVALIAR_RE.test(t)) {
+    await sendText(phone, `Show${primeiro}! 🚗 Pra eu te ajudar a *vender ou trocar*, é só me mandar *vender* que eu já começo a avaliação. 💬`);
+    return true;
+  }
+
+  // opt-in / recusa: só valem logo após uma consulta de valor (senão não sei qual carro acompanhar)
+  if (VV_SUB_RE.test(t) || VV_DECLINE_RE.test(t)) {
+    const desde = new Date(Date.now() - 30 * 60_000).toISOString();
+    const { data: leads } = await supabase.from("whatsapp_events")
+      .select("parsed, created_at").eq("from_phone", phone).eq("kind", "stand_lead")
+      .gte("created_at", desde).order("created_at", { ascending: false }).limit(5);
+    const lead = (leads || []).map((l: any) => l.parsed).find((p: any) => p?.origem === "quanto_vale" && p?.placa);
+    if (!lead) return false; // sem consulta recente → não é o opt-in do Valor Vivo
+
+    if (VV_DECLINE_RE.test(t)) {
+      await sendText(phone, `Tranquilo${primeiro}! 👍 Quando quiser saber o valor de novo, é só me mandar a placa.`);
+      return true;
+    }
+    if (!lead.codigo_fipe) {
+      await sendText(phone, `Poxa, esse carro eu ainda não consigo acompanhar sozinho 🙏 Mas quando quiser, é só me mandar a placa que eu confiro o valor na hora.`);
+      return true;
+    }
+    await supabase.from("valor_vivo_subs").upsert({
+      phone, placa: lead.placa, carro: lead.carro || null, ano: lead.ano || null,
+      codigo_fipe: lead.codigo_fipe, valor_num: lead.valor_fipe || null, ref: lead.ref || null,
+      nome: contactName || lead.nome || null, active: true, last_sent_at: null,
+    }, { onConflict: "phone,placa" });
+    await sendText(phone, `Combinado${primeiro}! 🔔 Toda vez que a tabela FIPE virar, eu confiro o *${lead.carro || "seu carro"}* e te aviso se subiu ou caiu. Sem spam — no máximo 1x por mês. 🚗\n\n(Pra parar quando quiser, é só responder *Parar avisos*.)`);
+    return true;
+  }
+  return false;
 }
 
 // CANAL do WhatsApp: link "#oferta" (geral) ou "#oferta <carroId>" (carro do post). Abre a vitrine
@@ -3502,6 +3560,12 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (await handleStandSearch(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_search", input: psText } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, stand_search: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // VALOR VIVO — opt-in/opt-out do acompanhamento mensal (botões do menu e do aviso). Vem ANTES
+      // do handleQuantoVale; retorna false quando não é opt-in, então consulta normal de placa segue.
+      if (msg.kind !== "image" && await handleValorVivoOptin(msg.phone, psText, msg.contactName)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "valor_vivo_optin", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, valor_vivo_optin: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // QUANTO VALE MEU CARRO — placa → valor FIPE na hora (versão grátis / hook de captação)
       if (msg.kind !== "image" && await handleQuantoVale(msg.phone, psText, msg.contactName)) {
