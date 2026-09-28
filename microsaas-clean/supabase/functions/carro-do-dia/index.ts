@@ -197,7 +197,27 @@ async function montaPost(settings: any, v: any, temaFipe = false, vouched = fals
 
 // candidatos do dia, ranqueados: nunca repete os últimos 14 dias; abaixo da FIPE e recém-chegado
 // na frente. Devolve uma lista — se a foto do 1º estiver morta, o post tenta o próximo.
-async function escolheCarros(forcarId?: string, temaFipe = false): Promise<any[]> {
+// categoria de carroceria (compacto) — pra casar carro↔grupo temático da Comunidade
+const CAT_KW: Record<string, string[]> = {
+  suv: ["cross", "rav4", "sw4", "compass", "renegade", "commander", "tracker", "trailblazer", "creta", "tucson", "kicks", "captur", "duster", "t-cross", "tcross", "taos", "tiguan", "nivus", "pulse", "territory", "ecosport", "hr-v", "hrv", "cr-v", "crv", "wr-v", "wrv", "asx", "outlander", "haval", "evoque", "xc40", "xc60", "xc90", "2008", "3008", "seltos", "sportage", "sorento", "q3", "q5", "corolla cross", "suv"],
+  picape: ["saveiro", "strada", "toro", "hilux", "ranger", "s10", "s-10", "amarok", "frontier", "l200", "triton", "montana", "oroch", "maverick", "courier", "ram", "gladiator", "picape", "pick-up", "pickup"],
+  sedan: ["onix plus", "hb20s", "civic", "corolla", "sentra", "versa", "virtus", "jetta", "passat", "cruze", "prisma", "cronos", "siena", "logan", "fluence", "cerato", "elantra", "voyage", "cobalt", "sedan"],
+  hatch: ["onix", "hb20", " gol", "up!", "polo", "fox", "golf", "argo", "mobi", "uno", "palio", "punto", "208", "207", "c3", "kwid", "sandero", "i30", "etios", "yaris", "fit", "hatch", "ka ", "fiesta", "focus"],
+};
+function catDe(v: any): string | null {
+  const bt = String(v?.bodyType || v?.body || v?.category || "").toLowerCase();
+  if (/suv|utilit/.test(bt)) return "suv";
+  if (/picap|pick/.test(bt)) return "picape";
+  if (/sed[aã]/.test(bt)) return "sedan";
+  if (/hatch/.test(bt)) return "hatch";
+  const s = ` ${String(v?.brand || "")} ${String(v?.model || "")} `.toLowerCase();
+  for (const cat of ["suv", "picape", "sedan", "hatch"]) {
+    if (CAT_KW[cat].some((k) => s.includes(k))) return cat;
+  }
+  return null;
+}
+
+async function escolheCarros(forcarId?: string, temaFipe = false, cats?: string[] | null): Promise<any[]> {
   if (forcarId) {
     try {
       const res = await fetch(`${MKT}/api/vehicles/${encodeURIComponent(forcarId)}`, { headers: { Accept: "application/json" } });
@@ -215,6 +235,10 @@ async function escolheCarros(forcarId?: string, temaFipe = false): Promise<any[]
   const recentes = await sbSelect(`canal_posts?posted_at=gte.${desde}&select=car_id`);
   const jaPostados = new Set(recentes.map((r: any) => r.car_id));
   let cands = lote.filter((v: any) => v?.id && Number(v.price) > 0 && carFoto(v));
+  if (cats?.length) {
+    const soCat = cands.filter((v: any) => cats.includes(catDe(v) as string));
+    if (soCat.length) cands = soCat; // sem nenhum do tema, degrada pro estoque geral
+  }
   const novos = cands.filter((v: any) => !jaPostados.has(v.id));
   if (novos.length) cands = novos; // se o estoque inteiro já rodou, recomeça a rotação
   if (temaFipe) {
@@ -266,6 +290,36 @@ function montaPostVale(settings: any): { post: string; link: string } {
   return { post, link };
 }
 
+// posta o conteúdo do TEMA num grupo (não-oficial/uazapi). cat: suv|sedan|picape|hatch|oportunidade|vale|radar
+async function postaGrupo(cfg: any, uazUrl: string, uazToken: string, waId: string, cat: string): Promise<{ ok: boolean; tipo: string; detalhe: string }> {
+  const c = (cat || "").toLowerCase();
+  const hdr = { "content-type": "application/json", token: uazToken };
+
+  if (c === "vale") {
+    const p = montaPostVale(cfg);
+    const r = await fetch(`${uazUrl}/send/text`, { method: "POST", headers: hdr, body: JSON.stringify({ number: waId, text: p.post }) });
+    return { ok: r.ok, tipo: "vale", detalhe: (await r.text()).slice(0, 300) };
+  }
+  if (c === "radar") {
+    const txt = `🛠️ *Radar de Serviços TotexMotors*\n\nPrecisa de oficina, guincho, revisão ou troca de óleo? A gente te indica parceiro de confiança, muitos com desconto. É só chamar o Co-pilot 👉 https://wa.me/5511963786699?text=${encodeURIComponent("#com radar")}`;
+    const r = await fetch(`${uazUrl}/send/text`, { method: "POST", headers: hdr, body: JSON.stringify({ number: waId, text: txt }) });
+    return { ok: r.ok, tipo: "radar", detalhe: (await r.text()).slice(0, 300) };
+  }
+
+  // temas de CARRO: escolhe pela categoria e posta 1 carro (imagem)
+  const temaFipe = c === "oportunidade" || c === "repasse";
+  const cats = c === "suv" ? ["suv", "picape"] : c === "sedan" ? ["sedan", "hatch"] : ["picape", "hatch"].includes(c) ? [c] : null;
+  const carros = await escolheCarros(undefined, temaFipe, cats);
+  for (const carro of carros) {
+    const fotoJpg = fotoNormalizada(carFoto(carro));
+    if (!(await fotoViva(fotoJpg))) continue;
+    const gerado = await montaPost(cfg, carro, temaFipe, await isVouched(String(carro.id)));
+    const r = await fetch(`${uazUrl}/send/media`, { method: "POST", headers: hdr, body: JSON.stringify({ number: waId, type: "image", file: fotoJpg, text: gerado.post }) });
+    if (r.ok) { await sbInsert("canal_posts", { car_id: carro.id, code: gerado.link.split("/o/")[1] || null, ok: true, raw: { grupo: waId, cat: c } }); return { ok: true, tipo: `carro:${carNome(carro)}`, detalhe: "" }; }
+  }
+  return { ok: false, tipo: "carro", detalhe: "sem carro publicável do tema" };
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
@@ -274,7 +328,7 @@ Deno.serve(async (req) => {
   const job = (url.searchParams.get("job") || "post").toLowerCase();
 
   const cfg = (await sbSelect(
-    "app_settings?id=eq.1&select=app_url,ai_provider,ai_model,anthropic_api_key,openai_api_key,gemini_api_key,canal_uazapi_url,canal_uazapi_token,canal_newsletter_id,canal_autopost&limit=1",
+    "app_settings?id=eq.1&select=app_url,ai_provider,ai_model,anthropic_api_key,openai_api_key,gemini_api_key,canal_uazapi_url,canal_uazapi_token,canal_newsletter_id,canal_autopost,comunidade_grupos&limit=1",
   ))?.[0] || {};
   const uazUrl = String(cfg.canal_uazapi_url || "").replace(/\/+$/, "");
   const uazToken = String(cfg.canal_uazapi_token || "");
@@ -298,6 +352,42 @@ Deno.serve(async (req) => {
       } catch (e) { tentativas.push({ método: metodo, path, status: "erro", corpo: String(e) }); }
     }
     return json({ dica: "procure o id terminado em @newsletter do canal Totex Motors", tentativas });
+  }
+
+  // DESCOBERTA dos grupos (@g.us) — pra o dono colar os ids em app_settings.comunidade_grupos[].wa_id
+  if (job === "grupos_discover") {
+    if (!uazUrl || !uazToken) return json({ error: "canal_uazapi_url/token não configurados" }, 400);
+    const tent: { path: string; status: number | string; corpo: string }[] = [];
+    const cand: [string, string, unknown?][] = [
+      ["GET", "/group/list"], ["GET", "/group/getAllGroups"], ["POST", "/group/list", {}], ["GET", "/chats?limit=300"],
+    ];
+    for (const [metodo, path, body] of cand) {
+      try {
+        const res = await fetch(`${uazUrl}${path}`, { method: metodo, headers: { "content-type": "application/json", token: uazToken }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
+        tent.push({ path, status: res.status, corpo: (await res.text()).slice(0, 3500) });
+      } catch (e) { tent.push({ path, status: "erro", corpo: String(e) }); }
+    }
+    return json({ dica: "pegue o id @g.us de cada grupo e cole em app_settings.comunidade_grupos[].wa_id, com o campo cat (suv|sedan|picape|hatch|oportunidade|vale|radar)", tentativas: tent });
+  }
+
+  // AUTO-POST POR GRUPO (não-oficial): posta o conteúdo do tema em cada grupo com wa_id configurado.
+  // ?grupo=<id@g.us>&cat=<tema> posta num grupo específico (teste/manual).
+  if (job === "grupos") {
+    if (!uazUrl || !uazToken) return json({ ok: false, error: "uazapi não configurado" }, 400);
+    if (!cfg.canal_autopost) return json({ ok: true, skipped: "canal_autopost desligado" });
+    const grupos = Array.isArray(cfg.comunidade_grupos) ? cfg.comunidade_grupos : [];
+    const oneGrupo = url.searchParams.get("grupo");
+    const oneCat = url.searchParams.get("cat");
+    const alvos = oneGrupo
+      ? [{ wa_id: oneGrupo, cat: oneCat || "oportunidade", nome: "manual" }]
+      : grupos.filter((g: any) => g && g.wa_id).map((g: any) => ({ wa_id: g.wa_id, cat: g.cat || "oportunidade", nome: g.nome || g.wa_id }));
+    if (!alvos.length) return json({ ok: true, tema: "grupos", enviados: 0, nota: "nenhum grupo com wa_id em comunidade_grupos (use ?grupo=<id>&cat=<tema> ou preencha o wa_id)" });
+    const resultados: any[] = [];
+    for (const g of alvos) {
+      try { const r = await postaGrupo(cfg, uazUrl, uazToken, g.wa_id, g.cat); resultados.push({ grupo: g.nome, cat: g.cat, ...r }); }
+      catch (e) { resultados.push({ grupo: g.nome, ok: false, detalhe: String(e) }); }
+    }
+    return json({ ok: resultados.some((r) => r.ok), tema: "grupos", enviados: resultados.filter((r) => r.ok).length, resultados });
   }
 
   const tema = (url.searchParams.get("tema") || "").toLowerCase();

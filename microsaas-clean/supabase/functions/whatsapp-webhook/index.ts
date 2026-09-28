@@ -2944,10 +2944,11 @@ async function offerComunidade(phone: string): Promise<void> {
 // (year_desc) mantém as páginas estáveis entre uma mensagem e outra.
 async function standVitrine(
   phone: string, loja: string, leadId: string | null, prevParsed: any,
-  opts: { categoria?: string | null; precoMax?: number | null; search?: string | null; more?: boolean; termo?: string | null; _fallback?: boolean },
+  opts: { categoria?: string | null; categorias?: string[] | null; precoMax?: number | null; search?: string | null; more?: boolean; termo?: string | null; _fallback?: boolean },
 ): Promise<void> {
   const prev = prevParsed?.vitrine || {};
   const categoria = opts.more ? (prev.categoria ?? null) : (opts.categoria ?? null);
+  const categorias = opts.more ? (prev.categorias ?? null) : (opts.categorias ?? null);
   const precoMax = opts.more ? (prev.precoMax ?? null) : (opts.precoMax ?? null);
   const search = opts.more ? (prev.search ?? null) : (opts.search ?? null);
   const offset = opts.more ? Number(prev.offset || 0) : 0;
@@ -2955,6 +2956,7 @@ async function standVitrine(
   const dealershipId = await standScopeId(loja);
   let cars = await mktVehicles({ maxPrice: precoMax || undefined, dealershipId, limit: 60, sort: "year_desc" }).catch(() => [] as any[]);
   if (categoria) cars = cars.filter((c: any) => carClass(c) === categoria);
+  if (categorias?.length) cars = cars.filter((c: any) => categorias.includes(carClass(c) as string));
   if (search) {
     // busca por modelo TOLERANTE a erro de digitação/acento, sobre o estoque da loja
     let matched = cars.filter((c: any) => carMatchesQuery(c, search));
@@ -3009,6 +3011,50 @@ async function standVitrine(
             : "Quer procurar outro perfil? Toque em *Nova busca* ou me diga o tipo/faixa de preço. 🚗",
     rows,
   );
+}
+
+// ===================== COMUNIDADE: roteamento por grupo temático (1:1, API oficial) =====================
+// Cada grupo tem um CTA wa.me com "#com <tema>". Ao tocar, o Co-pilot dá boas-vindas
+// contextualizadas e roteia pro fluxo certo (vitrine filtrada / placa / serviços) — sem tocar em
+// grupo (isso é feito pela não-oficial). Registra origem=comunidade + tema (alimenta o funil).
+const COM_RE = /#com(?:unidade)?\b(?:[\s_-]+([a-z]{2,}))?/i;
+const COM_TEMAS: Record<string, { cat?: string[]; precoMax?: number; oi: string }> = {
+  suv: { cat: ["suv", "picape"], oi: "boa escolha — *SUVs e picapes*, as mais desejadas 🚙" },
+  picape: { cat: ["picape"], oi: "as *picapes* que tenho, desliza pro lado 🛻" },
+  sedan: { cat: ["sedan", "hatch"], precoMax: 80000, oi: "*sedans e hatches até R$ 80 mil* — custo-benefício que sai rápido 🚗" },
+  hatch: { cat: ["hatch", "sedan"], precoMax: 80000, oi: "*hatches e sedans até R$ 80 mil* 🚗" },
+  oportunidade: { oi: "as *oportunidades* do momento 🔥 desliza e toca em *Ver carro* no que curtir" },
+  repasse: { oi: "as *oportunidades* de repasse 🔥" },
+};
+
+async function handleComunidade(phone: string, text: string, contactName?: string): Promise<boolean> {
+  const m = String(text || "").match(COM_RE);
+  if (!m) return false;
+  const tema = (m[1] || "").toLowerCase();
+  const nm = contactName ? `, ${contactName.split(" ")[0]}` : "";
+
+  const { data: leadRow } = await supabase.from("whatsapp_events").insert({
+    from_phone: phone, kind: "stand_lead", status: "processed", raw: { text },
+    parsed: { origem: "comunidade", tema: tema || "geral", loja: "geral", nome: contactName || null },
+  }).select("id").single();
+  const leadId = (leadRow as any)?.id || null;
+
+  // tema "vale" → fluxo de placa (quanto vale)
+  if (["vale", "avaliar", "avaliacao", "valor"].includes(tema)) {
+    await sendText(phone, `Bem-vindo à Comunidade${nm}! 💰 Aqui a gente descobre *quanto vale seu carro* na hora. Me manda a *placa* (ex.: ABC1D23) que eu já te digo o valor na tabela FIPE.`);
+    return true;
+  }
+  // tema "radar" → serviços
+  if (["radar", "servico", "servicos", "servicos"].includes(tema)) {
+    await sendText(phone, `Bem-vindo${nm}! 🛠️ No *Radar de Serviços* eu te acho oficina, guincho e parceiros com desconto. Me diz o que precisa (ex.: "troca de óleo", "guincho agora", "revisão") que eu procuro. 🔧`);
+    return true;
+  }
+
+  const cfg = COM_TEMAS[tema];
+  const parsed = { origem: "comunidade", tema: tema || "geral", loja: "geral" };
+  await sendText(phone, `Bem-vindo à *Comunidade TotexMotors*${nm}! 👋 Já te mostro ${cfg?.oi || "os carros — desliza pro lado e toca em *Ver carro* no que curtir. Ou me diz o que procura (ex.: \"SUV até 80 mil\")"}.`);
+  await standVitrine(phone, "geral", leadId, parsed, { categorias: cfg?.cat || null, precoMax: cfg?.precoMax || null });
+  return true;
 }
 
 // ===================== QUANTO VALE MEU CARRO (placa → FIPE) =====================
@@ -3567,6 +3613,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (msg.kind !== "image" && await handleValorVivoOptin(msg.phone, psText, msg.contactName)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "valor_vivo_optin", input: psText } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, valor_vivo_optin: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      // COMUNIDADE — CTA "#com <tema>" dos grupos → boas-vindas + vitrine filtrada por tema (1:1)
+      if (await handleComunidade(msg.phone, psText, msg.contactName)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "comunidade", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, comunidade: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // QUANTO VALE MEU CARRO — placa → valor FIPE na hora (versão grátis / hook de captação)
       if (msg.kind !== "image" && await handleQuantoVale(msg.phone, psText, msg.contactName)) {
