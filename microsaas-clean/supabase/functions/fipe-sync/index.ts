@@ -1,0 +1,64 @@
+// TotexCar — FIPE-SYNC: baixa a tabela FIPE (dataset CC0 fipex-labs, via Hugging Face) e popula
+// public.fipe_tabela (só carros). Roda no servidor — não trafega 30 mil linhas pelo cliente.
+// Vira o refresh MENSAL (cron). Protegido por ?secret=. Deploy verify_jwt=false.
+//
+// GET /functions/v1/fipe-sync?secret=...   → baixa o mês atual, troca a tabela inteira, devolve contagem.
+
+const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
+const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
+const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const H = { apikey: KEY, authorization: `Bearer ${KEY}`, "content-type": "application/json" };
+const CSV_URL = "https://huggingface.co/datasets/alanwgt/fipex-veiculos-brasil/resolve/main/fipex-prices-latest.csv";
+
+const norm = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
+  if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) return new Response("unauthorized", { status: 401 });
+
+  // 1) baixa o CSV (TSV) do mês atual
+  let txt = "";
+  try {
+    const r = await fetch(CSV_URL);
+    if (!r.ok) return new Response(JSON.stringify({ ok: false, error: `download ${r.status}` }), { status: 502, headers: { "content-type": "application/json" } });
+    txt = await r.text();
+  } catch (e) { return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 502, headers: { "content-type": "application/json" } }); }
+
+  // 2) parseia (tab-separated) só os CARROS
+  const lines = txt.split("\n");
+  const head = lines[0].split("\t");
+  const idx = (n: string) => head.indexOf(n);
+  const iTipo = idx("tipo_veiculo"), iCod = idx("codigo_fipe"), iMod = idx("nome_modelo"), iMar = idx("nome_marca"),
+    iComb = idx("nome_combustivel"), iSig = idx("sigla_combustivel"), iAno = idx("ano_modelo"), iZero = idx("zero_km"),
+    iVal = idx("valor_centavos"), iMes = idx("mes_referencia"), iAnoRef = idx("ano_referencia");
+  const rows: any[] = [];
+  for (let k = 1; k < lines.length; k++) {
+    const c = lines[k].split("\t");
+    if (c[iTipo] !== "carro") continue;
+    const ano = parseInt(c[iAno], 10);
+    rows.push({
+      codigo_fipe: c[iCod], ano_modelo: Number.isFinite(ano) ? ano : 0,
+      nome_modelo: c[iMod], nome_marca: c[iMar],
+      nome_combustivel: c[iComb] || null, sigla_combustivel: c[iSig] || null,
+      zero_km: c[iZero] === "true",
+      valor_centavos: parseInt(c[iVal], 10) || 0,
+      ref_mes: parseInt(c[iMes], 10) || null, ref_ano: parseInt(c[iAnoRef], 10) || null,
+      marca_norm: norm(c[iMar]), modelo_norm: norm(c[iMod]),
+    });
+  }
+  if (rows.length < 1000) return new Response(JSON.stringify({ ok: false, error: "poucos_carros", parsed: rows.length }), { status: 502, headers: { "content-type": "application/json" } });
+
+  // 3) troca a tabela inteira: limpa e insere em lotes
+  await fetch(`${SB}/rest/v1/fipe_tabela?codigo_fipe=neq.__none__`, { method: "DELETE", headers: H });
+  let inserted = 0;
+  const BATCH = 1000;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const slice = rows.slice(i, i + BATCH);
+    const res = await fetch(`${SB}/rest/v1/fipe_tabela`, { method: "POST", headers: { ...H, prefer: "return=minimal" }, body: JSON.stringify(slice) });
+    if (res.ok) inserted += slice.length;
+    else console.error("fipe-sync insert:", res.status, (await res.text()).slice(0, 200));
+  }
+  const ref = rows[0] ? `${rows[0].ref_mes}/${rows[0].ref_ano}` : "?";
+  console.log(`fipe-sync: ${inserted}/${rows.length} carros (ref ${ref})`);
+  return new Response(JSON.stringify({ ok: true, carros: inserted, referencia: ref }), { headers: { "content-type": "application/json" } });
+});
