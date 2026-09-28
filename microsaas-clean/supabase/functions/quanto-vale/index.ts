@@ -125,11 +125,14 @@ Deno.serve(async (req) => {
 
   let out: any = { ok: true, placa, marca: veh.marca, modelo_placa: veh.modelo, ano: veh.ano || veh.ano_fab, combustivel: veh.combustivel, cor: veh.cor };
   try {
-    // 1) marca
+    // 1) marca — exato primeiro (GWM != GREAT WALL), depois apelidos, por fim contém
     const marcas = await fipeGet("/marcas");
-    const alias = MARCA_ALIAS[norm(veh.marca)] || [norm(veh.marca)];
-    const marcaHit = marcas.find((m: any) => alias.some((a) => norm(m.nome).includes(a) || a.includes(norm(m.nome))))
-      || marcas.find((m: any) => norm(m.nome).includes(norm(veh.marca).split(" ")[0]));
+    const vmarca = norm(veh.marca);
+    const alias = MARCA_ALIAS[vmarca] || [vmarca];
+    const marcaHit = marcas.find((m: any) => norm(m.nome) === vmarca)
+      || marcas.find((m: any) => alias.some((a) => norm(m.nome) === a))
+      || marcas.find((m: any) => alias.some((a) => norm(m.nome).includes(a)))
+      || marcas.find((m: any) => norm(m.nome).includes(vmarca.split(" ")[0]));
     if (!marcaHit) { out.fipe_erro = "marca_nao_na_fipe"; }
     else {
       // 2) modelo
