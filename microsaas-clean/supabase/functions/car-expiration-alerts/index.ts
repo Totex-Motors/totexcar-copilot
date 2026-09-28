@@ -721,13 +721,12 @@ async function runValorVivo(): Promise<number> {
     const old = Number(s.valor_num) || 0;
     let tend: string;
     if (!old) tend = "confira o valor atualizado";
-    else if (novo > old) tend = `subiu ${brl(novo - old)} 📈`;
-    else if (novo < old) tend = `caiu ${brl(old - novo)} 📉`;
+    else if (novo > old) tend = `subiu ${brl(novo - old)}`;
+    else if (novo < old) tend = `caiu ${brl(old - novo)}`;
     else tend = "está estável";
 
     const carro = s.carro || row.nome_modelo || "seu carro";
-    const nomeParam = s.nome ? `, ${String(s.nome).split(" ")[0]}` : "";
-    const ok = await waSendTemplate(wa, s.phone, "valor_vivo_mensal", [nomeParam, carro, brl(novo), tend]);
+    const ok = await waSendTemplate(wa, s.phone, "valor_vivo_mensal", [carro, brl(novo), tend]);
     if (!ok) { console.error("valor_vivo: envio falhou (template aprovado no Meta?) — segura a rodada"); break; }
 
     await supabase.from("valor_vivo_subs").update({ valor_num: novo, ref: refStr, last_sent_at: new Date().toISOString() }).eq("id", s.id);
