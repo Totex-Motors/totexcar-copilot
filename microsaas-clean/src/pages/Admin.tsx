@@ -118,6 +118,7 @@ const Admin = () => {
           <TabsTrigger value="config" className="gap-2"><KeyRound className="w-4 h-4" /> Configurações & Integrações</TabsTrigger>
           <TabsTrigger value="growth" className="gap-2"><Ticket className="w-4 h-4" /> Cupons & Ecossistema</TabsTrigger>
           <TabsTrigger value="subs" className="gap-2"><BarChart3 className="w-4 h-4" /> Assinaturas</TabsTrigger>
+          <TabsTrigger value="funil" className="gap-2"><TrendingUp className="w-4 h-4" /> Funil Grátis</TabsTrigger>
           <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
           <TabsTrigger value="partners" className="gap-2"><Wrench className="w-4 h-4" /> Parceiros</TabsTrigger>
         </TabsList>
@@ -136,6 +137,9 @@ const Admin = () => {
         </TabsContent>
         <TabsContent value="subs" className="mt-6">
           <SubscriptionsTab />
+        </TabsContent>
+        <TabsContent value="funil" className="mt-6">
+          <FunilValeTab />
         </TabsContent>
         <TabsContent value="stand" className="mt-6">
           <StandLeadsPanel source="admin" />
@@ -904,6 +908,110 @@ function GrowthTab() {
               <Save className="w-4 h-4 mr-2" /> {updateSettings.isPending ? "Salvando..." : "Salvar integração"}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Funil da versão grátis "Quanto Vale / Valor Vivo": consulta → opt-in → aviso → avaliação.
+// Piloto com número real (topo de funil do totem/QR do shopping e do WhatsApp).
+function FunilValeTab() {
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["funil_vale"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "funil_vale" } });
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
+  const f = data?.funil;
+  const serie = (data?.serie14 || []) as { dia: string; consultas: number; optin: number }[];
+  if (!f) return <div className="p-8 text-center text-muted-foreground">Sem dados ainda.</div>;
+
+  const maxV = Math.max(1, ...serie.map((s) => Math.max(s.consultas, s.optin)));
+  const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
+
+  const etapas = [
+    { l: "Consultaram o valor", v: f.consultas.total },
+    { l: "Pediram acompanhamento (opt-in)", v: f.optin.total },
+    { l: "Já receberam aviso", v: f.optin.avisados },
+    { l: "Quiseram avaliar", v: f.conversas.avaliar },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">Piloto da versão grátis: <b className="text-foreground">consulta de placa → acompanhamento → avaliação</b>. Topo de funil do totem/QR e do WhatsApp.</p>
+        <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+          {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : "Atualizar"}
+        </Button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><Car className="w-4 h-4" /> Consultas de valor</div>
+          <div className="text-3xl font-bold mt-1">{f.consultas.total}</div>
+          <div className="text-xs text-muted-foreground mt-1">{f.consultas.d7} nos últimos 7 dias</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><TrendingUp className="w-4 h-4" /> Opt-in Valor Vivo</div>
+          <div className="text-3xl font-bold mt-1 text-primary">{f.optin.ativos}</div>
+          <div className="text-xs text-muted-foreground mt-1">{f.taxa_optin}% das consultas · {f.optin.total} no total</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><MessageCircle className="w-4 h-4" /> Já avisados</div>
+          <div className="text-3xl font-bold mt-1">{f.optin.avisados}</div>
+          <div className="text-xs text-muted-foreground mt-1">receberam ≥ 1 aviso mensal</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><BarChart3 className="w-4 h-4" /> Quero avaliar</div>
+          <div className="text-3xl font-bold mt-1">{f.conversas.avaliar}</div>
+          <div className="text-xs text-muted-foreground mt-1">clicaram após o aviso</div>
+        </CardContent></Card>
+      </div>
+
+      {/* funil de conversão */}
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Conversão do funil</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {etapas.map((r, i) => (
+            <div key={i}>
+              <div className="flex justify-between text-sm mb-1">
+                <span>{r.l}</span>
+                <span className="font-semibold">{r.v} <span className="text-muted-foreground font-normal">({pct(r.v, f.consultas.total)}%)</span></span>
+              </div>
+              <div className="h-3 rounded-full bg-muted overflow-hidden">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(2, pct(r.v, f.consultas.total))}%` }} />
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* série 14 dias */}
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><BarChart3 className="w-5 h-5" /> Últimos 14 dias</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex items-end gap-1.5 h-40">
+            {serie.map((s, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                <div className="w-full flex items-end justify-center gap-0.5 h-32">
+                  <div className="w-1/2 rounded-t bg-primary" style={{ height: `${(s.consultas / maxV) * 100}%` }} title={`${s.consultas} consultas`} />
+                  <div className="w-1/2 rounded-t bg-teal-400" style={{ height: `${(s.optin / maxV) * 100}%` }} title={`${s.optin} opt-in`} />
+                </div>
+                <span className="text-[9px] text-muted-foreground">{s.dia.slice(8, 10)}/{s.dia.slice(5, 7)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-primary inline-block" /> Consultas</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-teal-400 inline-block" /> Novos opt-in</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">O Canal do WhatsApp trouxe <b className="text-foreground">{f.canal.total}</b> interações (origem=canal) no total.</p>
         </CardContent>
       </Card>
     </div>

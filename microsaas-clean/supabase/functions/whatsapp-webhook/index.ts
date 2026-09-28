@@ -3085,8 +3085,9 @@ async function handleValorVivoOptin(phone: string, text: string, contactName?: s
     return true;
   }
 
-  // "Quero avaliar" (botão do aviso mensal) → ponte pra venda/troca
+  // "Quero avaliar" (botão do aviso mensal) → ponte pra venda/troca (+ registra conversão do funil)
   if (VV_AVALIAR_RE.test(t)) {
+    await supabase.from("whatsapp_events").insert({ from_phone: phone, kind: "valor_vivo_convert", status: "processed", raw: { text }, parsed: { origem: "valor_vivo" } });
     await sendText(phone, `Show${primeiro}! 🚗 Pra eu te ajudar a *vender ou trocar*, é só me mandar *vender* que eu já começo a avaliação. 💬`);
     return true;
   }
