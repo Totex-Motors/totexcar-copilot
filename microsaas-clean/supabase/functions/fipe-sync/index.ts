@@ -32,6 +32,20 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) return new Response("unauthorized", { status: 401 });
 
+  // ORQUESTRADOR: sem ?part, chama a si mesmo pra cada fatia (cada uma é um worker com budget próprio).
+  // É o modo do cron mensal — 1 chamada popula tudo.
+  if (url.searchParams.get("part") == null) {
+    const parts = Math.max(1, parseInt(url.searchParams.get("parts") || "4", 10) || 4);
+    const base = `${SB}/functions/v1/fipe-sync?secret=${encodeURIComponent(url.searchParams.get("secret") || "")}&parts=${parts}`;
+    const res: any[] = [];
+    for (let p = 0; p < parts; p++) {
+      try { const r = await fetch(`${base}&part=${p}`, { headers: { authorization: `Bearer ${KEY}` } }); res.push(await r.json()); }
+      catch (e) { res.push({ part: p, erro: String(e) }); }
+    }
+    const total = res.reduce((a, x) => a + (x.inseridos || 0), 0);
+    return new Response(JSON.stringify({ ok: total > 0, orquestrado: true, total_inseridos: total, fatias: res }), { headers: { "content-type": "application/json" } });
+  }
+
   // 1) baixa o CSV (TSV) do mês mais recente (~5MB)
   let txt = "";
   try {
