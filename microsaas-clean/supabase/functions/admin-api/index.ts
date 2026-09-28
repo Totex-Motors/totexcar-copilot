@@ -81,6 +81,48 @@ Deno.serve(async (req) => {
         return json({ ok: true, leads });
       }
 
+      // FUNIL "QUANTO VALE / VALOR VIVO" (piloto da versão grátis): consulta → opt-in → aviso → avaliação
+      case "funil_vale": {
+        const now = Date.now();
+        const iso = (ms: number) => new Date(now - ms).toISOString();
+        const d7 = iso(7 * 864e5), d30 = iso(30 * 864e5), d14 = iso(14 * 864e5);
+        const ev = () => admin.from("whatsapp_events").select("id", { count: "exact", head: true });
+        const qv = (q: any) => q.eq("kind", "stand_lead").eq("parsed->>origem", "quanto_vale");
+
+        const [cTot, c7, c30, canal, convert] = await Promise.all([
+          qv(ev()), qv(ev()).gte("created_at", d7), qv(ev()).gte("created_at", d30),
+          ev().eq("kind", "stand_lead").eq("parsed->>origem", "canal"),
+          ev().eq("kind", "valor_vivo_convert"),
+        ]);
+        const [optTot, optAtivos, avisados] = await Promise.all([
+          admin.from("valor_vivo_subs").select("id", { count: "exact", head: true }),
+          admin.from("valor_vivo_subs").select("id", { count: "exact", head: true }).eq("active", true),
+          admin.from("valor_vivo_subs").select("id", { count: "exact", head: true }).not("last_sent_at", "is", null),
+        ]);
+
+        // série de 14 dias (consultas x novos opt-ins) pra um mini-gráfico
+        const { data: evRows } = await qv(admin.from("whatsapp_events").select("created_at")).gte("created_at", d14);
+        const { data: subRows } = await admin.from("valor_vivo_subs").select("created_at").gte("created_at", d14);
+        const dias: string[] = [];
+        for (let i = 13; i >= 0; i--) dias.push(new Date(now - i * 864e5).toISOString().slice(0, 10));
+        const bucket = (rows: any[]) => { const m: Record<string, number> = {}; (rows || []).forEach((r) => { const k = String(r.created_at).slice(0, 10); m[k] = (m[k] || 0) + 1; }); return m; };
+        const bc = bucket(evRows || []), bo = bucket(subRows || []);
+        const serie14 = dias.map((dia) => ({ dia, consultas: bc[dia] || 0, optin: bo[dia] || 0 }));
+
+        const consultas_total = cTot.count || 0;
+        return json({
+          ok: true,
+          funil: {
+            consultas: { total: consultas_total, d7: c7.count || 0, d30: c30.count || 0 },
+            optin: { ativos: optAtivos.count || 0, total: optTot.count || 0, avisados: avisados.count || 0 },
+            conversas: { avaliar: convert.count || 0 },
+            canal: { total: canal.count || 0 },
+            taxa_optin: consultas_total ? Math.round(((optTot.count || 0) / consultas_total) * 100) : 0,
+          },
+          serie14,
+        });
+      }
+
       case "list_owners": {
         const { data, error } = await admin
           .from("users")
