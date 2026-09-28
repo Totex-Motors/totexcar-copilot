@@ -83,7 +83,7 @@ function ranquear(rows: any[], modeloPlaca: string, comb: string | null, anoAlvo
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,apikey,content-type", "access-control-allow-methods": "GET,POST,OPTIONS" } });
+  if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, x-client-info, apikey, content-type, x-supabase-api-version", "access-control-allow-methods": "GET, POST, OPTIONS" } });
   const url = new URL(req.url);
   let placaIn = url.searchParams.get("placa") || "";
   let nocache = url.searchParams.get("nocache");
