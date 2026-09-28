@@ -1011,7 +1011,7 @@ function FunilValeTab() {
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-primary inline-block" /> Consultas</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-teal-400 inline-block" /> Novos opt-in</span>
           </div>
-          <p className="text-xs text-muted-foreground mt-3">O Canal do WhatsApp trouxe <b className="text-foreground">{f.canal.total}</b> interações (origem=canal) no total.</p>
+          <p className="text-xs text-muted-foreground mt-3">Origem das interações: Canal <b className="text-foreground">{f.canal.total}</b> · Comunidade <b className="text-foreground">{f.comunidade?.total ?? 0}</b> (no total).</p>
         </CardContent>
       </Card>
     </div>

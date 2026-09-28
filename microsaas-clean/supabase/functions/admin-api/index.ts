@@ -89,9 +89,10 @@ Deno.serve(async (req) => {
         const ev = () => admin.from("whatsapp_events").select("id", { count: "exact", head: true });
         const qv = (q: any) => q.eq("kind", "stand_lead").eq("parsed->>origem", "quanto_vale");
 
-        const [cTot, c7, c30, canal, convert] = await Promise.all([
+        const [cTot, c7, c30, canal, comunidade, convert] = await Promise.all([
           qv(ev()), qv(ev()).gte("created_at", d7), qv(ev()).gte("created_at", d30),
           ev().eq("kind", "stand_lead").eq("parsed->>origem", "canal"),
+          ev().eq("kind", "stand_lead").eq("parsed->>origem", "comunidade"),
           ev().eq("kind", "valor_vivo_convert"),
         ]);
         const [optTot, optAtivos, avisados] = await Promise.all([
@@ -117,6 +118,7 @@ Deno.serve(async (req) => {
             optin: { ativos: optAtivos.count || 0, total: optTot.count || 0, avisados: avisados.count || 0 },
             conversas: { avaliar: convert.count || 0 },
             canal: { total: canal.count || 0 },
+            comunidade: { total: comunidade.count || 0 },
             taxa_optin: consultas_total ? Math.round(((optTot.count || 0) / consultas_total) * 100) : 0,
           },
           serie14,
