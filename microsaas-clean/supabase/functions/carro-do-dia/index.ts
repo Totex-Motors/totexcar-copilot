@@ -250,6 +250,22 @@ async function isVouched(carId: string): Promise<boolean> {
   } catch { return false; }
 }
 
+// POST DE CAPTAÇÃO "quanto vale seu carro" (tema=vale) — não usa carro; dirige pro /vale.
+// Alimenta o funil grátis a partir do Canal (topo de funil do playbook).
+function montaPostVale(settings: any): { post: string; link: string } {
+  const appUrl = (settings?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+  const link = `${appUrl}/vale`;
+  const aberturas = [
+    "Você sabe QUANTO vale o seu carro hoje? 🤔",
+    "Antes de vender ou trocar: descubra o valor real do seu carro 👇",
+    "Tá pensando em trocar de carro? Começa sabendo quanto o seu vale 🚗",
+    "Curiosidade que vale dinheiro: quanto o seu carro vale na FIPE agora? 💰",
+  ];
+  const ab = aberturas[Math.floor(Math.random() * aberturas.length)];
+  const post = `${ab}\n\nÉ *grátis* e leva 10 segundos: digita a *placa* e o valor na *tabela FIPE* aparece na hora. Sem cadastro.\n\n👉 ${link}\n\nE se quiser, a gente ainda te avisa todo mês se ele valorizar ou cair. 🔔\n\n#TotexMotors #QuantoVale #TabelaFIPE`;
+  return { post, link };
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
@@ -284,8 +300,29 @@ Deno.serve(async (req) => {
     return json({ dica: "procure o id terminado em @newsletter do canal Totex Motors", tentativas });
   }
 
+  const tema = (url.searchParams.get("tema") || "").toLowerCase();
+
+  // tema=vale → post de captação "quanto vale seu carro" (dirige pro /vale). Não depende de carro.
+  if (tema === "vale") {
+    const p = montaPostVale(cfg);
+    if (job === "preview") return json({ ok: true, preview: true, tema: "vale", ...p });
+    if (!cfg.canal_autopost) return json({ ok: true, skipped: "canal_autopost desligado" });
+    if (!uazUrl || !uazToken || !cfg.canal_newsletter_id) return json({ ok: false, error: "uazapi/newsletter não configurados" }, 400);
+    let ok = false, detalhe = "";
+    try {
+      const res = await fetch(`${uazUrl}/send/text`, {
+        method: "POST", headers: { "content-type": "application/json", token: uazToken },
+        body: JSON.stringify({ number: cfg.canal_newsletter_id, text: p.post }),
+      });
+      detalhe = (await res.text()).slice(0, 1000); ok = res.ok;
+    } catch (e) { detalhe = String(e); }
+    await sbInsert("canal_posts", { car_id: null, ok, raw: { tema: "vale", detalhe: detalhe.slice(0, 500) } });
+    console.log(`carro-do-dia tema=vale: ${ok ? "publicado" : "FALHOU"} — ${detalhe.slice(0, 200)}`);
+    return json({ ok, tema: "vale", ...p });
+  }
+
   // tema=fipe → o post das 19h ("🔥 Abaixo da FIPE"): seleção e selo próprios
-  const temaFipe = (url.searchParams.get("tema") || "").toLowerCase() === "fipe";
+  const temaFipe = tema === "fipe";
 
   // candidatos ranqueados (preview usa o 1º; post tenta os próximos se a foto estiver morta)
   const candidatos = await escolheCarros(url.searchParams.get("car") || undefined, temaFipe);

@@ -17,7 +17,7 @@ export function InstallPrompt() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     // páginas públicas (ex.: /vale do shopping) não mostram o convite de instalar — foco na tarefa
-    if (/^\/(vale|oferta)\b/.test(window.location.pathname)) return;
+    if (/^\/(vale|oferta|comunidade)\b/.test(window.location.pathname)) return;
     const standalone =
       window.matchMedia?.("(display-mode: standalone)").matches ||
       (navigator as any).standalone === true;
