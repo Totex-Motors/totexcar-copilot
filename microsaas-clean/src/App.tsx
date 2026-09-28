@@ -18,6 +18,7 @@ import Recompra from "./pages/Recompra";
 import Manutencao from "./pages/Manutencao";
 import Financiamento from "./pages/Financiamento";
 import Multas from "./pages/Multas";
+import ValorCarro from "./pages/ValorCarro";
 import Garagem from "./pages/Garagem";
 import Roleta from "./pages/Roleta";
 import Viagem from "./pages/Viagem";
@@ -66,6 +67,7 @@ const App = () => (
           <Route path="/manutencao" element={<Manutencao />} />
           <Route path="/financiamento" element={<Financiamento />} />
           <Route path="/multas" element={<Multas />} />
+          <Route path="/vale" element={<ValorCarro />} />
           <Route path="/garagem" element={<Garagem />} />
           <Route path="/viagem" element={<Viagem />} />
           <Route path="/servicos" element={<Servicos />} />

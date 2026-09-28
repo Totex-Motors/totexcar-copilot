@@ -83,11 +83,15 @@ function ranquear(rows: any[], modeloPlaca: string, comb: string | null, anoAlvo
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,apikey,content-type", "access-control-allow-methods": "GET,POST,OPTIONS" } });
   const url = new URL(req.url);
-  const placa = (url.searchParams.get("placa") || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let placaIn = url.searchParams.get("placa") || "";
+  let nocache = url.searchParams.get("nocache");
+  if (!placaIn && req.method === "POST") { try { const b = await req.json(); placaIn = String(b?.placa || ""); nocache = nocache || (b?.nocache ? "1" : null); } catch { /* ignore */ } }
+  const placa = placaIn.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (placa.length < 7) return json({ ok: false, error: "placa_invalida" }, 400);
 
-  if (!url.searchParams.get("nocache")) {
+  if (!nocache) {
     const c = await sbGet(`valor_cache?placa=eq.${placa}&select=resultado,fetched_at&limit=1`);
     if (c?.[0] && Date.now() - new Date(c[0].fetched_at).getTime() < 20 * 24 * 3600_000) return json({ ...c[0].resultado, cached: true });
   }
