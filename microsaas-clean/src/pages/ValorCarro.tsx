@@ -46,39 +46,60 @@ export default function ValorCarro() {
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center px-4 py-8" style={{ colorScheme: "dark" }}>
+      <style>{`
+        @property --tvA { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+        .tv-neon { position: relative; border-radius: 26px; isolation: isolate; }
+        /* ponto de luz neon percorrendo a borda do quadrado */
+        .tv-neon::before {
+          content: ""; position: absolute; inset: -1.5px; border-radius: inherit; padding: 2.5px;
+          background: conic-gradient(from var(--tvA), transparent 0 62%, rgba(47,230,214,.35) 74%, rgba(47,230,214,.9) 84%, #f2fffd 89%, rgba(47,230,214,.9) 92%, transparent 100%);
+          -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude; animation: tvspin 3.4s linear infinite;
+          filter: drop-shadow(0 0 6px rgba(47,230,214,.8)); pointer-events: none; z-index: 2;
+        }
+        @keyframes tvspin { to { --tvA: 360deg; } }
+        @media (prefers-reduced-motion: reduce) { .tv-neon::before { animation: none; } }
+        /* borda 3D: bevel de luz em cima, sombra profunda embaixo + brilho externo */
+        .tv-face {
+          position: relative; z-index: 1; border-radius: 24px; background: linear-gradient(160deg, #141414 0%, #0a0a0a 55%, #060606 100%);
+          border: 1px solid rgba(47,230,214,.28);
+          box-shadow: 0 0 30px rgba(47,230,214,.28), inset 0 1.5px 0 rgba(255,255,255,.10),
+            inset 0 -3px 12px rgba(0,0,0,.75), inset 2px 2px 6px rgba(47,230,214,.06), inset -2px -2px 8px rgba(0,0,0,.6);
+        }
+      `}</style>
       <div className="w-full max-w-md flex flex-col items-center">
         {/* logo */}
         <img src="/totexmotors-logo.png" alt="TotexMotors" className="h-16 w-auto mb-8 object-contain" />
 
-        {/* hero — caixa em neon com glow */}
-        <div
-          className="w-full rounded-3xl p-6 bg-neutral-950"
-          style={{ border: `1.5px solid ${NEON}`, boxShadow: `0 0 24px rgba(47,230,214,0.45), inset 0 0 24px rgba(47,230,214,0.06)` }}
-        >
-          <div className="flex items-center gap-2 text-sm font-medium" style={{ color: NEON }}>
-            <Car className="w-4 h-4" /> Avaliação grátis
-          </div>
-          <h1 className="text-2xl font-extrabold leading-tight mt-1">Quanto vale o seu carro?</h1>
-          <p className="text-sm text-neutral-400 mt-1">Descubra na tabela FIPE em segundos. Só a placa.</p>
+        {/* hero — caixa 3D com ponto neon percorrendo a borda */}
+        <div className="tv-neon w-full">
+          <div className="tv-face p-6">
+            <div className="flex items-center gap-2 text-sm font-medium" style={{ color: NEON }}>
+              <Car className="w-4 h-4" /> Avaliação grátis
+            </div>
+            <h1 className="text-2xl font-extrabold leading-tight mt-1">Quanto vale o seu carro?</h1>
+            <p className="text-sm text-neutral-400 mt-1">Descubra na tabela FIPE em segundos. Só a placa.</p>
 
-          <input
-            value={placa}
-            onChange={(e) => onPlaca(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && consultar()}
-            placeholder="ABC1D23"
-            inputMode="text"
-            autoCapitalize="characters"
-            className="w-full mt-4 bg-white text-black rounded-xl px-4 py-3 text-xl font-bold tracking-[0.3em] text-center placeholder:tracking-normal placeholder:font-normal placeholder:text-neutral-400 outline-none"
-          />
-          <button
-            onClick={consultar}
-            disabled={placa.length < 7 || loading}
-            className="w-full mt-3 h-12 rounded-xl font-bold text-base flex items-center justify-center gap-2 text-black transition disabled:opacity-50"
-            style={{ background: NEON, boxShadow: `0 0 18px rgba(47,230,214,0.5)` }}
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-            {loading ? "Consultando..." : "Ver quanto vale"}
-          </button>
+            <input
+              value={placa}
+              onChange={(e) => onPlaca(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && consultar()}
+              placeholder="ABC1D23"
+              inputMode="text"
+              autoCapitalize="characters"
+              className="w-full mt-4 bg-white text-black rounded-xl px-4 py-3 text-xl font-bold tracking-[0.3em] text-center placeholder:tracking-normal placeholder:font-normal placeholder:text-neutral-400 outline-none"
+            />
+            <button
+              onClick={consultar}
+              disabled={placa.length < 7 || loading}
+              className="w-full mt-3 h-12 rounded-xl font-bold text-base flex items-center justify-center gap-2 text-black transition disabled:opacity-50"
+              style={{ background: NEON, boxShadow: `0 0 18px rgba(47,230,214,0.5)` }}
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+              {loading ? "Consultando..." : "Ver quanto vale"}
+            </button>
+          </div>
         </div>
 
         {/* erro */}
