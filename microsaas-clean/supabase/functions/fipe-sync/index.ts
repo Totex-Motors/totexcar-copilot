@@ -9,18 +9,35 @@ const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
 const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
 const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const H = { apikey: KEY, authorization: `Bearer ${KEY}`, "content-type": "application/json" };
-const CSV_URL = "https://huggingface.co/datasets/alanwgt/fipex-veiculos-brasil/resolve/main/fipex-prices-latest.csv";
 
 const norm = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const HF_BASE = "https://huggingface.co/datasets/alanwgt/fipex-veiculos-brasil/resolve/main";
+
+// acha o CSV do MÊS mais recente (o "-latest" é o histórico inteiro, ~1GB — não serve)
+async function urlMesAtual(): Promise<string | null> {
+  try {
+    const r = await fetch("https://huggingface.co/api/datasets/alanwgt/fipex-veiculos-brasil");
+    if (!r.ok) return null;
+    const j = await r.json();
+    const meses = (j.siblings || [])
+      .map((s: any) => String(s.rfilename))
+      .filter((f: string) => /^\d{4}\/\d{2}\/fipex-prices\.csv$/.test(f))
+      .sort();
+    const ultimo = meses[meses.length - 1];
+    return ultimo ? `${HF_BASE}/${ultimo}` : null;
+  } catch { return null; }
+}
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) return new Response("unauthorized", { status: 401 });
 
-  // 1) baixa o CSV (TSV) do mês atual
+  // 1) baixa o CSV (TSV) do mês mais recente (~5MB)
   let txt = "";
   try {
-    const r = await fetch(CSV_URL);
+    const csvUrl = url.searchParams.get("url") || (await urlMesAtual());
+    if (!csvUrl) return new Response(JSON.stringify({ ok: false, error: "sem_arquivo_mes" }), { status: 502, headers: { "content-type": "application/json" } });
+    const r = await fetch(csvUrl);
     if (!r.ok) return new Response(JSON.stringify({ ok: false, error: `download ${r.status}` }), { status: 502, headers: { "content-type": "application/json" } });
     txt = await r.text();
   } catch (e) { return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 502, headers: { "content-type": "application/json" } }); }
