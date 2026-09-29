@@ -9,7 +9,7 @@ export type MgTab = "inicio" | "veiculo" | "cnh" | "servicos" | null;
 const TABS: { key: MgTab; to: string; label: string; icon: typeof HomeIcon }[] = [
   { key: "inicio", to: "/", label: "Início", icon: HomeIcon },
   { key: "veiculo", to: "/veiculo", label: "Veículo", icon: Car },
-  { key: "cnh", to: "/settings", label: "CNH", icon: IdCard },
+  { key: "cnh", to: "/cnh", label: "CNH", icon: IdCard },
   { key: "servicos", to: "/servicos", label: "Serviços", icon: Wrench },
 ];
 
