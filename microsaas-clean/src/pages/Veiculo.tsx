@@ -104,7 +104,7 @@ export default function Veiculo() {
         </div>
 
         {/* CRLV digital */}
-        <Link to="/settings" className="card list-row">
+        <Link to="/crlv" className="card list-row">
           <span className="offer-ico"><FileText size={19} /></span>
           <div style={{ flex: 1 }}><div className="t">CRLV digital</div><div className="s">Documento do carro</div></div>
           <span className="tag ok" style={{ alignSelf: "center" }}>Disponível</span>

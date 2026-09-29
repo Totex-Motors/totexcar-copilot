@@ -59,11 +59,11 @@ export default function Index() {
 
   const tiles = [
     { to: "/multas", ic: CreditCard, cls: "ic-gain", name: "Débitos", meta: "IPVA, multas e taxas", tag: "Consultar", tagcls: "new" },
-    { to: "/settings", ic: CalendarDays, cls: "ic-brand", name: "Vencimentos", meta: "Licenciamento, seguro", tag: sLic.ok && sSeg.ok ? "Em dia" : "Atenção", tagcls: sLic.ok && sSeg.ok ? "ok" : "due" },
-    { to: "/servicos", ic: FileCheck2, cls: "ic-brand", name: "Histórico", meta: "Consulta cautelar", tag: "Emitir", tagcls: "new" },
-    { to: "/servicos", ic: ShieldCheck, cls: "ic-good", name: "Meu seguro", meta: "Cotação em minutos", tag: v.seguro_vencimento ? "Ativo" : "Sem proteção", tagcls: v.seguro_vencimento ? "ok" : "due" },
-    { to: "/settings", ic: IdCard, cls: "ic-brand", name: "CRLV digital", meta: "Documento do carro", tag: "Disponível", tagcls: "ok" },
-    { to: "/analytics", ic: LineChart, cls: "ic-brand", name: "Custo do carro", meta: "Quanto ele te custa", tag: totals?.totalExpenses ? brl(totals.totalExpenses) : "Ver", tagcls: "ok" },
+    { to: "/veiculo", ic: CalendarDays, cls: "ic-brand", name: "Vencimentos", meta: "Licenciamento, seguro", tag: sLic.ok && sSeg.ok ? "Em dia" : "Atenção", tagcls: sLic.ok && sSeg.ok ? "ok" : "due" },
+    { to: "/historico", ic: FileCheck2, cls: "ic-brand", name: "Histórico", meta: "Consulta cautelar", tag: "Emitir", tagcls: "new" },
+    { to: "/seguro", ic: ShieldCheck, cls: "ic-good", name: "Meu seguro", meta: "Cotação em minutos", tag: v.seguro_vencimento ? "Ativo" : "Sem proteção", tagcls: v.seguro_vencimento ? "ok" : "due" },
+    { to: "/crlv", ic: IdCard, cls: "ic-brand", name: "CRLV digital", meta: "Documento do carro", tag: "Disponível", tagcls: "ok" },
+    { to: "/custo", ic: LineChart, cls: "ic-brand", name: "Custo do carro", meta: "Quanto ele te custa", tag: totals?.totalExpenses ? brl(totals.totalExpenses) : "Ver", tagcls: "ok" },
   ];
   const offers = [
     { ic: Ticket, t: "Tag de pedágio", s: "Passe direto e ganhe desconto", cta: "Ver" },
