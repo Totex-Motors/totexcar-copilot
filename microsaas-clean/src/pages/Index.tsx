@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Link } from "react-router-dom";
 import {
   TrendingUp, ChevronRight, Car, Repeat2, CreditCard, CalendarDays, FileCheck2, ShieldCheck,
-  IdCard, LineChart, MessageCircle, Coins, Ticket, Landmark, Truck, Wrench,
+  IdCard, LineChart, MessageCircle, Coins, Ticket, Landmark, Truck, Wrench, Plane,
 } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
@@ -65,6 +65,7 @@ export default function Index() {
     { to: "/seguro", ic: ShieldCheck, cls: "ic-good", name: "Meu seguro", meta: "Cotação em minutos", tag: v.seguro_vencimento ? "Ativo" : "Sem proteção", tagcls: v.seguro_vencimento ? "ok" : "due" },
     { to: "/crlv", ic: IdCard, cls: "ic-brand", name: "CRLV digital", meta: "Documento do carro", tag: "Disponível", tagcls: "ok" },
     { to: "/custo", ic: LineChart, cls: "ic-brand", name: "Custo do carro", meta: "Quanto ele te custa", tag: totals?.totalExpenses ? brl(totals.totalExpenses) : "Ver", tagcls: "ok" },
+    { to: "/viagem", ic: Plane, cls: "ic-good", name: "Modo Viagem", meta: "Planeje a road trip", tag: "Novo", tagcls: "new" },
   ];
   const offers = [
     { ic: Ticket, t: "Tag de pedágio", s: "Passe direto e ganhe desconto", cta: "Ver" },
