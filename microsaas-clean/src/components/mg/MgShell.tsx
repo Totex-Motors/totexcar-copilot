@@ -134,4 +134,19 @@ export const MG_CSS = `
 .mg .tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(4,1fr);background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));max-width:460px;margin:0 auto}
 .mg .tab{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;font-weight:600;color:var(--faint)}
 .mg .tab.on{color:var(--brand)}
+.mg .field{width:100%;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:0 14px;font-size:14px;font-family:inherit;outline:none}
+.mg .field:focus{border-color:var(--brand)}
+.mg .catgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.mg .cat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 8px;display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;cursor:pointer;box-shadow:var(--shadow)}
+.mg .cat.on{border-color:var(--brand);background:var(--brand-soft)}
+.mg .cat .ci{width:38px;height:38px;border-radius:11px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center}
+.mg .cat.on .ci{background:var(--brand);color:#fff}
+.mg .cat.em .ci{background:var(--gain-soft);color:var(--warn)}
+.mg .cat .cl{font-size:11.5px;font-weight:700;line-height:1.15}
+.mg .sbtn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 12px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.mg .sbtn.wa{background:var(--wa);color:#fff;border-color:transparent}
+.mg .sbtn.brand{background:var(--brand);color:#fff;border-color:transparent}
+.mg .prov-name{font-weight:700;font-size:15px}
+.mg .prov-sig{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
+.mg .badge-p{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:6px;background:var(--brand-soft);color:var(--brand)}
 `;
