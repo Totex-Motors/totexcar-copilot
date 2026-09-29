@@ -20,6 +20,7 @@ import Financiamento from "./pages/Financiamento";
 import Multas from "./pages/Multas";
 import ValorCarro from "./pages/ValorCarro";
 import Comunidade from "./pages/Comunidade";
+import Veiculo from "./pages/Veiculo";
 import Garagem from "./pages/Garagem";
 import Roleta from "./pages/Roleta";
 import Viagem from "./pages/Viagem";
@@ -70,6 +71,7 @@ const App = () => (
           <Route path="/multas" element={<Multas />} />
           <Route path="/vale" element={<ValorCarro />} />
           <Route path="/comunidade" element={<Comunidade />} />
+          <Route path="/veiculo" element={<Veiculo />} />
           <Route path="/garagem" element={<Garagem />} />
           <Route path="/viagem" element={<Viagem />} />
           <Route path="/servicos" element={<Servicos />} />
