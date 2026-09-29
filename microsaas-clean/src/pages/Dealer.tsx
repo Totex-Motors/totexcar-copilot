@@ -23,6 +23,7 @@ import {
   Megaphone, Sparkles, Send, Loader2, MessageCircle, Banknote, HeartHandshake,
   ExternalLink, KanbanSquare, MessagesSquare, Bot, UserRound, XCircle, Gift, Star, QrCode,
 } from "lucide-react";
+import { MgPanelShell } from "@/components/mg/MgPanelShell";
 import { PostSaleTab } from "@/components/dealer/PostSaleTab";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useSearchParams } from "react-router-dom";
@@ -182,38 +183,25 @@ export default function Dealer() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur">
-        <div className="flex h-16 items-center justify-between px-4 md:px-6 max-w-6xl mx-auto">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center flex-shrink-0">
-              <Store className="w-5 h-5 text-white" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-semibold leading-tight truncate">Painel do Lojista</p>
-              <p className="text-xs text-muted-foreground truncate">
-                {viewStore || dealer?.dealership || (userData?.role === "admin" ? "Todas as lojas (admin)" : "Sua loja")}
-                {viewStore && <span className="ml-1 text-primary">(visão admin)</span>}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* CRM TotexGest (sistema irmão): acesso direto — SSO fica pra fase 2 */}
-            <Button asChild variant="outline" size="sm" className="gap-1.5">
-              <a href="https://totexgest.vercel.app/" target="_blank" rel="noreferrer" title="Abrir o CRM TotexGest (seus leads)">
-                <KanbanSquare className="w-4 h-4" /> <span className="hidden sm:inline">CRM TotexGest</span><span className="sm:hidden">CRM</span> <ExternalLink className="w-3 h-3" />
-              </a>
-            </Button>
-            <span className="hidden md:block text-sm text-muted-foreground">{userData?.name}</span>
-            <Button variant="ghost" size="icon" onClick={() => signOut()} title="Sair">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+    <MgPanelShell
+      home={false}
+      title="Painel do Lojista"
+      subtitle={`${viewStore || dealer?.dealership || (userData?.role === "admin" ? "Todas as lojas (admin)" : "Sua loja")}${viewStore ? " (visão admin)" : ""}`}
+      right={
+        <>
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <a href="https://totexgest.vercel.app/" target="_blank" rel="noreferrer" title="Abrir o CRM TotexGest (seus leads)">
+              <KanbanSquare className="w-4 h-4" /> <span className="hidden sm:inline">CRM TotexGest</span><span className="sm:hidden">CRM</span> <ExternalLink className="w-3 h-3" />
+            </a>
+          </Button>
+          <span className="hidden md:block text-sm text-muted-foreground">{userData?.name}</span>
+          <Button variant="ghost" size="icon" onClick={() => signOut()} title="Sair">
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-6">
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
@@ -326,11 +314,11 @@ export default function Dealer() {
             <ReferralTab />
           </TabsContent>
         </Tabs>
-      </main>
+      </div>
 
       {/* Ficha / jornada do cliente */}
       <ClientSheet client={selected} onClose={() => setSelected(null)} />
-    </div>
+    </MgPanelShell>
   );
 }
 

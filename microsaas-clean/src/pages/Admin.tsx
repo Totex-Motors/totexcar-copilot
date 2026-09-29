@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { MgPanelShell } from "@/components/mg/MgPanelShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,17 +74,17 @@ const Admin = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <MgPanelShell title="Painel Administrativo">
         <div className="flex items-center justify-center min-h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
-      </DashboardLayout>
+      </MgPanelShell>
     );
   }
 
   if (!isAdmin) {
     return (
-      <DashboardLayout>
+      <MgPanelShell title="Painel Administrativo">
         <Card className="border-0 shadow-premium-md max-w-xl mx-auto mt-10">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -100,17 +100,12 @@ const Admin = () => {
             </Button>
           </CardContent>
         </Card>
-      </DashboardLayout>
+      </MgPanelShell>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-foreground">Painel Administrativo</h1>
-        <p className="text-muted-foreground">Gerencie proprietários e as integrações de IA</p>
-      </div>
-
+    <MgPanelShell title="Painel Administrativo" subtitle="Gerencie proprietários, lojistas e integrações">
       <Tabs defaultValue="owners" className="w-full">
         <TabsList className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="owners" className="gap-2"><Users className="w-4 h-4" /> Proprietários</TabsTrigger>
@@ -148,7 +143,7 @@ const Admin = () => {
           <PartnersTab />
         </TabsContent>
       </Tabs>
-    </DashboardLayout>
+    </MgPanelShell>
   );
 };
 
