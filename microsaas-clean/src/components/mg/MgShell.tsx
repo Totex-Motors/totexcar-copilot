@@ -149,4 +149,13 @@ export const MG_CSS = `
 .mg .prov-name{font-weight:700;font-size:15px}
 .mg .prov-sig{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
 .mg .badge-p{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:6px;background:var(--brand-soft);color:var(--brand)}
+.mg .tag.mut{background:var(--card-2);color:var(--muted)}
+.mg .tag.blue{background:rgba(47,128,237,.14);color:#2f80ed}
+.mg .overlay{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
+.mg .sheet2{background:var(--card);width:100%;max-width:460px;max-height:84vh;border-radius:20px 20px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));overflow:auto;box-shadow:var(--shadow)}
+.mg .sheet2 pre{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.55;color:var(--ink);margin:0}
+.mg .kpi{display:flex;gap:10px}
+.mg .kpi .box{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+.mg .kpi .box .l{font-size:11px;color:var(--muted)}
+.mg .kpi .box .v{font-size:19px;font-weight:800;margin-top:2px}
 `;
