@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { LifeBuoy, Send, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
+import { Send, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
+import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -18,10 +15,10 @@ const SUGESTOES = [
 
 const BOAS_VINDAS: Msg = {
   role: "assistant",
-  content:
-    "Oi! Sou o suporte do TotexCar Co-pilot 👋 Posso te ajudar com o uso do app e do WhatsApp, planos e pagamentos, consumo, multas, alertas… E se eu não resolver, aciono o responsável na hora. Como posso ajudar?",
+  content: "Oi! Sou o suporte do TotexCar Co-pilot 👋 Posso te ajudar com o uso do app e do WhatsApp, consumo, multas, alertas… E se eu não resolver, aciono o responsável na hora. Como posso ajudar?",
 };
 
+// TELA SUPORTE — chat com IA (support-agent), escala pro responsável quando precisa. Padrão Minha Garagem.
 export default function Suporte() {
   const { userId, loading } = useCurrentUser();
   const [msgs, setMsgs] = useState<Msg[]>([BOAS_VINDAS]);
@@ -40,106 +37,67 @@ export default function Suporte() {
     setInput("");
     setSending(true);
     try {
-      // manda só o histórico real da conversa (sem a boas-vindas estática)
       const history = next.filter((m) => m !== BOAS_VINDAS);
-      const { data, error } = await supabase.functions.invoke("support-agent", {
-        body: { messages: history },
-      });
+      const { data, error } = await supabase.functions.invoke("support-agent", { body: { messages: history } });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setMsgs((p) => [...p, { role: "assistant", content: data.reply || "Desculpe, pode repetir?" }]);
       if (data?.escalated) setEscalated(true);
     } catch (e: any) {
-      setMsgs((p) => [...p, {
-        role: "assistant",
-        content: "Tive um problema pra responder agora 😕 Tenta de novo em instantes — ou me chame no WhatsApp do Co-pilot.",
-      }]);
+      setMsgs((p) => [...p, { role: "assistant", content: "Tive um problema pra responder agora 😕 Tenta de novo em instantes — ou me chame no WhatsApp do Co-pilot." }]);
       console.error("suporte:", e?.message || e);
     } finally {
       setSending(false);
     }
   };
 
-  if (loading) {
-    return <DashboardLayout><div className="flex items-center justify-center min-h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div></DashboardLayout>;
-  }
+  if (loading) return <MgShell title="Suporte" back="/"><div style={{ display: "grid", placeItems: "center", padding: "60px 0" }}><Loader2 className="h-8 w-8 animate-spin" style={{ color: "var(--brand)" }} /></div></MgShell>;
 
   return (
-    <DashboardLayout>
-      <div className="space-y-4 max-w-3xl mx-auto">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <LifeBuoy className="w-7 h-7 text-primary" /> Suporte
-          </h1>
-          <p className="text-muted-foreground">
-            Atendimento com IA, na hora. Se algo precisar de uma pessoa, o responsável é acionado no WhatsApp automaticamente.
-          </p>
-        </div>
+    <MgShell title="Suporte" back="/">
+      <div className="stack">
+        <p style={{ fontSize: 12.5, color: "var(--muted)", margin: "0 2px", lineHeight: 1.4 }}>Atendimento com IA, na hora. Se algo precisar de uma pessoa, o responsável é acionado no WhatsApp automaticamente.</p>
 
         {escalated && (
-          <div className="flex items-center gap-2.5 rounded-xl border border-green-500/30 bg-green-500/[0.07] px-4 py-3 text-sm">
-            <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
-            Chamado aberto! O responsável já foi notificado e vai te retornar.
+          <div className="card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 13px", background: "var(--good-soft)", borderColor: "transparent", fontSize: 13 }}>
+            <CheckCircle2 size={16} style={{ color: "var(--good)", flex: "none" }} /> Chamado aberto! O responsável já foi notificado e vai te retornar.
           </div>
         )}
 
-        <Card className="border-0 shadow-premium-md">
-          <CardContent className="p-0 flex flex-col h-[60vh] min-h-[420px]">
-            {/* mensagens */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {msgs.map((m, i) => (
-                <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap
-                    ${m.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-tr-sm"
-                      : "bg-muted text-foreground rounded-tl-sm"}`}>
-                    {m.role === "assistant" && i === 0 && (
-                      <span className="flex items-center gap-1.5 text-xs font-semibold text-primary mb-1">
-                        <Sparkles className="w-3.5 h-3.5" /> Suporte Co-pilot
-                      </span>
-                    )}
-                    {m.content}
-                  </div>
+        <section className="card" style={{ display: "flex", flexDirection: "column", height: "62vh", minHeight: 420, overflow: "hidden" }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            {msgs.map((m, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+                <div style={{
+                  maxWidth: "85%", borderRadius: 16, padding: "10px 14px", fontSize: 13.5, lineHeight: 1.5, whiteSpace: "pre-wrap",
+                  background: m.role === "user" ? "var(--brand)" : "var(--card-2)", color: m.role === "user" ? "#fff" : "var(--ink)",
+                  borderTopRightRadius: m.role === "user" ? 4 : 16, borderTopLeftRadius: m.role === "user" ? 16 : 4,
+                }}>
+                  {m.role === "assistant" && i === 0 && (
+                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: "var(--brand)", marginBottom: 4 }}><Sparkles size={13} /> Suporte Co-pilot</span>
+                  )}
+                  {m.content}
                 </div>
-              ))}
-              {sending && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3">
-                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                  </div>
-                </div>
-              )}
-              <div ref={endRef} />
-            </div>
-
-            {/* sugestões rápidas (só no início) */}
-            {msgs.length <= 1 && (
-              <div className="px-4 pb-2 flex flex-wrap gap-2">
-                {SUGESTOES.map((s) => (
-                  <button key={s} onClick={() => enviar(s)}
-                    className="text-xs rounded-full border border-primary/30 bg-primary/5 text-primary px-3 py-1.5 hover:bg-primary/10 transition-colors">
-                    {s}
-                  </button>
-                ))}
               </div>
-            )}
+            ))}
+            {sending && <div style={{ display: "flex", justifyContent: "flex-start" }}><div style={{ background: "var(--card-2)", borderRadius: 16, borderTopLeftRadius: 4, padding: "12px 14px" }}><Loader2 size={16} className="animate-spin" style={{ color: "var(--brand)" }} /></div></div>}
+            <div ref={endRef} />
+          </div>
 
-            {/* input */}
-            <div className="border-t p-3 flex gap-2">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && enviar()}
-                placeholder="Escreva sua dúvida…"
-                disabled={sending || !userId}
-              />
-              <Button onClick={() => enviar()} disabled={sending || !input.trim()} size="icon" className="shrink-0">
-                <Send className="w-4 h-4" />
-              </Button>
+          {msgs.length <= 1 && (
+            <div style={{ padding: "0 14px 8px", display: "flex", flexWrap: "wrap", gap: 7 }}>
+              {SUGESTOES.map((s) => (
+                <button key={s} onClick={() => enviar(s)} style={{ fontSize: 11.5, borderRadius: 999, border: "1px solid var(--brand-soft)", background: "var(--brand-soft)", color: "var(--brand)", padding: "6px 11px", cursor: "pointer" }}>{s}</button>
+              ))}
             </div>
-          </CardContent>
-        </Card>
+          )}
+
+          <div style={{ borderTop: "1px solid var(--line)", padding: 12, display: "flex", gap: 8 }}>
+            <input className="field" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && enviar()} placeholder="Escreva sua dúvida…" disabled={sending || !userId} />
+            <button className="sbtn brand" style={{ flex: "none", padding: "0 14px" }} onClick={() => enviar()} disabled={sending || !input.trim()} aria-label="Enviar"><Send size={16} /></button>
+          </div>
+        </section>
       </div>
-    </DashboardLayout>
+    </MgShell>
   );
 }

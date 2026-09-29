@@ -1,11 +1,7 @@
 import { useState } from "react";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Navigate } from "react-router-dom";
 import { Banknote, Car, TrendingUp, Loader2, CheckCircle2, Info } from "lucide-react";
+import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -16,12 +12,13 @@ import {
 const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
 
 const STATUS: Record<string, { label: string; cls: string }> = {
-  new: { label: "Enviado", cls: "bg-warning/15 text-warning" },
-  contacted: { label: "Em contato", cls: "bg-primary/15 text-primary" },
-  closed: { label: "Concluído", cls: "bg-green-500/15 text-green-600" },
-  declined: { label: "Recusado", cls: "bg-muted text-muted-foreground" },
+  new: { label: "Enviado", cls: "due" },
+  contacted: { label: "Em contato", cls: "new" },
+  closed: { label: "Concluído", cls: "ok" },
+  declined: { label: "Recusado", cls: "mut" },
 };
 
+// TELA RECOMPRA — avalia o carro pela FIPE e pede proposta de recompra à loja. Padrão Minha Garagem.
 export default function Recompra() {
   const { userData, userId, loading } = useCurrentUser();
   const [brand, setBrand] = useState<string | null>(null);
@@ -36,134 +33,110 @@ export default function Recompra() {
   const create = useCreateBuyback();
 
   const dealership = userData?.dealership as string | undefined;
-
   const onBrand = (v: string) => { setBrand(v); setModel(null); setYear(null); };
   const onModel = (v: string) => { setModel(v); setYear(null); };
 
   const handleRequest = () => {
     if (!price) return;
     create.mutate(
-      {
-        brand: price.fipe.brand, model: price.fipe.model, year: String(price.fipe.year),
-        fuel: price.fipe.fuel, fipe_code: price.fipe.code, fipe_value: price.fipe.value, offer_pct: price.offer_pct,
-      },
+      { brand: price.fipe.brand, model: price.fipe.model, year: String(price.fipe.year), fuel: price.fipe.fuel, fipe_code: price.fipe.code, fipe_value: price.fipe.value, offer_pct: price.offer_pct },
       {
         onSuccess: () => { toast({ title: "Proposta solicitada! 🎉", description: "A loja vai entrar em contato." }); setBrand(null); setModel(null); setYear(null); },
-        onError: (e: any) => toast({
-          title: "Não foi possível enviar",
-          description: e?.message === "owner_without_dealership" ? "Sua conta não está vinculada a uma loja." : String(e?.message || e),
-          variant: "destructive",
-        }),
+        onError: (e: any) => toast({ title: "Não foi possível enviar", description: e?.message === "owner_without_dealership" ? "Sua conta não está vinculada a uma loja." : String(e?.message || e), variant: "destructive" }),
       },
     );
   };
 
-  if (loading) {
-    return <DashboardLayout><div className="flex items-center justify-center min-h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div></DashboardLayout>;
-  }
+  if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
+  if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
 
   return (
-    <DashboardLayout>
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-foreground flex items-center gap-2"><Banknote className="w-7 h-7 text-primary" /> Recompra do seu carro</h1>
-        <p className="text-muted-foreground">
-          {dealership ? <>A <strong>{dealership}</strong> recompra o seu carro por até <strong>{price?.offer_pct ?? 90}% da tabela FIPE</strong>. Avalie agora.</>
-            : "Avalie seu carro pela tabela FIPE e receba uma proposta de recompra da loja parceira."}
+    <MgShell title="Recompra do carro" back="/">
+      <div className="stack">
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 2px", lineHeight: 1.4 }}>
+          {dealership ? <>A <b style={{ color: "var(--ink)" }}>{dealership}</b> recompra o seu carro por até <b style={{ color: "var(--brand)" }}>{price?.offer_pct ?? 90}% da FIPE</b>. Avalie agora.</>
+            : "Avalie seu carro pela FIPE e receba uma proposta de recompra da loja parceira."}
         </p>
-      </div>
 
-      {!dealership && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
-          <Info className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
-          <span>Sua conta ainda não está vinculada a uma loja parceira — você consegue avaliar, mas o pedido só é enviado quando houver uma loja vinculada.</span>
-        </div>
-      )}
+        {!dealership && (
+          <div className="card" style={{ display: "flex", gap: 10, padding: "12px 13px", background: "var(--gain-soft)", borderColor: "transparent" }}>
+            <Info size={16} style={{ color: "var(--warn)", flex: "none", marginTop: 1 }} />
+            <span style={{ fontSize: 12.5, color: "var(--ink)" }}>Sua conta ainda não está vinculada a uma loja parceira — você consegue avaliar, mas o pedido só é enviado quando houver uma loja vinculada.</span>
+          </div>
+        )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Avaliação FIPE */}
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Car className="w-5 h-5" /> Avalie seu carro (FIPE)</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Marca</Label>
-              <Select value={brand ?? undefined} onValueChange={onBrand} disabled={lb}>
-                <SelectTrigger><SelectValue placeholder={lb ? "Carregando..." : "Selecione a marca"} /></SelectTrigger>
-                <SelectContent>{(brands || []).map((b) => <SelectItem key={String(b.codigo)} value={String(b.codigo)}>{b.nome}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Modelo</Label>
-              <Select value={model ?? undefined} onValueChange={onModel} disabled={!brand || lm}>
-                <SelectTrigger><SelectValue placeholder={!brand ? "Escolha a marca antes" : lm ? "Carregando..." : "Selecione o modelo"} /></SelectTrigger>
-                <SelectContent>{(models || []).map((m) => <SelectItem key={String(m.codigo)} value={String(m.codigo)}>{m.nome}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Ano</Label>
-              <Select value={year ?? undefined} onValueChange={setYear} disabled={!model || ly}>
-                <SelectTrigger><SelectValue placeholder={!model ? "Escolha o modelo antes" : ly ? "Carregando..." : "Selecione o ano"} /></SelectTrigger>
-                <SelectContent>{(years || []).map((y) => <SelectItem key={String(y.codigo)} value={String(y.codigo)}>{y.nome}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+        {/* avaliação FIPE */}
+        <section className="card pad">
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}><Car size={16} style={{ color: "var(--brand)" }} /> Avalie seu carro (FIPE)</div>
+          <label className="lbl">Marca</label>
+          <select className="field" value={brand ?? ""} onChange={(e) => onBrand(e.target.value)} disabled={lb}>
+            <option value="">{lb ? "Carregando..." : "Selecione a marca"}</option>
+            {(brands || []).map((b) => <option key={String(b.codigo)} value={String(b.codigo)}>{b.nome}</option>)}
+          </select>
+          <label className="lbl" style={{ marginTop: 12 }}>Modelo</label>
+          <select className="field" value={model ?? ""} onChange={(e) => onModel(e.target.value)} disabled={!brand || lm}>
+            <option value="">{!brand ? "Escolha a marca antes" : lm ? "Carregando..." : "Selecione o modelo"}</option>
+            {(models || []).map((m) => <option key={String(m.codigo)} value={String(m.codigo)}>{m.nome}</option>)}
+          </select>
+          <label className="lbl" style={{ marginTop: 12 }}>Ano</label>
+          <select className="field" value={year ?? ""} onChange={(e) => setYear(e.target.value)} disabled={!model || ly}>
+            <option value="">{!model ? "Escolha o modelo antes" : ly ? "Carregando..." : "Selecione o ano"}</option>
+            {(years || []).map((y) => <option key={String(y.codigo)} value={String(y.codigo)}>{y.nome}</option>)}
+          </select>
+        </section>
 
-        {/* Oferta */}
-        <Card className="border-0 shadow-premium-md bg-gradient-to-br from-primary/5 to-primary/10">
-          <CardHeader><CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Sua oferta de recompra</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+        {/* oferta */}
+        {(lp || price) && (
+          <section className="card pad" style={{ background: "var(--brand-soft)", borderColor: "transparent" }}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}><TrendingUp size={16} style={{ color: "var(--brand)" }} /> Sua oferta de recompra</div>
             {lp ? (
-              <div className="py-10 text-center text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></div>
+              <div style={{ padding: "24px 0", textAlign: "center" }}><Loader2 size={22} className="animate-spin" style={{ color: "var(--brand)" }} /></div>
             ) : price ? (
               <>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Tabela FIPE</span>
-                  <span className="font-medium line-through text-muted-foreground">{brl(price.fipe.value)}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <span style={{ color: "var(--muted)" }}>Tabela FIPE</span>
+                  <span style={{ color: "var(--muted)", textDecoration: "line-through" }}>{brl(price.fipe.value)}</span>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">A loja paga até ({price.offer_pct}% da FIPE)</p>
-                  <p className="text-4xl font-bold text-primary">{brl(price.offer_value)}</p>
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>A loja paga até ({price.offer_pct}% da FIPE)</div>
+                  <div className="mono" style={{ fontSize: 34, fontWeight: 800, color: "var(--brand)", lineHeight: 1.1 }}>{brl(price.offer_value)}</div>
                 </div>
-                <p className="text-xs text-muted-foreground">{price.fipe.brand} {price.fipe.model} · {price.fipe.year} · {price.fipe.fuel}</p>
-                <Button className="w-full bg-gradient-primary" onClick={handleRequest} disabled={create.isPending}>
-                  {create.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando...</> : "Quero receber a proposta"}
-                </Button>
-                <p className="text-xs text-muted-foreground text-center">Valor de referência. A oferta final depende da avaliação do veículo pela loja.</p>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>{price.fipe.brand} {price.fipe.model} · {price.fipe.year} · {price.fipe.fuel}</div>
+                <button className="btn-primary" style={{ marginTop: 14 }} onClick={handleRequest} disabled={create.isPending}>{create.isPending ? <><Loader2 size={16} className="animate-spin" /> Enviando...</> : "Quero receber a proposta"}</button>
+                <p style={{ fontSize: 11, color: "var(--muted)", textAlign: "center", marginTop: 10 }}>Valor de referência. A oferta final depende da avaliação do veículo pela loja.</p>
               </>
-            ) : (
-              <div className="py-10 text-center text-muted-foreground">Selecione marca, modelo e ano para ver a oferta.</div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            ) : null}
+          </section>
+        )}
 
-      {/* Meus pedidos */}
-      <Card className="border-0 shadow-premium-md">
-        <CardHeader><CardTitle className="text-lg">Meus pedidos de recompra ({myReqs?.length || 0})</CardTitle></CardHeader>
-        <CardContent className="p-0">
+        {/* meus pedidos */}
+        <div>
+          <div className="eyebrow" style={{ margin: "4px 2px 10px" }}>Meus pedidos de recompra ({myReqs?.length || 0})</div>
           {myReqs && myReqs.length ? (
-            <div className="divide-y divide-border">
+            <section className="card">
               {myReqs.map((r) => {
                 const st = STATUS[r.status] || STATUS.new;
                 return (
-                  <div key={r.id} className="flex items-center justify-between p-4">
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{[r.brand, r.model, r.year].filter(Boolean).join(" ")}</p>
-                      <p className="text-xs text-muted-foreground">FIPE {brl(Number(r.fipe_value))} · oferta {brl(Number(r.offer_value))} · {new Date(r.created_at).toLocaleDateString("pt-BR")}</p>
+                  <div key={r.id} className="list-row">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="t">{[r.brand, r.model, r.year].filter(Boolean).join(" ")}</div>
+                      <div className="s">FIPE {brl(Number(r.fipe_value))} · oferta {brl(Number(r.offer_value))} · {new Date(r.created_at).toLocaleDateString("pt-BR")}</div>
                     </div>
-                    <Badge className={`border-0 ${st.cls}`}>{st.label}</Badge>
+                    <span className={`tag ${st.cls}`} style={{ alignSelf: "center" }}>{st.label}</span>
                   </div>
                 );
               })}
-            </div>
+            </section>
           ) : (
-            <div className="p-8 text-center text-muted-foreground flex flex-col items-center gap-2">
-              <CheckCircle2 className="w-8 h-8 text-muted-foreground/50" />
-              Você ainda não pediu nenhuma recompra.
+            <div className="card pad" style={{ textAlign: "center" }}>
+              <CheckCircle2 size={30} style={{ opacity: .4, margin: "4px auto", color: "var(--brand)" }} />
+              <div style={{ fontSize: 13, color: "var(--muted)" }}>Você ainda não pediu nenhuma recompra.</div>
             </div>
           )}
-        </CardContent>
-      </Card>
-    </DashboardLayout>
+        </div>
+
+        <p className="foot-note">O valor da FIPE é referência — a oferta final sai depois da vistoria presencial da loja.</p>
+      </div>
+    </MgShell>
   );
 }

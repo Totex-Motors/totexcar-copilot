@@ -3,6 +3,7 @@ import { Navigate, Link } from "react-router-dom";
 import {
   TrendingUp, ChevronRight, Car, Repeat2, CreditCard, CalendarDays, FileCheck2, ShieldCheck,
   IdCard, LineChart, MessageCircle, Coins, Ticket, Landmark, Truck, Wrench, Plane, Warehouse,
+  Gift, Award, Banknote, FileText, Tag, LifeBuoy, Disc3,
 } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
@@ -160,6 +161,31 @@ export default function Index() {
                   <span className="offer-ico"><Ic size={19} /></span>
                   <div style={{ flex: 1 }}><div className="t">{o.t}</div><div className="s">{o.s}</div></div>
                   <span className="cta">{o.cta}</span>
+                </Link>
+              );
+            })}
+          </section>
+        </div>
+
+        {/* MAIS NO APP */}
+        <div>
+          <div className="eyebrow" style={{ margin: "4px 2px 10px" }}>Mais no app</div>
+          <section className="card">
+            {[
+              { to: "/indique", ic: Gift, t: "Indique e Ganhe", s: "Comissão por indicação" },
+              { to: "/selo", ic: Award, t: "Selo Totex", s: "Seu histórico vale dinheiro" },
+              { to: "/financiamento", ic: Banknote, t: "Financiamento", s: "Acompanhe as parcelas" },
+              { to: "/reports", ic: FileText, t: "Relatórios", s: "Gastos por período" },
+              { to: "/categories", ic: Tag, t: "Categorias", s: "Organize seus gastos" },
+              { to: "/roleta", ic: Disc3, t: "Roleta Totex", s: "Missões e prêmios da loja" },
+              { to: "/suporte", ic: LifeBuoy, t: "Suporte", s: "Ajuda na hora, com IA" },
+            ].map((o) => {
+              const Ic = o.ic;
+              return (
+                <Link key={o.to} to={o.to} className="offer">
+                  <span className="offer-ico"><Ic size={19} /></span>
+                  <div style={{ flex: 1 }}><div className="t">{o.t}</div><div className="s">{o.s}</div></div>
+                  <ChevronRight size={18} style={{ color: "var(--faint)" }} />
                 </Link>
               );
             })}
