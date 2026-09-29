@@ -1,10 +1,12 @@
 import { useState } from "react";
 import {
-  ShieldAlert, MessageCircle, FileText, Copy, Download, CalendarClock, CheckCircle2, X, ChevronRight,
+  MessageCircle, FileText, Copy, Download, CalendarClock, CheckCircle2, X, ChevronRight, Loader2, Search, Sparkles,
 } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
+import { useVehicle } from "@/hooks/useAccounts";
 import { useMultas, useUpdateMultaStatus, type Multa } from "@/hooks/useMultas";
+import { runGptConsulta, type GptResult } from "@/hooks/useGptMotors";
 import { toast } from "@/hooks/use-toast";
 
 const WA = "5511963786699";
@@ -21,11 +23,28 @@ const CHANCE: Record<string, { label: string; cls: string }> = {
 const diasRestantes = (prazo: string | null) => prazo ? Math.ceil((new Date(prazo + "T23:59:59").getTime() - Date.now()) / 86400000) : null;
 const fmtData = (d: string | null) => d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR") : "—";
 
+const PRECO_DEBITOS = 19.9; // preço de exibição (valor final vem do servidor)
+
 export default function Multas() {
   const { userId, loading } = useCurrentUser();
+  const { vehicle } = useVehicle(userId);
   const { data: multas, isLoading } = useMultas(userId);
   const updateStatus = useUpdateMultaStatus();
   const [aberta, setAberta] = useState<Multa | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<GptResult | null>(null);
+
+  const placa = vehicle?.placa || "";
+  const waDebitos = `https://wa.me/${WA}?text=${encodeURIComponent(`Quero consultar os débitos do meu carro${placa ? ` (placa ${placa})` : ""} 💸`)}`;
+  const consultarDebitos = async () => {
+    if (!placa || busy) return;
+    setBusy(true); setRes(null);
+    const r = await runGptConsulta("debitos", placa);
+    setRes(r); setBusy(false);
+  };
+  const est = res?.ok ? res.dados?.estadual : null;
+  const ren = res?.ok ? res.dados?.renainf : null;
+  const debEst: any[] = Array.isArray(est?.debitosEstaduais) ? est.debitosEstaduais : [];
 
   const copiar = async (t: string) => { try { await navigator.clipboard.writeText(t); toast({ title: "Recurso copiado!", description: "Cole no site/formulário do órgão autuador." }); } catch { toast({ title: "Não consegui copiar", variant: "destructive" }); } };
   const baixar = (m: Multa) => { const b = new Blob([m.recurso_texto || ""], { type: "text/plain;charset=utf-8" }); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `recurso-multa-${m.auto_numero || m.id.slice(0, 8)}.txt`; a.click(); URL.revokeObjectURL(a.href); };
@@ -55,6 +74,54 @@ export default function Multas() {
             <div className="box"><div className="l">Multas abertas</div><div className="v">{abertas.length}</div></div>
             <div className="box"><div className="l">Valor em aberto</div><div className="v mono" style={{ color: "var(--gain)" }}>{brl(totalAberto)}</div></div>
           </div>
+        )}
+
+        {/* consulta de débitos ao vivo (GPT Motors) */}
+        {res?.ok && (
+          <section className="card pad">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span className="badge-p" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Sparkles size={12} /> Débitos atualizados</span>
+              {res.cached && <span className="tag mut">recente</span>}
+            </div>
+            {est?.restricoesImpedimentos?.situacaoVeiculo && (
+              <div style={{ fontSize: 13.5, marginBottom: 8 }}>Situação: <b>{est.restricoesImpedimentos.situacaoVeiculo}</b></div>
+            )}
+            {debEst.length > 0 ? (
+              <div className="stack" style={{ gap: 8 }}>
+                {debEst.map((d, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, borderTop: i ? "1px solid var(--line)" : "none", paddingTop: i ? 8 : 0 }}>
+                    <span style={{ color: "var(--muted)" }}>{d.nome || d.chave || "Débito"}</span><span style={{ fontWeight: 700 }}>{d.valor || "—"}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "var(--good)" }}>Nenhum débito estadual encontrado. ✅</div>
+            )}
+            {ren?.resumo && (
+              <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+                Multas federais (Renainf): <b style={{ color: "var(--ink)" }}>{ren.resumo.quantidadeOcorrencias ?? ren.resumo.quantidadeOcorrenciasTotal ?? 0}</b>{ren.resumo.alerta ? ` · ${ren.resumo.alerta}` : ""}
+              </div>
+            )}
+            {res.analiseIA && <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 10, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{res.analiseIA}</p>}
+          </section>
+        )}
+        {res && !res.ok && res.needsPayment && (
+          <section className="card pad" style={{ textAlign: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Débitos atualizados por {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO_DEBITOS}`}</div>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px" }}>IPVA, licenciamento e multas (estadual + federal), na hora. Libere pelo Co-pilot.</p>
+            <a className="btn-primary" href={waDebitos} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Liberar pelo Co-pilot</a>
+          </section>
+        )}
+        {res && !res.ok && !res.needsPayment && (
+          <div className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent", fontSize: 13 }}>
+            <b>Não consegui consultar agora.</b> {res.error || "Tente de novo em instantes."}
+          </div>
+        )}
+        {placa && (
+          <button className="btn-primary" onClick={consultarDebitos} disabled={busy}>
+            {busy ? <Loader2 size={17} className="animate-spin" /> : <Search size={17} />}
+            {busy ? "Consultando…" : res?.ok ? "Consultar de novo" : `Consultar débitos · R$ ${PRECO_DEBITOS.toFixed(2).replace(".", ",")}`}
+          </button>
         )}
 
         {/* lista */}
