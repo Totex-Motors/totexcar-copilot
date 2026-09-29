@@ -79,13 +79,11 @@ export function useTrialControl() {
       const isActive = isActiveData || isPremium;
       const isExpired = !isPremium && (daysRemaining <= 0 || premiumExpired);
 
-      // Bloqueio: só vale para o dono (owner). Admin/lojista nunca bloqueiam.
-      const role = userDataResult?.role || 'owner';
-      const status = (userDataResult?.subscription_status || '').toLowerCase();
-      const isBlocked =
-        role === 'owner' &&
-        !isPremium &&
-        (status === 'overdue' || status === 'canceled' || daysRemaining <= 0 || premiumExpired);
+      // DECISÃO DE PRODUTO: PRO liberado pra todo mundo, de graça (donos E motoristas de app).
+      // A receita vem de produtos de terceiros (laudos, emissão de CRLV, vistorias etc.), não de
+      // mensalidade. Por isso NÃO bloqueamos mais o acesso ao app. O cálculo de trial/premium fica
+      // preservado só para exibição/telemetria; o gate (isBlocked) é sempre falso.
+      const isBlocked = false;
 
       const subDays = expMs != null ? Math.ceil((expMs - Date.now()) / 86400000) : null;
       setTrialInfo({
@@ -106,57 +104,12 @@ export function useTrialControl() {
     }
   };
 
-  const blockAccess = (feature: string) => {
-    if (trialInfo.isPremium) return false;
-    if (trialInfo.isExpired) {
-      console.log(`Acesso bloqueado para: ${feature}. Trial expirado.`);
-      return true;
-    }
-    return false;
-  };
+  // PRO grátis pra todo mundo: nenhuma feature é bloqueada. (Mantido para compatibilidade
+  // com as telas que ainda chamam blockAccess.)
+  const blockAccess = (_feature: string) => false;
 
-  const getTrialMessage = () => {
-    // Premium (assinatura avulsa): avisa quando está perto de vencer, pra renovar
-    if (trialInfo.isPremium) {
-      const d = trialInfo.subscriptionDaysRemaining;
-      if (d != null && d >= 0 && d <= 5) {
-        return {
-          type: (d <= 1 ? 'urgent' : 'warning') as 'urgent' | 'warning',
-          message: d === 0 ? 'Sua assinatura vence hoje. Renove para não perder o acesso.'
-            : `Sua assinatura vence em ${d} dia${d > 1 ? 's' : ''}. Renove para continuar sem interrupção.`,
-        };
-      }
-      return null;
-    }
-
-    if (trialInfo.isExpired) {
-      return {
-        type: 'expired' as const,
-        message: trialInfo.subscriptionEndsAt
-          ? 'Sua assinatura venceu. Renove para continuar usando o TotexCar Co-pilot.'
-          : 'Seu trial de 7 dias expirou. Faça upgrade para continuar usando todas as funcionalidades.',
-      };
-    }
-
-    if (trialInfo.daysRemaining <= 1) {
-      return {
-        type: 'urgent' as const,
-        message: `Resta apenas ${trialInfo.daysRemaining} dia do seu trial. Não perca o acesso!`,
-      };
-    }
-
-    if (trialInfo.daysRemaining <= 3) {
-      return {
-        type: 'warning' as const,
-        message: `${trialInfo.daysRemaining} dias restantes no seu trial. Considere fazer upgrade!`,
-      };
-    }
-
-    return {
-      type: 'info' as const,
-      message: `${trialInfo.daysRemaining} dias restantes no seu trial gratuito.`,
-    };
-  };
+  // PRO grátis: sem contagem regressiva de trial nem convite pra assinar. Sem mensagem = sem banner.
+  const getTrialMessage = (): { type: 'expired' | 'urgent' | 'warning' | 'info'; message: string } | null => null;
 
   useEffect(() => {
     checkTrialStatus();
