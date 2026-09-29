@@ -1,18 +1,13 @@
 import { useEffect, useState } from "react";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Plane, Loader2, Fuel, Wrench, RotateCcw, MessageCircle, Gauge, Route, Clock,
   Coins, Ship, MapPin, Hotel, UtensilsCrossed, CheckCircle2, Sparkles, Globe,
 } from "lucide-react";
+import { MgShell } from "@/components/mg/MgShell";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
+const WA = "5511963786699";
 const PERFIS = [
   ["familia", "Família"],
   ["casal", "Casal"],
@@ -22,10 +17,10 @@ const PERFIS = [
   ["carro_novo", "Primeira viagem com o carro novo"],
 ];
 
-const FAIXA_LABEL: Record<string, { label: string; cls: string }> = {
-  economica: { label: "Econômica", cls: "bg-emerald-500/15 text-emerald-600" },
-  intermediaria: { label: "Intermediária", cls: "bg-sky-500/15 text-sky-600" },
-  charme: { label: "Charme", cls: "bg-violet-500/15 text-violet-600" },
+const FAIXA_LABEL: Record<string, { label: string; color: string; soft: string }> = {
+  economica: { label: "Econômica", color: "var(--good)", soft: "var(--good-soft)" },
+  intermediaria: { label: "Intermediária", color: "#2f80ed", soft: "rgba(47,128,237,.14)" },
+  charme: { label: "Charme", color: "#8A4FBE", soft: "rgba(138,79,190,.16)" },
 };
 
 const brl = (v: number | null | undefined) =>
@@ -56,32 +51,28 @@ interface Plano {
   checklist?: string[];
 }
 
-function Section({ icon: Icon, title, children, accent }: { icon: any; title: string; children: React.ReactNode; accent?: string }) {
+function Section({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
   return (
-    <Card className="border-0 shadow-premium-md overflow-hidden">
-      <CardHeader className="pb-2">
-        <CardTitle className={`text-base flex items-center gap-2 ${accent || ""}`}>
-          <Icon className="w-4 h-4 text-primary" /> {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+    <section className="card pad">
+      <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, display: "flex", alignItems: "center", gap: 7 }}>
+        <Icon size={16} style={{ color: "var(--brand)" }} /> {title}
+      </div>
+      {children}
+    </section>
   );
 }
 
 function Stat({ icon: Icon, label, value, highlight }: { icon: any; label: string; value: string; highlight?: boolean }) {
   return (
-    <Card className={`border-0 shadow-premium-md ${highlight ? "bg-gradient-primary text-white" : ""}`}>
-      <CardContent className="p-4">
-        <div className={`flex items-center gap-1.5 text-xs ${highlight ? "text-white/80" : "text-muted-foreground"}`}>
-          <Icon className="w-3.5 h-3.5" /> {label}
-        </div>
-        <p className="text-xl font-bold mt-1 leading-tight">{value}</p>
-      </CardContent>
-    </Card>
+    <div className="box" style={highlight ? { background: "var(--brand)", borderColor: "transparent", color: "#fff" } : undefined}>
+      <div className="l" style={{ display: "flex", alignItems: "center", gap: 5, color: highlight ? "rgba(255,255,255,.8)" : undefined }}><Icon size={12} /> {label}</div>
+      <div className="v mono" style={{ fontSize: 17, color: highlight ? "#fff" : undefined }}>{value}</div>
+    </div>
   );
 }
 
+// TELA MODO VIAGEM — planeja a road trip com os dados REAIS do carro (consumo/custo por km) +
+// pesquisa ao vivo de pedágio/balsa/hospedagem. Mesma função "viagem"; reskin no padrão Minha Garagem.
 export default function Viagem() {
   const [form, setForm] = useState({ destino: "", origem: "", dias: "", perfil: "" });
   const [loading, setLoading] = useState(false);
@@ -140,228 +131,187 @@ export default function Viagem() {
   });
 
   return (
-    <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-6 pb-10">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Plane className="w-6 h-6 text-primary" /> Modo Viagem</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Planeje sua road trip com os dados <strong>reais do seu carro</strong> e pesquisa ao vivo de pedágios,
-            balsa, hospedagem e restaurantes. Nenhum app de viagem conhece seu carro — o Co-pilot conhece. 🚗
-          </p>
-        </div>
-
+    <MgShell title="Modo Viagem" back="/">
+      <div className="stack">
         {!temResultado && (
-          <Card className="border-0 shadow-premium-md">
-            <CardHeader className="pb-2"><CardTitle className="text-base">Pra onde vamos?</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-xs">Destino</Label>
-                  <Input value={form.destino} onChange={(e) => setForm((p) => ({ ...p, destino: e.target.value }))} placeholder="Ex.: Ubatuba, Gramado… (vazio = me sugira!)" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Saindo de</Label>
-                  <Input value={form.origem} onChange={(e) => setForm((p) => ({ ...p, origem: e.target.value }))} placeholder="Ex.: São Paulo" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Quantos dias?</Label>
-                  <Input type="number" min={1} value={form.dias} onChange={(e) => setForm((p) => ({ ...p, dias: e.target.value }))} placeholder="Ex.: 3" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Perfil da viagem</Label>
-                  <Select value={form.perfil} onValueChange={(v) => setForm((p) => ({ ...p, perfil: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Escolha (opcional)" /></SelectTrigger>
-                    <SelectContent>
-                      {PERFIS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+          <>
+            <section className="card pad">
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>Pra onde vamos?</div>
+              <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 14, lineHeight: 1.4 }}>
+                Planejo com os dados <b>reais do seu carro</b> e pesquiso pedágio, balsa e hospedagem ao vivo. Nenhum app de viagem conhece seu carro — o Co-pilot conhece. 🚗
+              </p>
+              <div className="formgrid">
+                <div><label className="lbl">Destino</label><input className="field" value={form.destino} onChange={(e) => setForm((p) => ({ ...p, destino: e.target.value }))} placeholder="Ubatuba, Gramado…" /></div>
+                <div><label className="lbl">Saindo de</label><input className="field" value={form.origem} onChange={(e) => setForm((p) => ({ ...p, origem: e.target.value }))} placeholder="São Paulo" /></div>
+                <div><label className="lbl">Quantos dias?</label><input className="field" type="number" inputMode="numeric" min={1} value={form.dias} onChange={(e) => setForm((p) => ({ ...p, dias: e.target.value }))} placeholder="3" /></div>
+                <div><label className="lbl">Perfil</label>
+                  <select className="field" value={form.perfil} onChange={(e) => setForm((p) => ({ ...p, perfil: e.target.value }))}>
+                    <option value="">Opcional</option>
+                    {PERFIS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
                 </div>
               </div>
-              <Button onClick={montar} disabled={loading} className="w-full sm:w-auto gap-1.5 bg-gradient-primary">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plane className="w-4 h-4" />}
-                {loading ? "Pesquisando rota, pedágios e lugares…" : "Montar meu plano de viagem"}
-              </Button>
+              <button onClick={montar} disabled={loading} className="btn-primary" style={{ marginTop: 16 }}>
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Plane size={16} />}
+                {loading ? "Pesquisando rota e lugares…" : "Montar meu plano de viagem"}
+              </button>
               {loading && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 animate-pulse" /> Buscando valores atuais na web — leva uns 30 segundos, vale a pena. 😉
+                <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Globe size={13} className="animate-pulse" /> Buscando valores atuais na web — leva ~30s, vale a pena. 😉
                 </p>
               )}
-            </CardContent>
-          </Card>
+            </section>
+            <div className="card list-row" style={{ opacity: .95 }}>
+              <span className="offer-ico"><Plane size={19} /></span>
+              <div style={{ flex: 1 }}><div className="t">Deixa vazio que eu sugiro</div><div className="s">Sem destino? Eu escolho um bom pra você.</div></div>
+            </div>
+          </>
         )}
 
         {temResultado && (
           <>
             {planoSalvo && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-2.5 text-sm">
-                <span className="text-muted-foreground">
-                  📌 Seu último plano{planoSalvo.origem_pedido === "whatsapp" ? ", feito pelo WhatsApp" : ""} em{" "}
-                  {new Date(planoSalvo.quando).toLocaleDateString("pt-BR")}.
+              <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "11px 13px" }}>
+                <span style={{ fontSize: 12.5, color: "var(--muted)" }}>
+                  📌 Seu último plano{planoSalvo.origem_pedido === "whatsapp" ? ", feito no WhatsApp" : ""} em {new Date(planoSalvo.quando).toLocaleDateString("pt-BR")}.
                 </span>
-                <Button size="sm" variant="outline" className="gap-1.5 shrink-0"
-                  onClick={() => { setPlano(null); setPlanoTexto(null); setPlanoSalvo(null); }}>
-                  <RotateCcw className="w-3.5 h-3.5" /> Montar outro
-                </Button>
+                <button className="sbtn" style={{ flex: "none" }} onClick={() => { setPlano(null); setPlanoTexto(null); setPlanoSalvo(null); }}><RotateCcw size={13} /> Outro</button>
               </div>
             )}
+
             {/* Cabeçalho do plano */}
-            <Card className="border-0 shadow-premium-md bg-gradient-primary text-white overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 text-white/80 text-xs font-medium uppercase tracking-wide">
-                  <Sparkles className="w-3.5 h-3.5" /> Seu plano de viagem {pesquisaWeb && "· valores pesquisados agora"}
+            <section className="hero">
+              <div className="eyebrow" style={{ display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} /> Seu plano{pesquisaWeb ? " · valores de agora" : ""}</div>
+              <h2 style={{ fontSize: 22, fontWeight: 800, margin: "6px 0 0", letterSpacing: "-.01em" }}>{plano?.titulo || form.destino || "Sua viagem"}</h2>
+              {plano?.resumo && <p style={{ fontSize: 13, color: "rgba(255,255,255,.9)", marginTop: 8, lineHeight: 1.4 }}>{plano.resumo}</p>}
+              {dados && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 14 }}>
+                  {dados.carro && <span className="trend"><Gauge size={12} /> {dados.carro}</span>}
+                  {dados.consumo_km_por_litro && <span className="trend"><Fuel size={12} /> {dados.consumo_km_por_litro} km/L</span>}
+                  {dados.custo_por_km && <span className="trend">R$ {dados.custo_por_km.toFixed(2)}/km real</span>}
                 </div>
-                <h2 className="text-2xl font-bold mt-1">{plano?.titulo || form.destino || "Sua viagem"}</h2>
-                {plano?.resumo && <p className="text-white/90 text-sm mt-2">{plano.resumo}</p>}
-                {dados && (
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {dados.carro && <Badge className="bg-white/15 text-white border-0 gap-1"><Gauge className="w-3 h-3" /> {dados.carro}</Badge>}
-                    {dados.consumo_km_por_litro && <Badge className="bg-white/15 text-white border-0 gap-1"><Fuel className="w-3 h-3" /> {dados.consumo_km_por_litro} km/L</Badge>}
-                    {dados.custo_por_km && <Badge className="bg-white/15 text-white border-0">R$ {dados.custo_por_km.toFixed(2)}/km real</Badge>}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              )}
+            </section>
 
             {plano ? (
               <>
                 {/* Números principais */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid">
                   {plano.rota?.distancia_km_ida != null && <Stat icon={Route} label="Distância (ida)" value={`${plano.rota.distancia_km_ida} km`} />}
                   {plano.rota?.tempo_ida && <Stat icon={Clock} label="Tempo (ida)" value={plano.rota.tempo_ida} />}
                   {plano.combustivel?.total_ida_volta != null && <Stat icon={Fuel} label="Combustível ida+volta" value={brl(plano.combustivel.total_ida_volta)!} highlight />}
                   {plano.pedagios?.total_ida_volta != null && <Stat icon={Coins} label="Pedágios ida+volta" value={brl(plano.pedagios.total_ida_volta)!} />}
                 </div>
 
-                {/* Rota */}
                 {plano.rota?.descricao && (
                   <Section icon={Route} title="Rota">
-                    <p className="text-sm">{plano.rota.descricao}</p>
-                    {plano.rota.condicoes && <p className="text-xs text-muted-foreground mt-2">⚠️ {plano.rota.condicoes}</p>}
+                    <p style={{ fontSize: 13.5, lineHeight: 1.45 }}>{plano.rota.descricao}</p>
+                    {plano.rota.condicoes && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>⚠️ {plano.rota.condicoes}</p>}
                   </Section>
                 )}
 
-                {/* Combustível */}
                 {plano.combustivel?.conta && (
                   <Section icon={Fuel} title="A conta do combustível (no SEU carro)">
-                    <p className="text-sm">{plano.combustivel.conta}</p>
-                    {dados?.fonte_consumo && <p className="text-xs text-muted-foreground mt-2">Fonte do consumo: {dados.fonte_consumo}</p>}
+                    <p style={{ fontSize: 13.5, lineHeight: 1.45 }}>{plano.combustivel.conta}</p>
+                    {dados?.fonte_consumo && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>Fonte do consumo: {dados.fonte_consumo}</p>}
                   </Section>
                 )}
 
-                {/* Pedágios */}
                 {(plano.pedagios?.itens?.length || 0) > 0 && (
                   <Section icon={Coins} title="Pedágios no caminho">
-                    <div className="divide-y divide-border">
+                    <div>
                       {plano.pedagios!.itens!.map((p, i) => (
-                        <div key={i} className="flex items-center justify-between py-2 text-sm">
-                          <span className="text-muted-foreground">{p.praca}</span>
-                          <span className="font-medium">{brl(p.valor) || "—"}</span>
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontSize: 13.5, borderTop: i ? "1px solid var(--line)" : "none" }}>
+                          <span style={{ color: "var(--muted)" }}>{p.praca}</span><span style={{ fontWeight: 700 }}>{brl(p.valor) || "—"}</span>
                         </div>
                       ))}
                     </div>
                     {plano.pedagios?.total_ida_volta != null && (
-                      <div className="flex items-center justify-between pt-3 mt-1 border-t border-border text-sm font-bold">
-                        <span>Total ida + volta</span><span className="text-primary">{brl(plano.pedagios.total_ida_volta)}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--line)", fontSize: 13.5, fontWeight: 800 }}>
+                        <span>Total ida + volta</span><span style={{ color: "var(--brand)" }}>{brl(plano.pedagios.total_ida_volta)}</span>
                       </div>
                     )}
-                    {plano.pedagios?.obs && <p className="text-xs text-muted-foreground mt-2">{plano.pedagios.obs}</p>}
+                    {plano.pedagios?.obs && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>{plano.pedagios.obs}</p>}
                   </Section>
                 )}
 
-                {/* Balsa */}
                 {plano.balsa && (
                   <Section icon={Ship} title="Balsa / travessia">
-                    <p className="text-sm">{plano.balsa.descricao}</p>
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {plano.balsa.preco_carro != null && <Badge variant="secondary">Carro: {brl(plano.balsa.preco_carro)}</Badge>}
-                    </div>
-                    {plano.balsa.dica && <p className="text-xs text-muted-foreground mt-2">💡 {plano.balsa.dica}</p>}
+                    <p style={{ fontSize: 13.5, lineHeight: 1.45 }}>{plano.balsa.descricao}</p>
+                    {plano.balsa.preco_carro != null && <span className="badge-p" style={{ display: "inline-block", marginTop: 8 }}>Carro: {brl(plano.balsa.preco_carro)}</span>}
+                    {plano.balsa.dica && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>💡 {plano.balsa.dica}</p>}
                   </Section>
                 )}
 
-                {/* Roteiro */}
                 {(plano.roteiro?.length || 0) > 0 && (
                   <Section icon={MapPin} title="Roteiro e paradas">
-                    <div className="space-y-3">
+                    <div className="stack" style={{ gap: 12 }}>
                       {plano.roteiro!.map((r, i) => (
-                        <div key={i} className="flex gap-3">
-                          <div className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</div>
-                          <div>
-                            <p className="text-sm font-medium">{r.titulo}</p>
-                            {r.descricao && <p className="text-xs text-muted-foreground">{r.descricao}</p>}
-                          </div>
+                        <div key={i} style={{ display: "flex", gap: 11 }}>
+                          <div style={{ width: 24, height: 24, borderRadius: 999, background: "var(--brand-soft)", color: "var(--brand)", fontSize: 12, fontWeight: 800, display: "grid", placeItems: "center", flex: "none", marginTop: 1 }}>{i + 1}</div>
+                          <div><div style={{ fontSize: 13.5, fontWeight: 700 }}>{r.titulo}</div>{r.descricao && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>{r.descricao}</div>}</div>
                         </div>
                       ))}
                     </div>
                   </Section>
                 )}
 
-                {/* Hospedagem */}
                 {hospedagemOrdenada.length > 0 && (
                   <Section icon={Hotel} title="Onde ficar (bem avaliados)">
-                    <div className="space-y-3">
+                    <div className="stack" style={{ gap: 10 }}>
                       {hospedagemOrdenada.map((h, i) => {
                         const fx = FAIXA_LABEL[String(h.faixa)] || null;
                         return (
-                          <div key={i} className="rounded-lg border p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-medium">{h.nome}</p>
-                              <div className="flex items-center gap-2 shrink-0">
-                                {h.diaria != null && <span className="text-sm font-bold text-primary">{brl(h.diaria)}<span className="text-[10px] text-muted-foreground font-normal">/noite</span></span>}
-                                {fx && <Badge className={`${fx.cls} border-0`}>{fx.label}</Badge>}
-                              </div>
+                          <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 12 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                              <span style={{ fontSize: 13.5, fontWeight: 700 }}>{h.nome}</span>
+                              <span style={{ display: "flex", alignItems: "center", gap: 7, flex: "none" }}>
+                                {h.diaria != null && <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--brand)" }}>{brl(h.diaria)}<span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 400 }}>/noite</span></span>}
+                                {fx && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: fx.soft, color: fx.color }}>{fx.label}</span>}
+                              </span>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {[h.regiao, h.motivo].filter(Boolean).join(" · ")}
-                            </p>
+                            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{[h.regiao, h.motivo].filter(Boolean).join(" · ")}</p>
                           </div>
                         );
                       })}
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-3">Sugestões da pesquisa ao vivo — confirme disponibilidade e valores na reserva.</p>
+                    <p style={{ fontSize: 11, color: "var(--faint)", marginTop: 10 }}>Sugestões da pesquisa ao vivo — confirme disponibilidade e valores na reserva.</p>
                   </Section>
                 )}
 
-                {/* Comida */}
                 {(plano.comida?.length || 0) > 0 && (
                   <Section icon={UtensilsCrossed} title="Onde comer e beber">
-                    <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="stack" style={{ gap: 10 }}>
                       {plano.comida!.map((c, i) => (
-                        <div key={i} className="rounded-lg border p-3">
-                          <p className="text-sm font-medium">{c.nome}</p>
-                          {c.especialidade && <p className="text-xs text-muted-foreground mt-0.5">{c.especialidade}</p>}
+                        <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 12 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 700 }}>{c.nome}</div>
+                          {c.especialidade && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>{c.especialidade}</div>}
                         </div>
                       ))}
                     </div>
                     {(plano.passeios?.length || 0) > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        {plano.passeios!.map((p, i) => <Badge key={i} variant="secondary">🎯 {p}</Badge>)}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 12 }}>
+                        {plano.passeios!.map((p, i) => <span key={i} className="badge-p">🎯 {p}</span>)}
                       </div>
                     )}
                   </Section>
                 )}
 
-                {/* Antes de viajar */}
                 {(plano.antes_de_viajar?.length || 0) > 0 && (
-                  <Card className="border-0 shadow-premium-md bg-amber-500/10">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base flex items-center gap-2 text-amber-700"><Wrench className="w-4 h-4" /> Antes de pegar estrada</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-1.5">
-                        {plano.antes_de_viajar!.map((a, i) => <li key={i} className="text-sm flex gap-2"><span>•</span>{a}</li>)}
-                      </ul>
-                    </CardContent>
-                  </Card>
+                  <section className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent" }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, display: "flex", alignItems: "center", gap: 7, color: "var(--warn)" }}><Wrench size={16} /> Antes de pegar estrada</div>
+                    <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {plano.antes_de_viajar!.map((a, i) => <li key={i} style={{ fontSize: 13.5 }}>{a}</li>)}
+                    </ul>
+                  </section>
                 )}
 
-                {/* Checklist */}
                 {(plano.checklist?.length || 0) > 0 && (
                   <Section icon={CheckCircle2} title="Checklist de viagem">
-                    <div className="grid sm:grid-cols-2 gap-2">
+                    <div className="stack" style={{ gap: 8 }}>
                       {plano.checklist!.map((c, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" /> {c}
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
+                          <CheckCircle2 size={16} style={{ color: "var(--brand)", flex: "none" }} /> {c}
                         </div>
                       ))}
                     </div>
@@ -369,29 +319,22 @@ export default function Viagem() {
                 )}
               </>
             ) : (
-              // fallback: plano em texto (quando o JSON não veio)
-              <Card className="border-0 shadow-premium-md">
-                <CardContent className="p-6">
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {planoTexto?.replace(/^#{1,4}\s*/gm, "").replace(/^---+$/gm, "").replace(/\*\*/g, "")}
-                  </div>
-                </CardContent>
-              </Card>
+              <section className="card pad">
+                <div style={{ whiteSpace: "pre-wrap", fontSize: 13.5, lineHeight: 1.55 }}>
+                  {planoTexto?.replace(/^#{1,4}\s*/gm, "").replace(/^---+$/gm, "").replace(/\*\*/g, "")}
+                </div>
+              </section>
             )}
 
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => { setPlano(null); setPlanoTexto(null); }} className="gap-1.5">
-                <RotateCcw className="w-4 h-4" /> Planejar outra viagem
-              </Button>
-              <Button asChild variant="outline" className="gap-1.5">
-                <a href={`https://wa.me/5511963786699?text=${encodeURIComponent("Quero ajustar meu plano de viagem!")}`} target="_blank" rel="noreferrer">
-                  <MessageCircle className="w-4 h-4" /> Continuar no WhatsApp
-                </a>
-              </Button>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <button className="sbtn" onClick={() => { setPlano(null); setPlanoTexto(null); }}><RotateCcw size={14} /> Planejar outra</button>
+              <a className="sbtn wa" href={`https://wa.me/${WA}?text=${encodeURIComponent("Quero ajustar meu plano de viagem!")}`} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Continuar no WhatsApp</a>
             </div>
           </>
         )}
+
+        <p className="foot-note">O Modo Viagem usa o consumo real do seu carro pra estimar o combustível — registre abastecimentos pra ficar mais preciso.</p>
       </div>
-    </DashboardLayout>
+    </MgShell>
   );
 }
