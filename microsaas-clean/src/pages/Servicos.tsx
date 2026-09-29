@@ -1,247 +1,150 @@
 import { useState } from "react";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Link } from "react-router-dom";
 import {
-  Radar, Loader2, MapPin, Phone, MessageCircle, Globe, Star, Clock,
-  Truck, ShieldCheck, Info, Search, AlertTriangle, RotateCcw,
+  Wrench, Truck, CircleDot, KeyRound, LifeBuoy, Disc3, Zap, BatteryCharging, Wind, SprayCan,
+  Sparkles, ClipboardCheck, PlugZap, Frame, MapPin, Phone, MessageCircle, Star, Clock, Loader2,
+  Navigation, ShieldCheck, Stamp, Ticket,
 } from "lucide-react";
-import { useRadar, SERVICOS, type RadarProvider } from "@/hooks/useRadar";
+import { MgShell } from "@/components/mg/MgShell";
+import { useRadar, SERVICOS } from "@/hooks/useRadar";
+import { toast } from "@/hooks/use-toast";
 
-const MODOS = [
-  { value: "balanced", label: "Melhor combinação" },
-  { value: "nearest", label: "Mais perto" },
-  { value: "best_rated", label: "Melhor avaliado" },
-  { value: "open_now", label: "Aberto agora" },
-  { value: "mobile_service", label: "Vai até mim" },
-];
+const WA = "5511963786699";
+const ICONS: Record<string, any> = {
+  oficina: Wrench, guincho: Truck, borracharia: CircleDot, chaveiro: KeyRound, socorro: LifeBuoy,
+  freios: Disc3, autoeletrica: Zap, bateria: BatteryCharging, pneus: CircleDot, vidros: Frame,
+  ar_condicionado: Wind, funilaria: SprayCan, estetica: Sparkles, vistoria: ClipboardCheck, eletrico_hibrido: PlugZap,
+};
+const EMERG = ["guincho", "borracharia", "chaveiro", "socorro"];
 
-function ProviderCard({
-  p, searchId, onAction,
-}: {
-  p: RadarProvider;
-  searchId: string | null;
-  onAction: (id: string, tipo: string) => void;
-}) {
-  const parceiro = p.provider_status === "parceiro_totex";
-  const abrir = (url: string | null | undefined, tipo: string) => {
+export default function Servicos() {
+  const { loading, result, buscar, registrarAcao } = useRadar();
+  const [loc, setLoc] = useState("");
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
+
+  const usarLocal = () => {
+    if (!navigator.geolocation) { toast({ title: "Localização indisponível", description: "Digite o bairro ou cidade." }); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p) => { setCoords({ lat: p.coords.latitude, lng: p.coords.longitude }); toast({ title: "Localização pega ✅" }); },
+      () => toast({ title: "Não consegui a localização", description: "Digite o bairro ou cidade." }),
+    );
+  };
+
+  const rodar = async (service_type: string) => {
+    if (!coords && !loc.trim()) { toast({ title: "Onde você está?", description: "Toque em 'Usar localização' ou digite o bairro/cidade." }); return; }
+    setSel(service_type);
+    const emergency = SERVICOS.find((s) => s.value === service_type)?.emergencia;
+    await buscar({ service_type, mode: "balanced", emergency, location_text: loc.trim() || undefined, latitude: coords?.lat, longitude: coords?.lng });
+  };
+
+  const abrir = (url: string | null | undefined, pid: string | null | undefined, tipo: string) => {
     if (!url) return;
-    if (p.provider_id) onAction(p.provider_id, tipo);
+    if (pid) registrarAcao(pid, tipo, result?.search_id);
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  return (
-    <Card className="border-0 shadow-premium-sm">
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold truncate">{p.name}</h3>
-              {parceiro ? (
-                <Badge className="bg-primary/15 text-primary border-0 shrink-0">
-                  <ShieldCheck className="w-3 h-3 mr-1" /> Parceiro Totex
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-muted-foreground shrink-0">Resultado público</Badge>
-              )}
-            </div>
-            {p.address && (
-              <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
-                <MapPin className="w-3 h-3 mt-0.5 shrink-0" /> {p.address}
-              </p>
-            )}
-          </div>
-          {p.distance_km != null && (
-            <span className="text-sm font-medium text-primary shrink-0">{p.distance_km} km</span>
-          )}
-        </div>
-
-        {/* Sinais objetivos. O que não veio na busca simplesmente não aparece —
-            nada de placeholder que pareça informação. */}
-        <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-          {p.rating != null && (
-            <span className="flex items-center gap-1">
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-              <strong className="text-foreground">{p.rating.toFixed(1)}</strong>
-              {p.review_count != null && <span>({p.review_count})</span>}
-            </span>
-          )}
-          {p.open_now === true && <span className="flex items-center gap-1 text-emerald-600"><Clock className="w-3 h-3" /> Aberto agora</span>}
-          {p.open_24h && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> 24 horas</span>}
-          {p.mobile_service && <span className="flex items-center gap-1"><Truck className="w-3 h-3" /> Vai até você</span>}
-        </div>
-
-        {p.matched_reasons?.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap">
-            {p.matched_reasons.slice(0, 3).map((r, i) => (
-              <span key={i} className="text-[11px] bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{r}</span>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2 flex-wrap pt-1">
-          {p.maps_uri && (
-            <Button size="sm" variant="outline" onClick={() => abrir(p.maps_uri, "opened_route")}>
-              <MapPin className="w-3.5 h-3.5 mr-1.5" /> Rota
-            </Button>
-          )}
-          {p.call_uri && (
-            <Button size="sm" variant="outline" onClick={() => abrir(p.call_uri, "opened_phone")}>
-              <Phone className="w-3.5 h-3.5 mr-1.5" /> Ligar
-            </Button>
-          )}
-          {p.whatsapp_uri && (
-            <Button size="sm" onClick={() => abrir(p.whatsapp_uri, "opened_whatsapp")}>
-              <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
-            </Button>
-          )}
-          {p.website_uri && (
-            <Button size="sm" variant="ghost" onClick={() => abrir(p.website_uri, "opened_website")}>
-              <Globe className="w-3.5 h-3.5 mr-1.5" /> Site
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-export default function Servicos() {
-  const { loading, result, buscar, registrarAcao, setResult } = useRadar();
-  const [form, setForm] = useState({ service_type: "oficina", location_text: "", mode: "balanced" });
-
-  const servicoAtual = SERVICOS.find((s) => s.value === form.service_type);
-
-  const rodar = async () => {
-    await buscar({
-      service_type: form.service_type,
-      location_text: form.location_text || undefined,
-      mode: form.mode,
-      emergency: servicoAtual?.emergencia,
-    });
-  };
+  const emergencias = SERVICOS.filter((s) => EMERG.includes(s.value));
+  const demais = SERVICOS.filter((s) => !EMERG.includes(s.value));
 
   return (
-    <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-6 pb-10">
+    <MgShell tab="servicos">
+      <div className="stack">
+        <div className="sec-title" style={{ fontSize: 20, marginTop: 2 }}>Serviços</div>
+        <p className="s" style={{ color: "var(--muted)", fontSize: 13, margin: "-6px 2px 0" }}>Oficina, guincho, borracharia, chaveiro — a gente acha, compara e mostra as opções perto de você.</p>
+
+        {/* localização */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <input className="field" placeholder="Bairro ou cidade" value={loc} onChange={(e) => setLoc(e.target.value)} />
+          <button className={`sbtn ${coords ? "brand" : ""}`} style={{ flex: "none" }} onClick={usarLocal}><Navigation size={15} /> {coords ? "Ok" : "Usar"}</button>
+        </div>
+
+        {/* emergência */}
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Radar className="w-6 h-6 text-primary" /> Radar de Serviços
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Oficina, borracharia, guincho, chaveiro — a gente procura, compara e mostra as opções.
-            <strong> Você escolhe.</strong> Sem intermediário e sem empurrar ninguém.
-          </p>
+          <div className="eyebrow" style={{ margin: "2px 2px 8px" }}>Precisa agora?</div>
+          <div className="catgrid" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
+            {emergencias.map((s) => {
+              const Ic = ICONS[s.value] || Wrench;
+              return (
+                <button key={s.value} className={`cat em ${sel === s.value ? "on" : ""}`} onClick={() => rodar(s.value)}>
+                  <span className="ci"><Ic size={18} /></span><span className="cl">{s.label.split(" ")[0]}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader className="pb-2"><CardTitle className="text-base">Do que você precisa?</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs">Serviço</Label>
-                <Select value={form.service_type} onValueChange={(v) => setForm((p) => ({ ...p, service_type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {SERVICOS.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}{s.emergencia ? " ⚡" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Onde</Label>
-                <Input
-                  value={form.location_text}
-                  onChange={(e) => setForm((p) => ({ ...p, location_text: e.target.value }))}
-                  placeholder="Cidade ou bairro (ex.: Barueri)"
-                  onKeyDown={(e) => e.key === "Enter" && rodar()}
-                />
-              </div>
+        {/* categorias */}
+        <div>
+          <div className="eyebrow" style={{ margin: "2px 2px 8px" }}>Todos os serviços</div>
+          <div className="catgrid">
+            {demais.map((s) => {
+              const Ic = ICONS[s.value] || Wrench;
+              return (
+                <button key={s.value} className={`cat ${sel === s.value ? "on" : ""}`} onClick={() => rodar(s.value)}>
+                  <span className="ci"><Ic size={18} /></span><span className="cl">{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* resultados */}
+        {loading && <div className="card pad" style={{ textAlign: "center", color: "var(--muted)" }}><Loader2 className="animate-spin" style={{ display: "inline" }} size={22} /><div style={{ marginTop: 6, fontSize: 13 }}>Procurando perto de você...</div></div>}
+        {!loading && result && (
+          <div>
+            <div className="eyebrow" style={{ margin: "2px 2px 8px" }}>{result.providers?.length || 0} opções · {result.service_label}</div>
+            <div className="stack">
+              {(result.providers || []).map((p, i) => (
+                <div key={p.provider_id || i} className="card pad">
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="prov-name">{p.name} {p.provider_status === "parceiro_totex" && <span className="badge-p">Parceiro</span>}</div>
+                      {p.address && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3, display: "flex", gap: 4 }}><MapPin size={13} style={{ flex: "none", marginTop: 1 }} /> {p.address}</div>}
+                    </div>
+                    {p.distance_km != null && <span style={{ color: "var(--brand)", fontWeight: 700, flex: "none" }}>{p.distance_km} km</span>}
+                  </div>
+                  <div className="prov-sig">
+                    {p.rating != null && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Star size={13} style={{ fill: "#F5B301", color: "#F5B301" }} /> <b style={{ color: "var(--ink)" }}>{p.rating.toFixed(1)}</b>{p.review_count != null && ` (${p.review_count})`}</span>}
+                    {p.open_now === true && <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--good)" }}><Clock size={13} /> Aberto</span>}
+                    {p.open_24h && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={13} /> 24h</span>}
+                    {p.mobile_service && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Truck size={13} /> Vai até você</span>}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 11 }}>
+                    {p.maps_uri && <button className="sbtn" onClick={() => abrir(p.maps_uri, p.provider_id, "opened_route")}><MapPin size={14} /> Rota</button>}
+                    {p.call_uri && <button className="sbtn" onClick={() => abrir(p.call_uri, p.provider_id, "opened_phone")}><Phone size={14} /> Ligar</button>}
+                    {p.whatsapp_uri && <button className="sbtn wa" onClick={() => abrir(p.whatsapp_uri, p.provider_id, "opened_whatsapp")}><MessageCircle size={14} /> WhatsApp</button>}
+                  </div>
+                </div>
+              ))}
+              {!(result.providers?.length) && <div className="card pad" style={{ textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Nada por aqui agora. Tenta outra região ou categoria parecida.</div>}
             </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">Ordenar por</Label>
-              <Select value={form.mode} onValueChange={(v) => setForm((p) => ({ ...p, mode: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {MODOS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {servicoAtual?.emergencia && (
-              <div className="flex gap-2 text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg p-3">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <p>
-                  Se o carro está parado na via, saia do veículo pelo lado seguro, fique atrás da barreira
-                  e sinalize com o triângulo <strong>antes</strong> de resolver o resto.
-                </p>
-              </div>
-            )}
-
-            <Button onClick={rodar} disabled={loading} className="w-full">
-              {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Procurando…</> : <><Search className="w-4 h-4 mr-2" /> Procurar</>}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {result && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-sm text-muted-foreground">
-                <strong className="text-foreground">{result.total}</strong> {result.total === 1 ? "opção" : "opções"} de{" "}
-                {result.service_label.toLowerCase()}
-                {result.location_text ? ` em ${result.location_text}` : ""}
-                {result.cache && " · resultados recentes"}
-              </p>
-              <Button size="sm" variant="ghost" onClick={() => setResult(null)}>
-                <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Nova busca
-              </Button>
-            </div>
-
-            {result.raio_ampliado && (
-              <p className="text-xs text-muted-foreground">
-                Não encontrei nada perto, então ampliei a busca para {result.raio_ampliado} km.
-              </p>
-            )}
-
-            {result.providers.map((p) => (
-              <ProviderCard
-                key={p.provider_id || `${p.name}-${p.rank_position}`}
-                p={p}
-                searchId={result.search_id}
-                onAction={(id, tipo) => registrarAcao(id, tipo, result.search_id)}
-              />
-            ))}
-
-            {result.total === 0 && (
-              <Card className="border-0 shadow-premium-sm">
-                <CardContent className="p-6 text-center space-y-2">
-                  <p className="font-medium">Não achei nada confiável por aqui</p>
-                  <p className="text-sm text-muted-foreground">
-                    Prefiro não mostrar resultado duvidoso. Tente outra região ou uma categoria parecida —
-                    ou chame o Co-pilot no WhatsApp que a gente procura junto.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-
-            {result.total > 0 && (
-              <p className="text-[11px] text-muted-foreground flex gap-1.5 items-start leading-relaxed">
-                <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                {result.disclaimer}
-              </p>
-            )}
           </div>
         )}
+
+        {/* parceiros com desconto */}
+        <div>
+          <div className="eyebrow" style={{ margin: "4px 2px 10px" }}>Parceiros com desconto</div>
+          <section className="card">
+            {[
+              { ic: ShieldCheck, t: "Seguro", s: "Cotação em minutos", msg: "Quero cotar um seguro pro meu carro 🚗" },
+              { ic: Stamp, t: "Despachante", s: "Transferência e documentos", msg: "Preciso de despachante (transferência/documentos)" },
+              { ic: Ticket, t: "Tag de pedágio", s: "Passe direto e ganhe desconto", msg: "Quero a tag de pedágio com desconto" },
+            ].map((o) => {
+              const Ic = o.ic;
+              return (
+                <a key={o.t} className="offer" href={`https://wa.me/${WA}?text=${encodeURIComponent(o.msg)}`} target="_blank" rel="noreferrer">
+                  <span className="offer-ico"><Ic size={19} /></span>
+                  <div style={{ flex: 1 }}><div className="t">{o.t}</div><div className="s">{o.s}</div></div>
+                  <span className="cta">Ver</span>
+                </a>
+              );
+            })}
+          </section>
+        </div>
+
+        <p className="foot-note">Resultados públicos + parceiros Totex. A gente mostra o que dá pra confiar; o que não vier, não aparece.</p>
       </div>
-    </DashboardLayout>
+    </MgShell>
   );
 }
