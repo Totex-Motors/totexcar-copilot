@@ -340,21 +340,13 @@ async function findUserByPhone(phone: string) {
   return null;
 }
 
-// Acesso bloqueado quando o dono não pagou: trial expirou e não assinou,
-// ou assinatura vencida/cancelada. Admin e lojista nunca são bloqueados.
-function accessBlocked(u: any): boolean {
-  if (!u) return false;
-  if (u.role && u.role !== "owner") return false;
-  if (u.plan === "premium") {
-    // trava EM TEMPO REAL no vencimento (cortesia/assinatura avulsa): mesmo antes do cron
-    // re-bloquear, premium com plan_expires_at no passado não usa (não "esticamos" o grátis).
-    const exp = u.plan_expires_at ? Date.parse(u.plan_expires_at) : 0;
-    return exp > 0 && exp < Date.now();
-  }
-  const status = (u.subscription_status || "").toLowerCase();
-  if (status === "overdue" || status === "canceled") return true;
-  const ends = u.trial_ends_at ? Date.parse(u.trial_ends_at) : 0;
-  return !ends || ends < Date.now();
+// DECISÃO DE PRODUTO: o Co-pilot (PRO) é grátis pra todo mundo — donos E motoristas de app.
+// A receita vem de produtos de terceiros (laudos, emissão de CRLV, vistorias etc.), não de
+// mensalidade. Por isso NÃO bloqueamos mais o acesso: o Co-pilot responde todo usuário.
+// A infra de pagamento (create-checkout/asaas) fica intacta caso a gente volte a cobrar depois;
+// pra reativar o bloqueio, basta restaurar a lógica de trial/premium aqui.
+function accessBlocked(_u: any): boolean {
+  return false;
 }
 
 // Pontos da CNH (Lei 14.071/2021): 20 pts (2+ gravíssimas), 30 (1 gravíssima), 40 (nenhuma); EAR = 40.
