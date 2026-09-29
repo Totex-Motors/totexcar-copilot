@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Link } from "react-router-dom";
 import {
   TrendingUp, ChevronRight, Car, Repeat2, CreditCard, CalendarDays, FileCheck2, ShieldCheck,
-  IdCard, LineChart, MessageCircle, Coins, Ticket, Landmark, Truck, Wrench, Plane,
+  IdCard, LineChart, MessageCircle, Coins, Ticket, Landmark, Truck, Wrench, Plane, Warehouse,
 } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
@@ -141,6 +141,13 @@ export default function Index() {
           </div>
           <span className="go"><ChevronRight size={18} /></span>
         </a>
+
+        {/* GARAGEM TOTEX (vitrine + troca) */}
+        <Link to="/garagem" className="card alert-card" style={{ borderLeftColor: "var(--brand)" }}>
+          <span className="alert-ico" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}><Warehouse size={21} /></span>
+          <div style={{ flex: 1 }}><div className="t">Garagem Totex</div><div className="s">Ache o próximo carro ou avalie o seu</div></div>
+          <ChevronRight size={20} style={{ color: "var(--faint)" }} />
+        </Link>
 
         {/* APROVEITE MAIS */}
         <div>
