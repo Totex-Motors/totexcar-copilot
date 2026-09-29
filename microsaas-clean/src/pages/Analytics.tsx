@@ -1,327 +1,106 @@
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  Legend
-} from "recharts";
-import { TrendingUp, TrendingDown, Target, Award, Calendar } from "lucide-react";
+import { Navigate, Link } from "react-router-dom";
+import { BarChart3, PieChart, MessageCircle, ChevronRight, Receipt } from "lucide-react";
+import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMonthlyTrend } from "@/hooks/useMonthlyTrend";
-import { useCategoryStats, useWeeklyStats } from "@/hooks/useAnalytics";
+import { useCategoryStats } from "@/hooks/useAnalytics";
 import { useMonthlyStats } from "@/hooks/useTransactions";
 
-// Mock data for charts
-const categoryExpensesData = [
-  { category: "Alimentação", amount: 1200, percentage: 35 },
-  { category: "Transporte", amount: 800, percentage: 23 },
-  { category: "Moradia", amount: 600, percentage: 18 },
-  { category: "Lazer", amount: 400, percentage: 12 },
-  { category: "Saúde", amount: 300, percentage: 9 },
-  { category: "Outros", amount: 100, percentage: 3 },
-];
+const WA = "5511963786699";
+const brl = (v?: number | null) => v == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(v));
+const PALETTE = ["#0C6E6A", "#C9781E", "#2f80ed", "#8A4FBE", "#1F8A54", "#B8621A", "#8A9994"];
 
-const monthlyComparisonData = [
-  { month: "Jun", receitas: 5200, gastos: 3800, meta: 4000 },
-  { month: "Jul", receitas: 5500, gastos: 3200, meta: 4000 },
-  { month: "Ago", receitas: 5800, gastos: 3500, meta: 4000 },
-  { month: "Set", receitas: 5500, gastos: 3100, meta: 4000 },
-  { month: "Out", receitas: 6200, gastos: 3800, meta: 4000 },
-  { month: "Nov", receitas: 5500, gastos: 4200, meta: 4000 },
-];
+// TELA ANÁLISES — visão do dinheiro do carro: gasto por mês (últimos 6) e pra onde vai (categorias).
+// Tudo com dado real (useMonthlyTrend + useCategoryStats). Sem números inventados.
+export default function Analytics() {
+  const { userId, userData, loading } = useCurrentUser();
+  const { data: trend = [], isLoading: loadingTrend } = useMonthlyTrend(userId);
+  const { data: cats = [], isLoading: loadingCats } = useCategoryStats(userId);
+  const { data: monthly } = useMonthlyStats(userId);
 
-const weeklyTrendData = [
-  { week: "Sem 1", income: 1400, expenses: 850 },
-  { week: "Sem 2", income: 1200, expenses: 920 },
-  { week: "Sem 3", income: 1600, expenses: 750 },
-  { week: "Sem 4", income: 1300, expenses: 880 },
-];
+  if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
+  if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
 
-const topCategoriesData = [
-  { name: "Alimentação", value: 35, color: "#8B5CF6" },
-  { name: "Transporte", value: 23, color: "#06B6D4" },
-  { name: "Moradia", value: 18, color: "#10B981" },
-  { name: "Lazer", value: 12, color: "#F59E0B" },
-  { name: "Outros", value: 12, color: "#6B7280" },
-];
-
-const Analytics = () => {
-  const { userId } = useCurrentUser();
-  const { data: monthlyData = [] } = useMonthlyTrend(userId);
-  const { data: categoryStats = [] } = useCategoryStats(userId);
-  const { data: weeklyStats = [] } = useWeeklyStats(userId);
-  const { data: monthlyStats } = useMonthlyStats(userId);
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
-  };
-
-  // Preparar dados para os gráficos
-  const topCategoriesData = categoryStats.slice(0, 5).map((cat, index) => ({
-    name: cat.category,
-    value: cat.percentage,
-    color: cat.color || `hsl(${index * 60}, 70%, 50%)`
-  }));
-
-  const currentBalance = monthlyStats?.balance || 0;
-  const balanceChange = monthlyStats?.changes?.balance || 0;
-  const topCategory = categoryStats[0];
+  const maxExp = Math.max(1, ...trend.map((m) => m.expenses));
+  const hasData = trend.some((m) => m.expenses > 0) || cats.length > 0;
+  const top = cats[0];
+  const catColor = (i: number, c?: string) => c || PALETTE[i % PALETTE.length];
 
   return (
-    <DashboardLayout>
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-foreground">Análises</h1>
-          <p className="text-muted-foreground">
-            Insights detalhados sobre os gastos do seu carro
-          </p>
+    <MgShell title="Análises" back="/">
+      <div className="stack">
+        {/* resumo do mês */}
+        <div className="kpi">
+          <div className="box"><div className="l">Gasto no mês</div><div className="v mono" style={{ color: "var(--gain)" }}>{brl(monthly?.expenses)}</div></div>
+          <div className="box"><div className="l">Categoria top</div><div className="v" style={{ fontSize: 15 }}>{top?.category || "—"}</div>{top && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>{top.percentage}% dos gastos</div>}</div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm">
-            <Calendar className="w-4 h-4 mr-2" />
-            Este Mês
-          </Button>
-        </div>
-      </div>
 
-      {/* Key Insights */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-0 shadow-premium-md bg-gradient-primary text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/20 rounded-xl">
-                <TrendingUp className="w-6 h-6" />
+        {!hasData && !loadingTrend && !loadingCats ? (
+          <div className="card pad" style={{ textAlign: "center" }}>
+            <Receipt size={34} style={{ opacity: .4, margin: "6px auto", color: "var(--brand)" }} />
+            <div style={{ fontWeight: 700 }}>Sem dados ainda</div>
+            <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>Assim que você registrar alguns gastos, eu mostro pra onde vai o dinheiro do carro, mês a mês.</p>
+          </div>
+        ) : (
+          <>
+            {/* gasto por mês */}
+            <section className="card pad">
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><BarChart3 size={16} style={{ color: "var(--brand)" }} /> Gasto por mês</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>Últimos 6 meses</div>
+              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8, height: 130 }}>
+                {trend.map((m, i) => {
+                  const h = Math.round((m.expenses / maxExp) * 100);
+                  const isLast = i === trend.length - 1;
+                  return (
+                    <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, height: "100%", justifyContent: "flex-end" }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, color: "var(--muted)" }} className="mono">{m.expenses > 0 ? Math.round(m.expenses / 100) / 10 + "k" : ""}</div>
+                      <div style={{ width: "72%", height: `${Math.max(h, 3)}%`, minHeight: 4, borderRadius: "6px 6px 0 0", background: isLast ? "var(--brand)" : "var(--brand-soft)", transition: "height .3s" }} title={brl(m.expenses)} />
+                      <div style={{ fontSize: 10.5, fontWeight: 600, color: isLast ? "var(--brand)" : "var(--faint)", textTransform: "capitalize" }}>{m.month}</div>
+                    </div>
+                  );
+                })}
               </div>
-              <div>
-                <p className="text-white/80 text-sm">Economia este mês</p>
-                <p className="text-2xl font-bold">{formatCurrency(currentBalance)}</p>
-                <p className="text-white/80 text-xs">
-                  {balanceChange >= 0 ? '+' : ''}{balanceChange?.toFixed(1)}% vs mês anterior
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </section>
 
-        <Card className="border-0 shadow-premium-md bg-gradient-success text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/20 rounded-xl">
-                <Target className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-white/80 text-sm">Meta de gastos</p>
-                <p className="text-2xl font-bold">85%</p>
-                <p className="text-white/80 text-xs">Dentro da meta</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-premium-md bg-warning text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/20 rounded-xl">
-                <Award className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-white/80 text-sm">Categoria top</p>
-                <p className="text-2xl font-bold">{topCategory?.category || 'N/A'}</p>
-                <p className="text-white/80 text-xs">
-                  {topCategory?.percentage || 0}% dos gastos
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Monthly Comparison */}
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold">Receitas vs Gastos vs Meta</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Comparativo mensal dos últimos 6 meses
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis 
-                    dataKey="month" 
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <YAxis 
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                    tickFormatter={formatCurrency}
-                  />
-                  <Tooltip 
-                    formatter={(value: number) => [formatCurrency(value), ""]}
-                    labelStyle={{ color: "hsl(var(--foreground))" }}
-                    contentStyle={{ 
-                      backgroundColor: "hsl(var(--card))", 
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px"
-                    }}
-                  />
-                  <Legend />
-                  <Bar dataKey="income" fill="hsl(var(--success))" name="Receitas" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expenses" fill="hsl(var(--primary))" name="Gastos" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="balance" fill="hsl(var(--warning))" name="Saldo" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Top Categories Pie Chart */}
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold">Distribuição de Gastos</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Top 5 categorias que mais consomem seu orçamento
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={topCategoriesData}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    innerRadius={40}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {topCategoriesData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    formatter={(value: number) => [`${value}%`, ""]}
-                    labelStyle={{ color: "hsl(var(--foreground))" }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {topCategoriesData.map((item, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-sm text-foreground">{item.name}</span>
-                  <span className="text-sm text-muted-foreground">{item.value}%</span>
+            {/* pra onde vai o dinheiro (categorias, mês atual) */}
+            {cats.length > 0 && (
+              <section className="card pad">
+                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><PieChart size={16} style={{ color: "var(--brand)" }} /> Pra onde vai o dinheiro</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>Gastos deste mês por categoria</div>
+                <div style={{ display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: "var(--card-2)" }}>
+                  {cats.map((c: any, i: number) => <div key={c.category} style={{ width: `${c.percentage}%`, background: catColor(i, c.color) }} title={`${c.category}: ${c.percentage}%`} />)}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Weekly Trend & Category Breakdown */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Weekly Trend */}
-        <Card className="xl:col-span-2 border-0 shadow-premium-md">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold">Tendência Semanal</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Fluxo de receitas e gastos por semana
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={weeklyStats}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis 
-                    dataKey="week" 
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <YAxis 
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                    tickFormatter={formatCurrency}
-                  />
-                  <Tooltip 
-                    formatter={(value: number) => [formatCurrency(value), ""]}
-                  />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="income" 
-                    stroke="hsl(var(--success))" 
-                    strokeWidth={3}
-                    name="Receitas"
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="expenses" 
-                    stroke="hsl(var(--primary))" 
-                    strokeWidth={3}
-                    name="Gastos"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Category Rankings */}
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">Ranking de Categorias</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {categoryStats.slice(0, 5).map((category, index) => (
-              <div key={category.category} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                    <span className="text-sm font-bold text-primary">#{index + 1}</span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">{category.category}</p>
-                    <p className="text-xs text-muted-foreground">{category.percentage}% do total</p>
-                  </div>
+                <div className="stack" style={{ marginTop: 14, gap: 10 }}>
+                  {cats.map((c: any, i: number) => (
+                    <div key={c.category} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 9, height: 9, borderRadius: 999, background: catColor(i, c.color) }} /> {c.category}</span>
+                      <span><b>{brl(c.amount)}</b> <span style={{ color: "var(--muted)" }}>· {c.percentage}%</span></span>
+                    </div>
+                  ))}
                 </div>
-                <Badge variant="secondary" className="bg-primary/10 text-primary">
-                  {formatCurrency(category.amount)}
-                </Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+              </section>
+            )}
+          </>
+        )}
+
+        <Link to="/transactions" className="card list-row">
+          <span className="offer-ico"><Receipt size={19} /></span>
+          <div style={{ flex: 1 }}><div className="t">Ver todos os gastos</div><div className="s">Extrato completo</div></div>
+          <ChevronRight size={20} style={{ color: "var(--faint)" }} />
+        </Link>
+
+        {/* co-pilot */}
+        <a className="copilot" href={`https://wa.me/${WA}?text=${encodeURIComponent("Quero entender melhor os gastos do meu carro 📊")}`} target="_blank" rel="noreferrer">
+          <span className="av"><MessageCircle size={22} /></span>
+          <div>
+            <div className="t">Pergunte ao Co-pilot</div>
+            <div className="s">"Onde eu tô gastando demais?" · "Vale a pena trocar?" — ele analisa e responde.</div>
+          </div>
+          <span className="go"><ChevronRight size={18} /></span>
+        </a>
+
+        <p className="foot-note">Quanto mais você registra, mais preciso fica o retrato do custo do seu carro.</p>
       </div>
-    </DashboardLayout>
+    </MgShell>
   );
-};
-
-export default Analytics;
+}

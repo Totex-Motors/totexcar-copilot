@@ -1,305 +1,103 @@
-import { useState } from 'react';
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { TransactionForm } from "@/components/forms/TransactionForm";
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Download,
-  Edit2,
-  Trash2,
-  ArrowUpRight,
-  ArrowDownLeft
-} from "lucide-react";
-import { useTransactions, useDeleteTransaction, type Transaction } from "@/hooks/useTransactions";
-import { useCategories } from "@/hooks/useCategories";
-import { useAccounts } from "@/hooks/useAccounts";
+import { useState } from "react";
+import { Navigate, Link } from "react-router-dom";
+import { Search, Trash2, MessageCircle, ChevronRight, Receipt, LineChart, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
-import { useTrialControl } from "@/hooks/useTrialControl";
-import { TrialBlockModal } from "@/components/trial/TrialBlockModal";
+import { useTransactions, useDeleteTransaction, useMonthlyStats, type Transaction } from "@/hooks/useTransactions";
 
-const Transactions = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | undefined>();
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | undefined>();
-  const [showTrialModal, setShowTrialModal] = useState(false);
-  
-  const { toast } = useToast();
-  const { blockAccess } = useTrialControl();
-  const { userId } = useCurrentUser();
+const WA = "5511963786699";
+const brl = (v?: number | null) => v == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(v));
+const fmtDate = (d?: string | null) => { if (!d) return ""; const [y, m, day] = String(d).split("T")[0].split("-"); return day && m && y ? `${day}/${m}/${y}` : String(d); };
+
+// TELA GASTOS DO CARRO — extrato dos lançamentos (combustível, peças, revisão, seguro, IPVA, multas...)
+// Registro entra pelo Co-pilot no WhatsApp (foto do cupom + km). Aqui é consulta + apagar.
+export default function Transactions() {
+  const { userId, userData, loading } = useCurrentUser();
   const { data: transactions, isLoading } = useTransactions(userId);
-  const { data: categories } = useCategories();
-  const { data: accounts } = useAccounts(userId);
-  const deleteTransaction = useDeleteTransaction();
-  
-  console.log('🔍 Transactions - userId:', userId);
-  console.log('🔍 Transactions - transactions:', transactions);
-  console.log('🔍 Transactions - categories:', categories);
-  console.log('🔍 Transactions - accounts:', accounts);
+  const { data: monthly } = useMonthlyStats(userId);
+  const del = useDeleteTransaction();
+  const [q, setQ] = useState("");
 
-  const getCategoryName = (categoryId: number) => {
-    const category = categories?.find(cat => cat.id === categoryId);
-    return category?.name || 'Sem categoria';
+  if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
+  if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
+
+  const list = (transactions || []).filter((t: any) => t.description?.toLowerCase().includes(q.toLowerCase()));
+
+  const handleDelete = (t: Transaction) => {
+    if (window.confirm(`Apagar "${t.description || "este gasto"}"?`)) del.mutate(t.id);
   };
-
-  const getCategoryColor = (categoryId: number) => {
-    const category = categories?.find(cat => cat.id === categoryId);
-    return category?.color || '#6B7280';
-  };
-
-  const getAccountName = (accountId: string) => {
-    const account = accounts?.find(acc => acc.id === accountId);
-    return account?.name || 'Conta desconhecida';
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(Math.abs(amount));
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
-  };
-
-  const filteredTransactions = transactions?.filter(transaction =>
-    transaction.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
-
-  const handleEditTransaction = (transaction: Transaction) => {
-    setSelectedTransaction(transaction);
-    setIsFormOpen(true);
-  };
-
-  const handleDeleteTransaction = (transaction: Transaction) => {
-    setTransactionToDelete(transaction);
-    setDeleteDialogOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!transactionToDelete) return;
-    
-    try {
-      await deleteTransaction.mutateAsync(transactionToDelete.id);
-      toast({
-        title: 'Transação excluída',
-        description: 'A transação foi excluída com sucesso.',
-      });
-    } catch (error) {
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível excluir a transação.',
-        variant: 'destructive',
-      });
-    } finally {
-      setDeleteDialogOpen(false);
-      setTransactionToDelete(undefined);
-    }
-  };
-
-  const handleCloseForm = () => {
-    setIsFormOpen(false);
-    setSelectedTransaction(undefined);
-  };
-
-  if (isLoading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      </DashboardLayout>
-    );
-  }
 
   return (
-    <DashboardLayout>
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-foreground">Gastos do Carro</h1>
-          <p className="text-muted-foreground">
-            Combustível, peças, revisões, seguro, IPVA, multas e mais
-          </p>
+    <MgShell title="Gastos do carro" back="/">
+      <div className="stack">
+        {/* resumo do mês */}
+        <div className="kpi">
+          <div className="box"><div className="l">Gasto no mês</div><div className="v mono" style={{ color: "var(--gain)" }}>{brl(monthly?.expenses)}</div></div>
+          <div className="box"><div className="l">Lançamentos</div><div className="v mono">{transactions?.length ?? 0}</div></div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
-          </Button>
-          <Button size="sm" className="bg-gradient-primary hover:opacity-90" onClick={() => {
-            if (blockAccess('registrar gastos')) {
-              setShowTrialModal(true);
-              return;
-            }
-            setIsFormOpen(true);
-          }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Novo Gasto
-          </Button>
+
+        {/* busca */}
+        <div style={{ position: "relative" }}>
+          <Search size={17} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "var(--faint)" }} />
+          <input className="field" style={{ paddingLeft: 40 }} placeholder="Buscar gasto..." value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+
+        {/* extrato */}
+        {isLoading ? (
+          <div className="card pad" style={{ textAlign: "center", color: "var(--muted)" }}>Carregando...</div>
+        ) : list.length === 0 ? (
+          <div className="card pad" style={{ textAlign: "center" }}>
+            <Receipt size={34} style={{ opacity: .4, margin: "6px auto", color: "var(--brand)" }} />
+            <div style={{ fontWeight: 700 }}>{q ? "Nada encontrado" : "Nenhum gasto ainda"}</div>
+            <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>Manda a foto do cupom + o km no WhatsApp que o Co-pilot lança pra você.</p>
+          </div>
+        ) : (
+          <section className="card">
+            {list.map((t: any) => {
+              const inc = t.type === "income";
+              const cor = t.categories?.color || "var(--brand)";
+              return (
+                <div key={t.id} className="list-row">
+                  <span className="offer-ico" style={{ background: inc ? "var(--good-soft)" : "var(--gain-soft)", color: inc ? "var(--good)" : "var(--warn)" }}>
+                    {inc ? <ArrowUpRight size={18} /> : <ArrowDownLeft size={18} />}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="t" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.description || "Sem descrição"}</div>
+                    <div className="s" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      {t.categories?.name && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: cor, flex: "none" }} /> {t.categories.name}</span>}
+                      <span>· {fmtDate(t.transaction_date)}</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flex: "none" }}>
+                    <div className="mono" style={{ fontWeight: 800, fontSize: 14.5, color: inc ? "var(--good)" : "var(--ink)" }}>{inc ? "+" : "-"}{brl(t.amount)}</div>
+                    <button onClick={() => handleDelete(t)} aria-label="Apagar" style={{ background: "none", border: "none", color: "var(--faint)", cursor: "pointer", padding: "4px 0 0", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                      <Trash2 size={13} /> apagar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+        )}
+
+        <Link to="/analytics" className="card list-row">
+          <span className="offer-ico"><LineChart size={19} /></span>
+          <div style={{ flex: 1 }}><div className="t">Ver análises</div><div className="s">Pra onde vai o dinheiro, por mês</div></div>
+          <ChevronRight size={20} style={{ color: "var(--faint)" }} />
+        </Link>
+
+        {/* co-pilot */}
+        <a className="copilot" href={`https://wa.me/${WA}?text=${encodeURIComponent("Quero registrar um gasto do carro 🧾")}`} target="_blank" rel="noreferrer">
+          <span className="av"><MessageCircle size={22} /></span>
+          <div>
+            <div className="t">Registrar gasto no WhatsApp</div>
+            <div className="s">Manda a foto do cupom + o km — o Co-pilot lança e categoriza na hora.</div>
+          </div>
+          <span className="go"><ChevronRight size={18} /></span>
+        </a>
+
+        <p className="foot-note">Combustível, peças, revisão, seguro, IPVA, multas — tudo num lugar só.</p>
       </div>
-
-      {/* Filters */}
-      <Card className="border-0 shadow-premium-md">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar gastos..."
-                className="pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <Button variant="outline" size="sm">
-              <Filter className="w-4 h-4 mr-2" />
-              Filtros
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Transactions List */}
-      <Card className="border-0 shadow-premium-md">
-        <CardHeader>
-          <CardTitle className="text-xl font-semibold">
-            Todos os Gastos ({filteredTransactions?.length || 0})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y divide-border">
-            {filteredTransactions && filteredTransactions.length > 0 ? (
-              filteredTransactions.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="flex items-center justify-between gap-3 p-6 hover:bg-muted/50 transition-colors group"
-                >
-                  <div className="flex items-center gap-4 min-w-0 flex-1">
-                    <div className={cn(
-                      "p-3 rounded-xl flex items-center justify-center shrink-0",
-                      transaction.type === "income" ? "bg-success/10" : "bg-destructive/10"
-                    )}>
-                      {transaction.type === "income" ? (
-                        <ArrowUpRight className="h-5 w-5 text-success" />
-                      ) : (
-                        <ArrowDownLeft className="h-5 w-5 text-destructive" />
-                      )}
-                    </div>
-
-                    <div className="space-y-1 min-w-0">
-                      <p className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">
-                        {transaction.description || 'Sem descrição'}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <Badge
-                          variant="secondary"
-                          className="text-xs text-white"
-                          style={{ backgroundColor: getCategoryColor(transaction.category_id!) }}
-                        >
-                          {getCategoryName(transaction.category_id!)}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">
-                          {getAccountName(transaction.account_id!)}
-                        </span>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">
-                          {formatDate(transaction.transaction_date!)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                    <div className="text-right">
-                      <p className={cn(
-                        "font-bold text-lg whitespace-nowrap",
-                        transaction.type === "income" ? "text-success" : "text-foreground"
-                      )}>
-                        {transaction.type === "income" ? "+" : "-"}
-                        {formatCurrency(transaction.amount)}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8"
-                        onClick={() => handleEditTransaction(transaction)}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteTransaction(transaction)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-12 text-center">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                  <ArrowUpRight className="w-8 h-8 text-muted-foreground" />
-                </div>
-                <h3 className="font-semibold text-foreground mb-2">Nenhum gasto encontrado</h3>
-                <p className="text-muted-foreground mb-4">Comece registrando o primeiro gasto do seu carro</p>
-                <Button className="bg-gradient-primary hover:opacity-90" onClick={() => setIsFormOpen(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Novo Gasto
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <TransactionForm
-        isOpen={isFormOpen}
-        onClose={handleCloseForm}
-        transaction={selectedTransaction}
-      />
-
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir gasto</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja excluir o gasto "{transactionToDelete?.description}"?
-              Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <TrialBlockModal 
-        open={showTrialModal} 
-        onOpenChange={setShowTrialModal} 
-        feature="registrar gastos"
-      />
-    </DashboardLayout>
+    </MgShell>
   );
-};
-
-export default Transactions;
+}
