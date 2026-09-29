@@ -1,35 +1,37 @@
 import { useEffect, useState } from "react";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Award, Fuel, Gauge, TrendingUp, ShieldCheck, Loader2, Banknote, Flame, HelpCircle } from "lucide-react";
+import { Award, Fuel, Gauge, TrendingUp, ShieldCheck, Loader2, Banknote, Flame, HelpCircle, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { MgShell } from "@/components/mg/MgShell";
 import { supabase } from "@/integrations/supabase/client";
 
-// Selo Totex — "seu histórico vale dinheiro" (Fase 4)
-// Exclusivo para clientes que compraram o carro numa loja parceira ADERIDA ao programa.
-
+// Selo Totex — "seu histórico vale dinheiro". Exclusivo de clientes de loja parceira aderida.
 type Statement = {
   ok: boolean; elegivel: boolean; loja: string | null;
   score: number; tier: string; meses_ativos: number; delta_mes: number;
   faixa_garantida: { min_pct: number; max_pct: number | null } | null;
   proximo_selo: { tier: string; faltam_pontos: number; faltam_meses: number; fipe_min_pct: number } | null;
-  programa?: {
-    teto_pct: number; troca12m_pct: number;
-    niveis: { tier: string; pontos: number; meses: number; fipe_min_pct: number; fipe_max_pct?: number }[];
-  };
+  programa?: { teto_pct: number; troca12m_pct: number; niveis: { tier: string; pontos: number; meses: number; fipe_min_pct: number; fipe_max_pct?: number }[] };
   troca12m_ate: string | null;
   ultimos_eventos: { o_que: string; pontos: number; data: string }[];
 };
 
-const TIER_META: Record<string, { label: string; emoji: string; cls: string }> = {
-  ouro: { label: "Ouro", emoji: "🥇", cls: "from-amber-400 to-yellow-600" },
-  prata: { label: "Prata", emoji: "🥈", cls: "from-slate-300 to-slate-500" },
-  bronze: { label: "Bronze", emoji: "🥉", cls: "from-orange-300 to-orange-600" },
-  none: { label: "Em construção", emoji: "🔧", cls: "from-teal-400 to-cyan-500" },
+const TIER_META: Record<string, { label: string; emoji: string; grad: string }> = {
+  ouro: { label: "Ouro", emoji: "🥇", grad: "linear-gradient(120deg,#F0B429,#C9781E)" },
+  prata: { label: "Prata", emoji: "🥈", grad: "linear-gradient(120deg,#B8C2CC,#8A9994)" },
+  bronze: { label: "Bronze", emoji: "🥉", grad: "linear-gradient(120deg,#E0954A,#B8621A)" },
+  none: { label: "Em construção", emoji: "🔧", grad: "linear-gradient(120deg,#12857F,#0A5350)" },
 };
+
+function Faq({ q, children }: { q: string; children: React.ReactNode }) {
+  return (
+    <details className="faq">
+      <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", fontSize: 13.5, fontWeight: 700, padding: "12px 0", listStyle: "none" }}>
+        {q} <ChevronDown size={16} style={{ color: "var(--faint)", flex: "none" }} />
+      </summary>
+      <div style={{ fontSize: 12.5, color: "var(--muted)", paddingBottom: 12, display: "flex", flexDirection: "column", gap: 6, lineHeight: 1.5 }}>{children}</div>
+    </details>
+  );
+}
 
 export default function Selo() {
   const [st, setSt] = useState<Statement | null>(null);
@@ -38,38 +40,25 @@ export default function Selo() {
 
   useEffect(() => {
     (async () => {
-      try {
-        const { data } = await supabase.functions.invoke("care-score", { body: {} });
-        setSt(data || null);
-      } catch { setSt(null); }
+      try { const { data } = await supabase.functions.invoke("care-score", { body: {} }); setSt(data || null); }
+      catch { setSt(null); }
       setLoading(false);
     })();
   }, []);
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center min-h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </DashboardLayout>
-    );
-  }
+  if (loading) return <MgShell title="Selo Totex" back="/"><div style={{ display: "grid", placeItems: "center", padding: "60px 0" }}><Loader2 className="h-8 w-8 animate-spin" style={{ color: "var(--brand)" }} /></div></MgShell>;
 
-  // Não elegível: o programa é benefício das lojas parceiras — não vendemos aqui.
   if (!st?.elegivel) {
     return (
-      <DashboardLayout>
-        <div className="max-w-2xl mx-auto text-center py-16 space-y-4">
-          <Award className="w-14 h-14 text-muted-foreground/40 mx-auto" />
-          <h1 className="text-2xl font-bold">Selo Totex</h1>
-          <p className="text-muted-foreground">
-            O Selo Totex é um <strong>benefício exclusivo</strong> para clientes que compraram o carro
-            em uma loja parceira do ecossistema Totexmotors. Seus registros continuam valorizando o
-            histórico do seu carro normalmente.
+      <MgShell title="Selo Totex" back="/">
+        <div className="stack" style={{ textAlign: "center", padding: "40px 8px" }}>
+          <Award size={52} style={{ color: "var(--faint)", margin: "0 auto" }} />
+          <div style={{ fontWeight: 800, fontSize: 18 }}>Selo Totex</div>
+          <p style={{ fontSize: 13.5, color: "var(--muted)", lineHeight: 1.5 }}>
+            O Selo Totex é um <b style={{ color: "var(--ink)" }}>benefício exclusivo</b> para quem comprou o carro em uma loja parceira do ecossistema Totexmotors. Seus registros continuam valorizando o histórico do seu carro normalmente.
           </p>
         </div>
-      </DashboardLayout>
+      </MgShell>
     );
   }
 
@@ -77,198 +66,117 @@ export default function Selo() {
   const pct = Math.min(100, Math.round((st.score / 850) * 100));
 
   return (
-    <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-6 pb-10">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Award className="w-6 h-6 text-primary" /> Selo Totex
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Seu histórico vale dinheiro: cada cupom, foto de hodômetro e revisão comprovada aumenta a
-            garantia de recompra do seu carro na <strong>{st.loja}</strong> — que pode chegar a{" "}
-            <strong className="text-primary">até {st.programa?.teto_pct ?? 90}% da tabela FIPE</strong>.
-          </p>
-        </div>
+    <MgShell title="Selo Totex" back="/">
+      <style>{`.mg .faq{border-top:1px solid var(--line)}.mg .faq summary::-webkit-details-marker{display:none}.mg .faq[open] summary svg{transform:rotate(180deg)}`}</style>
+      <div className="stack">
+        <p style={{ fontSize: 12.5, color: "var(--muted)", margin: "0 2px", lineHeight: 1.4 }}>
+          Seu histórico vale dinheiro: cada cupom, foto de hodômetro e revisão aumenta a garantia de recompra do seu carro na <b style={{ color: "var(--ink)" }}>{st.loja}</b> — que pode chegar a <b style={{ color: "var(--brand)" }}>até {st.programa?.teto_pct ?? 90}% da FIPE</b>.
+        </p>
 
-        {/* Selo atual + faixa garantida */}
-        <Card className="border-0 shadow-premium-md overflow-hidden">
-          <div className={`bg-gradient-to-r ${tier.cls} p-5 text-white`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold opacity-90 uppercase tracking-wide">Seu selo</p>
-                <p className="text-3xl font-extrabold">{tier.emoji} {tier.label}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs opacity-90">Score de Cuidado</p>
-                <p className="text-3xl font-extrabold tabular-nums">{st.score}</p>
-                <p className="text-[11px] opacity-90">{st.meses_ativos} {st.meses_ativos === 1 ? "mês ativo" : "meses ativos"}{st.delta_mes ? ` · ${st.delta_mes > 0 ? "+" : ""}${st.delta_mes} este mês` : ""}</p>
-              </div>
+        {/* selo atual */}
+        <section className="card" style={{ overflow: "hidden" }}>
+          <div style={{ background: tier.grad, padding: 18, color: "#fff" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div><div style={{ fontSize: 11, fontWeight: 700, opacity: .9, textTransform: "uppercase", letterSpacing: ".06em" }}>Seu selo</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tier.emoji} {tier.label}</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 11, opacity: .9 }}>Score de Cuidado</div><div className="mono" style={{ fontSize: 28, fontWeight: 800 }}>{st.score}</div><div style={{ fontSize: 10.5, opacity: .9 }}>{st.meses_ativos} {st.meses_ativos === 1 ? "mês ativo" : "meses ativos"}{st.delta_mes ? ` · ${st.delta_mes > 0 ? "+" : ""}${st.delta_mes} este mês` : ""}</div></div>
             </div>
-            <div className="mt-4 h-2 rounded-full bg-white/25 overflow-hidden">
-              <div className="h-full bg-white/90 rounded-full transition-all" style={{ width: `${pct}%` }} />
-            </div>
-            <div className="flex justify-between text-[10px] mt-1 opacity-90">
-              <span>Bronze 300</span><span>Prata 600</span><span>Ouro 850</span>
-            </div>
+            <div style={{ marginTop: 14, height: 8, borderRadius: 999, background: "rgba(255,255,255,.25)", overflow: "hidden" }}><div style={{ height: "100%", background: "rgba(255,255,255,.9)", borderRadius: 999, width: `${pct}%` }} /></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 4, opacity: .9 }}><span>Bronze 300</span><span>Prata 600</span><span>Ouro 850</span></div>
           </div>
-          <CardContent className="p-4">
+          <div style={{ padding: 15 }}>
             {st.faixa_garantida ? (
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Banknote className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-bold">
-                    Garantia mínima de {st.faixa_garantida.min_pct}% da FIPE na recompra
-                    {st.faixa_garantida.max_pct ? ` (até ${st.faixa_garantida.max_pct}%)` : ""}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Válida na {st.loja}, confirmada na vistoria presencial.
-                    {st.troca12m_ate ? ` Bônus: trocando até ${new Date(st.troca12m_ate + "T12:00:00").toLocaleDateString("pt-BR")}, você garante o teto de 90%.` : ""}
-                  </p>
-                </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <span className="alert-ico" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}><Banknote size={20} /></span>
+                <div><div style={{ fontWeight: 700, fontSize: 14 }}>Garantia mínima de {st.faixa_garantida.min_pct}% da FIPE na recompra{st.faixa_garantida.max_pct ? ` (até ${st.faixa_garantida.max_pct}%)` : ""}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>Válida na {st.loja}, confirmada na vistoria.{st.troca12m_ate ? ` Bônus: trocando até ${new Date(st.troca12m_ate + "T12:00:00").toLocaleDateString("pt-BR")}, garante o teto de 90%.` : ""}</div></div>
               </div>
             ) : st.proximo_selo ? (
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center flex-shrink-0">
-                  <TrendingUp className="w-5 h-5 text-warning" />
-                </div>
-                <div>
-                  <p className="font-bold">Faltam {st.proximo_selo.faltam_pontos} pontos {st.proximo_selo.faltam_meses > 0 ? `e ${st.proximo_selo.faltam_meses} meses de histórico ` : ""}para o Selo {TIER_META[st.proximo_selo.tier]?.label}</p>
-                  <p className="text-sm text-muted-foreground">Ele garante o mínimo de {st.proximo_selo.fipe_min_pct}% da FIPE na troca.</p>
-                </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <span className="alert-ico"><TrendingUp size={20} /></span>
+                <div><div style={{ fontWeight: 700, fontSize: 14 }}>Faltam {st.proximo_selo.faltam_pontos} pontos {st.proximo_selo.faltam_meses > 0 ? `e ${st.proximo_selo.faltam_meses} meses ` : ""}para o Selo {TIER_META[st.proximo_selo.tier]?.label}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>Ele garante o mínimo de {st.proximo_selo.fipe_min_pct}% da FIPE na troca.</div></div>
               </div>
             ) : null}
-            <Button className="w-full mt-4 gap-2" onClick={() => navigate("/recompra")}>
-              <Banknote className="w-4 h-4" /> Avaliar meu carro agora
-            </Button>
-          </CardContent>
-        </Card>
+            <button className="btn-primary" style={{ marginTop: 14 }} onClick={() => navigate("/recompra")}><Banknote size={16} /> Avaliar meu carro agora</button>
+          </div>
+        </section>
 
-        {/* Níveis do programa — Bronze / Prata / Ouro (até 90%) */}
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader className="pb-2"><CardTitle className="text-base">Os 3 níveis do Selo</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
+        {/* níveis */}
+        <section className="card pad">
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>Os 3 níveis do Selo</div>
+          <div className="stack" style={{ gap: 8 }}>
             {(st.programa?.niveis || []).map((n) => {
-              const atual = n.tier === st.tier;
-              const m = TIER_META[n.tier];
+              const atual = n.tier === st.tier; const m = TIER_META[n.tier];
               return (
-                <div key={n.tier} className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${atual ? "border-primary bg-primary/5" : "border-border"}`}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-2xl">{m?.emoji}</span>
-                    <div>
-                      <p className="font-bold text-sm flex items-center gap-2">
-                        Selo {m?.label}
-                        {atual && <Badge className="bg-primary/15 text-primary border-0">seu nível</Badge>}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{n.pontos} pontos + {n.meses} meses de histórico ativo</p>
-                    </div>
+                <div key={n.tier} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderRadius: 12, border: `1px solid ${atual ? "var(--brand)" : "var(--line)"}`, background: atual ? "var(--brand-soft)" : "transparent", padding: 12 }}>
+                  <div style={{ display: "flex", gap: 10, minWidth: 0, alignItems: "center" }}>
+                    <span style={{ fontSize: 22 }}>{m?.emoji}</span>
+                    <div><div style={{ fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>Selo {m?.label}{atual && <span className="tag new">seu nível</span>}</div><div style={{ fontSize: 11.5, color: "var(--muted)" }}>{n.pontos} pontos + {n.meses} meses ativos</div></div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-extrabold text-primary text-sm">
-                      mín. {n.fipe_min_pct}%{n.fipe_max_pct ? ` — até ${n.fipe_max_pct}%` : ""}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">da FIPE na troca</p>
-                  </div>
+                  <div style={{ textAlign: "right", flex: "none" }}><div style={{ fontWeight: 800, color: "var(--brand)", fontSize: 13 }}>mín. {n.fipe_min_pct}%{n.fipe_max_pct ? ` — até ${n.fipe_max_pct}%` : ""}</div><div style={{ fontSize: 10, color: "var(--muted)" }}>da FIPE na troca</div></div>
                 </div>
               );
             })}
-            <p className="text-xs text-muted-foreground pt-1">
-              🥇 Ouro tem o <strong>Bônus Troca em 12 meses</strong>: trocando o carro em até 1 ano após
-              conquistar o selo, a garantia vai ao teto de <strong>{st.programa?.troca12m_pct ?? 90}% da FIPE</strong>.
-            </p>
-          </CardContent>
-        </Card>
+            <p style={{ fontSize: 11.5, color: "var(--muted)", paddingTop: 2 }}>🥇 Ouro tem o <b>Bônus Troca em 12 meses</b>: trocando em até 1 ano, a garantia vai ao teto de <b>{st.programa?.troca12m_pct ?? 90}% da FIPE</b>.</p>
+          </div>
+        </section>
 
-        {/* Como pontuar */}
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader className="pb-2"><CardTitle className="text-base">Como ganhar pontos</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            <div className="flex items-center gap-2"><Fuel className="w-4 h-4 text-primary" /> Abastecimento com cupom + hodômetro <Badge variant="secondary">+10</Badge></div>
-            <div className="flex items-center gap-2"><Gauge className="w-4 h-4 text-primary" /> Hodômetro atualizado no mês <Badge variant="secondary">+10</Badge></div>
-            <div className="flex items-center gap-2"><Flame className="w-4 h-4 text-primary" /> 3 meses seguidos registrando <Badge variant="secondary">+50</Badge></div>
-            <div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" /> Tudo pelo WhatsApp — foto do cupom e pronto</div>
-          </CardContent>
-        </Card>
+        {/* como pontuar */}
+        <section className="card pad">
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>Como ganhar pontos</div>
+          <div className="stack" style={{ gap: 10, fontSize: 13 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Fuel size={16} style={{ color: "var(--brand)" }} /> Abastecimento com cupom + hodômetro <span className="tag ok">+10</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Gauge size={16} style={{ color: "var(--brand)" }} /> Hodômetro atualizado no mês <span className="tag ok">+10</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Flame size={16} style={{ color: "var(--brand)" }} /> 3 meses seguidos registrando <span className="tag ok">+50</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><ShieldCheck size={16} style={{ color: "var(--brand)" }} /> Tudo pelo WhatsApp — foto do cupom e pronto</div>
+          </div>
+        </section>
 
-        {/* Extrato */}
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader className="pb-2"><CardTitle className="text-base">Últimos pontos</CardTitle></CardHeader>
-          <CardContent>
-            {st.ultimos_eventos?.length ? (
-              <div className="space-y-2">
-                {st.ultimos_eventos.map((e, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm border-b last:border-0 pb-2 last:pb-0">
-                    <span>{e.o_que}</span>
-                    <span className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground">{new Date(e.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                      <Badge className={e.pontos >= 0 ? "bg-green-500/15 text-green-600 border-0" : "bg-destructive/15 text-destructive border-0"}>
-                        {e.pontos > 0 ? `+${e.pontos}` : e.pontos}
-                      </Badge>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Nenhum ponto ainda — registre o próximo abastecimento no WhatsApp (foto do cupom + hodômetro) e comece a construir o valor do seu carro.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        {/* extrato */}
+        <section className="card pad">
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>Últimos pontos</div>
+          {st.ultimos_eventos?.length ? (
+            <div className="stack" style={{ gap: 8 }}>
+              {st.ultimos_eventos.map((e, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, borderBottom: i < st.ultimos_eventos.length - 1 ? "1px solid var(--line)" : "none", paddingBottom: 8 }}>
+                  <span>{e.o_que}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ fontSize: 11, color: "var(--muted)" }}>{new Date(e.data + "T12:00:00").toLocaleDateString("pt-BR")}</span><span className={`tag ${e.pontos >= 0 ? "ok" : "due"}`}>{e.pontos > 0 ? `+${e.pontos}` : e.pontos}</span></span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--muted)" }}>Nenhum ponto ainda — registre o próximo abastecimento no WhatsApp (foto do cupom + hodômetro) e comece a construir o valor do seu carro.</p>
+          )}
+        </section>
 
-        {/* Como funciona e as regras (acordeão) */}
-        <Card className="border-0 shadow-premium-md">
-          <CardHeader className="pb-0">
-            <CardTitle className="text-base flex items-center gap-2">
-              <HelpCircle className="w-4 h-4 text-primary" /> Como funciona e as regras
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="pontos">
-                <AccordionTrigger className="text-sm">Como os pontos funcionam</AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground space-y-2">
-                  <p>• Abastecimento com <strong>foto do cupom + hodômetro</strong> vale +10 (só cupom ou só valor, +5). Limite de 40 pontos/mês em abastecimentos completos.</p>
-                  <p>• Conta <strong>1 abastecimento pontuado a cada 48h</strong> (motorista de app: a cada 24h).</p>
-                  <p>• <strong>Hodômetro atualizado</strong> vale +10, uma vez por mês.</p>
-                  <p>• <strong>Constância paga</strong>: 3 meses seguidos com pelo menos 4 registros = +50.</p>
-                  <p>• Cupom com mais de <strong>7 dias</strong> vale metade dos pontos (registre no dia!).</p>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="manter">
-                <AccordionTrigger className="text-sm">O Selo é um compromisso vivo</AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground space-y-2">
-                  <p>• Além dos pontos, cada selo exige <strong>meses de histórico ativo</strong> (pelo menos 1 registro válido no mês): Bronze 3, Prata 6, Ouro 12.</p>
-                  <p>• Ficar <strong>90 dias sem registrar</strong> (45 para motorista de app) faz o score começar a decair até o piso do seu selo atual.</p>
-                  <p>• Registro é pelo WhatsApp mesmo: foto do cupom, foto do hodômetro — o Co-pilot cuida do resto.</p>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="garantia">
-                <AccordionTrigger className="text-sm">A garantia na recompra</AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground space-y-2">
-                  <p>• O selo garante o <strong>MÍNIMO da faixa</strong> (Bronze 82% · Prata 85% · Ouro 87%) na recompra feita na <strong>loja parceira</strong> onde você comprou — podendo chegar a <strong>até 90% da FIPE</strong>.</p>
-                  <p>• A garantia é <strong>condicionada à vistoria presencial</strong> confirmar o histórico. Divergência material (km adulterado, dano estrutural, passagem por leilão) anula a garantia.</p>
-                  <p>• A <strong>oferta final é sempre da loja</strong> — o programa define o piso, não o valor exato.</p>
-                  <p>• <strong>Bônus Troca em 12 meses</strong>: com o Selo Ouro, trocando em até 1 ano após a conquista, a garantia vai ao teto de 90%.</p>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="quem">
-                <AccordionTrigger className="text-sm">Quem participa</AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground space-y-2">
-                  <p>• O programa é <strong>exclusivo para clientes que compraram o carro em uma loja parceira</strong> do ecossistema Totexmotors aderida ao Selo.</p>
-                  <p>• Seus registros são seus: mesmo fora do programa, o histórico do carro continua valendo como comprovação na revenda.</p>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </CardContent>
-        </Card>
+        {/* regras */}
+        <section className="card pad">
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><HelpCircle size={16} style={{ color: "var(--brand)" }} /> Como funciona e as regras</div>
+          <Faq q="Como os pontos funcionam">
+            <p>• Abastecimento com <b>foto do cupom + hodômetro</b> vale +10 (só um, +5). Limite de 40 pts/mês.</p>
+            <p>• Conta <b>1 abastecimento a cada 48h</b> (motorista de app: 24h).</p>
+            <p>• <b>Hodômetro atualizado</b> vale +10, 1x por mês.</p>
+            <p>• <b>Constância paga</b>: 3 meses seguidos com 4+ registros = +50.</p>
+            <p>• Cupom com mais de <b>7 dias</b> vale metade (registre no dia!).</p>
+          </Faq>
+          <Faq q="O Selo é um compromisso vivo">
+            <p>• Cada selo exige <b>meses de histórico ativo</b>: Bronze 3, Prata 6, Ouro 12.</p>
+            <p>• <b>90 dias sem registrar</b> (45 p/ motorista de app) faz o score decair até o piso do selo atual.</p>
+            <p>• Registro é pelo WhatsApp: foto do cupom e do hodômetro.</p>
+          </Faq>
+          <Faq q="A garantia na recompra">
+            <p>• O selo garante o <b>MÍNIMO da faixa</b> (Bronze 82% · Prata 85% · Ouro 87%) na loja parceira — até <b>90% da FIPE</b>.</p>
+            <p>• Condicionada à <b>vistoria presencial</b>. Divergência material (km adulterado, dano estrutural, leilão) anula.</p>
+            <p>• A <b>oferta final é sempre da loja</b> — o programa define o piso.</p>
+          </Faq>
+          <Faq q="Quem participa">
+            <p>• <b>Exclusivo de clientes que compraram numa loja parceira</b> aderida ao Selo.</p>
+            <p>• Seus registros são seus: mesmo fora do programa, o histórico segue valendo na revenda.</p>
+          </Faq>
+        </section>
 
-        <p className="text-[11px] text-muted-foreground text-center">
-          A garantia do Selo é o mínimo da faixa, condicionada à confirmação do histórico na vistoria
-          presencial da loja participante. A oferta final é sempre da loja. O teto do programa é 90% da FIPE.
-        </p>
+        <p className="foot-note">A garantia do Selo é o mínimo da faixa, confirmada na vistoria presencial. A oferta final é sempre da loja. Teto do programa: 90% da FIPE.</p>
       </div>
-    </DashboardLayout>
+    </MgShell>
   );
 }
