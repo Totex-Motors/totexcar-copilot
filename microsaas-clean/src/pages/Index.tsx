@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Link } from "react-router-dom";
 import {
   TrendingUp, ChevronRight, Car, Repeat2, CreditCard, CalendarDays, FileCheck2, ShieldCheck,
-  IdCard, LineChart, MessageCircle, Coins, Ticket, Landmark, Truck,
+  IdCard, LineChart, MessageCircle, Coins, Ticket, Landmark, Truck, Wrench,
 } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
@@ -60,6 +60,7 @@ export default function Index() {
   const tiles = [
     { to: "/multas", ic: CreditCard, cls: "ic-gain", name: "Débitos", meta: "IPVA, multas e taxas", tag: "Consultar", tagcls: "new" },
     { to: "/veiculo", ic: CalendarDays, cls: "ic-brand", name: "Vencimentos", meta: "Licenciamento, seguro", tag: sLic.ok && sSeg.ok ? "Em dia" : "Atenção", tagcls: sLic.ok && sSeg.ok ? "ok" : "due" },
+    { to: "/manutencao", ic: Wrench, cls: "ic-brand", name: "Manutenção", meta: "Revisões por km", tag: "Ver", tagcls: "new" },
     { to: "/historico", ic: FileCheck2, cls: "ic-brand", name: "Histórico", meta: "Consulta cautelar", tag: "Emitir", tagcls: "new" },
     { to: "/seguro", ic: ShieldCheck, cls: "ic-good", name: "Meu seguro", meta: "Cotação em minutos", tag: v.seguro_vencimento ? "Ativo" : "Sem proteção", tagcls: v.seguro_vencimento ? "ok" : "due" },
     { to: "/crlv", ic: IdCard, cls: "ic-brand", name: "CRLV digital", meta: "Documento do carro", tag: "Disponível", tagcls: "ok" },
