@@ -158,4 +158,8 @@ export const MG_CSS = `
 .mg .kpi .box{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
 .mg .kpi .box .l{font-size:11px;color:var(--muted)}
 .mg .kpi .box .v{font-size:19px;font-weight:800;margin-top:2px}
+.mg .lbl{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px 2px;display:block}
+.mg .formgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mg select.field{cursor:pointer}
+.mg .field::placeholder{color:var(--faint)}
 `;
