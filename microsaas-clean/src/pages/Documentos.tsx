@@ -78,7 +78,7 @@ export default function Documentos() {
             </div>
             {aberto.produto === "crlv" ? (
               aberto.dados?.arquivo
-                ? <DocViewer arquivo={fileUrl ? { url: fileUrl, tipo: "application/pdf", nome: `CRLV-${aberto.placa || ""}.pdf` } : aberto.dados.arquivo} filename={`CRLV-${aberto.placa || ""}`} />
+                ? <DocViewer arquivo={{ ...(aberto.dados.arquivo as any), url: fileUrl || undefined }} filename={`CRLV-${aberto.placa || ""}`} />
                 : <a className="sbtn wa" style={{ width: "100%", justifyContent: "center" }} href={`https://wa.me/${WA}?text=${encodeURIComponent("Quero receber meu CRLV-e")}`} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Receber o arquivo pelo Co-pilot</a>
             ) : aberto.analiseIA ? (
               <p style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{aberto.analiseIA}</p>
