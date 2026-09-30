@@ -77,7 +77,11 @@ Deno.serve(async (req) => {
 
   // o gatilho leva o token MAIS CURTO que resolve o carro (o code do link bonito, se houver)
   const token = code || carId;
-  const gatilho = token ? `#oferta ${token}` : "#oferta";
+  // Indique e Ganhe: repassa o código do indicador (?i= ou ?ind=) como "ind:<code>" no gatilho,
+  // pro Co-pilot creditar a indicação (o webhook lê /\bind:([a-z0-9]{4,})\b/). Assim o link com
+  // prévia rica (foto do carro) mantém a atribuição que o wa.me direto carregava antes.
+  const ind = (url.searchParams.get("i") || url.searchParams.get("ind") || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const gatilho = (token ? `#oferta ${token}` : "#oferta") + (ind ? ` ind:${ind}` : "");
 
   // PESSOA → 302 pro Co-pilot com mensagem humana pré-preenchida (é só apertar enviar)
   if (isHumanBrowser(req.headers.get("user-agent") || "")) {
