@@ -62,7 +62,7 @@ export default function Index() {
     { to: "/multas", ic: CreditCard, cls: "ic-gain", name: "Débitos", meta: "IPVA, multas e taxas", tag: "Consultar", tagcls: "new" },
     { to: "/veiculo", ic: CalendarDays, cls: "ic-brand", name: "Vencimentos", meta: "Licenciamento, seguro", tag: sLic.ok && sSeg.ok ? "Em dia" : "Atenção", tagcls: sLic.ok && sSeg.ok ? "ok" : "due" },
     { to: "/manutencao", ic: Wrench, cls: "ic-brand", name: "Manutenção", meta: "Revisões por km", tag: "Ver", tagcls: "new" },
-    { to: "/historico", ic: FileCheck2, cls: "ic-brand", name: "Histórico", meta: "Consulta cautelar", tag: "Emitir", tagcls: "new" },
+    { to: "/historico", ic: FileCheck2, cls: "ic-brand", name: "Raio-X", meta: "Cautelar do carro", tag: "Consultar", tagcls: "new" },
     { to: "/seguro", ic: ShieldCheck, cls: "ic-good", name: "Meu seguro", meta: "Cotação em minutos", tag: v.seguro_vencimento ? "Ativo" : "Sem proteção", tagcls: v.seguro_vencimento ? "ok" : "due" },
     { to: "/crlv", ic: IdCard, cls: "ic-brand", name: "CRLV digital", meta: "Documento do carro", tag: "Disponível", tagcls: "ok" },
     { to: "/custo", ic: LineChart, cls: "ic-brand", name: "Custo do carro", meta: "Quanto ele te custa", tag: totals?.totalExpenses ? brl(totals.totalExpenses) : "Ver", tagcls: "ok" },
