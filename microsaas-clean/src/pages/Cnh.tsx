@@ -3,7 +3,7 @@ import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { CalendarDays, ChevronRight, MessageCircle, ShieldAlert, Pencil, Info, Loader2, Sparkles, IdCard } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
 
 const WA = "5511963786699";
 const PRECO_CNH = 9.9;
@@ -108,7 +108,7 @@ export default function Cnh() {
             </div>
           ) : res && !res.ok ? (
             <div className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent", fontSize: 13, marginBottom: 8 }}>
-              <b>Não consegui consultar.</b> {res.error === "cpf_invalido" ? "Confira o CPF (11 dígitos)." : (res.error || "Tente de novo em instantes.")}
+              <b>Não consegui consultar.</b> {gptErroMsg(res.error)}
             </div>
           ) : null}
 

@@ -7,7 +7,7 @@ import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
 import { useMultas, useUpdateMultaStatus, type Multa } from "@/hooks/useMultas";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
 import { toast } from "@/hooks/use-toast";
 
 const WA = "5511963786699";
@@ -134,7 +134,7 @@ export default function Multas() {
         )}
         {res && !res.ok && !res.needsPayment && (
           <div className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent", fontSize: 13 }}>
-            <b>Não consegui consultar agora.</b> {res.error || "Tente de novo em instantes."}
+            <b>Não consegui consultar agora.</b> {gptErroMsg(res.error)}
           </div>
         )}
         {placa && (
