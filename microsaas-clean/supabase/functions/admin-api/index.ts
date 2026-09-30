@@ -235,6 +235,52 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
+      // GPT MOTORS — consultas veiculares (Raio-X / CRLV-e / Débitos): faturamento, custo, margem
+      case "gpt_stats": {
+        const { data: cfg } = await admin.from("app_settings")
+          .select("gpt_raiox_price, gpt_crlv_price, gpt_debitos_price").eq("id", 1).single();
+        const prices: Record<string, number> = {
+          raiox: Number((cfg as any)?.gpt_raiox_price || 0),
+          crlv: Number((cfg as any)?.gpt_crlv_price || 0),
+          debitos: Number((cfg as any)?.gpt_debitos_price || 0),
+        };
+        const COST: Record<string, number> = { raiox: 30, crlv: 20, debitos: 10 }; // custo GPT Motors
+        const { data: cons } = await admin.from("gpt_consultas")
+          .select("produto, placa, status, preco, faturado, created_at").order("created_at", { ascending: false });
+        const { data: ords } = await admin.from("gpt_orders")
+          .select("produto, placa, status, preco, origem, created_at").order("created_at", { ascending: false }).limit(50);
+        const prod = ["raiox", "crlv", "debitos"];
+        const stats = prod.map((p) => {
+          const cs = (cons || []).filter((c: any) => c.produto === p);
+          const ok = cs.filter((c: any) => c.status === "ok").length;
+          const faturadas = cs.filter((c: any) => c.faturado).length;
+          const receita = (ords || []).filter((o: any) => o.produto === p && o.status === "done").reduce((s: number, o: any) => s + Number(o.preco || 0), 0);
+          const custo = faturadas * COST[p];
+          return { produto: p, preco: prices[p], custo_unit: COST[p], consultas_ok: ok, faturadas, receita, custo, margem: receita - custo };
+        });
+        return json({
+          ok: true, prices, cost: COST, stats,
+          recent: (cons || []).slice(0, 30), orders: ords || [],
+          totais: {
+            consultas: (cons || []).filter((c: any) => c.status === "ok").length,
+            receita: stats.reduce((s, x) => s + x.receita, 0),
+            custo: stats.reduce((s, x) => s + x.custo, 0),
+            margem: stats.reduce((s, x) => s + x.margem, 0),
+          },
+        });
+      }
+
+      case "gpt_set_prices": {
+        const up: Record<string, number> = {};
+        if (payload.raiox != null && !isNaN(Number(payload.raiox))) up.gpt_raiox_price = Number(payload.raiox);
+        if (payload.crlv != null && !isNaN(Number(payload.crlv))) up.gpt_crlv_price = Number(payload.crlv);
+        if (payload.debitos != null && !isNaN(Number(payload.debitos))) up.gpt_debitos_price = Number(payload.debitos);
+        if (!Object.keys(up).length) return json({ error: "nada_pra_atualizar" }, 400);
+        const { error } = await admin.from("app_settings").update(up).eq("id", 1);
+        if (error) throw error;
+        return json({ ok: true });
+      }
+
       default:
         return json({ error: "unknown_action" }, 400);
     }
