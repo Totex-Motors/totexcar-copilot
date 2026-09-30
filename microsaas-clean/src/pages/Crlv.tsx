@@ -5,20 +5,11 @@ import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle, useUpdateAccount } from "@/hooks/useAccounts";
 import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
+import { DocViewer } from "@/components/DocViewer";
 
 const WA = "5511963786699";
 const PRECO = 39; // preço de exibição (o valor final vem do servidor)
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
-
-// href de download do arquivo do CRLV-e (aceita url direta ou base64)
-function arquivoHref(arq: any): string | null {
-  if (!arq) return null;
-  if (typeof arq === "string" && /^https?:\/\//.test(arq)) return arq;
-  if (arq.url) return String(arq.url);
-  const b64 = arq.base64 || arq.conteudo || arq.arquivo || arq.dados;
-  if (b64) return `data:${arq.tipo || arq.contentType || "application/pdf"};base64,${b64}`;
-  return null;
-}
 
 // TELA CRLV — dados do documento + emissão do CRLV-e na hora (GPT Motors) + gov.br como alternativa.
 export default function Crlv() {
@@ -70,7 +61,6 @@ export default function Crlv() {
     const r = await runGptConsulta("crlv", placa, uf);
     setRes(r); setBusy(false);
   };
-  const href = res?.ok ? arquivoHref(res.dados?.arquivo) : null;
 
   return (
     <MgShell title="CRLV digital" back="/">
@@ -88,11 +78,11 @@ export default function Crlv() {
               <span className="badge-p" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><FileCheck2 size={12} /> CRLV-e emitido</span>
               {res.cached && <span className="tag mut">recente</span>}
             </div>
-            <div style={{ fontSize: 13.5, color: "var(--muted)" }}>{[res.dados?.marcaModelo, res.dados?.anoModelo].filter(Boolean).join(" · ") || "Documento pronto"}</div>
-            {href ? (
-              <a href={href} target="_blank" rel="noreferrer" download={`CRLV-${placa}.pdf`}><button className="btn-primary" style={{ marginTop: 12 }}><Download size={17} /> Baixar CRLV-e</button></a>
+            <div style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 12 }}>{[res.dados?.marcaModelo, res.dados?.anoModelo].filter(Boolean).join(" · ") || "Documento pronto"}</div>
+            {res.dados?.arquivo ? (
+              <DocViewer arquivo={res.dados.arquivo} filename={`CRLV-${placa}`} />
             ) : (
-              <a className="sbtn wa" style={{ marginTop: 12, width: "100%", justifyContent: "center" }} href={waCRLV} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Receber o arquivo pelo Co-pilot</a>
+              <a className="sbtn wa" style={{ width: "100%", justifyContent: "center" }} href={waCRLV} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Receber o arquivo pelo Co-pilot</a>
             )}
           </section>
         ) : res && !res.ok && res.needsPayment ? (
