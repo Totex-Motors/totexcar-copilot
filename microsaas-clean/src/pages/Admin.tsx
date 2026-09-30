@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Switch } from "@/components/ui/switch";
-import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode, Banknote, Wrench, Loader2, Eye } from "lucide-react";
+import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode, Banknote, Wrench, Loader2, Eye, ScanLine } from "lucide-react";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
@@ -116,6 +116,7 @@ const Admin = () => {
           <TabsTrigger value="funil" className="gap-2"><TrendingUp className="w-4 h-4" /> Funil Grátis</TabsTrigger>
           <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
           <TabsTrigger value="partners" className="gap-2"><Wrench className="w-4 h-4" /> Parceiros</TabsTrigger>
+          <TabsTrigger value="gpt" className="gap-2"><ScanLine className="w-4 h-4" /> GPT Motors</TabsTrigger>
         </TabsList>
 
         <TabsContent value="owners" className="mt-6">
@@ -141,6 +142,9 @@ const Admin = () => {
         </TabsContent>
         <TabsContent value="partners" className="mt-6">
           <PartnersTab />
+        </TabsContent>
+        <TabsContent value="gpt" className="mt-6">
+          <GptMotorsTab />
         </TabsContent>
       </Tabs>
     </MgPanelShell>
@@ -1115,6 +1119,109 @@ function SubscriptionsTab() {
       <p className="text-xs text-muted-foreground text-center">
         MRR = assinantes <strong>ativos</strong>; planos anuais entram como valor/12. Os valores são gravados no checkout.
       </p>
+    </div>
+  );
+}
+
+// ===== GPT MOTORS — consultas veiculares (Raio-X / CRLV-e / Débitos) =====
+const GPT_LABEL: Record<string, string> = { raiox: "Raio-X", crlv: "CRLV-e", debitos: "Débitos" };
+const gbrl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+const gdt = (s?: string) => s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+
+function GptMotorsTab() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [prices, setPrices] = useState({ raiox: "", crlv: "", debitos: "" });
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    const { data: d } = await supabase.functions.invoke("admin-api", { body: { action: "gpt_stats" } });
+    if ((d as any)?.ok) { setData(d); const p = (d as any).prices; setPrices({ raiox: String(p.raiox), crlv: String(p.crlv), debitos: String(p.debitos) }); }
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const salvar = async () => {
+    setSaving(true);
+    const { data: r } = await supabase.functions.invoke("admin-api", { body: { action: "gpt_set_prices", raiox: Number(prices.raiox), crlv: Number(prices.crlv), debitos: Number(prices.debitos) } });
+    if ((r as any)?.ok) { toast({ title: "Preços atualizados" }); load(); } else { toast({ title: "Erro ao salvar", variant: "destructive" }); }
+    setSaving(false);
+  };
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-primary" /></div>;
+  if (!data) return <p className="text-muted-foreground py-8 text-center">Não consegui carregar as consultas.</p>;
+  const t = data.totais;
+  const STATUS: Record<string, string> = { ok: "bg-green-500/15 text-green-600", erro: "bg-destructive/15 text-destructive" };
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><ScanLine className="w-4 h-4" /> Consultas</div>
+          <div className="text-3xl font-bold mt-1">{t.consultas}</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><Banknote className="w-4 h-4" /> Receita</div>
+          <div className="text-3xl font-bold mt-1 text-primary">{gbrl(t.receita)}</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><CreditCard className="w-4 h-4" /> Custo (GPT Motors)</div>
+          <div className="text-3xl font-bold mt-1 text-warning">{gbrl(t.custo)}</div>
+        </CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm"><TrendingUp className="w-4 h-4" /> Margem</div>
+          <div className="text-3xl font-bold mt-1">{gbrl(t.margem)}</div>
+        </CardContent></Card>
+      </div>
+
+      {/* Por produto + edição de preço */}
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader><CardTitle className="text-lg">Produtos e preços</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {data.stats.map((s: any) => (
+            <div key={s.produto} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+              <div className="min-w-0">
+                <p className="font-semibold flex items-center gap-2">{GPT_LABEL[s.produto]} <Badge variant="secondary">custo {gbrl(s.custo_unit)}</Badge></p>
+                <p className="text-xs text-muted-foreground mt-1">{s.consultas_ok} consulta(s) · {s.faturadas} faturada(s) · receita {gbrl(s.receita)} · margem {gbrl(s.margem)}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Preço R$</span>
+                <Input type="number" step="0.01" className="w-28" value={(prices as any)[s.produto]} onChange={(e) => setPrices((p) => ({ ...p, [s.produto]: e.target.value }))} />
+              </div>
+            </div>
+          ))}
+          <Button onClick={salvar} disabled={saving} className="gap-1.5"><Save className="w-4 h-4" /> {saving ? "Salvando..." : "Salvar preços"}</Button>
+          <p className="text-xs text-muted-foreground">Custo = valor que a GPT Motors cobra por consulta (estimado). Receita = pedidos pagos. Admin/lojista consultam sem gerar receita.</p>
+        </CardContent>
+      </Card>
+
+      {/* Consultas recentes */}
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-lg">Consultas recentes</CardTitle>
+          <Button variant="outline" size="sm" onClick={load} className="gap-1.5"><Loader2 className="w-4 h-4" /> Atualizar</Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {data.recent.length ? (
+            <div className="divide-y divide-border">
+              {data.recent.map((c: any, i: number) => (
+                <div key={i} className="flex items-center justify-between p-4">
+                  <div className="min-w-0">
+                    <p className="font-medium">{GPT_LABEL[c.produto] || c.produto} · {c.placa}</p>
+                    <p className="text-xs text-muted-foreground">{gdt(c.created_at)}{c.faturado ? " · faturada" : ""}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {c.preco != null && <span className="text-sm font-medium">{gbrl(Number(c.preco))}</span>}
+                    <Badge className={`border-0 ${STATUS[c.status] || "bg-muted text-muted-foreground"}`}>{c.status}</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <p className="p-8 text-center text-muted-foreground">Nenhuma consulta ainda.</p>}
+        </CardContent>
+      </Card>
     </div>
   );
 }

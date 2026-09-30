@@ -9,6 +9,7 @@ import { toast } from "@/hooks/use-toast";
 
 const WA = "5511963786699";
 const COMBUSTIVEIS = ["Flex", "Gasolina", "Etanol", "Diesel", "GNV", "Elétrico", "Híbrido"];
+const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 const TIPOS = [["carro", "Carro"], ["moto", "Moto"], ["suv", "SUV"], ["caminhonete", "Caminhonete"], ["van", "Van/Utilitário"], ["outro", "Outro"]];
 
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
@@ -24,20 +25,20 @@ const Settings = () => {
   const updateAccount = useUpdateAccount();
 
   const [owner, setOwner] = useState({ name: "", phone: "", currency: "BRL", cnh_numero: "", cnh_categoria: "", cnh_vencimento: "" });
-  const [car, setCar] = useState({ name: "", type: "carro", marca: "", modelo: "", ano_fabricacao: "", ano_modelo: "", placa: "", renavam: "", chassi: "", cor: "", combustivel: "Flex", hodometro: "", seguradora: "", licenciamento_vencimento: "", ipva_vencimento: "", seguro_vencimento: "", valor_compra: "", data_compra: "" });
+  const [car, setCar] = useState({ name: "", type: "carro", marca: "", modelo: "", ano_fabricacao: "", ano_modelo: "", placa: "", uf: "", renavam: "", chassi: "", cor: "", combustivel: "Flex", hodometro: "", seguradora: "", licenciamento_vencimento: "", ipva_vencimento: "", seguro_vencimento: "", valor_compra: "", data_compra: "" });
 
   React.useEffect(() => {
     if (userProfile) setOwner({ name: userProfile.name || "", phone: userProfile.phone || "", currency: userProfile.currency || "BRL", cnh_numero: userProfile.cnh_numero || "", cnh_categoria: userProfile.cnh_categoria || "", cnh_vencimento: userProfile.cnh_vencimento || "" });
   }, [userProfile]);
   React.useEffect(() => {
-    if (vehicle) setCar({ name: vehicle.name || "", type: vehicle.type || "carro", marca: vehicle.marca || "", modelo: vehicle.modelo || "", ano_fabricacao: vehicle.ano_fabricacao?.toString() || "", ano_modelo: vehicle.ano_modelo?.toString() || "", placa: vehicle.placa || "", renavam: vehicle.renavam || "", chassi: vehicle.chassi || "", cor: vehicle.cor || "", combustivel: vehicle.combustivel || "Flex", hodometro: vehicle.hodometro?.toString() || "", seguradora: vehicle.seguradora || "", licenciamento_vencimento: vehicle.licenciamento_vencimento || "", ipva_vencimento: vehicle.ipva_vencimento || "", seguro_vencimento: vehicle.seguro_vencimento || "", valor_compra: (vehicle as any).valor_compra?.toString() || "", data_compra: (vehicle as any).data_compra || "" });
+    if (vehicle) setCar({ name: vehicle.name || "", type: vehicle.type || "carro", marca: vehicle.marca || "", modelo: vehicle.modelo || "", ano_fabricacao: vehicle.ano_fabricacao?.toString() || "", ano_modelo: vehicle.ano_modelo?.toString() || "", placa: vehicle.placa || "", uf: (vehicle as any).uf || "", renavam: vehicle.renavam || "", chassi: vehicle.chassi || "", cor: vehicle.cor || "", combustivel: vehicle.combustivel || "Flex", hodometro: vehicle.hodometro?.toString() || "", seguradora: vehicle.seguradora || "", licenciamento_vencimento: vehicle.licenciamento_vencimento || "", ipva_vencimento: vehicle.ipva_vencimento || "", seguro_vencimento: vehicle.seguro_vencimento || "", valor_compra: (vehicle as any).valor_compra?.toString() || "", data_compra: (vehicle as any).data_compra || "" });
   }, [vehicle]);
 
   const handleSave = async () => {
     if (!userId) return;
     try {
       await updateProfile.mutateAsync({ userId, updates: { name: owner.name, phone: (owner.phone || "").replace(/\D/g, ""), currency: owner.currency, cnh_numero: owner.cnh_numero || null, cnh_categoria: owner.cnh_categoria || null, cnh_vencimento: owner.cnh_vencimento || null } });
-      const payload = { name: car.name || "Meu veículo", type: car.type, marca: car.marca || null, modelo: car.modelo || null, ano_fabricacao: car.ano_fabricacao ? Number(car.ano_fabricacao) : null, ano_modelo: car.ano_modelo ? Number(car.ano_modelo) : null, placa: car.placa ? car.placa.toUpperCase() : null, renavam: car.renavam || null, chassi: car.chassi ? car.chassi.toUpperCase() : null, cor: car.cor || null, combustivel: car.combustivel || null, hodometro: car.hodometro ? Number(car.hodometro) : 0, seguradora: car.seguradora || null, licenciamento_vencimento: car.licenciamento_vencimento || null, ipva_vencimento: car.ipva_vencimento || null, seguro_vencimento: car.seguro_vencimento || null, valor_compra: car.valor_compra ? Number(car.valor_compra) : null, data_compra: car.data_compra || null };
+      const payload = { name: car.name || "Meu veículo", type: car.type, marca: car.marca || null, modelo: car.modelo || null, ano_fabricacao: car.ano_fabricacao ? Number(car.ano_fabricacao) : null, ano_modelo: car.ano_modelo ? Number(car.ano_modelo) : null, placa: car.placa ? car.placa.toUpperCase() : null, uf: car.uf || null, renavam: car.renavam || null, chassi: car.chassi ? car.chassi.toUpperCase() : null, cor: car.cor || null, combustivel: car.combustivel || null, hodometro: car.hodometro ? Number(car.hodometro) : 0, seguradora: car.seguradora || null, licenciamento_vencimento: car.licenciamento_vencimento || null, ipva_vencimento: car.ipva_vencimento || null, seguro_vencimento: car.seguro_vencimento || null, valor_compra: car.valor_compra ? Number(car.valor_compra) : null, data_compra: car.data_compra || null };
       if (vehicle) await updateAccount.mutateAsync({ id: vehicle.id, updates: payload });
       else await createAccount.mutateAsync({ user_id: userId, is_active: true, ...payload });
       toast({ title: "Dados salvos ✅", description: "Proprietário e veículo atualizados." });
@@ -55,7 +56,7 @@ const Settings = () => {
       if (error) { try { payload = await (error as any).context.json(); } catch { throw error; } }
       if (payload?.error) throw new Error(payload.error);
       const v = payload?.vehicle || {};
-      setCar((p) => ({ ...p, marca: v.marca || p.marca, modelo: v.modelo || p.modelo, ano_fabricacao: v.ano_fabricacao ? String(v.ano_fabricacao) : p.ano_fabricacao, ano_modelo: v.ano_modelo ? String(v.ano_modelo) : p.ano_modelo, cor: v.cor || p.cor, chassi: v.chassi || p.chassi, renavam: v.renavam || p.renavam, combustivel: v.combustivel || p.combustivel }));
+      setCar((p) => ({ ...p, marca: v.marca || p.marca, modelo: v.modelo || p.modelo, ano_fabricacao: v.ano_fabricacao ? String(v.ano_fabricacao) : p.ano_fabricacao, ano_modelo: v.ano_modelo ? String(v.ano_modelo) : p.ano_modelo, cor: v.cor || p.cor, chassi: v.chassi || p.chassi, renavam: v.renavam || p.renavam, combustivel: v.combustivel || p.combustivel, uf: (v.uf || v.estado || p.uf || "").toUpperCase() }));
       const got = [v.marca, v.modelo, v.ano_modelo].some(Boolean);
       toast({ title: got ? "Dados encontrados! 🚗" : "Consulta feita", description: got ? "Confira e complete antes de salvar." : "Não veio muita coisa — preencha manualmente." });
     } catch (e: any) {
@@ -115,6 +116,12 @@ const Settings = () => {
               <select className="field" value={car.combustivel} onChange={(e) => setCar((p) => ({ ...p, combustivel: e.target.value }))}>{COMBUSTIVEIS.map((c) => <option key={c} value={c}>{c}</option>)}</select>
             </Field>
             <Field label="Hodômetro (km)">{inp(car.hodometro, (v) => setCar((p) => ({ ...p, hodometro: v })), { type: "number", placeholder: "45000" })}</Field>
+            <Field label="UF da placa">
+              <select className="field" value={car.uf} onChange={(e) => setCar((p) => ({ ...p, uf: e.target.value }))}>
+                <option value="">—</option>
+                {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </Field>
             <Field label="RENAVAM">{inp(car.renavam, (v) => setCar((p) => ({ ...p, renavam: v })), { placeholder: "00000000000" })}</Field>
             <Field label="Chassi" full>{inp(car.chassi, (v) => setCar((p) => ({ ...p, chassi: v.toUpperCase() })), { placeholder: "9BW..." })}</Field>
           </div></section>
