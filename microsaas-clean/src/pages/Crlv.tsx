@@ -3,11 +3,12 @@ import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { FileText, Download, MessageCircle, ChevronRight, FolderLock, ExternalLink, Loader2, FileCheck2, Sparkles } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
-import { useVehicle } from "@/hooks/useAccounts";
+import { useVehicle, useUpdateAccount } from "@/hooks/useAccounts";
 import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, type GptResult } from "@/hooks/useGptMotors";
 
 const WA = "5511963786699";
 const PRECO = 39; // preço de exibição (o valor final vem do servidor)
+const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
 // href de download do arquivo do CRLV-e (aceita url direta ou base64)
 function arquivoHref(arq: any): string | null {
@@ -26,9 +27,15 @@ export default function Crlv() {
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<GptResult | null>(null);
   const [params, setParams] = useSearchParams();
+  const [uf, setUf] = useState("");
+  const updateAcc = useUpdateAccount();
 
   const v: any = vehicle || {};
   const placa = v.placa || "";
+  useEffect(() => { if (v.uf && !uf) setUf(String(v.uf).toUpperCase()); }, [v.uf]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // guarda a UF no cadastro pra não perguntar de novo
+  const persistUf = (u: string) => { if (u && v.id && u !== v.uf) updateAcc.mutate({ id: v.id, updates: { uf: u } as any }); };
 
   useEffect(() => {
     if (params.get("status") !== "success" || !userId) return;
@@ -56,9 +63,10 @@ export default function Crlv() {
   const waCRLV = `https://wa.me/${WA}?text=${encodeURIComponent(`Quero emitir o CRLV-e do meu carro${placa ? ` (placa ${placa})` : ""} 📄`)}`;
 
   const emitir = async () => {
-    if (!placa || busy) return;
+    if (!placa || busy || !uf) return;
+    persistUf(uf);
     setBusy(true); setRes(null);
-    const r = await runGptConsulta("crlv", placa, v.uf || undefined);
+    const r = await runGptConsulta("crlv", placa, uf);
     setRes(r); setBusy(false);
   };
   const href = res?.ok ? arquivoHref(res.dados?.arquivo) : null;
@@ -90,22 +98,39 @@ export default function Crlv() {
           <section className="card pad" style={{ textAlign: "center" }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Emitir CRLV-e por {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO}`}</div>
             <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px" }}>Pague no Pix ou cartão e o documento sai na hora.</p>
-            <button className="btn-primary" disabled={busy} onClick={async () => { setBusy(true); const r = await startGptCheckout("crlv", placa, v.uf || undefined); if (!r.ok) { setBusy(false); alert("Não consegui abrir o pagamento: " + (r.error || "")); } }}>
-              {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Pagar {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO}`}
+            {!uf && (
+              <select className="field" style={{ marginBottom: 10 }} value={uf} onChange={(e) => setUf(e.target.value)}>
+                <option value="">UF da placa…</option>
+                {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            )}
+            <button className="btn-primary" disabled={busy || !uf} onClick={async () => { persistUf(uf); setBusy(true); const r = await startGptCheckout("crlv", placa, uf); if (!r.ok) { setBusy(false); alert("Não consegui abrir o pagamento: " + (r.error || "")); } }}>
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} {uf ? `Pagar ${res.preco ? `R$ ${res.preco}` : `R$ ${PRECO}`}` : "Escolha a UF acima"}
             </button>
             <a style={{ display: "block", marginTop: 10, fontSize: 12.5, color: "var(--muted)" }} href={waCRLV} target="_blank" rel="noreferrer">ou emitir pelo Co-pilot no WhatsApp</a>
           </section>
-        ) : res && !res.ok ? (
+        ) : res && !res.ok && res.error !== "uf_obrigatoria" ? (
           <div className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent", fontSize: 13 }}>
-            <b>Não consegui emitir agora.</b> {res.error === "uf_obrigatoria" ? "Informe a UF da placa em Meu veículo." : (res.error || "Tente de novo em instantes.")}
+            <b>Não consegui emitir agora.</b> {res.error || "Tente de novo em instantes."}
           </div>
         ) : null}
 
         {placa && !res?.ok && (
-          <button className="btn-primary" onClick={emitir} disabled={busy}>
-            {busy ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
-            {busy ? "Emitindo…" : `Emitir CRLV-e agora · R$ ${PRECO}`}
-          </button>
+          <div>
+            {!uf && (
+              <>
+                <label className="lbl">UF da placa (Detran do emplacamento)</label>
+                <select className="field" style={{ marginBottom: 10 }} value={uf} onChange={(e) => setUf(e.target.value)}>
+                  <option value="">Escolha a UF…</option>
+                  {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </>
+            )}
+            <button className="btn-primary" onClick={emitir} disabled={busy || !uf}>
+              {busy ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
+              {busy ? "Emitindo…" : uf ? `Emitir CRLV-e agora · R$ ${PRECO}` : "Escolha a UF pra emitir"}
+            </button>
+          </div>
         )}
 
         {/* dados do cadastro */}
