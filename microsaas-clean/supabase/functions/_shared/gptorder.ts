@@ -1,20 +1,23 @@
 // Cria uma cobrança avulsa (Asaas) para UMA consulta GPT Motors e o pedido (gpt_orders).
 // Usado pela function gpt-checkout (app) e pelo whatsapp-webhook (Co-pilot).
-import { PRICE_COL, normPlaca, type GptProduto } from "./gptmotors.ts";
+import { PRICE_COL, IS_CPF, normPlaca, normCpf, type GptProduto } from "./gptmotors.ts";
 
 const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-export const GPT_NOME: Record<GptProduto, string> = { raiox: "Raio-X do carro", crlv: "CRLV-e", debitos: "Débitos & Multas" };
-export const GPT_PATH: Record<GptProduto, string> = { raiox: "/historico", crlv: "/crlv", debitos: "/multas" };
+export const GPT_NOME: Record<GptProduto, string> = { raiox: "Raio-X do carro", crlv: "CRLV-e", debitos: "Débitos & Multas", cnh: "Consulta CNH" };
+export const GPT_PATH: Record<GptProduto, string> = { raiox: "/historico", crlv: "/crlv", debitos: "/multas", cnh: "/cnh" };
 
-export interface CreateGptCheckoutOpts { userId: string; produto: GptProduto; placa: string; uf?: string; phone?: string | null; origem?: string }
+export interface CreateGptCheckoutOpts { userId: string; produto: GptProduto; placa?: string; cpf?: string; uf?: string; phone?: string | null; origem?: string }
 export interface CreateGptCheckoutOut { ok: boolean; url?: string; orderId?: string; preco?: number; error?: string }
 
 // admin = supabase-js client (service role)
 export async function createGptCheckout(admin: any, opts: CreateGptCheckoutOpts): Promise<CreateGptCheckoutOut> {
   const produto = opts.produto;
+  if (!["raiox", "crlv", "debitos", "cnh"].includes(produto)) return { ok: false, error: "produto_invalido" };
+  const isCpf = IS_CPF[produto];
   const placa = normPlaca(opts.placa);
-  if (!["raiox", "crlv", "debitos"].includes(produto)) return { ok: false, error: "produto_invalido" };
-  if (!placa || placa.length < 7) return { ok: false, error: "placa_invalida" };
+  const cpf = normCpf(opts.cpf);
+  if (isCpf && cpf.length !== 11) return { ok: false, error: "cpf_invalido" };
+  if (!isCpf && (!placa || placa.length < 7)) return { ok: false, error: "placa_invalida" };
 
   const { data: s } = await admin.from("app_settings")
     .select(`asaas_api_key, asaas_sandbox, app_url, ${PRICE_COL[produto]}`).eq("id", 1).single();
@@ -24,7 +27,7 @@ export async function createGptCheckout(admin: any, opts: CreateGptCheckoutOpts)
   if (!preco || preco <= 0) return { ok: false, error: "preco_invalido" };
 
   const { data: order, error: oerr } = await admin.from("gpt_orders")
-    .insert({ user_id: opts.userId, produto, placa, uf: opts.uf || null, preco, status: "pending", phone: opts.phone || null, origem: opts.origem || "app" })
+    .insert({ user_id: opts.userId, produto, placa: isCpf ? null : placa, cpf: isCpf ? cpf : null, uf: opts.uf || null, preco, status: "pending", phone: opts.phone || null, origem: opts.origem || "app" })
     .select("id").single();
   if (oerr || !order) return { ok: false, error: "order_falhou" };
 
@@ -35,7 +38,7 @@ export async function createGptCheckout(admin: any, opts: CreateGptCheckoutOpts)
     chargeTypes: ["DETACHED"],
     minutesToExpire: 60,
     callback: { successUrl: `${appUrl}${GPT_PATH[produto]}?status=success`, cancelUrl: `${appUrl}${GPT_PATH[produto]}?status=cancel` },
-    items: [{ name: GPT_NOME[produto].slice(0, 30), description: `${GPT_NOME[produto]} — placa ${placa}`, quantity: 1, value: preco, imageBase64: PIXEL }],
+    items: [{ name: GPT_NOME[produto].slice(0, 30), description: `${GPT_NOME[produto]}${isCpf ? "" : ` — placa ${placa}`}`, quantity: 1, value: preco, imageBase64: PIXEL }],
     externalReference: `gpt:${order.id}`,
   };
   try {

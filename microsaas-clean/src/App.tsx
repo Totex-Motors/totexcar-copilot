@@ -26,6 +26,7 @@ import Custo from "./pages/Custo";
 import Historico from "./pages/Historico";
 import Seguro from "./pages/Seguro";
 import Crlv from "./pages/Crlv";
+import Documentos from "./pages/Documentos";
 import Garagem from "./pages/Garagem";
 import Roleta from "./pages/Roleta";
 import Viagem from "./pages/Viagem";
@@ -82,6 +83,7 @@ const App = () => (
           <Route path="/historico" element={<Historico />} />
           <Route path="/seguro" element={<Seguro />} />
           <Route path="/crlv" element={<Crlv />} />
+          <Route path="/documentos" element={<Documentos />} />
           <Route path="/garagem" element={<Garagem />} />
           <Route path="/viagem" element={<Viagem />} />
           <Route path="/servicos" element={<Servicos />} />

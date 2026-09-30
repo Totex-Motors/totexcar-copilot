@@ -115,13 +115,14 @@ Deno.serve(async (req) => {
           const { data: cfg } = await admin.from("app_settings")
             .select("gptmotors_auth_url, gptmotors_chave, gptmotors_token").eq("id", 1).single();
           const produto = order.produto as GptProduto;
+          const ident = order.cpf || order.placa;   // cnh usa cpf; demais usam placa
           const out = await runGptMotors(
             { authUrl: (cfg as any)?.gptmotors_auth_url || "", chave: (cfg as any)?.gptmotors_chave || "", token: (cfg as any)?.gptmotors_token || "" },
-            produto, order.placa, order.uf || undefined,
+            produto, ident, order.uf || undefined,
           );
           const consultaId = crypto.randomUUID();
           await admin.from("gpt_consultas").insert({
-            id: consultaId, user_id: order.user_id, produto, placa: order.placa, uf: order.uf,
+            id: consultaId, user_id: order.user_id, produto, placa: order.placa, cpf: order.cpf, uf: order.uf,
             status: out.ok ? "ok" : "erro", gpt_id: out.controle?.id || null, faturado: !!out.controle?.faturado,
             preco: order.preco, dados: out.ok ? out.dados : null, analise_ia: out.analiseIA, erro: out.ok ? null : out.erro,
           });
