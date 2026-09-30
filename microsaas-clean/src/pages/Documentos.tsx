@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { FileCheck2, Search, IdCard, X, FolderLock, MessageCircle, ChevronRight } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
-import { useMinhasConsultas, fetchConsultaById, type GptResult, type GptProduto } from "@/hooks/useGptMotors";
+import { useMinhasConsultas, fetchConsultaById, docFileUrl, type GptResult, type GptProduto } from "@/hooks/useGptMotors";
 import { DocViewer } from "@/components/DocViewer";
 
 const WA = "5511963786699";
@@ -20,11 +20,18 @@ export default function Documentos() {
   const { userData, userId, loading } = useCurrentUser();
   const { data: docs, isLoading } = useMinhasConsultas(userId);
   const [aberto, setAberto] = useState<GptResult | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
 
   if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
   if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
 
-  const abrir = async (id: string) => { const r = await fetchConsultaById(id); if (r) setAberto(r); };
+  const abrir = async (id: string) => {
+    const r = await fetchConsultaById(id);
+    if (!r) return;
+    const u = r.produto === "crlv" && r.dados?.arquivo ? await docFileUrl(id) : null;
+    setFileUrl(u);
+    setAberto(r);
+  };
 
   return (
     <MgShell title="Meus documentos" back="/">
@@ -71,7 +78,7 @@ export default function Documentos() {
             </div>
             {aberto.produto === "crlv" ? (
               aberto.dados?.arquivo
-                ? <DocViewer arquivo={aberto.dados.arquivo} filename={`CRLV-${aberto.placa || ""}`} />
+                ? <DocViewer arquivo={fileUrl ? { url: fileUrl, tipo: "application/pdf", nome: `CRLV-${aberto.placa || ""}.pdf` } : aberto.dados.arquivo} filename={`CRLV-${aberto.placa || ""}`} />
                 : <a className="sbtn wa" style={{ width: "100%", justifyContent: "center" }} href={`https://wa.me/${WA}?text=${encodeURIComponent("Quero receber meu CRLV-e")}`} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Receber o arquivo pelo Co-pilot</a>
             ) : aberto.analiseIA ? (
               <p style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{aberto.analiseIA}</p>
