@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { Navigate, Link } from "react-router-dom";
-import { FileCheck2, ShieldAlert, Gavel, AlertTriangle, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Search, Car } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Navigate, Link, useSearchParams } from "react-router-dom";
+import { FileCheck2, Gavel, AlertTriangle, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Search, Car } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
-import { runGptConsulta, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
 
 const WA = "5511963786699";
 const PRECO = 49; // preço de exibição (o valor final vem do servidor)
@@ -18,6 +18,23 @@ export default function Historico() {
   const { data: laudos } = useMinhasConsultas(userId, "raiox");
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<GptResult | null>(null);
+  const [params, setParams] = useSearchParams();
+
+  // Retorno do pagamento: o webhook roda a consulta em segundos — busca o resultado (poll curto).
+  useEffect(() => {
+    if (params.get("status") !== "success" || !userId) return;
+    const placa = vehicle?.placa || "";
+    setBusy(true);
+    let tries = 0;
+    const tick = async () => {
+      const r = await fetchUltimaConsulta(userId, "raiox", placa || undefined);
+      if (r) { setRes(r); setBusy(false); setParams({}, { replace: true }); return; }
+      if (++tries >= 10) { setBusy(false); setParams({}, { replace: true }); return; }
+      setTimeout(tick, 3000);
+    };
+    tick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, userId, vehicle?.placa]);
 
   if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
   if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
@@ -95,8 +112,11 @@ export default function Historico() {
         {res && !res.ok && res.needsPayment && (
           <section className="card pad" style={{ textAlign: "center" }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Raio-X completo por {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO}`}</div>
-            <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px" }}>Pra liberar a consulta agora, fale com o Co-pilot no WhatsApp.</p>
-            <a className="btn-primary" href={wa} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Liberar pelo Co-pilot</a>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px" }}>Pague no Pix ou cartão e o resultado aparece aqui na hora.</p>
+            <button className="btn-primary" disabled={busy} onClick={async () => { setBusy(true); const r = await startGptCheckout("raiox", placa); if (!r.ok) { setBusy(false); alert("Não consegui abrir o pagamento: " + (r.error || "")); } }}>
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Pagar {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO}`}
+            </button>
+            <a style={{ display: "block", marginTop: 10, fontSize: 12.5, color: "var(--muted)" }} href={wa} target="_blank" rel="noreferrer">ou falar com o Co-pilot no WhatsApp</a>
           </section>
         )}
         {res && !res.ok && !res.needsPayment && (

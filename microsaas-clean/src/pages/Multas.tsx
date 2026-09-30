@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   MessageCircle, FileText, Copy, Download, CalendarClock, CheckCircle2, X, ChevronRight, Loader2, Search, Sparkles,
 } from "lucide-react";
@@ -6,7 +7,7 @@ import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
 import { useMultas, useUpdateMultaStatus, type Multa } from "@/hooks/useMultas";
-import { runGptConsulta, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, type GptResult } from "@/hooks/useGptMotors";
 import { toast } from "@/hooks/use-toast";
 
 const WA = "5511963786699";
@@ -33,8 +34,23 @@ export default function Multas() {
   const [aberta, setAberta] = useState<Multa | null>(null);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<GptResult | null>(null);
+  const [params, setParams] = useSearchParams();
 
   const placa = vehicle?.placa || "";
+
+  useEffect(() => {
+    if (params.get("status") !== "success" || !userId) return;
+    setBusy(true);
+    let tries = 0;
+    const tick = async () => {
+      const r = await fetchUltimaConsulta(userId, "debitos", placa || undefined);
+      if (r) { setRes(r); setBusy(false); setParams({}, { replace: true }); return; }
+      if (++tries >= 10) { setBusy(false); setParams({}, { replace: true }); return; }
+      setTimeout(tick, 3000);
+    };
+    tick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, userId, placa]);
   const waDebitos = `https://wa.me/${WA}?text=${encodeURIComponent(`Quero consultar os débitos do meu carro${placa ? ` (placa ${placa})` : ""} 💸`)}`;
   const consultarDebitos = async () => {
     if (!placa || busy) return;
@@ -108,8 +124,11 @@ export default function Multas() {
         {res && !res.ok && res.needsPayment && (
           <section className="card pad" style={{ textAlign: "center" }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Débitos atualizados por {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO_DEBITOS}`}</div>
-            <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px" }}>IPVA, licenciamento e multas (estadual + federal), na hora. Libere pelo Co-pilot.</p>
-            <a className="btn-primary" href={waDebitos} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Liberar pelo Co-pilot</a>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px" }}>IPVA, licenciamento e multas (estadual + federal), na hora. Pague no Pix ou cartão.</p>
+            <button className="btn-primary" disabled={busy} onClick={async () => { setBusy(true); const r = await startGptCheckout("debitos", placa); if (!r.ok) { setBusy(false); alert("Não consegui abrir o pagamento: " + (r.error || "")); } }}>
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Pagar {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO_DEBITOS.toFixed(2).replace(".", ",")}`}
+            </button>
+            <a style={{ display: "block", marginTop: 10, fontSize: 12.5, color: "var(--muted)" }} href={waDebitos} target="_blank" rel="noreferrer">ou consultar pelo Co-pilot no WhatsApp</a>
           </section>
         )}
         {res && !res.ok && !res.needsPayment && (
