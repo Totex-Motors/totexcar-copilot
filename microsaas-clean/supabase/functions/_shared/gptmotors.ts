@@ -2,12 +2,14 @@
 // Pura: recebe as credenciais e devolve o resultado normalizado. Não toca no banco.
 
 export interface GptCfg { authUrl: string; chave: string; token: string }
-export type GptProduto = "raiox" | "crlv" | "debitos";
+export type GptProduto = "raiox" | "crlv" | "debitos" | "cnh";
 export interface GptOut { ok: boolean; dados: any; analiseIA: string | null; controle: any; erro: string | null }
 
-export const PRICE_COL: Record<GptProduto, string> = { raiox: "gpt_raiox_price", crlv: "gpt_crlv_price", debitos: "gpt_debitos_price" };
-export const CACHE_DAYS: Record<GptProduto, number> = { raiox: 7, crlv: 30, debitos: 0 };
+export const PRICE_COL: Record<GptProduto, string> = { raiox: "gpt_raiox_price", crlv: "gpt_crlv_price", debitos: "gpt_debitos_price", cnh: "gpt_cnh_price" };
+export const CACHE_DAYS: Record<GptProduto, number> = { raiox: 7, crlv: 30, debitos: 0, cnh: 7 };
+export const IS_CPF: Record<GptProduto, boolean> = { raiox: false, crlv: false, debitos: false, cnh: true }; // cnh consulta é por CPF
 export const normPlaca = (p: unknown) => String(p ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+export const normCpf = (c: unknown) => String(c ?? "").replace(/\D/g, "").slice(0, 11);
 
 async function gptAuth(cfg: GptCfg): Promise<string> {
   try {
@@ -40,6 +42,12 @@ export async function runGptMotors(cfg: GptCfg, produto: GptProduto, placa: stri
       const ok = httpOk && (j?.controle?.sucesso ?? true) && !!j?.dados;
       return { ok, dados: j?.dados ?? null, analiseIA: j?.analiseIA ?? null, controle: j?.controle ?? null, erro: ok ? null : (j?.controle?.mensagem || "crlv_indisponivel") };
     }
+    if (produto === "cnh") {
+      // aqui o parâmetro "placa" carrega o CPF (consulta de CNH é por CPF)
+      const { httpOk, j } = await call(`/api/v1/documentacao/cnh?cpf=${placa}`);
+      const ok = httpOk && (j?.controle?.sucesso ?? true) && !!j?.dados;
+      return { ok, dados: j?.dados ?? null, analiseIA: j?.analiseIA ?? null, controle: j?.controle ?? null, erro: ok ? null : (j?.controle?.mensagem || "cnh_indisponivel") };
+    }
     // debitos = estadual + renainf
     const est = await call(`/api/v1/identificacao/estadual?placa=${placa}`);
     const ren = await call(`/api/v1/analise/risco/renainf?placa=${placa}`);
@@ -71,6 +79,12 @@ export function resumoGpt(produto: GptProduto, out: GptOut): string {
   if (produto === "crlv") {
     const d = out.dados || {};
     return [`📄 *CRLV-e* — ${[d.marcaModelo, d.anoModelo].filter(Boolean).join(" · ") || d.placa || ""}`, "Documento emitido. Te mando o arquivo em seguida."].join("\n");
+  }
+  if (produto === "cnh") {
+    const linhas = ["🪪 *Consulta CNH*"];
+    if (out.analiseIA) linhas.push("", out.analiseIA);
+    else linhas.push("Consulta concluída — veja pontos e situação no app.");
+    return linhas.join("\n");
   }
   // debitos
   const est = out.dados?.estadual, ren = out.dados?.renainf;

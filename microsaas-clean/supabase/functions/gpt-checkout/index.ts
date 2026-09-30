@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   const user = ud.user;
 
   const { data: prof } = await admin.from("users").select("phone").eq("id", user.id).single();
-  const r = await createGptCheckout(admin, { userId: user.id, produto, placa: String(payload.placa || ""), uf: String(payload.uf || ""), phone: prof?.phone || null, origem: "app" });
+  const r = await createGptCheckout(admin, { userId: user.id, produto, placa: String(payload.placa || ""), cpf: String(payload.cpf || ""), uf: String(payload.uf || ""), phone: prof?.phone || null, origem: "app" });
   if (!r.ok) return json({ error: r.error }, 400);
   return json({ ok: true, url: r.url, order_id: r.orderId, preco: r.preco });
 });

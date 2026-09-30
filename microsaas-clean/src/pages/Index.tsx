@@ -3,7 +3,7 @@ import { Navigate, Link } from "react-router-dom";
 import {
   TrendingUp, ChevronRight, Car, Repeat2, CreditCard, CalendarDays, FileCheck2, ShieldCheck,
   IdCard, LineChart, MessageCircle, Coins, Ticket, Landmark, Truck, Wrench, Plane, Warehouse,
-  Gift, Award, Banknote, FileText, Tag, LifeBuoy, Disc3, Store,
+  Gift, Award, Banknote, FileText, Tag, LifeBuoy, Disc3, Store, FolderLock,
 } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
@@ -176,6 +176,7 @@ export default function Index() {
                 { to: "/admin", ic: ShieldCheck, t: "Painel Admin", s: "Gestão da rede" },
                 { to: "/lojista", ic: Store, t: "Painel do Lojista", s: "Clientes e vendas da loja" },
               ] : []),
+              { to: "/documentos", ic: FolderLock, t: "Meus documentos", s: "Consultas e docs guardados" },
               { to: "/indique", ic: Gift, t: "Indique e Ganhe", s: "Comissão por indicação" },
               { to: "/selo", ic: Award, t: "Selo Totex", s: "Seu histórico vale dinheiro" },
               { to: "/financiamento", ic: Banknote, t: "Financiamento", s: "Acompanhe as parcelas" },
