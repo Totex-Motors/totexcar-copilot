@@ -53,6 +53,14 @@ export async function fetchUltimaConsulta(userId: string, produto: GptProduto, p
   return { ok: true, produto, placa: c.placa, uf: c.uf, dados: c.dados, analiseIA: c.analise_ia, id: c.id };
 }
 
+// Reabre uma consulta salva (com os dados completos) pra rever/baixar de novo.
+export async function fetchConsultaById(id: string): Promise<GptResult | null> {
+  const { data } = await supabase.from("gpt_consultas")
+    .select("id, produto, placa, uf, dados, analise_ia").eq("id", id).single();
+  if (!data) return null;
+  return { ok: true, produto: data.produto as GptProduto, placa: data.placa, uf: data.uf, dados: data.dados, analiseIA: data.analise_ia, id: data.id };
+}
+
 // Histórico das consultas do próprio usuário (RLS: só as dele).
 export function useMinhasConsultas(userId?: string, produto?: GptProduto) {
   return useQuery({
