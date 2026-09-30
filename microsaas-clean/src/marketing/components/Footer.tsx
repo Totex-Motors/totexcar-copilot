@@ -40,7 +40,7 @@ export const Footer = () => {
 
           <div className="flex flex-col gap-4">
             <h4 className="text-white font-semibold text-sm mb-2">Produto</h4>
-            <FooterLink to="/pricing">Preços</FooterLink>
+            <FooterLink to="/pricing">Grátis</FooterLink>
             <FooterLink to="/integrations">Recursos</FooterLink>
             <FooterLink to="/entrar?tab=register">Começar grátis</FooterLink>
           </div>

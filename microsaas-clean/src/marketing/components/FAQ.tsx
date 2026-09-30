@@ -25,9 +25,9 @@ const faqs = [
       "Não precisa instalar nenhum aplicativo. Você usa o TotexCar Co-pilot direto pelo WhatsApp para registrar os gastos e acessa o painel completo com gráficos e relatórios pelo navegador, no celular ou no computador.",
   },
   {
-    question: "Quanto custa? Tem teste grátis?",
+    question: "Quanto custa?",
     answer:
-      "Você começa com 7 dias grátis. Depois, o plano Totex Care custa R$109,90/mês. Quem é do ecossistema TotexMotors paga apenas R$10,99/mês (90% de desconto) — e no plano anual, R$109,90 à vista, você leva 12 meses pelo preço de 10 (~17% de desconto). O pagamento é via PIX ou cartão pela Asaas.",
+      "Nada. O TotexCar Co-pilot é grátis pra todo mundo — sem mensalidade e sem cartão. Você só paga por serviços avulsos quando quiser usá-los (como Raio-X do carro, CRLV-e, consulta de débitos ou laudos e vistorias de parceiros), e o valor sempre aparece antes de você confirmar. O pagamento desses serviços é via PIX ou cartão.",
   },
   {
     question: "Meus dados estão seguros?",

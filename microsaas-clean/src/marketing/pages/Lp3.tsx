@@ -61,7 +61,7 @@ const FAQS = [
   },
   {
     q: "Quanto custa?",
-    a: "7 dias grátis, sem cartão. Depois, o TotexCar Co-pilot PRO custa R$ 29,90/mês — menos de uma corrida por mês. No plano anual, R$ 299 à vista: 12 meses pelo preço de 10 (~17% de desconto). E se você comprou seu carro numa loja parceira Totexmotors, use o cupom da loja: R$ 10,99/mês com o PRO incluso.",
+    a: "Nada! O TotexCar Co-pilot é grátis pra todo mundo — inclusive pra motorista de app —, sem mensalidade e sem cartão. Você só paga por serviços avulsos quando quiser usá-los (como Raio-X do carro, CRLV-e ou consulta de débitos), e o valor sempre aparece antes de você confirmar.",
   },
 ];
 
@@ -113,7 +113,7 @@ export function Lp3() {
             </motion.p>
             <motion.div {...fadeUp} transition={{ duration: 0.6, delay: 0.15 }} className="mt-7 flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <CtaButton big />
-              <span className="text-xs text-gray-500">7 dias grátis · Sem cartão · Sem aparelho no carro</span>
+              <span className="text-xs text-gray-500">De graça · Sem cartão · Sem aparelho no carro</span>
             </motion.div>
           </div>
 
@@ -222,13 +222,13 @@ export function Lp3() {
           <motion.div {...fadeUp} className="rounded-3xl border border-teal-500/30 bg-[#0a0a0c] p-8 shadow-[0_30px_80px_-20px_rgba(20,184,166,0.25)]">
             <p className="text-xs font-semibold tracking-widest text-teal-400 uppercase mb-3">TotexCar Co-pilot PRO</p>
             <div className="flex items-end justify-center gap-2 mb-1">
-              <span className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">R$ 29,90</span>
-              <span className="text-gray-400 pb-1.5">/mês</span>
+              <span className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">Grátis</span>
+              <span className="text-gray-400 pb-1.5">/pra sempre</span>
             </div>
-            <p className="text-xs text-gray-500 mb-6">menos de uma corrida por mês · anual R$ 299 à vista (12 pelo preço de 10)</p>
+            <p className="text-xs text-gray-500 mb-6">sem mensalidade, sem cartão — o PRO é de graça pra motorista de app</p>
             <ul className="text-sm text-gray-300 space-y-2.5 text-left max-w-xs mx-auto mb-7">
               {[
-                "7 dias grátis — sem cartão",
+                "100% grátis — sem cartão",
                 "Lucro semanal + lucro por km",
                 "Ganhos por print (Uber, 99, qualquer app)",
                 "Consumo real km/L + custo por km",
@@ -240,9 +240,9 @@ export function Lp3() {
                 </li>
               ))}
             </ul>
-            <CtaButton big label="Começar meus 7 dias grátis" />
+            <CtaButton big label="Começar grátis agora" />
             <p className="text-[11px] text-gray-600 mt-4">
-              Comprou seu carro numa loja parceira Totexmotors? Use o cupom da loja: <strong className="text-gray-400">R$ 10,99/mês com o PRO incluso</strong>.
+              Precisou de um documento ou consulta oficial? Você paga só por aquele <strong className="text-gray-400">serviço avulso</strong>, quando quiser — o app continua grátis.
             </p>
           </motion.div>
         </div>

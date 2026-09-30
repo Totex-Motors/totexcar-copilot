@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { Search, Loader2, Save, User, Car, MessageCircle, ChevronRight } from "lucide-react";
+import { Search, Loader2, Save, User, Car, MessageCircle, ChevronRight, LogOut } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
-import { useCurrentUser } from "@/hooks/useAuth";
+import { useCurrentUser, useAuth } from "@/hooks/useAuth";
 import { useUserProfile, useUpdateUserProfile } from "@/hooks/useUserProfile";
 import { useVehicle, useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ function Field({ label, children, full }: { label: string; children: React.React
 
 const Settings = () => {
   const { userId } = useCurrentUser();
+  const { signOut } = useAuth();
   const { data: userProfile, isLoading } = useUserProfile(userId);
   const { vehicle } = useVehicle(userId);
   const updateProfile = useUpdateUserProfile();
@@ -149,6 +150,19 @@ const Settings = () => {
 
         <button className="btn-primary" onClick={handleSave} disabled={saving}><Save size={17} /> {saving ? "Salvando..." : "Salvar dados"}</button>
         <p className="foot-note">Seus dados abastecem os avisos de vencimento, o custo do carro e o "quanto vale".</p>
+
+        {/* sair da conta */}
+        <button
+          className="sbtn"
+          style={{ width: "100%", justifyContent: "center", color: "var(--gain)", marginTop: 4 }}
+          onClick={async () => {
+            if (!confirm("Deseja sair da sua conta?")) return;
+            await signOut();
+            window.location.href = "/";
+          }}
+        >
+          <LogOut size={16} /> Sair da conta
+        </button>
       </div>
     </MgShell>
   );

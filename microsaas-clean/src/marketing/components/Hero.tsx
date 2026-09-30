@@ -109,7 +109,7 @@ export const Hero = () => {
             to="/pricing"
             className="px-10 py-4 text-white font-medium border border-white/10 rounded-full hover:bg-white/5 transition-colors backdrop-blur-sm group"
           >
-            <RollingText text="Ver Preços" />
+            <RollingText text="É grátis" />
           </Link>
         </motion.div>
 
