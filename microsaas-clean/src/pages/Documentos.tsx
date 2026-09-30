@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
-import { FileCheck2, ShieldAlert, Search, IdCard, Download, X, FolderLock, MessageCircle, ChevronRight } from "lucide-react";
+import { FileCheck2, Search, IdCard, X, FolderLock, MessageCircle, ChevronRight } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMinhasConsultas, fetchConsultaById, type GptResult, type GptProduto } from "@/hooks/useGptMotors";
+import { DocViewer } from "@/components/DocViewer";
 
 const WA = "5511963786699";
 const META: Record<GptProduto, { label: string; icon: any }> = {
@@ -13,15 +14,6 @@ const META: Record<GptProduto, { label: string; icon: any }> = {
   cnh: { label: "Consulta CNH", icon: IdCard },
 };
 const fmtDT = (s?: string) => s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-
-function arquivoHref(arq: any): string | null {
-  if (!arq) return null;
-  if (typeof arq === "string" && /^https?:\/\//.test(arq)) return arq;
-  if (arq.url) return String(arq.url);
-  const b64 = arq.base64 || arq.conteudo || arq.arquivo || arq.dados;
-  if (b64) return `data:${arq.tipo || arq.contentType || "application/pdf"};base64,${b64}`;
-  return null;
-}
 
 // COFRE — Meus documentos: todas as consultas/documentos GPT Motors num lugar só, clicáveis.
 export default function Documentos() {
@@ -33,7 +25,6 @@ export default function Documentos() {
   if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
 
   const abrir = async (id: string) => { const r = await fetchConsultaById(id); if (r) setAberto(r); };
-  const href = aberto?.produto === "crlv" ? arquivoHref(aberto?.dados?.arquivo) : null;
 
   return (
     <MgShell title="Meus documentos" back="/">
@@ -79,8 +70,8 @@ export default function Documentos() {
               <button className="icon-btn" onClick={() => setAberto(null)} aria-label="Fechar"><X size={18} /></button>
             </div>
             {aberto.produto === "crlv" ? (
-              href
-                ? <a href={href} target="_blank" rel="noreferrer" download={`CRLV-${aberto.placa || ""}.pdf`}><button className="btn-primary"><Download size={17} /> Baixar CRLV-e</button></a>
+              aberto.dados?.arquivo
+                ? <DocViewer arquivo={aberto.dados.arquivo} filename={`CRLV-${aberto.placa || ""}`} />
                 : <a className="sbtn wa" style={{ width: "100%", justifyContent: "center" }} href={`https://wa.me/${WA}?text=${encodeURIComponent("Quero receber meu CRLV-e")}`} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Receber o arquivo pelo Co-pilot</a>
             ) : aberto.analiseIA ? (
               <p style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{aberto.analiseIA}</p>
