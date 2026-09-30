@@ -7,7 +7,7 @@ import { useVehicle } from "@/hooks/useAccounts";
 import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
 
 const WA = "5511963786699";
-const PRECO = 49; // preço de exibição (o valor final vem do servidor)
+const PRECO = 69; // preço de exibição (o valor final vem do servidor)
 const fmtDT = (s?: string) => s ? new Date(s).toLocaleDateString("pt-BR") : "";
 
 // TELA HISTÓRICO — Raio-X do Carro (Veicular PRO via GPT Motors): procedência, débitos, leilão,
