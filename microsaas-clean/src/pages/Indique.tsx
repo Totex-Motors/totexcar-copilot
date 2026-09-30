@@ -10,15 +10,18 @@ import {
 } from "@/hooks/useReferral";
 
 const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
-const COPILOT = "5511963786699";
 
 function shareToFriend(link: string, msg: string) {
   try { navigator.clipboard?.writeText(link); } catch { /* */ }
   window.open(`https://wa.me/?text=${encodeURIComponent(`${msg} ${link}`)}`, "_blank", "noopener");
 }
+// Link de compartilhamento do carro: usa a página /oferta (prévia rica com a FOTO do carro
+// pro robô do WhatsApp) que redireciona a pessoa pro Co-pilot. Compartilhar o wa.me direto
+// fazia o preview cair na foto de perfil (logo TotexMotors) — nunca a foto do carro.
+// O ?i=<code> repassa o indicador pro Co-pilot creditar a indicação.
 function copilotShareLink(carId: string, code?: string | null): string {
-  const inner = `Quero ver esse carro 🚗 #oferta ${carId}${code ? ` ind:${code}` : ""}`;
-  return `https://wa.me/${COPILOT}?text=${encodeURIComponent(inner)}`;
+  const base = `${window.location.origin}/oferta?c=${encodeURIComponent(carId)}`;
+  return code ? `${base}&i=${encodeURIComponent(code)}` : base;
 }
 async function shareSmart(text: string, url: string) {
   try { if (typeof navigator !== "undefined" && (navigator as any).share) { await (navigator as any).share({ text, url }); return; } } catch { return; }
