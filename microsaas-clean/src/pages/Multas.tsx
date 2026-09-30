@@ -7,7 +7,7 @@ import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
 import { useMultas, useUpdateMultaStatus, type Multa } from "@/hooks/useMultas";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
 import { toast } from "@/hooks/use-toast";
 
 const WA = "5511963786699";
@@ -35,6 +35,7 @@ export default function Multas() {
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<GptResult | null>(null);
   const [params, setParams] = useSearchParams();
+  const { data: consultasDeb } = useMinhasConsultas(userId, "debitos");
 
   const placa = vehicle?.placa || "";
 
@@ -141,6 +142,23 @@ export default function Multas() {
             {busy ? <Loader2 size={17} className="animate-spin" /> : <Search size={17} />}
             {busy ? "Consultando…" : res?.ok ? "Consultar de novo" : `Consultar débitos · R$ ${PRECO_DEBITOS.toFixed(2).replace(".", ",")}`}
           </button>
+        )}
+
+        {/* histórico de consultas de débitos (clicável pra rever) */}
+        {consultasDeb && consultasDeb.length > 0 && (
+          <div>
+            <div className="eyebrow" style={{ margin: "2px 2px 8px" }}>Minhas consultas de débitos</div>
+            <section className="card">
+              {consultasDeb.map((l: any) => (
+                <button key={l.id} className="list-row" style={{ width: "100%", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
+                  onClick={async () => { const r = await fetchConsultaById(l.id); if (r) { setRes(r); window.scrollTo({ top: 0, behavior: "smooth" }); } }}>
+                  <span className="offer-ico"><Search size={18} /></span>
+                  <div style={{ flex: 1 }}><div className="t">{l.placa}</div><div className="s">{new Date(l.created_at).toLocaleDateString("pt-BR")}</div></div>
+                  <span className="tag ok" style={{ alignSelf: "center" }}>Rever</span>
+                </button>
+              ))}
+            </section>
+          </div>
         )}
 
         {/* lista */}

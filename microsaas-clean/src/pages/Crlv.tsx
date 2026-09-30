@@ -4,7 +4,7 @@ import { FileText, Download, MessageCircle, ChevronRight, FolderLock, ExternalLi
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle, useUpdateAccount } from "@/hooks/useAccounts";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
 
 const WA = "5511963786699";
 const PRECO = 39; // preço de exibição (o valor final vem do servidor)
@@ -29,6 +29,7 @@ export default function Crlv() {
   const [params, setParams] = useSearchParams();
   const [uf, setUf] = useState("");
   const updateAcc = useUpdateAccount();
+  const { data: emitidos } = useMinhasConsultas(userId, "crlv");
 
   const v: any = vehicle || {};
   const placa = v.placa || "";
@@ -154,6 +155,23 @@ export default function Crlv() {
           <div style={{ flex: 1 }}><div className="t">Guardar no ArquivoZap</div><div className="s">Seu documento no cofre do WhatsApp, sempre à mão</div></div>
           <ChevronRight size={20} style={{ color: "var(--faint)" }} />
         </a>
+
+        {/* histórico: CRLV-e já emitidos (clicável pra rever/baixar) */}
+        {emitidos && emitidos.length > 0 && (
+          <div>
+            <div className="eyebrow" style={{ margin: "2px 2px 10px" }}>Meus CRLV-e</div>
+            <section className="card">
+              {emitidos.map((l: any) => (
+                <button key={l.id} className="list-row" style={{ width: "100%", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
+                  onClick={async () => { const r = await fetchConsultaById(l.id); if (r) { setRes(r); window.scrollTo({ top: 0, behavior: "smooth" }); } }}>
+                  <span className="offer-ico"><FileCheck2 size={18} /></span>
+                  <div style={{ flex: 1 }}><div className="t">{l.placa}</div><div className="s">{new Date(l.created_at).toLocaleDateString("pt-BR")}</div></div>
+                  <span className="tag ok" style={{ alignSelf: "center" }}>Baixar</span>
+                </button>
+              ))}
+            </section>
+          </div>
+        )}
 
         <Link to="/settings" className="foot-note" style={{ display: "block" }}>Atualizar os dados do veículo</Link>
         <p className="foot-note">O CRLV-e exige o veículo licenciado e sem débitos. Emissão paga, feita na hora pelo provedor credenciado.</p>

@@ -4,7 +4,7 @@ import { FileCheck2, ShieldAlert, Gavel, AlertTriangle, MessageCircle, ChevronRi
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
 
 const WA = "5511963786699";
 const PRECO = 49; // preço de exibição (o valor final vem do servidor)
@@ -156,11 +156,12 @@ export default function Historico() {
             <div className="eyebrow" style={{ margin: "2px 2px 10px" }}>Meus Raio-X</div>
             <section className="card">
               {laudos.map((l: any) => (
-                <div key={l.id} className="list-row">
+                <button key={l.id} className="list-row" style={{ width: "100%", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
+                  onClick={async () => { const r = await fetchConsultaById(l.id); if (r) { setRes(r); window.scrollTo({ top: 0, behavior: "smooth" }); } }}>
                   <span className="offer-ico"><FileCheck2 size={18} /></span>
                   <div style={{ flex: 1 }}><div className="t">{l.placa}</div><div className="s">{fmtDT(l.created_at)}</div></div>
-                  <span className="tag ok" style={{ alignSelf: "center" }}>Emitido</span>
-                </div>
+                  <span className="tag ok" style={{ alignSelf: "center" }}>Ver</span>
+                </button>
               ))}
             </section>
           </div>
