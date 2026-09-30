@@ -3,7 +3,8 @@
 // fornecedor e manda o resumo no WhatsApp do cliente.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { runVehicleQuery, resumoDebitos } from "../_shared/debitos.ts";
-import { loadWaSettings, waSendText } from "../_shared/wa.ts";
+import { loadWaSettings, waSendText, waSendDocument } from "../_shared/wa.ts";
+import { runGptMotors, resumoGpt, type GptProduto } from "../_shared/gptmotors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -57,6 +58,12 @@ Deno.serve(async (req) => {
       .select("id").eq("asaas_checkout_id", String(payment.checkoutSession)).limit(1);
     if (vq?.[0]) userId = `vq:${vq[0].id}`;
   }
+  // Consulta GPT Motors avulsa: idem — vínculo por checkoutSession -> gpt_orders.asaas_checkout_id
+  if (!userId && payment.checkoutSession) {
+    const { data: go } = await admin.from("gpt_orders")
+      .select("id").eq("asaas_checkout_id", String(payment.checkoutSession)).limit(1);
+    if (go?.[0]) userId = `gpt:${go[0].id}`;
+  }
 
   try {
     // -------- Consulta veicular paga (avulsa): "vq:{queryId}" --------
@@ -96,6 +103,45 @@ Deno.serve(async (req) => {
           .eq("id", queryId).eq("status", "pending");
       }
       return new Response(JSON.stringify({ ok: true, vq: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    // -------- Consulta GPT Motors paga (avulsa): "gpt:{orderId}" --------
+    if (String(userId).startsWith("gpt:")) {
+      const orderId = String(userId).slice(4);
+      if (ACTIVATE.has(event) && isUuid(orderId)) {
+        const { data: order } = await admin.from("gpt_orders").select("*").eq("id", orderId).single();
+        if (order && order.status !== "done") {
+          await admin.from("gpt_orders").update({ status: "paid", paid_at: new Date().toISOString() }).eq("id", orderId).neq("status", "done");
+          const { data: cfg } = await admin.from("app_settings")
+            .select("gptmotors_auth_url, gptmotors_chave, gptmotors_token").eq("id", 1).single();
+          const produto = order.produto as GptProduto;
+          const out = await runGptMotors(
+            { authUrl: (cfg as any)?.gptmotors_auth_url || "", chave: (cfg as any)?.gptmotors_chave || "", token: (cfg as any)?.gptmotors_token || "" },
+            produto, order.placa, order.uf || undefined,
+          );
+          const consultaId = crypto.randomUUID();
+          await admin.from("gpt_consultas").insert({
+            id: consultaId, user_id: order.user_id, produto, placa: order.placa, uf: order.uf,
+            status: out.ok ? "ok" : "erro", gpt_id: out.controle?.id || null, faturado: !!out.controle?.faturado,
+            preco: order.preco, dados: out.ok ? out.dados : null, analise_ia: out.analiseIA, erro: out.ok ? null : out.erro,
+          });
+          await admin.from("gpt_orders").update({ status: out.ok ? "done" : "error", consulta_id: consultaId, erro: out.ok ? null : out.erro }).eq("id", orderId);
+          // entrega no WhatsApp (best-effort)
+          try {
+            const phone = order.phone || (await admin.from("users").select("phone").eq("id", order.user_id).single()).data?.phone;
+            if (out.ok && phone) {
+              const wa = await loadWaSettings(admin);
+              await waSendText(wa, phone, resumoGpt(produto, out));
+              const arq = produto === "crlv" ? out.dados?.arquivo : null;
+              const arqUrl = arq && (typeof arq === "string" ? (/^https?:\/\//.test(arq) ? arq : null) : arq.url);
+              if (arqUrl) { try { await waSendDocument(wa, phone, String(arqUrl), `CRLV-${order.placa}.pdf`, "📄 Seu CRLV-e"); } catch { /* */ } }
+            }
+          } catch (e) { console.error("entrega gpt:", e); }
+        }
+      } else if (DEACTIVATE.has(event) && isUuid(orderId)) {
+        await admin.from("gpt_orders").update({ status: "error", erro: `pagamento_${event}` }).eq("id", orderId).eq("status", "pending");
+      }
+      return new Response(JSON.stringify({ ok: true, gpt: true }), { headers: { "Content-Type": "application/json" } });
     }
 
     if (!isUuid(userId)) {

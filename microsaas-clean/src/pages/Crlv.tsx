@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { Navigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { FileText, Download, MessageCircle, ChevronRight, FolderLock, ExternalLink, Loader2, FileCheck2, Sparkles } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
-import { runGptConsulta, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, type GptResult } from "@/hooks/useGptMotors";
 
 const WA = "5511963786699";
 const PRECO = 39; // preço de exibição (o valor final vem do servidor)
@@ -25,12 +25,27 @@ export default function Crlv() {
   const { vehicle } = useVehicle(userId);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<GptResult | null>(null);
-
-  if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
-  if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
+  const [params, setParams] = useSearchParams();
 
   const v: any = vehicle || {};
   const placa = v.placa || "";
+
+  useEffect(() => {
+    if (params.get("status") !== "success" || !userId) return;
+    setBusy(true);
+    let tries = 0;
+    const tick = async () => {
+      const r = await fetchUltimaConsulta(userId, "crlv", placa || undefined);
+      if (r) { setRes(r); setBusy(false); setParams({}, { replace: true }); return; }
+      if (++tries >= 10) { setBusy(false); setParams({}, { replace: true }); return; }
+      setTimeout(tick, 3000);
+    };
+    tick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, userId, placa]);
+
+  if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
+  if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
   const carro = vehicle ? [v.marca, v.modelo].filter(Boolean).join(" ") : null;
   const dados = [
     ["Placa", v.placa || "—"], ["Renavam", v.renavam || "—"],
@@ -74,8 +89,11 @@ export default function Crlv() {
         ) : res && !res.ok && res.needsPayment ? (
           <section className="card pad" style={{ textAlign: "center" }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Emitir CRLV-e por {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO}`}</div>
-            <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px" }}>Pra emitir agora, fale com o Co-pilot no WhatsApp.</p>
-            <a className="btn-primary" href={waCRLV} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Emitir pelo Co-pilot</a>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px" }}>Pague no Pix ou cartão e o documento sai na hora.</p>
+            <button className="btn-primary" disabled={busy} onClick={async () => { setBusy(true); const r = await startGptCheckout("crlv", placa, v.uf || undefined); if (!r.ok) { setBusy(false); alert("Não consegui abrir o pagamento: " + (r.error || "")); } }}>
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Pagar {res.preco ? `R$ ${res.preco}` : `R$ ${PRECO}`}
+            </button>
+            <a style={{ display: "block", marginTop: 10, fontSize: 12.5, color: "var(--muted)" }} href={waCRLV} target="_blank" rel="noreferrer">ou emitir pelo Co-pilot no WhatsApp</a>
           </section>
         ) : res && !res.ok ? (
           <div className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent", fontSize: 13 }}>

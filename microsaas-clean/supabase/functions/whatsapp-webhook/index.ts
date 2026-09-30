@@ -7,6 +7,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
+import { createGptCheckout, GPT_NOME } from "../_shared/gptorder.ts";
+import type { GptProduto } from "../_shared/gptmotors.ts";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
 import { loadDossier, runExtractor, detectCarIntent } from "../_shared/proactive.ts";
 import { careFuel, careOdometer, careStatement, seloElegivel } from "../_shared/care-score.ts";
@@ -4141,6 +4143,32 @@ ${JSON.stringify(snapshot)}`;
     if (msg.kind !== "image" && await handlePostsaleTransfer(msg.phone, inputText)) {
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "transferencia", input: inputText }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true, transfer: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
+    // PRODUTOS DE CONSULTA (GPT Motors): Raio-X, CRLV-e, Débitos — venda avulsa via Pix/cartão.
+    // Detecta pela hashtag/frase, cria a cobrança e manda o link; a entrega do resultado é feita
+    // pelo asaas-webhook quando o pagamento cai (resumo + arquivo do CRLV).
+    if (msg.kind !== "image") {
+      const gptProduto: GptProduto | null =
+        /#?\braio-?x\b|consulta cautelar/i.test(inputText) ? "raiox"
+        : /#?crlv|crlv-?e|emitir (o )?crlv/i.test(inputText) ? "crlv"
+        : /#?d[eé]bitos|consultar (os |meus )?d[eé]bitos/i.test(inputText) ? "debitos"
+        : null;
+      if (gptProduto) {
+        const placaGpt = (vehicle?.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (!placaGpt) {
+          await reply(`Pra puxar o *${GPT_NOME[gptProduto]}* eu preciso da placa do seu carro. Me manda *"quero o painel"* que te mando o acesso pra cadastrar (rapidinho). 🚗`);
+        } else {
+          const ck = await createGptCheckout(supabase, { userId: user.id, produto: gptProduto, placa: placaGpt, uf: (vehicle as any)?.uf || undefined, phone: msg.phone, origem: "whatsapp" });
+          if (ck.ok && ck.url) {
+            await reply(`*${GPT_NOME[gptProduto]}* — placa ${placaGpt} por *R$ ${ck.preco}* 🔎\n\nPague no Pix ou cartão por aqui:\n${ck.url}\n\nAssim que o pagamento cair, eu te mando o resultado aqui no WhatsApp. 👍`);
+          } else {
+            await reply(`Não consegui abrir o pagamento agora 😕 (${ck.error || "tente de novo"}). Você também pode fazer pelo app, em ${gptProduto === "debitos" ? "Multas" : gptProduto === "crlv" ? "CRLV" : "Histórico"}.`);
+          }
+        }
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: `gpt_${gptProduto}`, input: inputText }, user_id: user.id }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, gpt: gptProduto }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
     }
 
     // Atalho: opção "Quero o painel" do menu (ou pedido direto) → link mágico de acesso, SEM IA.

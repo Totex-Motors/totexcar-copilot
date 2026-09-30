@@ -32,6 +32,27 @@ export async function runGptConsulta(produto: GptProduto, placa: string, uf?: st
   }
 }
 
+// Inicia o pagamento (Pix/cartão) de uma consulta e redireciona pro checkout Asaas.
+export async function startGptCheckout(produto: GptProduto, placa: string, uf?: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("gpt-checkout", { body: { produto, placa, uf } });
+    if (error) { try { const p = await (error as any).context.json(); return { ok: false, error: p?.error || "erro" }; } catch { return { ok: false, error: String(error.message || error) }; } }
+    if (data?.url) { window.location.href = data.url; return { ok: true }; }
+    return { ok: false, error: data?.error || "sem_url" };
+  } catch (e: any) { return { ok: false, error: String(e?.message || e) }; }
+}
+
+// Busca a última consulta OK do usuário (usado no retorno do pagamento). dados completos.
+export async function fetchUltimaConsulta(userId: string, produto: GptProduto, placa?: string): Promise<GptResult | null> {
+  let q = supabase.from("gpt_consultas").select("id, produto, placa, uf, dados, analise_ia, created_at")
+    .eq("user_id", userId).eq("produto", produto).eq("status", "ok").order("created_at", { ascending: false }).limit(1);
+  if (placa) q = q.eq("placa", placa.toUpperCase().replace(/[^A-Z0-9]/g, ""));
+  const { data } = await q;
+  const c = data?.[0];
+  if (!c) return null;
+  return { ok: true, produto, placa: c.placa, uf: c.uf, dados: c.dados, analiseIA: c.analise_ia, id: c.id };
+}
+
 // Histórico das consultas do próprio usuário (RLS: só as dele).
 export function useMinhasConsultas(userId?: string, produto?: GptProduto) {
   return useQuery({
