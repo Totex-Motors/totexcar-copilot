@@ -85,8 +85,10 @@ Deno.serve(async (req) => {
       const isHybrid = /híbrid|hibrid/.test(combustivel);
       const carro = veh ? `${veh.marca || ""} ${veh.modelo || ""} ${veh.ano_modelo || ""}`.trim() : null;
 
-      // localização: texto do pedido > última cidade que ele informou
-      const locationText = String(p.location_text || veh?.cidade || "").trim();
+      // localização: texto do pedido > última cidade que ele informou > coordenadas do GPS.
+      // (search_preview exige um texto de localização; sem isso, buscar só por GPS voltava vazio.)
+      let locationText = String(p.location_text || veh?.cidade || "").trim();
+      if (!locationText && lat != null && lon != null) locationText = `coordenadas ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
       // lembra pra não perguntar de novo na próxima busca
       if (p.location_text && veh?.id && String(p.location_text).trim() !== String(veh?.cidade || "")) {
         await admin.from("accounts").update({ cidade: String(p.location_text).trim() }).eq("id", veh.id);
