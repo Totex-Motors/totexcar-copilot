@@ -48,7 +48,7 @@ export const Navbar = () => {
         {/* Desktop Navigation */}
         <div className="hidden lg:flex items-center gap-8">
           <NavLink to="/about">Sobre</NavLink>
-          <NavLink to="/pricing">Preços</NavLink>
+          <NavLink to="/pricing">Grátis</NavLink>
           <NavLink to="/integrations">Recursos</NavLink>
           <NavLink to="/blogs">Blog</NavLink>
           <NavLink to="/entrar">Entrar</NavLink>
@@ -84,7 +84,7 @@ export const Navbar = () => {
             className="lg:hidden fixed inset-0 bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center space-y-8 z-[-1]"
           >
             <NavLink to="/about" onClick={() => setIsMobileMenuOpen(false)}>Sobre</NavLink>
-            <NavLink to="/pricing" onClick={() => setIsMobileMenuOpen(false)}>Preços</NavLink>
+            <NavLink to="/pricing" onClick={() => setIsMobileMenuOpen(false)}>Grátis</NavLink>
             <NavLink to="/integrations" onClick={() => setIsMobileMenuOpen(false)}>Recursos</NavLink>
             <NavLink to="/blogs" onClick={() => setIsMobileMenuOpen(false)}>Blog</NavLink>
             <NavLink to="/entrar" onClick={() => setIsMobileMenuOpen(false)}>Entrar</NavLink>
