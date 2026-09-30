@@ -4,7 +4,7 @@ import { FileText, Download, MessageCircle, ChevronRight, FolderLock, ExternalLi
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle, useUpdateAccount } from "@/hooks/useAccounts";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, docFileUrl, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, docFileUrl, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
 import { DocViewer } from "@/components/DocViewer";
 
 const WA = "5511963786699";
@@ -111,7 +111,7 @@ export default function Crlv() {
           </section>
         ) : res && !res.ok && res.error !== "uf_obrigatoria" ? (
           <div className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent", fontSize: 13 }}>
-            <b>Não consegui emitir agora.</b> {res.error || "Tente de novo em instantes."}
+            <b>Não consegui emitir agora.</b> {gptErroMsg(res.error)}
           </div>
         ) : null}
 

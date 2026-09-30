@@ -19,6 +19,28 @@ export interface GptResult {
   error?: string;
 }
 
+// Traduz o erro da consulta pra uma mensagem amigável — e NUNCA mostra JSON/stack técnico do provedor.
+export function gptErroMsg(error?: string | null): string {
+  const e = String(error || "").trim();
+  const map: Record<string, string> = {
+    cpf_invalido: "Confira o CPF (11 dígitos).",
+    placa_invalida: "Confira a placa.",
+    uf_obrigatoria: "Escolha a UF da placa.",
+    cnh_indisponivel: "Não consegui os dados da CNH agora — o órgão pode estar indisponível. Tente de novo em instantes.",
+    crlv_indisponivel: "Não consegui emitir o CRLV-e agora. Confira se o veículo está licenciado e sem débitos.",
+    consulta_sem_retorno: "A consulta não retornou dados agora. Tente de novo em instantes.",
+    debitos_indisponivel: "Não consegui consultar os débitos agora. Tente de novo em instantes.",
+    integracao_nao_configurada: "Serviço temporariamente indisponível.",
+    auth_provedor_falhou: "Serviço temporariamente indisponível. Tente de novo em instantes.",
+    preco_invalido: "Valor indisponível no momento.",
+    asaas_nao_configurado: "Pagamento indisponível no momento.",
+  };
+  if (map[e]) return map[e];
+  // qualquer coisa técnica/longa/JSON → genérico (não vaza pro usuário)
+  if (!e || e.length > 80 || /[{}[\]]|JSON|Exception|LineNumber|isFinalBlock/i.test(e)) return "Não consegui concluir agora. Tente de novo em instantes.";
+  return e;
+}
+
 // monta o corpo conforme o produto (placa OU cpf)
 const identBody = (produto: GptProduto, ident: string, uf?: string) =>
   IS_CPF[produto] ? { produto, cpf: ident } : { produto, placa: ident, uf };

@@ -11,6 +11,28 @@ export const IS_CPF: Record<GptProduto, boolean> = { raiox: false, crlv: false, 
 export const normPlaca = (p: unknown) => String(p ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
 export const normCpf = (c: unknown) => String(c ?? "").replace(/\D/g, "").slice(0, 11);
 
+// A API do provedor às vezes responde em camelCase (dados/controle) e às vezes em PascalCase
+// (Dados/Controle/Mensagem). Lê os dois. E NUNCA devolve pro usuário a mensagem técnica crua
+// (stack/JSON do .NET) — vira um código curto que o app traduz.
+const pick = (o: any, ...keys: string[]) => { if (!o) return undefined; for (const k of keys) if (o[k] != null) return o[k]; return undefined; };
+function parseResp(j: any) {
+  const controle = pick(j, "controle", "Controle");
+  return {
+    dados: pick(j, "dados", "Dados") ?? null,
+    controle: controle ?? null,
+    analiseIA: pick(j, "analiseIA", "AnaliseIA", "analiseIa") ?? null,
+    sucesso: controle ? (pick(controle, "sucesso", "Sucesso") ?? true) : true,
+    mensagem: controle ? pick(controle, "mensagem", "Mensagem") : undefined,
+  };
+}
+function cleanErro(msg: unknown, fallback: string): string {
+  const s = String(msg ?? "").trim();
+  if (!s) return fallback;
+  // não vaza JSON/stack/erro técnico pro usuário
+  if (s.length > 120 || /[{}\[\]]|isFinalBlock|LineNumber|BytePosition|Exception|System\.|Json/i.test(s)) return fallback;
+  return s;
+}
+
 async function gptAuth(cfg: GptCfg): Promise<string> {
   try {
     const r = await fetch(cfg.authUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ChaveAcesso: cfg.chave, TokenAcesso: cfg.token }) });
@@ -34,26 +56,30 @@ export async function runGptMotors(cfg: GptCfg, produto: GptProduto, placa: stri
   try {
     if (produto === "raiox") {
       const { httpOk, j } = await call(`/api/v1/analise/veicular/pro?placa=${placa}`);
-      const ok = httpOk && (j?.controle?.sucesso ?? true) && !!j?.dados;
-      return { ok, dados: j?.dados ?? null, analiseIA: j?.analiseIA ?? null, controle: j?.controle ?? null, erro: ok ? null : (j?.controle?.mensagem || "consulta_sem_retorno") };
+      const p = parseResp(j);
+      const ok = httpOk && p.sucesso && !!p.dados;
+      return { ok, dados: p.dados, analiseIA: p.analiseIA, controle: p.controle, erro: ok ? null : cleanErro(p.mensagem, "consulta_sem_retorno") };
     }
     if (produto === "crlv") {
       const { httpOk, j } = await call(`/api/v1/documentacao/crlv?uf=${(uf || "").toUpperCase()}&placa=${placa}`);
-      const ok = httpOk && (j?.controle?.sucesso ?? true) && !!j?.dados;
-      return { ok, dados: j?.dados ?? null, analiseIA: j?.analiseIA ?? null, controle: j?.controle ?? null, erro: ok ? null : (j?.controle?.mensagem || "crlv_indisponivel") };
+      const p = parseResp(j);
+      const ok = httpOk && p.sucesso && !!p.dados;
+      return { ok, dados: p.dados, analiseIA: p.analiseIA, controle: p.controle, erro: ok ? null : cleanErro(p.mensagem, "crlv_indisponivel") };
     }
     if (produto === "cnh") {
       // aqui o parâmetro "placa" carrega o CPF (consulta de CNH é por CPF)
       const { httpOk, j } = await call(`/api/v1/documentacao/cnh?cpf=${placa}`);
-      const ok = httpOk && (j?.controle?.sucesso ?? true) && !!j?.dados;
-      return { ok, dados: j?.dados ?? null, analiseIA: j?.analiseIA ?? null, controle: j?.controle ?? null, erro: ok ? null : (j?.controle?.mensagem || "cnh_indisponivel") };
+      const p = parseResp(j);
+      const ok = httpOk && p.sucesso && !!p.dados;
+      return { ok, dados: p.dados, analiseIA: p.analiseIA, controle: p.controle, erro: ok ? null : cleanErro(p.mensagem, "cnh_indisponivel") };
     }
     // debitos = estadual + renainf
     const est = await call(`/api/v1/identificacao/estadual?placa=${placa}`);
     const ren = await call(`/api/v1/analise/risco/renainf?placa=${placa}`);
-    const dados = { estadual: est.j?.dados ?? null, renainf: ren.j?.dados ?? null };
+    const pe = parseResp(est.j), pr = parseResp(ren.j);
+    const dados = { estadual: pe.dados, renainf: pr.dados };
     const ok = (est.httpOk || ren.httpOk) && (dados.estadual || dados.renainf);
-    return { ok, dados, analiseIA: est.j?.analiseIA || ren.j?.analiseIA || null, controle: est.j?.controle ?? ren.j?.controle ?? null, erro: ok ? null : (est.j?.controle?.mensagem || ren.j?.controle?.mensagem || "debitos_indisponivel") };
+    return { ok, dados, analiseIA: pe.analiseIA || pr.analiseIA, controle: pe.controle ?? pr.controle, erro: ok ? null : cleanErro(pe.mensagem || pr.mensagem, "debitos_indisponivel") };
   } catch (e) {
     return { ok: false, dados: null, analiseIA: null, controle: null, erro: String((e as any)?.message || e) };
   }

@@ -4,7 +4,7 @@ import { FileCheck2, ShieldAlert, Gavel, AlertTriangle, MessageCircle, ChevronRi
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
 
 const WA = "5511963786699";
 const PRECO = 69; // preço de exibição (o valor final vem do servidor)
@@ -121,7 +121,7 @@ export default function Historico() {
         )}
         {res && !res.ok && !res.needsPayment && (
           <div className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent", fontSize: 13 }}>
-            <b>Não consegui puxar agora.</b> {res.error || "Tente de novo em instantes."}
+            <b>Não consegui puxar agora.</b> {gptErroMsg(res.error)}
           </div>
         )}
 
