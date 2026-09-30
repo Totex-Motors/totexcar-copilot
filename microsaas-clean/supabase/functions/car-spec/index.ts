@@ -3,6 +3,7 @@
 // accounts.ficha_tecnica. Serve tanto o app (JWT do dono) quanto o agente do WhatsApp (chamada
 // interna com a service role + account_id). É idempotente: só regenera se não existir ou se force=true.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { openaiWebSearch } from "../_shared/websearch.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -71,19 +72,10 @@ async function generateFicha(v: any): Promise<{ ficha: any; fonte: string } | nu
   if (!openaiKey) { console.error("sem openai_api_key p/ ficha"); return null; }
 
   const prompt = buildPrompt(v);
-  // gpt-4o-search-preview: chat completions com busca web embutida
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
-    body: JSON.stringify({
-      model: "gpt-4o-search-preview",
-      web_search_options: {},
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    console.error("openai search falhou:", res.status, t.slice(0, 300));
+  // Busca web via Responses API (o antigo gpt-4o-search-preview foi descontinuado).
+  const r = await openaiWebSearch(openaiKey, prompt);
+  if (!r.ok) {
+    console.error("openai search falhou:", r.status, r.error);
     // fallback: modelo normal sem busca (ainda dá uma ficha útil)
     const res2 = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -95,10 +87,8 @@ async function generateFicha(v: any): Promise<{ ficha: any; fonte: string } | nu
     const ficha = parseJson(d2?.choices?.[0]?.message?.content || "");
     return ficha ? { ficha, fonte: "gpt-4o (sem busca)" } : null;
   }
-  const d = await res.json();
-  const content = d?.choices?.[0]?.message?.content || "";
-  const ficha = parseJson(content);
-  return ficha ? { ficha, fonte: "gpt-4o-search-preview (web)" } : null;
+  const ficha = parseJson(r.text);
+  return ficha ? { ficha, fonte: "web_search (gpt-4o-mini)" } : null;
 }
 
 function parseJson(s: string): any | null {

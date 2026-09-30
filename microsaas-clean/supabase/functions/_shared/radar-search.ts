@@ -401,13 +401,15 @@ REGRAS ABSOLUTAS:
 - Priorize quem tem reputação verificável (nota e avaliações públicas).`;
 
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    // Responses API + ferramenta web_search (o antigo gpt-4o-search-preview foi descontinuado
+    // pela OpenAI em 2025 → 404 model_not_found, o que fazia toda busca voltar vazia).
+    const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
       body: JSON.stringify({
-        model: "gpt-4o-search-preview",
-        web_search_options: {},
-        messages: [{ role: "user", content: prompt }],
+        model: "gpt-4o-mini",
+        tools: [{ type: "web_search" }],
+        input: prompt,
       }),
     });
 
@@ -417,7 +419,14 @@ REGRAS ABSOLUTAS:
     }
 
     const d = await res.json();
-    let texto: string = d?.choices?.[0]?.message?.content?.trim() || "";
+    // extrai o texto final da resposta (Responses API): campo de conveniência ou o item message
+    let texto: string = typeof d?.output_text === "string" ? d.output_text : "";
+    if (!texto) {
+      for (const it of (d?.output || [])) {
+        if (it?.type === "message") for (const c of (it?.content || [])) if (c?.type === "output_text" && c?.text) texto += c.text;
+      }
+    }
+    texto = texto.trim();
     // tolerante a cerca de código (mesmo tratamento do edge viagem)
     texto = texto.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
     const a = texto.indexOf("{");
