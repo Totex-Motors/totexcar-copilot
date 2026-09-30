@@ -85,6 +85,11 @@ export function DocViewer({ arquivo, filename = "documento", height = 460 }: { a
     if (!w) window.location.href = parsed.url; // popup bloqueado → navega na própria aba
   };
 
+  // download: pra URL https (doc-open), o atributo `download` é ignorado cross-origin;
+  // usa ?dl=1 pra forçar attachment no servidor. Pra blob, o download normal funciona.
+  const isHttp = !parsed.bytes && /^https?:/i.test(parsed.url);
+  const dlHref = isHttp ? parsed.url + (parsed.url.includes("?") ? "&" : "?") + "dl=1" : parsed.url;
+
   return (
     <div>
       <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", background: "var(--card-2)" }}>
@@ -97,7 +102,7 @@ export function DocViewer({ arquivo, filename = "documento", height = 460 }: { a
         <button className="sbtn brand" style={{ flex: 1, justifyContent: "center" }} onClick={abrir}>
           {canShareFile ? <Share2 size={15} /> : <ExternalLink size={15} />} {canShareFile ? "Abrir / compartilhar" : "Abrir em tela cheia"}
         </button>
-        <a href={parsed.url} download={dlName}><button className="sbtn"><Download size={15} /> Baixar</button></a>
+        <a href={dlHref} download={dlName}><button className="sbtn"><Download size={15} /> Baixar</button></a>
       </div>
 
       {!isImg && (

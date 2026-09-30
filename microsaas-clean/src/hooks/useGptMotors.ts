@@ -58,6 +58,19 @@ export async function fetchUltimaConsulta(userId: string, produto: GptProduto, i
   return { ok: true, produto, placa: c.placa, cpf: c.cpf, uf: c.uf, dados: c.dados, analiseIA: c.analise_ia, id: c.id };
 }
 
+// URL https do arquivo da consulta (edge doc-open), pra ABRIR no leitor nativo do aparelho.
+// Um blob: não abre no celular/webview (só baixa); uma URL https de verdade abre em qualquer lugar.
+const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
+export async function docFileUrl(consultaId: string): Promise<string | null> {
+  try {
+    if (!SUPABASE_URL || !consultaId) return null;
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return null;
+    return `${SUPABASE_URL}/functions/v1/doc-open?id=${encodeURIComponent(consultaId)}&t=${encodeURIComponent(token)}`;
+  } catch { return null; }
+}
+
 // Reabre uma consulta salva (com os dados completos) pra rever/baixar de novo.
 export async function fetchConsultaById(id: string): Promise<GptResult | null> {
   const { data } = await supabase.from("gpt_consultas")

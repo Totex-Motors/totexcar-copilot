@@ -4,7 +4,7 @@ import { FileText, Download, MessageCircle, ChevronRight, FolderLock, ExternalLi
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle, useUpdateAccount } from "@/hooks/useAccounts";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, docFileUrl, useMinhasConsultas, type GptResult } from "@/hooks/useGptMotors";
 import { DocViewer } from "@/components/DocViewer";
 
 const WA = "5511963786699";
@@ -17,6 +17,7 @@ export default function Crlv() {
   const { vehicle } = useVehicle(userId);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<GptResult | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   const [uf, setUf] = useState("");
   const updateAcc = useUpdateAccount();
@@ -28,6 +29,14 @@ export default function Crlv() {
 
   // guarda a UF no cadastro pra não perguntar de novo
   const persistUf = (u: string) => { if (u && v.id && u !== v.uf) updateAcc.mutate({ id: v.id, updates: { uf: u } as any }); };
+
+  // resolve a URL https do arquivo (abre no leitor nativo do aparelho; blob não abre no celular)
+  useEffect(() => {
+    let alive = true;
+    if (res?.ok && res.id && res.dados?.arquivo) docFileUrl(res.id).then((u) => { if (alive) setFileUrl(u); });
+    else setFileUrl(null);
+    return () => { alive = false; };
+  }, [res?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (params.get("status") !== "success" || !userId) return;
@@ -80,7 +89,7 @@ export default function Crlv() {
             </div>
             <div style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 12 }}>{[res.dados?.marcaModelo, res.dados?.anoModelo].filter(Boolean).join(" · ") || "Documento pronto"}</div>
             {res.dados?.arquivo ? (
-              <DocViewer arquivo={res.dados.arquivo} filename={`CRLV-${placa}`} />
+              <DocViewer arquivo={fileUrl ? { url: fileUrl, tipo: "application/pdf", nome: `CRLV-${placa}.pdf` } : res.dados.arquivo} filename={`CRLV-${placa}`} />
             ) : (
               <a className="sbtn wa" style={{ width: "100%", justifyContent: "center" }} href={waCRLV} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Receber o arquivo pelo Co-pilot</a>
             )}
