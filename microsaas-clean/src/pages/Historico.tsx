@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Navigate, Link, useSearchParams } from "react-router-dom";
-import { FileCheck2, Gavel, AlertTriangle, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Search, Car } from "lucide-react";
+import { FileCheck2, ShieldAlert, Gavel, AlertTriangle, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Search, Car } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
