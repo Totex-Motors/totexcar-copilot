@@ -69,7 +69,7 @@ const FAQS = [
   },
   {
     q: "Quanto custa?",
-    a: "Você começa com 7 dias grátis, sem cartão. Depois, o plano Totex Care custa R$ 109,90/mês — membros do ecossistema Totexmotors pagam R$ 10,99/mês com o cupom da loja parceira. Plano anual: R$ 109,90 à vista, 12 meses pelo preço de 10 (~17% de desconto). E não é só multa: o Co-pilot cuida de todos os gastos, consumo e prazos do seu carro.",
+    a: "A análise de multas e o app inteiro são grátis — sem mensalidade e sem cartão. Você só paga por serviços avulsos quando quiser usá-los (como Raio-X do carro, CRLV-e ou consulta de débitos), e o valor aparece antes de confirmar. E não é só multa: o Co-pilot cuida de todos os gastos, consumo e prazos do seu carro.",
   },
 ];
 
@@ -121,7 +121,7 @@ export function Lp2() {
             </motion.p>
             <motion.div {...fadeUp} transition={{ duration: 0.6, delay: 0.15 }} className="mt-7 flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <CtaButton big />
-              <span className="text-xs text-gray-500">7 dias grátis · Sem cartão de crédito</span>
+              <span className="text-xs text-gray-500">De graça · Sem cartão de crédito</span>
             </motion.div>
           </div>
 
@@ -238,21 +238,20 @@ export function Lp2() {
         <div className="absolute inset-x-0 top-0 h-full bg-teal-600/5 pointer-events-none" />
         <div className="relative max-w-lg mx-auto text-center">
           <motion.div {...fadeUp} className="rounded-3xl border border-teal-500/30 bg-[#0a0a0c] p-8 shadow-[0_30px_80px_-20px_rgba(20,184,166,0.25)]">
-            <p className="text-xs font-semibold tracking-widest text-teal-400 uppercase mb-3">Plano Totex Care</p>
+            <p className="text-xs font-semibold tracking-widest text-teal-400 uppercase mb-3">TotexCar Co-pilot</p>
             <div className="flex items-end justify-center gap-2 mb-1">
-              <span className="text-gray-500 line-through text-lg">R$ 109,90</span>
-              <span className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">R$ 10,99</span>
-              <span className="text-gray-400 pb-1.5">/mês</span>
+              <span className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">Grátis</span>
+              <span className="text-gray-400 pb-1.5">/pra sempre</span>
             </div>
-            <p className="text-xs text-gray-500 mb-6">com cupom de loja parceira Totexmotors (90% off)</p>
+            <p className="text-xs text-gray-500 mb-6">sem mensalidade, sem cartão — é só usar</p>
             <ul className="text-sm text-gray-300 space-y-2.5 text-left max-w-xs mx-auto mb-7">
               {[
-                "7 dias grátis — sem cartão",
+                "100% grátis — sem cartão",
                 "Análise de multas ilimitada",
                 "Recurso pronto com base legal",
                 "Alerta do prazo de recurso",
                 "Gastos, consumo e vencimentos do carro",
-                "Anual: R$ 109,90 à vista (~17% off)",
+                "Serviços avulsos (Raio-X, CRLV-e) só se quiser",
               ].map((b) => (
                 <li key={b} className="flex items-start gap-2.5">
                   <Check className="w-4 h-4 text-teal-400 mt-0.5 shrink-0" /> {b}

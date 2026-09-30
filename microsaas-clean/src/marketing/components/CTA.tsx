@@ -32,7 +32,7 @@ export const CTA = () => {
           className="text-lg md:text-xl text-gray-300 mb-12 max-w-2xl mx-auto"
         >
           Crie sua conta no TotexCar Co-pilot e deixe a inteligência artificial
-          registrar seus gastos pelo WhatsApp. 7 dias grátis, sem precisar de cartão.
+          registrar seus gastos pelo WhatsApp. É de graça, sem mensalidade e sem cartão.
         </motion.p>
 
         <motion.div
