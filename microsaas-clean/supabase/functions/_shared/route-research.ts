@@ -1,8 +1,9 @@
 // TotexCar Co-pilot — pesquisa de rota EM TEMPO REAL (Modo Viagem)
-// Usa o gpt-4o-search-preview (OpenAI com busca web embutida, mesmo motor do car-spec) para
+// Usa a busca web da OpenAI (Responses API, ver _shared/websearch.ts) para
 // levantar os fatos frescos da rota: distância, pedágios ATUAIS praça a praça, balsa/travessia
 // obrigatória (preço e fila), condições da estrada. O texto volta pro compositor do plano
 // como FONTE DA VERDADE dos custos de rota — nada de chutar pedágio.
+import { openaiWebSearch } from "./websearch.ts";
 
 // Pesquisa AO VIVO de onde ficar e onde comer no destino: hospedagem bem avaliada por faixa
 // de preço + restaurantes/bares imperdíveis. Nomes REAIS com reputação atual — nunca inventados.
@@ -17,26 +18,9 @@ export async function pesquisarLugares(openaiKey: string, destino: string, perfi
 
 Só cite lugares que você ENCONTROU na pesquisa (reputação real) — nada inventado. Cite as fontes no final.`;
 
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
-      body: JSON.stringify({
-        model: "gpt-4o-search-preview",
-        web_search_options: {},
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!res.ok) {
-      console.error("pesquisarLugares falhou:", res.status, (await res.text()).slice(0, 200));
-      return null;
-    }
-    const d = await res.json();
-    return d?.choices?.[0]?.message?.content?.trim() || null;
-  } catch (e) {
-    console.error("pesquisarLugares erro:", e);
-    return null;
-  }
+  const r = await openaiWebSearch(openaiKey, prompt);
+  if (!r.ok) { console.error("pesquisarLugares falhou:", r.status, r.error); return null; }
+  return r.text || null;
 }
 
 export async function pesquisarRota(openaiKey: string, origem: string, destino: string): Promise<string | null> {
@@ -51,27 +35,9 @@ export async function pesquisarRota(openaiKey: string, origem: string, destino: 
 
 Se algum valor não for encontrado, diga explicitamente "não encontrei valor atual" — NÃO invente. Cite as fontes no final.`;
 
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
-      body: JSON.stringify({
-        model: "gpt-4o-search-preview",
-        web_search_options: {},
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!res.ok) {
-      console.error("pesquisarRota falhou:", res.status, (await res.text()).slice(0, 200));
-      return null;
-    }
-    const d = await res.json();
-    const texto = d?.choices?.[0]?.message?.content?.trim() || "";
-    return texto || null;
-  } catch (e) {
-    console.error("pesquisarRota erro:", e);
-    return null;
-  }
+  const r = await openaiWebSearch(openaiKey, prompt);
+  if (!r.ok) { console.error("pesquisarRota falhou:", r.status, r.error); return null; }
+  return r.text || null;
 }
 
 // ---- CONSUMO DO VEÍCULO (cadeia de fontes) ----
