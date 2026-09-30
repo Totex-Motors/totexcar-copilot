@@ -89,7 +89,7 @@ export default function Crlv() {
             </div>
             <div style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 12 }}>{[res.dados?.marcaModelo, res.dados?.anoModelo].filter(Boolean).join(" · ") || "Documento pronto"}</div>
             {res.dados?.arquivo ? (
-              <DocViewer arquivo={fileUrl ? { url: fileUrl, tipo: "application/pdf", nome: `CRLV-${placa}.pdf` } : res.dados.arquivo} filename={`CRLV-${placa}`} />
+              <DocViewer arquivo={{ ...(res.dados.arquivo as any), url: fileUrl || undefined }} filename={`CRLV-${placa}`} />
             ) : (
               <a className="sbtn wa" style={{ width: "100%", justifyContent: "center" }} href={waCRLV} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Receber o arquivo pelo Co-pilot</a>
             )}
