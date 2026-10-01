@@ -33,9 +33,14 @@ function cleanErro(msg: unknown, fallback: string): string {
   return s;
 }
 
+// O provedor às vezes demora minutos (Detran fora do ar). Sem limite, o app desiste antes da resposta
+// e mostra erro técnico. Limite de 50s por chamada → erro amigável "provedor_demorou".
+export const UPSTREAM_TIMEOUT_MS = 50_000;
+const isTimeout = (e: unknown) => /timeout|aborted|TimeoutError/i.test(String((e as any)?.name || "") + String((e as any)?.message || e));
+
 async function gptAuth(cfg: GptCfg): Promise<string> {
   try {
-    const r = await fetch(cfg.authUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ChaveAcesso: cfg.chave, TokenAcesso: cfg.token }) });
+    const r = await fetch(cfg.authUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ChaveAcesso: cfg.chave, TokenAcesso: cfg.token }), signal: AbortSignal.timeout(20_000) });
     const j = await r.json().catch(() => ({}));
     return j?.accessToken || "";
   } catch { return ""; }
@@ -48,7 +53,7 @@ export async function runGptMotors(cfg: GptCfg, produto: GptProduto, placa: stri
   let origin = "https://app.gptmotors.com.br";
   try { origin = new URL(cfg.authUrl).origin; } catch { /* */ }
   const call = async (path: string) => {
-    const r = await fetch(`${origin}${path}`, { headers: { authorization: `Bearer ${bearer}`, accept: "application/json" } });
+    const r = await fetch(`${origin}${path}`, { headers: { authorization: `Bearer ${bearer}`, accept: "application/json" }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
     const j = await r.json().catch(() => ({}));
     return { httpOk: r.ok, j };
   };
@@ -81,7 +86,7 @@ export async function runGptMotors(cfg: GptCfg, produto: GptProduto, placa: stri
     const ok = (est.httpOk || ren.httpOk) && (dados.estadual || dados.renainf);
     return { ok, dados, analiseIA: pe.analiseIA || pr.analiseIA, controle: pe.controle ?? pr.controle, erro: ok ? null : cleanErro(pe.mensagem || pr.mensagem, "debitos_indisponivel") };
   } catch (e) {
-    return { ok: false, dados: null, analiseIA: null, controle: null, erro: String((e as any)?.message || e) };
+    return { ok: false, dados: null, analiseIA: null, controle: null, erro: isTimeout(e) ? "provedor_demorou" : cleanErro((e as any)?.message || e, "consulta_sem_retorno") };
   }
 }
 

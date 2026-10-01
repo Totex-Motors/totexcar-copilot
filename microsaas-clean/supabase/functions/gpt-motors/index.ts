@@ -64,12 +64,15 @@ Deno.serve(async (req) => {
   // gate de custo: admin/dealer liberados; demais pagam (gpt-checkout)
   if (!isPriv) return json({ ok: false, needsPayment: true, produto, preco });
 
+  const t0 = Date.now();
   const out = await runGptMotors({ authUrl: String(cfg.gptmotors_auth_url || ""), chave: String(cfg.gptmotors_chave || ""), token: String(cfg.gptmotors_token || "") }, produto, ident, uf);
+  const duration_ms = Date.now() - t0;
+  if (!out.ok) console.warn(`gpt-motors ${produto} falhou em ${duration_ms}ms: ${out.erro}`);
   const id = crypto.randomUUID();
   await sbInsert("gpt_consultas", {
     id, user_id: uid, produto, placa: isCpf ? null : placa, cpf: isCpf ? cpf : null, uf: uf || null, status: out.ok ? "ok" : "erro",
     gpt_id: out.controle?.id || null, faturado: !!out.controle?.faturado, preco,
-    dados: out.ok ? out.dados : null, analise_ia: out.analiseIA, erro: out.ok ? null : out.erro,
+    dados: out.ok ? out.dados : null, analise_ia: out.analiseIA, erro: out.ok ? null : out.erro, duration_ms,
   });
   if (!out.ok) return json({ ok: false, error: out.erro || "falha", produto, preco }, 502);
   return json({ ok: true, produto, placa: isCpf ? null : placa, cpf: isCpf ? cpf : null, uf: uf || null, dados: out.dados, analiseIA: out.analiseIA, id, preco });
