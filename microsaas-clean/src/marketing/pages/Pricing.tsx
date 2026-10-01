@@ -1,178 +1,72 @@
-import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, Sparkles, FileCheck2, IdCard, Search, ScanLine } from "lucide-react";
-import { FAQ } from "../components/FAQ";
-import { CTA } from "../components/CTA";
-import { GradientBorder } from "../components/ui/GradientBorder";
-import { RollingText } from "../components/ui/RollingText";
+import { fade, Lines, Label, Item, Faq, Closing } from "../editorial";
 
-const PricingFeature = ({ text }: { text: string }) => (
-  <div className="flex items-start gap-3">
-    <div className="mt-1 flex-shrink-0">
-      <Check size={14} className="text-teal-400" />
-    </div>
-    <span className="text-gray-300 text-sm font-medium">{text}</span>
-  </div>
+// GRÁTIS — tudo do app sem mensalidade; serviços avulsos só quando pedir (valor aparece antes de confirmar).
+
+const INCLUIDO: [string, string][] = [
+  ["Cofre de documentos", "CRLV, apólice, notas da oficina, comprovantes de IPVA e multas guardados no histórico do carro — e devolvidos no WhatsApp quando você pedir."],
+  ["Assistente no WhatsApp", "Manda foto, PDF, áudio ou texto. Ele entende, registra na categoria certa e organiza."],
+  ["Avisos de vencimento", "IPVA, licenciamento, seguro, CNH e revisão por quilometragem, antes de virar multa."],
+  ["Manutenção por km", "Óleo, pastilhas, pneus e revisões com a próxima data prevista pelo seu uso."],
+  ["Gastos e consumo", "Combustível, peças, serviços: quanto o carro custa por mês e por quilômetro."],
+  ["Curadoria pra decidir", "Esse orçamento está caro? Vale consertar ou trocar? O Co‑pilot responde com os seus dados."],
+  ["Valor do carro e Garagem", "FIPE na hora, pedido de recompra e o estoque real da Totex quando pensar em trocar."],
+  ["Indique e Ganhe", "Comissão no PIX a cada venda que vier da sua indicação."],
+];
+
+const AVULSOS: [string, string][] = [
+  ["Raio-X do carro", "Consulta cautelar completa: leilão, sinistro, roubo, gravame e histórico."],
+  ["CRLV-e na hora", "O documento digital emitido dentro do app e guardado no cofre."],
+  ["Débitos & multas", "IPVA, licenciamento e multas detalhadas por órgão."],
+  ["Consulta de CNH", "Pontos, situação e validade da habilitação."],
+];
+
+export const Pricing = () => (
+  <>
+    <section className="top" style={{ paddingBottom: 60, textAlign: "center" }}>
+      <div className="wrap">
+        <motion.div className="label" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.2 }}>(grátis)</motion.div>
+        <div className="disp big" style={{ fontSize: "clamp(96px,20vw,300px)", margin: "20px 0 36px", lineHeight: 1.04 }}>
+          <Lines now delay={0.25} lines={[<>R$ <span className="acc">0</span></>]} />
+        </div>
+        <motion.p className="serif" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.7 }} style={{ fontSize: "clamp(20px,2vw,28px)", color: "var(--ink2)", maxWidth: 640, margin: "0 auto 40px" }}>
+          Todo o Co‑pilot, pra sempre, sem mensalidade e sem cartão. Dono de carro ou motorista de app. Você só paga por um serviço oficial quando pedir — e o valor aparece antes de confirmar.
+        </motion.p>
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.9 }}>
+          <Link to="/entrar?tab=register" className="pill"><span className="dot" />Criar meu Co‑pilot</Link>
+        </motion.div>
+      </div>
+    </section>
+
+    <section className="sec" style={{ borderTop: "1px solid var(--line)" }}>
+      <div className="wrap">
+        <Label>tudo incluído</Label>
+        <h2 className="disp" style={{ fontSize: "clamp(34px,5vw,80px)", textAlign: "center", margin: "26px auto 70px", maxWidth: 1000 }}>
+          <Lines lines={["Sem plano.", "Sem pegadinha."]} />
+        </h2>
+        {INCLUIDO.map(([t, d], i) => <Item key={t} n={i + 1} title={t} star={i % 2 === 1} delay={(i % 3) * 0.07}>{d}</Item>)}
+        <div className="hair star" />
+      </div>
+    </section>
+
+    <section className="sec" style={{ borderTop: "1px solid var(--line)" }}>
+      <div className="wrap">
+        <Label>serviços avulsos</Label>
+        <h2 className="disp" style={{ fontSize: "clamp(34px,5vw,80px)", textAlign: "center", margin: "26px auto 20px", maxWidth: 1000 }}>
+          <Lines lines={["Só quando", "você pedir."]} />
+        </h2>
+        <motion.p className="serif" {...fade} style={{ fontSize: "clamp(18px,1.6vw,22px)", textAlign: "center", maxWidth: 620, margin: "0 auto 70px", color: "var(--mute)" }}>
+          Consultas oficiais pagas por uso, no Pix ou cartão, direto no app. Sem assinatura. Laudos e vistorias são feitos por parceiros credenciados.
+        </motion.p>
+        {AVULSOS.map(([t, d], i) => <Item key={t} n={i + 1} title={t} star={i % 2 === 1} delay={i * 0.07}>{d}</Item>)}
+        <div className="hair star" />
+      </div>
+    </section>
+
+    <Faq />
+    <Closing lines={["Cuidar do carro", "agora é de graça.", <span style={{ color: "var(--mute)" }} key="o">Comece hoje.</span>]} />
+  </>
 );
 
-// Recursos do app — tudo grátis, sem mensalidade.
-const freeFeatures = [
-  "Assistente de IA no WhatsApp: registre gastos por texto, foto do cupom ou áudio",
-  "Alertas de vencimento de IPVA, licenciamento, seguro e CNH",
-  "Controle de combustível, peças, revisões, pneus e multas",
-  "Consumo real (km/L), custo por km e manutenção por quilometragem",
-  "Relatórios e análises dos gastos do seu carro",
-  "Avaliação FIPE, Garagem (vitrine) e pedido de recompra",
-  "Indique e Ganhe (comissão via PIX)",
-];
-
-// Serviços avulsos (pagos só quando você usar) — receita via parceiros credenciados.
-const services = [
-  { icon: FileCheck2, t: "Raio-X do carro", d: "Consulta cautelar completa: histórico, leilão, sinistro e mais." },
-  { icon: IdCard, t: "CRLV-e na hora", d: "Emita o documento digital do veículo direto pelo app." },
-  { icon: Search, t: "Débitos & multas", d: "IPVA, licenciamento e multas com detalhamento por órgão." },
-  { icon: ScanLine, t: "Consulta de CNH", d: "Pontos, situação e vencimento da sua habilitação." },
-];
-
-export const Pricing = () => {
-  return (
-    <div className="relative w-full min-h-screen pt-32 bg-[#050505] overflow-x-hidden">
-      {/* --- HEADER --- */}
-      <div className="relative z-10 max-w-7xl mx-auto px-6 text-center mb-16">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="inline-flex items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 backdrop-blur-sm px-4 py-1.5 mb-8"
-        >
-          <Sparkles size={13} className="text-teal-300" />
-          <span className="text-[10px] md:text-xs font-bold tracking-widest text-teal-200 uppercase">
-            100% grátis · sem mensalidade
-          </span>
-        </motion.div>
-
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="text-5xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight mb-8 drop-shadow-xl"
-        >
-          Cuidar do seu carro <br />
-          agora é de graça
-        </motion.h1>
-
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="text-base md:text-lg text-gray-400 max-w-2xl mx-auto mb-4"
-        >
-          O TotexCar Co-pilot é gratuito pra todo mundo — dono de carro ou motorista de
-          app. Sem plano, sem cartão, sem pegadinha. Você só paga por serviços avulsos
-          quando precisar deles (e só se quiser).
-        </motion.p>
-      </div>
-
-      {/* --- CARD GRÁTIS --- */}
-      <div className="relative z-10 max-w-lg mx-auto px-6 mb-24">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-        >
-          <GradientBorder
-            gradient="from-teal-500 via-cyan-500 to-teal-600"
-            containerClassName="w-full rounded-3xl p-[1.5px]"
-            className="rounded-3xl"
-          >
-            <div className="relative flex flex-col p-8 rounded-3xl bg-[#0A0A0A] h-full">
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-teal-500 to-cyan-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-lg whitespace-nowrap">
-                Grátis pra sempre
-              </div>
-
-              <div className="mb-6 text-center">
-                <h3 className="text-xl font-bold text-white mb-2">TotexCar Co-pilot</h3>
-                <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-5xl font-bold text-white">R$ 0</span>
-                  <span className="text-gray-500 text-sm">/sempre</span>
-                </div>
-                <p className="text-gray-400 text-sm mt-2">Todo o app, sem mensalidade.</p>
-              </div>
-
-              <div className="mb-8">
-                <GradientBorder
-                  gradient="from-teal-500 via-cyan-500 to-teal-600"
-                  containerClassName="w-full rounded-xl p-[1px]"
-                  className="rounded-xl"
-                >
-                  <Link
-                    to="/entrar?tab=register"
-                    className="w-full py-3 bg-[#0F0F0F] text-white font-medium rounded-xl hover:bg-black transition-colors relative overflow-hidden group block"
-                  >
-                    <span className="relative z-10 block">
-                      <RollingText text="Começar grátis" className="justify-center" />
-                    </span>
-                  </Link>
-                </GradientBorder>
-              </div>
-
-              <div className="mt-auto space-y-4">
-                <p className="text-xs font-semibold text-white uppercase tracking-wider mb-4">
-                  Tudo incluído, sem pagar nada
-                </p>
-                {freeFeatures.map((feature, i) => (
-                  <PricingFeature key={i} text={feature} />
-                ))}
-              </div>
-            </div>
-          </GradientBorder>
-        </motion.div>
-      </div>
-
-      {/* --- SERVIÇOS AVULSOS --- */}
-      <div className="relative z-10 max-w-5xl mx-auto px-6 mb-32">
-        <div className="text-center mb-10">
-          <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-3">
-            Serviços avulsos, só quando precisar
-          </h2>
-          <p className="text-gray-400 max-w-2xl mx-auto">
-            O app é grátis. Quando você quiser um documento ou uma consulta oficial,
-            paga só por aquele serviço — no Pix ou cartão, direto no app. Sem
-            assinatura, sem compromisso.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {services.map((s, i) => {
-            const Ic = s.icon;
-            return (
-              <motion.div
-                key={s.t}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-                className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex gap-4"
-              >
-                <div className="w-11 h-11 rounded-xl bg-teal-500/15 flex items-center justify-center shrink-0">
-                  <Ic className="w-5 h-5 text-teal-400" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white mb-1">{s.t}</h3>
-                  <p className="text-sm text-gray-400 leading-relaxed">{s.d}</p>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-        <p className="text-center text-xs text-gray-600 mt-6">
-          Laudos, vistorias e outros serviços são prestados por parceiros credenciados.
-          Os valores aparecem no app antes de você confirmar.
-        </p>
-      </div>
-
-      <FAQ />
-      <CTA />
-    </div>
-  );
-};
+export default Pricing;
