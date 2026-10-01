@@ -69,7 +69,7 @@ export const CSS = `
 .h2x .ln{display:block;overflow:hidden;padding:.16em 0 .08em;margin:-.16em 0 -.08em}
 .h2x .ln>span{display:block;will-change:transform}
 .h2x .ph{position:relative;overflow:hidden;background:#0a0a0a;border:1px solid var(--line)}
-.h2x .ph img{position:absolute;inset:-12% 0;width:100%;height:124%;object-fit:cover;filter:grayscale(1) contrast(1.05) brightness(.9);transition:filter 3.2s cubic-bezier(.22,1,.36,1),transform 4s cubic-bezier(.22,1,.36,1)}
+.h2x .ph img{position:absolute;inset:-12% 0;width:100%;height:124%;object-fit:cover;filter:grayscale(1) contrast(1.05) brightness(.9);transition:filter 2.2s cubic-bezier(.22,1,.36,1),transform 2.8s cubic-bezier(.22,1,.36,1)}
 .h2x .ph.on img{filter:grayscale(0) contrast(1) brightness(1);transform:scale(1.03)}
 @media (hover:hover){.h2x .ph:hover img{filter:grayscale(0) contrast(1) brightness(1);transform:scale(1.03)}}
 .h2x .ph .cap{position:absolute;left:16px;bottom:14px;right:16px;display:flex;justify-content:space-between;gap:12px;color:#fff;mix-blend-mode:difference}
@@ -256,7 +256,7 @@ export function Foot() {
 }
 
 /** Fechamento padrão: título em 3 linhas + pílulas + rodapé. */
-export function Closing({ lines, primary = ["Começar grátis", "/entrar?tab=register"], secondary = ["Sou uma oficina", "/parceiro"] }: { lines?: ReactNode[]; primary?: [string, string]; secondary?: [string, string] | null }) {
+export function Closing({ lines, primary = ["Criar meu Co‑pilot", "/entrar?tab=register"], secondary = ["Sou uma oficina", "/parceiro"] }: { lines?: ReactNode[]; primary?: [string, string]; secondary?: [string, string] | null }) {
   const L = lines ?? ["Seu carro já faz", "parte da sua vida.", <span style={{ color: "var(--mute)" }} key="o">Agora organize a dele.</span>];
   return (
     <section className="sec" style={{ borderTop: "1px solid var(--line)", paddingBottom: 80 }}>

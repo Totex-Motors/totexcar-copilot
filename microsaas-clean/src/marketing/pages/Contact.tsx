@@ -36,7 +36,7 @@ export const Contact = () => (
     </section>
 
     <Faq />
-    <Closing lines={["Qualquer coisa,", "chama no WhatsApp.", <span style={{ color: "var(--mute)" }} key="o">A gente responde.</span>]} primary={["Começar grátis", "/entrar?tab=register"]} secondary={["Sou uma oficina", "/parceiro"]} />
+    <Closing lines={["Qualquer coisa,", "chama no WhatsApp.", <span style={{ color: "var(--mute)" }} key="o">A gente responde.</span>]} primary={["Criar meu Co‑pilot", "/entrar?tab=register"]} secondary={["Sou uma oficina", "/parceiro"]} />
   </>
 );
 
