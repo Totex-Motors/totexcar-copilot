@@ -10,7 +10,7 @@ import { motion, useInView, useReducedMotion, useScroll, useTransform, type Moti
 // Movimento (tudo com framer-motion, sem lib extra, respeita prefers-reduced-motion):
 //  - títulos entram linha a linha por máscara (clip), com stagger — nunca "fade genérico";
 //  - frase cinética acende palavra por palavra conforme o scroll (scroll-linked, não por tempo);
-//  - fotos reais coloridas com leve parallax no scroll e zoom lento no hover;
+//  - fotos reais em P&B com leve parallax; ganham cor no hover (desktop) ou quando entram na tela (toque);
 //  - números nos anéis contam quando entram na tela; marquee contínua, pausa no hover;
 //  - pílulas preenchem de ciano no hover e o ponto pulsa devagar.
 // Tudo que está aqui é o que o produto faz hoje. Tem nav e rodapé próprios (não usa MarketingLayout).
@@ -66,8 +66,9 @@ const CSS = `
 .h2x .ln{display:block;overflow:hidden;padding:.16em 0 .08em;margin:-.16em 0 -.08em}
 .h2x .ln>span{display:block;will-change:transform}
 .h2x .ph{position:relative;overflow:hidden;background:#0a0a0a;border:1px solid var(--line)}
-.h2x .ph img{position:absolute;inset:-12% 0;width:100%;height:124%;object-fit:cover;filter:brightness(.92) saturate(.95);transition:filter .8s cubic-bezier(.22,1,.36,1),transform 1.2s cubic-bezier(.22,1,.36,1)}
-.h2x .ph:hover img{filter:brightness(1) saturate(1);transform:scale(1.03)}
+.h2x .ph img{position:absolute;inset:-12% 0;width:100%;height:124%;object-fit:cover;filter:grayscale(1) contrast(1.05) brightness(.9);transition:filter .9s cubic-bezier(.22,1,.36,1),transform 1.2s cubic-bezier(.22,1,.36,1)}
+.h2x .ph:hover img{filter:grayscale(0) contrast(1) brightness(1);transform:scale(1.03)}
+@media (hover:none){.h2x .ph.on img{filter:grayscale(0) contrast(1) brightness(1);transform:scale(1.03)}}
 .h2x .ph .cap{position:absolute;left:16px;bottom:14px;right:16px;display:flex;justify-content:space-between;gap:12px;color:#fff;mix-blend-mode:difference}
 .h2x .photos{display:grid;grid-template-columns:repeat(12,1fr);gap:20px}
 @media (max-width:768px){.h2x .wrap{padding:0 20px}.h2x .sec{padding:96px 0}.h2x .ruler{display:none}.h2x .item{grid-template-columns:48px 1fr;gap:14px;padding:26px 0}.h2x .item .n{font-size:28px}.h2x .circ{width:140px;height:140px}.h2x .circ .serif{font-size:42px}.h2x .hero-row,.h2x .two,.h2x .three{grid-template-columns:1fr!important;gap:28px!important}.h2x .three{gap:40px!important}.h2x .corner-tl{left:20px!important;top:88px!important}.h2x .corner-bl{left:20px!important;bottom:28px!important}.h2x .corner-r{right:16px!important}.h2x header{padding:18px 20px!important}.h2x .phone{max-width:100%}.h2x .big{font-size:clamp(88px,30vw,300px)!important}.h2x .photos{grid-template-columns:1fr!important;gap:14px}.h2x .photos .ph{grid-column:auto!important;aspect-ratio:4/3!important}}
@@ -143,8 +144,10 @@ function Photo({ src, n, cap, col, ratio }: { src: string; n: string; cap: strin
   const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
   const y = useTransform(scrollYProgress, [0, 1], reduce ? ["0%", "0%"] : ["-6%", "6%"]);
+  // no toque não existe hover: a foto ganha cor quando está bem visível na tela
+  const on = useInView(ref, { amount: 0.55 });
   return (
-    <motion.div ref={ref} className="ph" style={{ gridColumn: col, aspectRatio: ratio }} {...fade}>
+    <motion.div ref={ref} className={`ph ${on ? "on" : ""}`} style={{ gridColumn: col, aspectRatio: ratio }} {...fade}>
       <motion.img src={src} alt={cap} loading="lazy" style={{ y }} />
       <div className="cap"><span className="mono" style={{ color: "#fff" }}>({n})</span><span className="mono" style={{ color: "#fff", textAlign: "right" }}>{cap}</span></div>
     </motion.div>
