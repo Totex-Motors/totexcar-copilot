@@ -69,7 +69,7 @@ export function Home() {
             <motion.p className="serif" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.75 }} style={{ fontSize: "clamp(20px,2vw,28px)", color: "var(--ink2)", maxWidth: 560, margin: 0 }}>
               Documentos, notas da oficina, multas, IPVA, gastos. Manda pro Co‑pilot: ele guarda, organiza o histórico do carro e te avisa do que importa antes de virar problema.
             </motion.p>
-            <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.95 }}><Link to="/entrar?tab=register" className="pill"><span className="dot" />Começar grátis</Link></motion.div>
+            <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.95 }}><Link to="/entrar?tab=register" className="pill"><span className="dot" />Criar meu Co‑pilot</Link></motion.div>
           </div>
         </div>
       </section>
@@ -197,7 +197,7 @@ export function Home() {
             <Lines lines={["Seu carro já faz", "parte da sua vida.", <span style={{ color: "var(--mute)" }} key="o">Agora organize a dele.</span>]} />
           </h2>
           <motion.div {...fade} style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-            <Link to="/entrar?tab=register" className="pill"><span className="dot" />Começar grátis</Link>
+            <Link to="/entrar?tab=register" className="pill"><span className="dot" />Criar meu Co‑pilot</Link>
             <Link to="/parceiro" className="pill ghost">Sou uma oficina</Link>
           </motion.div>
           <Foot />
