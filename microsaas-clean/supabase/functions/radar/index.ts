@@ -15,7 +15,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import {
   SERVICE_TYPES, normalizeServiceType, isEmergencyService,
   dedupProviders, rankProviders, haversineKm, normalizePhone,
-  searchViaSearchPreview, searchViaGooglePlaces,
+  searchViaSearchPreview, searchViaGooglePlaces, partnerToRaw, partnersFirst,
   type RawProvider, type RankedProvider, type RankingMode,
 } from "../_shared/radar-search.ts";
 
@@ -164,17 +164,29 @@ Deno.serve(async (req) => {
       // ---- parceiros Totex: as lojas do ecossistema ganham SELO, não posição ----
       const { data: lojas } = await admin.from("users")
         .select("dealership").eq("role", "dealer").not("dealership", "is", null);
-      const partnerNames = [...new Set((lojas || []).map((l: any) => String(l.dealership)))];
 
-      // ---- ranking ----
+      // ---- CLUBE DE PARCEIROS (service_partners aprovados): entram na lista COM benefício e vão pro TOPO ----
+      // Independe do cache (o cache só guarda resultado público). Casa categoria + cidade (ou sem cidade = rede toda).
+      const cityTok = (locationText || "").split(/[,\-]/)[0].replace(/[,()%]/g, " ").trim();
+      let pq = admin.from("service_partners").select("*").eq("active", true).eq("status", "approved").eq("category", serviceType);
+      if (cityTok && !/^coordenadas/i.test(cityTok)) pq = pq.or(`city.is.null,city.ilike.%${cityTok}%`);
+      const { data: parceiros } = await pq.limit(10);
+      const partnerRaws: RawProvider[] = (parceiros || []).map(partnerToRaw);
+      const partnerNames = [...new Set([
+        ...(lojas || []).map((l: any) => String(l.dealership)),
+        ...(parceiros || []).map((x: any) => String(x.name)),
+      ])];
+
+      // ---- ranking: parceiros primeiro (prioridade, depois score), depois os públicos por score ----
       const mode = (String(p.mode || "balanced") as RankingMode);
-      let ranked: RankedProvider[] = rankProviders(lista, {
+      let ranked: RankedProvider[] = partnersFirst(rankProviders(dedupProviders([...partnerRaws, ...lista]), {
         mode, radiusKm, isEv, isHybrid, emergency: emEmergencia, partnerNames,
-      }).slice(0, limite);
+      })).slice(0, limite);
 
-      // ---- ampliação progressiva do raio quando não achou nada ----
+      // ---- ampliação progressiva do raio quando não achou resultado PÚBLICO ----
       let raioAmpliado: number | null = null;
-      if (ranked.length === 0 && !cacheHit && !erroBusca && locationText) {
+      const semPublico = ranked.every((x) => x.provider_status === "parceiro_totex");
+      if (semPublico && !cacheHit && !erroBusca && locationText) {
         const raioMaior = radiusKm * 2;
         const r2 = await searchViaSearchPreview(settings?.openai_api_key || "", {
           serviceType, locationText, vehicle: carro, radiusKm: raioMaior, limit: limite,
@@ -183,10 +195,17 @@ Deno.serve(async (req) => {
         if (r2.providers.length) {
           raioAmpliado = raioMaior;
           fontes.push("search_preview:raio_ampliado");
-          ranked = rankProviders(dedupProviders(r2.providers), {
+          ranked = partnersFirst(rankProviders(dedupProviders([...partnerRaws, ...r2.providers]), {
             mode, radiusKm: raioMaior, isEv, isHybrid, emergency: emEmergencia, partnerNames,
-          }).slice(0, limite);
+          })).slice(0, limite);
         }
+      }
+
+      // ---- conta aparições dos parceiros (prova de valor pro parceiro) ----
+      for (const rp of ranked) {
+        if (!rp.partner_id) continue;
+        const row = (parceiros || []).find((x: any) => String(x.id) === rp.partner_id);
+        if (row) await admin.from("service_partners").update({ shown_count: (Number(row.shown_count) || 0) + 1, updated_at: new Date().toISOString() }).eq("id", rp.partner_id);
       }
 
       // ---- persiste busca + resultados (auditoria do ranking) ----
@@ -298,7 +317,7 @@ Deno.serve(async (req) => {
     // Telemetria de produto (o motorista abriu a rota/telefone). NÃO é CRM:
     // não cria cadastro do motorista no estabelecimento.
     if (action === "record_action") {
-      const permitidas = ["viewed", "opened_route", "opened_phone", "opened_whatsapp", "opened_website", "requested_quote"];
+      const permitidas = ["viewed", "opened_route", "opened_phone", "opened_whatsapp", "opened_website", "requested_quote", "redeemed_benefit"];
       const tipo = String(p.action_type || "");
       if (!permitidas.includes(tipo)) return json({ error: "action_type_invalido" }, 400);
 
@@ -307,6 +326,14 @@ Deno.serve(async (req) => {
         search_id: p.search_id || null, provider_id: String(p.provider_id),
         action_type: tipo, metadata: p.metadata || {},
       });
+
+      // Clube de Parceiros: contadores do parceiro (clique em contato / resgate do benefício)
+      const partnerId = p.partner_id ? String(p.partner_id) : null;
+      if (partnerId) {
+        const col = tipo === "redeemed_benefit" ? "redeem_count" : "click_count";
+        const { data: row } = await admin.from("service_partners").select(col).eq("id", partnerId).maybeSingle();
+        if (row) await admin.from("service_partners").update({ [col]: (Number((row as any)[col]) || 0) + 1, updated_at: new Date().toISOString() }).eq("id", partnerId);
+      }
       return json({ ok: true });
     }
 

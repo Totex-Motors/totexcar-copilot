@@ -27,6 +27,10 @@ export interface RadarProvider {
   whatsapp_uri?: string | null;
   maps_uri?: string | null;
   website_uri?: string | null;
+  // Clube de Parceiros
+  partner_id?: string | null;
+  benefit?: string | null;
+  partner_code?: string | null;
 }
 
 export interface RadarResult {
@@ -105,11 +109,11 @@ export function useRadar() {
 
   // telemetria de produto (abriu rota/telefone). NÃO cria cadastro do
   // motorista no estabelecimento.
-  const registrarAcao = async (provider_id: string, action_type: string, search_id?: string | null) => {
+  const registrarAcao = async (provider_id: string, action_type: string, search_id?: string | null, partner_id?: string | null) => {
     if (!provider_id) return;
     try {
       await supabase.functions.invoke("radar", {
-        body: { action: "record_action", provider_id, action_type, search_id },
+        body: { action: "record_action", provider_id, action_type, search_id, partner_id: partner_id || null },
       });
     } catch {
       /* telemetria nunca atrapalha o uso */

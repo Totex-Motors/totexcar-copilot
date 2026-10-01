@@ -42,6 +42,7 @@ export const Footer = () => {
             <h4 className="text-white font-semibold text-sm mb-2">Produto</h4>
             <FooterLink to="/pricing">Grátis</FooterLink>
             <FooterLink to="/integrations">Recursos</FooterLink>
+            <FooterLink to="/parceiro">Seja parceiro</FooterLink>
             <FooterLink to="/entrar?tab=register">Começar grátis</FooterLink>
           </div>
 
