@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Switch } from "@/components/ui/switch";
-import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode, Banknote, Wrench, Loader2, Eye, ScanLine } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode, Banknote, Wrench, Loader2, Eye, ScanLine, Send, Copy, Radar } from "lucide-react";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
@@ -116,6 +117,7 @@ const Admin = () => {
           <TabsTrigger value="funil" className="gap-2"><TrendingUp className="w-4 h-4" /> Funil Grátis</TabsTrigger>
           <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
           <TabsTrigger value="partners" className="gap-2"><Wrench className="w-4 h-4" /> Parceiros</TabsTrigger>
+          <TabsTrigger value="prospects" className="gap-2"><Radar className="w-4 h-4" /> Prospecção</TabsTrigger>
           <TabsTrigger value="gpt" className="gap-2"><ScanLine className="w-4 h-4" /> GPT Motors</TabsTrigger>
         </TabsList>
 
@@ -142,6 +144,9 @@ const Admin = () => {
         </TabsContent>
         <TabsContent value="partners" className="mt-6">
           <PartnersTab />
+        </TabsContent>
+        <TabsContent value="prospects" className="mt-6">
+          <ProspectsTab />
         </TabsContent>
         <TabsContent value="gpt" className="mt-6">
           <GptMotorsTab />
@@ -1328,6 +1333,169 @@ type Partner = {
   click_count?: number; redeem_count?: number; source?: string;
 };
 const emptyPartner: Partner = { name: "", category: "oficina", city: "", phone: "", whatsapp: "", address: "", website: "", priority: 0, active: true, notes: "", benefit: "", status: "approved", email: "", contact_name: "" };
+
+// ===================== PROSPECÇÃO — o Radar como fonte de parceiros (convite 1 a 1 pelo WhatsApp) =====================
+type Prospect = {
+  id: string; name: string; category: string | null; category_key: string | null; city: string | null; state: string | null;
+  address: string | null; phone: string | null; whatsapp: string | null; digits: string; rating: number | null; review_count: number | null;
+  prospect: { status: string; ref: string | null; notes: string | null; touches: number; contacted_at: string | null; last_touch_at: string | null } | null;
+  already_partner: { id: string; status: string } | null;
+};
+const PROSPECT_STATUS: { v: string; l: string; cls: string }[] = [
+  { v: "novo", l: "novo", cls: "bg-muted text-muted-foreground" },
+  { v: "contatado", l: "contatado", cls: "bg-sky-100 text-sky-800" },
+  { v: "respondeu", l: "respondeu", cls: "bg-amber-100 text-amber-800" },
+  { v: "cadastrou", l: "cadastrou", cls: "bg-emerald-100 text-emerald-800" },
+  { v: "recusou", l: "recusou", cls: "bg-rose-100 text-rose-800" },
+  { v: "sem_whatsapp", l: "sem WhatsApp", cls: "bg-muted text-muted-foreground" },
+];
+const MSG_PADRAO = `Oi, {nome}! Aqui é o Marcos, da Totex Motors (lojas de carro em shopping, Carapicuíba e Alphaville).
+
+Nossos clientes usam um assistente no WhatsApp pra cuidar do carro, e quando alguém precisa de {categoria} em {cidade} ele mostra as opções perto. Hoje a {nome} aparece lá como resultado comum.
+
+Quero colocar vocês como PARCEIRO: aparece primeiro, com selo, e o cliente já chega sabendo que tem um benefício seu (tipo "10% na primeira visita" ou "diagnóstico grátis").
+
+Não tem mensalidade nem taxa. Você só dá o benefício quando o cliente aparecer.
+
+Cadastro leva 2 minutos, já deixei preenchido:
+{link}
+
+Faz sentido pra vocês?`;
+const lsGet = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* */ } };
+
+function ProspectsTab() {
+  const qc = useQueryClient();
+  const { data: rows, isLoading } = useQuery({
+    queryKey: ["prospects"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "list_prospects" } });
+      if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
+      return ((data as any)?.prospects || []) as Prospect[];
+    },
+  });
+  const [ref, setRef] = useState(() => lsGet("prospect_ref", "zap1"));
+  const [msg, setMsg] = useState(() => lsGet("prospect_msg", MSG_PADRAO));
+  const [city, setCity] = useState("todas");
+  const [cat, setCat] = useState("todas");
+  const [st, setSt] = useState("abertos");
+  const [busca, setBusca] = useState("");
+  useEffect(() => { lsSet("prospect_ref", ref); }, [ref]);
+  useEffect(() => { lsSet("prospect_msg", msg); }, [msg]);
+
+  const cities = [...new Set((rows || []).map((r) => (r.city || "").trim()).filter(Boolean))].sort();
+  const cats = [...new Set((rows || []).map((r) => r.category || "").filter(Boolean))].sort();
+  const statusOf = (r: Prospect) => r.already_partner ? "cadastrou" : (r.prospect?.status || "novo");
+  const filtered = (rows || []).filter((r) => {
+    if (city !== "todas" && (r.city || "").trim() !== city) return false;
+    if (cat !== "todas" && r.category !== cat) return false;
+    const s = statusOf(r);
+    if (st === "abertos" && (s === "cadastrou" || s === "recusou" || s === "sem_whatsapp")) return false;
+    if (st !== "abertos" && st !== "todos" && s !== st) return false;
+    if (busca && !`${r.name} ${r.city} ${r.address}`.toLowerCase().includes(busca.toLowerCase())) return false;
+    return true;
+  }).sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0));
+
+  const linkDe = (r: Prospect) => {
+    const q = new URLSearchParams({ ref, n: r.name, c: (r.city || "").trim(), p: r.id });
+    if (r.category_key) q.set("cat", r.category_key);
+    if (r.digits) q.set("w", r.digits);
+    return `${window.location.origin}/parceiro?${q.toString()}`;
+  };
+  const textoDe = (r: Prospect) => msg
+    .split("{nome}").join(r.name).split("{categoria}").join((r.category || "serviço").toLowerCase())
+    .split("{cidade}").join((r.city || "sua região").trim()).split("{link}").join(linkDe(r));
+  const touch = async (r: Prospect, status: string, notes?: string) => {
+    const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "touch_prospect", provider_id: r.id, status, ref, notes } });
+    if (error || (data as any)?.error) { toast({ title: "Erro", description: String((data as any)?.error || error?.message), variant: "destructive" }); return; }
+    qc.invalidateQueries({ queryKey: ["prospects"] });
+  };
+  const chamar = async (r: Prospect) => {
+    const d = r.digits.replace(/^0+/, "");
+    if (!d || d.length < 10) { toast({ title: "Esse estabelecimento não tem telefone válido", variant: "destructive" }); return; }
+    const num = d.startsWith("55") ? d : `55${d}`;
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(textoDe(r))}`, "_blank", "noopener");
+    await touch(r, "contatado");
+  };
+  const copiar = async (r: Prospect) => { await navigator.clipboard?.writeText(linkDe(r)); toast({ title: "Link copiado" }); };
+
+  const tot = { abertos: 0, contatado: 0, respondeu: 0, cadastrou: 0 };
+  for (const r of rows || []) { const s = statusOf(r); if (s === "cadastrou") tot.cadastrou++; else if (s === "respondeu") tot.respondeu++; else if (s === "contatado") tot.contatado++; else if (s === "novo") tot.abertos++; }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <Card className="border-0 shadow-premium-md lg:col-span-1">
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Send className="w-5 h-5" /> Mensagem e número</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            A lista ao lado vem do próprio Radar: todo estabelecimento que apareceu numa busca, com telefone. Falta algum? Faça a busca na tela <a href="/servicos" className="text-primary underline">Serviços</a> (categoria + cidade) e ele entra aqui.
+          </p>
+          <div className="space-y-2">
+            <Label>Qual WhatsApp está mandando? (vai no link como origem)</Label>
+            <div className="flex gap-2">
+              {["zap1", "zap2", "zap3"].map((z) => <Button key={z} size="sm" variant={ref === z ? "default" : "outline"} className={ref === z ? "bg-gradient-primary" : ""} onClick={() => setRef(z)}>{z}</Button>)}
+              <Input value={ref} onChange={(e) => setRef(e.target.value.replace(/[^a-z0-9_-]/gi, "").toLowerCase())} placeholder="ou outro nome" className="max-w-[140px]" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Mensagem de abertura</Label>
+            <Textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={14} className="text-sm" />
+            <p className="text-xs text-muted-foreground">Troca automática: <code>{"{nome}"}</code>, <code>{"{categoria}"}</code>, <code>{"{cidade}"}</code>, <code>{"{link}"}</code>. Até 25 por dia por número, respondendo quem responde. Follow-up só uma vez, 48 h depois.</p>
+            <Button size="sm" variant="ghost" onClick={() => setMsg(MSG_PADRAO)}>Voltar ao texto padrão</Button>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            {[["novos", tot.abertos], ["contatados", tot.contatado], ["responderam", tot.respondeu], ["cadastraram", tot.cadastrou]].map(([l, n]) => (
+              <div key={String(l)} className="rounded-lg border p-2"><div className="text-lg font-bold">{n}</div><div className="text-[10px] text-muted-foreground uppercase tracking-wide">{l}</div></div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-0 shadow-premium-md lg:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2"><Radar className="w-5 h-5" /> Estabelecimentos do Radar ({filtered.length})</CardTitle>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2">
+            <Select value={city} onValueChange={setCity}><SelectTrigger><SelectValue placeholder="Cidade" /></SelectTrigger>
+              <SelectContent><SelectItem value="todas">Todas as cidades</SelectItem>{cities.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select>
+            <Select value={cat} onValueChange={setCat}><SelectTrigger><SelectValue placeholder="Categoria" /></SelectTrigger>
+              <SelectContent><SelectItem value="todas">Todas as categorias</SelectItem>{cats.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select>
+            <Select value={st} onValueChange={setSt}><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="abertos">Em aberto</SelectItem><SelectItem value="todos">Todos</SelectItem>{PROSPECT_STATUS.map((x) => <SelectItem key={x.v} value={x.v}>{x.l}</SelectItem>)}</SelectContent></Select>
+            <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar nome / endereço" />
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? <div className="p-8 text-center text-muted-foreground">Carregando...</div>
+            : !filtered.length ? <div className="p-8 text-center text-muted-foreground">Nada aqui com esses filtros. Faça uma busca no Radar (tela Serviços) pra descobrir estabelecimentos novos.</div>
+            : <div className="divide-y divide-border">
+              {filtered.map((r) => {
+                const s = statusOf(r); const sd = PROSPECT_STATUS.find((x) => x.v === s) || PROSPECT_STATUS[0];
+                return (
+                  <div key={r.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate flex items-center gap-2">{r.name}<Badge className={`border-0 ${sd.cls}`}>{sd.l}</Badge>{r.already_partner && <Badge className="border-0 bg-emerald-100 text-emerald-800">parceiro {r.already_partner.status}</Badge>}</p>
+                      <p className="text-xs text-muted-foreground truncate">{r.category || "—"}{r.city ? ` · ${r.city}` : ""}{r.rating ? ` · ★ ${Number(r.rating).toFixed(1)}${r.review_count ? ` (${r.review_count})` : ""}` : ""}{r.digits ? ` · ${r.digits}` : " · sem telefone"}</p>
+                      {r.prospect && <p className="text-xs text-muted-foreground">{r.prospect.touches || 0} contato{(r.prospect.touches || 0) === 1 ? "" : "s"}{r.prospect.last_touch_at ? ` · último ${new Date(r.prospect.last_touch_at).toLocaleDateString("pt-BR")}` : ""}{r.prospect.ref ? ` · via ${r.prospect.ref}` : ""}{r.prospect.notes ? ` · ${r.prospect.notes}` : ""}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0 flex-wrap">
+                      {!r.already_partner && <Button size="sm" className="bg-gradient-primary gap-1" onClick={() => chamar(r)}><MessageCircle className="w-4 h-4" /> WhatsApp</Button>}
+                      <Button size="sm" variant="ghost" onClick={() => copiar(r)} title="Copiar link personalizado"><Copy className="w-4 h-4" /></Button>
+                      {!r.already_partner && (
+                        <Select value={s} onValueChange={(v) => touch(r, v)}>
+                          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>{PROSPECT_STATUS.map((x) => <SelectItem key={x.v} value={x.v}>{x.l}</SelectItem>)}</SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 function PartnersTab() {
   const qc = useQueryClient();
