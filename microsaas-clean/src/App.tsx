@@ -34,6 +34,7 @@ import Servicos from "./pages/Servicos";
 import Selo from "./pages/Selo";
 import Suporte from "./pages/Suporte";
 import Parceiro from "./pages/Parceiro";
+import Home2 from "./marketing/pages/Home2";
 import AccessLink from "./pages/AccessLink";
 import NotFound from "./pages/NotFound";
 import { PendingCouponApplier } from "./components/PendingCouponApplier";
@@ -98,6 +99,8 @@ const App = () => (
           <Route path="/suporte" element={<Suporte />} />
           {/* Clube de Parceiros — cadastro self-service de oficina/serviço (público) */}
           <Route path="/parceiro" element={<Parceiro />} />
+          {/* Home round 2 (teste visual — ?v=mono | ?v=ciano). Não substitui a "/" até aprovação. */}
+          <Route path="/home2" element={<Home2 />} />
           {/* Link curto de acesso do WhatsApp (troca o código pelo link mágico) */}
           <Route path="/a/:code" element={<AccessLink />} />
 
