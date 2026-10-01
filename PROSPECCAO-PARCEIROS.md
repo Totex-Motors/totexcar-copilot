@@ -59,6 +59,9 @@ que tem um benefício seu (tipo "10% na primeira visita" ou "diagnóstico gráti
 
 Não tem mensalidade nem taxa. Você só dá o benefício quando o cliente aparecer.
 
+É grátis pra todo mundo, inclusive pros concorrentes, e ninguém paga pra subir: quem dá o
+maior benefício fica no topo. Simples assim.
+
 Cadastro leva 2 minutos, já deixei preenchido:
 [link personalizado]
 
@@ -95,6 +98,16 @@ benefício "[benefício]". Seu código de resgate é [CÓDIGO]: o cliente fala e
 Conhece alguém de confiança que faz [borracharia / chaveiro / socorro] por aí? Me passa o
 contato que eu faço o mesmo convite.
 ```
+
+## A regra do topo (o argumento que fecha)
+
+- Grátis pra todo mundo, inclusive concorrentes. Ninguém paga pra subir, a gente não escolhe favorito.
+- Até **3 por categoria e cidade** ficam no topo com selo. Entra quem declara o **maior benefício em
+  reais** pro dono do carro.
+- Depois de cada resgate o cliente responde "foi aplicado?". Quem não honra, desce.
+- O parceiro vê a posição dele e muda o benefício quando quiser, pelo link
+  `co-pilot.totexmotors.com/parceiro?code=CÓDIGO` (o código de resgate dele).
+- Quando alguém reclamar que "não apareceu no topo": a resposta é a regra, não o favor.
 
 ## O que o admin mostra
 

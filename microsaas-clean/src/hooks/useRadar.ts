@@ -31,6 +31,9 @@ export interface RadarProvider {
   partner_id?: string | null;
   benefit?: string | null;
   partner_code?: string | null;
+  benefit_value?: number | null; // valor estimado do benefício (R$)
+  honor_rate?: number | null;    // % de clientes que confirmaram o benefício
+  top?: boolean;                 // regra do topo: entre os 3 com maior benefício na categoria/cidade
 }
 
 export interface RadarResult {
