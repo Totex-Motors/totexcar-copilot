@@ -59,6 +59,17 @@ Deno.serve(async (req) => {
   }).select("id, code").single();
   if (error) { console.error("parceiro insert:", error); return json({ ok: false, error: "falha_ao_salvar" }, 500); }
 
+  // veio de um link de prospecção (?p=<discovered_providers.id>): marca o prospect como "cadastrou"
+  const providerId = /^[0-9a-f-]{36}$/i.test(String(b.provider_id || "")) ? String(b.provider_id) : null;
+  if (providerId) {
+    try {
+      await admin.from("partner_prospects").upsert({
+        provider_id: providerId, status: "cadastrou", partner_id: data.id, ref: source,
+        last_touch_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      }, { onConflict: "provider_id" });
+    } catch { /* nunca bloqueia o cadastro */ }
+  }
+
   // sinaliza no funil (métricas do admin); nunca bloqueia o cadastro
   try {
     await admin.from("whatsapp_events").insert({

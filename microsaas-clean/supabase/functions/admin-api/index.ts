@@ -1,6 +1,7 @@
 // TotexCar Co-pilot — Admin API (gestão de proprietários)
 // Ações protegidas por papel admin. Usa service role para criar/excluir contas.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { SERVICE_TYPES } from "../_shared/radar-search.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -241,6 +242,52 @@ Deno.serve(async (req) => {
         const { data: cur } = await admin.from("service_partners").select("code").eq("id", id).maybeSingle();
         if (status === "approved" && !cur?.code) upd.code = crypto.randomUUID().replace(/-/g, "").slice(0, 6);
         const { error } = await admin.from("service_partners").update(upd).eq("id", id);
+        if (error) throw error;
+        return json({ ok: true });
+      }
+
+      // ===================== PROSPECÇÃO (Radar → convite 1 a 1) =====================
+      // Lista os estabelecimentos públicos que o Radar já descobriu (com telefone), o estágio de cada um
+      // e se já virou parceiro (telefone bate com service_partners).
+      case "list_prospects": {
+        const { data: provs, error } = await admin.from("discovered_providers")
+          .select("id, name, category, city, state, address, phone, phone_normalized, whatsapp, rating, review_count, last_checked_at")
+          .eq("provider_status", "publico").not("phone", "is", null)
+          .order("last_checked_at", { ascending: false }).limit(1000);
+        if (error) throw error;
+        const { data: pros } = await admin.from("partner_prospects").select("*");
+        const { data: parts } = await admin.from("service_partners").select("id, phone, whatsapp, status");
+        const byProv = new Map((pros || []).map((x: any) => [x.provider_id, x]));
+        const partnerPhones = new Map<string, any>();
+        for (const pt of (parts || [])) for (const ph of [pt.phone, pt.whatsapp]) { const d = String(ph || "").replace(/\D/g, ""); if (d) partnerPhones.set(d, pt); }
+        const keyOf = (label: string) => Object.entries(SERVICE_TYPES).find(([, v]) => v.label === label)?.[0] || null;
+        const list = (provs || []).map((pv: any) => {
+          const digits = String(pv.whatsapp || pv.phone_normalized || pv.phone || "").replace(/\D/g, "");
+          const already = partnerPhones.get(digits) || null;
+          return {
+            ...pv, digits, category_key: keyOf(String(pv.category || "")),
+            prospect: byProv.get(pv.id) || null,
+            already_partner: already ? { id: already.id, status: already.status } : null,
+          };
+        });
+        return json({ ok: true, prospects: list });
+      }
+
+      case "touch_prospect": {
+        const providerId = String(payload.provider_id || "");
+        const status = String(payload.status || "");
+        if (!providerId || !["novo", "contatado", "respondeu", "cadastrou", "recusou", "sem_whatsapp"].includes(status)) return json({ error: "params" }, 400);
+        const { data: cur } = await admin.from("partner_prospects").select("*").eq("provider_id", providerId).maybeSingle();
+        const now = new Date().toISOString();
+        const row: Record<string, unknown> = {
+          provider_id: providerId, status, updated_at: now, last_touch_at: now,
+          ref: String(payload.ref || cur?.ref || "").trim() || null,
+          notes: payload.notes !== undefined ? (String(payload.notes || "").trim() || null) : (cur?.notes ?? null),
+          created_by: cur?.created_by || caller.id,
+          touches: (Number(cur?.touches) || 0) + (status === "contatado" ? 1 : 0),
+          contacted_at: cur?.contacted_at || (status === "contatado" ? now : null),
+        };
+        const { error } = await admin.from("partner_prospects").upsert(row, { onConflict: "provider_id" });
         if (error) throw error;
         return json({ ok: true });
       }

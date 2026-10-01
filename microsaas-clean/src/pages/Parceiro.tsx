@@ -61,7 +61,7 @@ export default function Parceiro() {
     if (!ok || busy) return;
     setBusy(true); setErr(null);
     try {
-      const { data, error } = await supabase.functions.invoke("parceiro", { body: { ...f, whatsapp: zap, source } });
+      const { data, error } = await supabase.functions.invoke("parceiro", { body: { ...f, whatsapp: zap, source, provider_id: params.get("p") || undefined } });
       const d = data as any;
       if (error || !d?.ok) { setErr(ERROS[d?.error] || "Não consegui enviar agora. Tente de novo em instantes."); return; }
       setDone({ code: d.code, already: d.already, status: d.status });
