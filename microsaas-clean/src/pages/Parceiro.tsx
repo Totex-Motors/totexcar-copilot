@@ -29,6 +29,13 @@ const maskZap = (v: string) => {
   return d.length <= 2 ? d : d.length <= 7 ? `(${d.slice(0, 2)}) ${d.slice(2)}` : `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 };
 
+const QUEM: [string, string][] = [
+  ["Lojas em shoppings", "Stands da Totex dentro de shoppings na Grande São Paulo, com estúdio de fotos e avaliação presencial. Gente passando todo dia."],
+  ["Rede em franquia", "O modelo é replicado em lojas franqueadas. Cada loja nova entrega o Co‑pilot pros clientes dela — e o Radar de parceiros vai junto."],
+  ["Grátis pro dono do carro", "O Co‑pilot não cobra mensalidade. Por isso o dono usa de verdade: documentos, manutenção, multas, e a busca por serviço perto dele."],
+  ["O que você ganha", "Quando alguém busca o seu tipo de serviço na sua região, o seu negócio aparece primeiro, com selo e benefício. Você só dá o benefício quando o cliente chega."],
+];
+
 const PORQUE: [string, string][] = [
   ["Clientes novos da sua região", "Quem busca no Radar do Co‑pilot já está decidido a contratar. Seu negócio aparece primeiro, com selo e botão de resgate."],
   ["Você só dá o benefício quando o cliente aparece", "Nada de taxa, nada de adiantamento, nada de mensalidade."],
@@ -38,7 +45,9 @@ const PORQUE: [string, string][] = [
 export default function Parceiro() {
   const [params] = useSearchParams();
   const source = params.get("ref") || params.get("src") || params.get("utm_source") || "self_service";
-  const [f, setF] = useState({ name: "", category: "oficina", city: "", address: "", whatsapp: "", email: "", contact_name: "", benefit: "", website: "" });
+  // Link personalizado de prospecção: ?n=Nome+do+Negócio&cat=guincho&c=Santana+de+Parnaíba — o parceiro abre já preenchido.
+  const catIni = CATS.some(([v]) => v === params.get("cat")) ? String(params.get("cat")) : "oficina";
+  const [f, setF] = useState({ name: params.get("n") || "", category: catIni, city: params.get("c") || "", address: "", whatsapp: params.get("w") || "", email: "", contact_name: "", benefit: "", website: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<null | { code?: string; already?: boolean; status?: string }>(null);
@@ -109,6 +118,22 @@ export default function Parceiro() {
             <div className="wrap">
               {PORQUE.map(([t, d], i) => <Item key={t} n={i + 1} title={t} star={i === 2} delay={i * 0.08}>{d}</Item>)}
               <div className="hair star" />
+            </div>
+          </section>
+
+          <section className="sec" style={{ borderTop: "1px solid var(--line)" }}>
+            <div className="wrap two" style={{ alignItems: "start" }}>
+              <div>
+                <Label left>quem é a totex</Label>
+                <h2 className="disp" style={{ fontSize: "clamp(40px,5.6vw,88px)", margin: "26px 0 28px" }}><Lines lines={["Loja de carro", "que virou", <span style={{ color: "var(--mute)" }} key="g">tecnologia.</span>]} /></h2>
+                <motion.p className="serif" {...fade} style={{ fontSize: "clamp(19px,1.7vw,24px)", color: "var(--ink2)", maxWidth: 440, margin: 0 }}>
+                  A Totex Motors vende carros em lojas dentro de shoppings na Grande São Paulo e cresce em rede, por franquia. Todo cliente que passa pelo stand ganha o Co‑pilot: um assistente de carro no WhatsApp, grátis, que guarda documentos, avisa vencimentos e indica onde resolver cada coisa. É aí que o seu negócio entra.
+                </motion.p>
+              </div>
+              <div>
+                {QUEM.map(([t, d], i) => <Item key={t} n={i + 1} title={t} star={i % 2 === 1} delay={i * 0.08}>{d}</Item>)}
+                <div className="hair star" />
+              </div>
             </div>
           </section>
 
