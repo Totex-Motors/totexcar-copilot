@@ -1663,7 +1663,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         const rv = await resV.json().catch(() => ({}));
         if (rv?.ok && (rv.plano || rv.plano_texto)) {
           const { data: cfgApp } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-          const appUrl = String(cfgApp?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+          const appUrl = String(cfgApp?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
           // link só quando o plano ESTRUTURADO existe (é ele que vira cards e fica salvo)
           const linkCards = rv.plano ? `${appUrl}/viagem` : null;
           return {
@@ -2149,7 +2149,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
     if (name === "link_acesso") {
       // Link mágico de uso único (sem senha) — a conta da cortesia tem senha aleatória, então o acesso web é por aqui.
       const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-      const base = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+      const base = (cfg?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
       const email = user.email || `${String(user.phone || "").replace(/\D/g, "")}@totexcarfinance.app`;
       try {
         const { data: gen, error } = await supabase.auth.admin.generateLink({
@@ -2563,7 +2563,7 @@ async function finalizeSellLead(phone: string, pending: { id: string; parsed: an
 
   // 30 dias grátis (quem vende, quer comprar depois)
   const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-  await sendStandGift(phone, (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, ""));
+  await sendStandGift(phone, (cfg?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, ""));
 }
 
 async function handleStandSell(phone: string, text: string, contactName?: string): Promise<boolean> {
@@ -2724,7 +2724,7 @@ function agendaDays(count = 6): { label: string; iso: string }[] {
   return out;
 }
 function agendaAppUrl(row?: { app_url?: string | null } | null): string {
-  return (row?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+  return (row?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
 }
 
 // OFERTA de agendamento — mostra o estúdio (gera desejo real: foto boa vende mais rápido) e o CTA.
@@ -3269,7 +3269,7 @@ async function handleStandLead(phone: string, text: string, contactName?: string
     await standVitrine(phone, loja, leadId, { loja, promotor, carro: carroId, nome: contactName || null }, {});
     // presente: 30 dias grátis + como ativar (logo depois da vitrine)
     const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-    const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+    const appUrl = (cfg?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
     await sendStandGift(phone, appUrl);
     return true;
   } catch (e) { console.error("handleStandLead:", e); return true; } // código presente = já tratamos
@@ -3430,7 +3430,7 @@ async function handleStandFollowup(phone: string, text: string): Promise<boolean
 
   const q = parseCarQuery(text); // entende tipo, preço E modelo/marca ("Mustang")
   const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-  const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+  const appUrl = (cfg?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
   // rede de segurança: garante que o visitante saiba do presente de 30 dias (dedup 1x)
   await sendStandGift(phone, appUrl);
   if (!q.categoria && !q.precoMax && !q.search) {
@@ -3716,7 +3716,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
 
       if (!jaAvisadoHoje) {
         const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-        const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+        const appUrl = (cfg?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
         await sendText(msg.phone, `🔒 Seu acesso ao TotexCar Co-pilot está inativo.\n\nPra voltar a cuidar do seu carro por aqui, é só assinar (a partir de R$ 10,99/mês):\n${appUrl}/plans\n\nAssim que o pagamento for confirmado, eu volto a funcionar automaticamente. 🚗`);
       }
 
@@ -3757,7 +3757,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
             raw: { via: "webhook_primeira_resposta" }, parsed: {},
           });
           const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-          const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+          const appUrl = (cfg?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
           await waSendDocument(await getSettings(), msg.phone,
             await kitUrlFor(appUrl, user.dealership), KIT_FILENAME,
             "🎁 Seu guia de boas-vindas: tudo o que eu faço pelo seu carro, em 7 páginas rápidas.");
@@ -3837,7 +3837,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
 
     const today = new Date().toISOString().split("T")[0];
     const { data: appCfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-    const appUrl = (appCfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+    const appUrl = (appCfg?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
     const system = `Você é o **TotexCar Co-pilot**, o assistente de IA do carro do usuário (ecossistema Totexmotors). Responda SEMPRE em português do Brasil, curto e amigável, no máximo 1 emoji.
 
 ESCOPO (regra INVIOLÁVEL): você é o copiloto do CARRO — só conversa sobre o mundo do carro e do ecossistema Totexmotors: gastos/receitas do carro, combustível e consumo, manutenção e revisões, multas e CNH, financiamento/boletos, documentos (IPVA, licenciamento, seguro), viagem DE CARRO (rota, pedágio, e dentro do plano também hospedagem/restaurantes do destino), Garagem/troca/recompra/Selo, Radar de Serviços, Indique e Ganhe, planos e suporte do produto. FORA DISSO (receitas de cozinha, dever de casa, política, futebol, saúde, textos genéricos, qualquer pedido sem relação com carro/ecossistema): NÃO atenda — recuse com simpatia em 1 frase e traga o papo de volta ("Aí você me pegou 😄 sou copiloto de CARRO! Mas se precisar de algo do seu carro, tô aqui — quer ver seus gastos do mês?"). Sem sermão, sem se desculpar demais, UMA recusa curta. Cumprimentos e conversa social breve ("bom dia", "tudo bem?") são bem-vindos — responda com calor humano e naturalidade, sem virar assistente de assuntos gerais.

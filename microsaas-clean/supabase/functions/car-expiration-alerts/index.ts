@@ -761,7 +761,7 @@ Deno.serve(async (req) => {
   let sent = 0;
   try {
     const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
-    const appUrl = (cfg?.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+    const appUrl = (cfg?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
 
     // Cortesias patrocinadas: user_id → dados da loja, pra personalizar o lembrete de renovação do 1º ano.
     const sponsoredByUser: Record<string, { dealership: string | null; sponsored_at: string | null; coupon_code: string | null }> = {};
