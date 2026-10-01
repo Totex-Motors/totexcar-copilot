@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { GradientBorder } from '../components/ui/GradientBorder';
-import { TrustLogos } from '../components/TrustLogos';
 import { FAQ } from '../components/FAQ';
 import { CTA } from '../components/CTA';
 import { RollingText } from '../components/ui/RollingText';
@@ -180,14 +179,6 @@ export const Contact = () => {
 
           </form>
         </motion.div>
-      </div>
-
-      {/* --- TRUST SECTION --- */}
-      <div className="relative z-10 mb-24">
-        <div className="text-center mb-8">
-          <p className="text-sm font-medium text-white">Donos de carro de todo o Brasil já usam a TotexCar Co-pilot</p>
-        </div>
-        <TrustLogos />
       </div>
 
       {/* --- FAQ SECTION --- */}
