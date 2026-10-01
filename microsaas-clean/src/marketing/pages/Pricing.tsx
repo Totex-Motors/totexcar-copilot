@@ -2,8 +2,6 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Check, Sparkles, FileCheck2, IdCard, Search, ScanLine } from "lucide-react";
-import { TrustLogos } from "../components/TrustLogos";
-import { Testimonials } from "../components/Testimonials";
 import { FAQ } from "../components/FAQ";
 import { CTA } from "../components/CTA";
 import { GradientBorder } from "../components/ui/GradientBorder";
@@ -173,16 +171,6 @@ export const Pricing = () => {
         </p>
       </div>
 
-      <div className="relative z-10 mb-20">
-        <div className="text-center mb-8">
-          <p className="text-sm font-medium text-gray-400">
-            Donos de carro de todo o Brasil já usam a TotexCar Co-pilot
-          </p>
-        </div>
-        <TrustLogos />
-      </div>
-
-      <Testimonials />
       <FAQ />
       <CTA />
     </div>

@@ -94,8 +94,8 @@ export const WorkflowSteps = () => {
             transition={{ delay: 0.1 }}
             className="text-4xl md:text-6xl font-bold text-white tracking-tight"
           >
-Controle os gastos do carro <br />
-            em poucos passos
+Começar leva <br />
+            dois minutos
           </motion.h2>
         </div>
 
