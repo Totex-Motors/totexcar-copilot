@@ -10,7 +10,7 @@ import { motion, useInView, useReducedMotion, useScroll, useTransform, type Moti
 // Movimento (tudo com framer-motion, sem lib extra, respeita prefers-reduced-motion):
 //  - títulos entram linha a linha por máscara (clip), com stagger — nunca "fade genérico";
 //  - frase cinética acende palavra por palavra conforme o scroll (scroll-linked, não por tempo);
-//  - fotos reais em P&B com leve parallax no scroll e cor só no hover;
+//  - fotos reais coloridas com leve parallax no scroll e zoom lento no hover;
 //  - números nos anéis contam quando entram na tela; marquee contínua, pausa no hover;
 //  - pílulas preenchem de ciano no hover e o ponto pulsa devagar.
 // Tudo que está aqui é o que o produto faz hoje. Tem nav e rodapé próprios (não usa MarketingLayout).
@@ -66,8 +66,8 @@ const CSS = `
 .h2x .ln{display:block;overflow:hidden;padding:.16em 0 .08em;margin:-.16em 0 -.08em}
 .h2x .ln>span{display:block;will-change:transform}
 .h2x .ph{position:relative;overflow:hidden;background:#0a0a0a;border:1px solid var(--line)}
-.h2x .ph img{position:absolute;inset:-12% 0;width:100%;height:124%;object-fit:cover;filter:grayscale(1) contrast(1.05) brightness(.9);transition:filter .8s cubic-bezier(.22,1,.36,1),transform 1.2s cubic-bezier(.22,1,.36,1)}
-.h2x .ph:hover img{filter:grayscale(0) contrast(1) brightness(1);transform:scale(1.03)}
+.h2x .ph img{position:absolute;inset:-12% 0;width:100%;height:124%;object-fit:cover;filter:brightness(.92) saturate(.95);transition:filter .8s cubic-bezier(.22,1,.36,1),transform 1.2s cubic-bezier(.22,1,.36,1)}
+.h2x .ph:hover img{filter:brightness(1) saturate(1);transform:scale(1.03)}
 .h2x .ph .cap{position:absolute;left:16px;bottom:14px;right:16px;display:flex;justify-content:space-between;gap:12px;color:#fff;mix-blend-mode:difference}
 .h2x .photos{display:grid;grid-template-columns:repeat(12,1fr);gap:20px}
 @media (max-width:768px){.h2x .wrap{padding:0 20px}.h2x .sec{padding:96px 0}.h2x .ruler{display:none}.h2x .item{grid-template-columns:48px 1fr;gap:14px;padding:26px 0}.h2x .item .n{font-size:28px}.h2x .circ{width:140px;height:140px}.h2x .circ .serif{font-size:42px}.h2x .hero-row,.h2x .two,.h2x .three{grid-template-columns:1fr!important;gap:28px!important}.h2x .three{gap:40px!important}.h2x .corner-tl{left:20px!important;top:88px!important}.h2x .corner-bl{left:20px!important;bottom:28px!important}.h2x .corner-r{right:16px!important}.h2x header{padding:18px 20px!important}.h2x .phone{max-width:100%}.h2x .big{font-size:clamp(88px,30vw,300px)!important}.h2x .photos{grid-template-columns:1fr!important;gap:14px}.h2x .photos .ph{grid-column:auto!important;aspect-ratio:4/3!important}}
@@ -160,18 +160,18 @@ function Clock() {
 }
 
 const CHAT = [
-  { me: true, t: "📸 foto do cupom do posto" },
-  { me: false, t: "Abastecimento registrado: R$ 250 · 47,1 L. Me manda a foto do hodômetro que eu calculo seu consumo." },
-  { me: true, t: "📸 painel — 48.230 km" },
-  { me: false, t: "Você fez 10,9 km/L. Cada km te custou R$ 0,49." },
-  { me: false, t: "Lembrete: seu IPVA vence em 12 dias. Quer ver o valor e os débitos da placa?" },
+  { me: true, t: "📎 nota da oficina — pastilhas e óleo, R$ 680" },
+  { me: false, t: "Guardei no histórico do Onix. Pastilhas e óleo aos 62.300 km. Pelo seu uso, a próxima troca de óleo cai em novembro — eu te lembro." },
+  { me: true, t: "📄 CRLV 2026" },
+  { me: false, t: "Documento no cofre. Quando precisar, é só pedir \"meu CRLV\" que eu te mando na hora." },
+  { me: false, t: "Seu IPVA vence em 12 dias e apareceu uma multa de R$ 195 na placa. Quer que eu monte o recurso?" },
 ];
 
 // Fotos reais já usadas no site (public/) — mantidas, agora em tratamento P&B editorial.
 const PHOTOS = [
   { src: "/whatsapp-woman.jpg", cap: "Tudo pelo WhatsApp", col: "span 7", ratio: "16/10" },
-  { src: "/registro-auto.jpg", cap: "Abasteceu, mandou, registrou", col: "span 5", ratio: "4/5" },
-  { src: "/alertas.jpg", cap: "Avisos antes de vencer", col: "span 5", ratio: "4/5" },
+  { src: "/registro-auto.jpg", cap: "Mandou, registrou", col: "span 5", ratio: "4/5" },
+  { src: "/alertas.jpg", cap: "Documentos e avisos no lugar", col: "span 5", ratio: "4/5" },
   { src: "/relatorios.jpg", cap: "Quanto o carro custa, de verdade", col: "span 7", ratio: "16/10" },
 ];
 
@@ -224,7 +224,7 @@ export function Home() {
           </h1>
           <div className="hero-row" style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 32, alignItems: "end", marginTop: 44 }}>
             <motion.p className="serif" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.75 }} style={{ fontSize: "clamp(20px,2vw,28px)", color: "var(--ink2)", maxWidth: 560, margin: 0 }}>
-              Manda a foto do cupom, da multa ou do painel. O Co-pilot registra, avisa dos vencimentos e mostra quanto o carro custa de verdade.
+              Documentos, notas da oficina, multas, IPVA, gastos. Manda pro Co-pilot: ele guarda, organiza o histórico do carro e te avisa do que importa antes de virar problema.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.95 }}><Link to="/entrar?tab=register" className="pill"><span className="dot" />Começar grátis</Link></motion.div>
           </div>
@@ -236,17 +236,17 @@ export function Home() {
         <div className="wrap">
           <motion.div className="label" {...fade}>(o problema)</motion.div>
           <motion.h2 className="serif" {...fade} style={{ fontSize: "clamp(30px,4vw,56px)", textAlign: "center", maxWidth: 900, margin: "28px auto 0", color: "#f2f2f2" }}>
-            Você sabe quanto abasteceu. Mas sabe quanto o seu carro custa?
+            Tudo do seu carro está espalhado. No porta‑luvas, no e‑mail, na memória.
           </motion.h2>
           <motion.p className="serif" {...fade} style={{ fontSize: "clamp(18px,1.6vw,22px)", textAlign: "center", maxWidth: 640, margin: "26px auto 80px", color: "var(--mute)" }}>
-            Combustível é só o começo. Separados, os gastos parecem pequenos. Somados, contam a história de verdade do carro — e quase ninguém acompanha.
+            CRLV num lugar, nota da revisão em outro, e o IPVA você lembra quando chega a multa. Separados, parecem detalhes. Juntos, são o histórico do carro — e ninguém cuida dele por você.
           </motion.p>
           <div>
             {[
-              ["01", "Combustível", "Quanto você gasta por mês — e por quilômetro."],
-              ["02", "Manutenção", "Os reparos pequenos que vão somando sem você ver."],
-              ["03", "Vencimentos", "IPVA, licenciamento, seguro, CNH: o que está chegando e ainda não está no orçamento."],
-              ["04", "Custo real", "Quanto cada quilômetro do seu carro custa pra você."],
+              ["01", "Documentos", "CRLV, apólice, nota da oficina, comprovante do IPVA. Onde está cada um na hora que você precisa?"],
+              ["02", "Manutenção", "Qual foi a última troca de óleo? Com quantos km? Quanto custou? Quando é a próxima?"],
+              ["03", "Vencimentos", "IPVA, licenciamento, seguro, CNH, revisão: o que vence, quando, e o que fazer antes."],
+              ["04", "Decisões", "Esse orçamento está caro? Vale consertar ou trocar? Vender agora ou esperar?"],
             ].map(([n, t, d], i) => (
               <motion.div key={n} className={`item hair ${i === 3 ? "star" : ""}`} {...fade} transition={{ ...fade.transition, delay: i * 0.08 }}>
                 <div className="n">{n}</div>
@@ -263,7 +263,7 @@ export function Home() {
         <div className="track disp" style={{ fontSize: "clamp(20px,2.6vw,34px)", color: "#bdbdbd" }}>
           {[0, 1].map((k) => (
             <span key={k}>
-              {["Foto do cupom → registrado", "Hodômetro → km/L", "Foto da multa → recurso pronto", "IPVA vencendo → aviso no WhatsApp", "Revisão por km → lembrete"].map((s) => (
+              {["Nota da oficina → guardada no histórico", "CRLV → no bolso", "Foto da multa → recurso pronto", "IPVA vencendo → aviso no WhatsApp", "Revisão por km → lembrete", "Cupom → gasto registrado"].map((s) => (
                 <span key={s} style={{ padding: "0 36px" }}>{s} <span className="acc">✦</span></span>
               ))}
             </span>
@@ -287,10 +287,10 @@ export function Home() {
           <div>
             <motion.div className="label" {...fade} style={{ textAlign: "left" }}>(o co-pilot)</motion.div>
             <h2 className="disp" style={{ fontSize: "clamp(40px,5.6vw,88px)", margin: "26px 0 28px" }}>
-              <Lines lines={["Não é só", "registrar.", <span style={{ color: "var(--mute)" }} key="e">É entender.</span>]} />
+              <Lines lines={["Não é só", "guardar.", <span style={{ color: "var(--mute)" }} key="e">É decidir melhor.</span>]} />
             </h2>
             <motion.p className="serif" {...fade} style={{ fontSize: "clamp(19px,1.7vw,24px)", color: "var(--ink2)", maxWidth: 480, margin: 0 }}>
-              Você pergunta no WhatsApp. O Co-pilot conhece o seu carro e responde com os seus dados — não com dezenas de gráficos.
+              O Co-pilot lê o que você manda, guarda no histórico do carro e faz a curadoria: o que vence, o que está caro, o que fazer agora. Sugestões com os seus dados — não com gráfico genérico.
             </motion.p>
           </div>
           <motion.div {...fade}>
@@ -333,7 +333,7 @@ export function Home() {
             <Lines lines={[<>R$ <span className="acc">0</span></>]} />
           </div>
           <motion.p className="serif" {...fade} style={{ fontSize: "clamp(20px,2vw,28px)", color: "var(--ink2)", maxWidth: 620, margin: "0 auto 40px" }}>
-            Porque cuidar melhor do seu carro não deveria começar com uma assinatura. Sem mensalidade, sem cartão.
+            O Co-pilot é grátis. Sem mensalidade, sem cartão. Você só paga quando pedir um serviço oficial — e o valor aparece antes de confirmar.
           </motion.p>
           <motion.div {...fade}><Link to="/entrar?tab=register" className="pill"><span className="dot" />Criar meu Co-pilot</Link></motion.div>
         </div>
@@ -359,10 +359,10 @@ export function Home() {
         </div>
       </section>
 
-      {/* TIPOGRAFIA CINÉTICA — acende com o scroll */}
+      {/* TIPOGRAFIA CINÉTICA — acende com o scroll (a ponte com a Totex: histórico organizado = valor de revenda) */}
       <section className="sec">
         <div className="wrap">
-          <Kinetic parts={[{ t: "Não parece" }, { t: "uma loja", b: true }, { t: "tentando te vender um carro. Parece" }, { t: "a tecnologia", b: true }, { t: "que deveria vir" }, { t: "com o carro.", b: true }]} />
+          <Kinetic parts={[{ t: "Carro com histórico organizado" }, { t: "vale mais", b: true }, { t: "na hora de vender. O Co‑pilot cuida disso" }, { t: "desde o primeiro dia.", b: true }]} />
         </div>
       </section>
 
