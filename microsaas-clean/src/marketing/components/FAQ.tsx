@@ -5,6 +5,16 @@ import { RollingText } from "./ui/RollingText";
 
 const faqs = [
   {
+    question: "O TotexCar Co-pilot é realmente grátis?",
+    answer:
+      "Sim, pra todo mundo — dono de carro ou motorista de app. Sem mensalidade e sem cartão. Você só paga por serviços avulsos se quiser usar (Raio-X do carro, CRLV-e, débitos, CNH), e o valor aparece antes de confirmar.",
+  },
+  {
+    question: "Preciso instalar algum equipamento no carro?",
+    answer:
+      "Não. Nada de aparelho, fio ou OBD. Você usa o Co-pilot pelo WhatsApp e acessa o painel completo pelo navegador do celular ou do computador. Serve pra carro, moto, SUV, picape — qualquer veículo.",
+  },
+  {
     question: "Como registro um gasto?",
     answer:
       "É só mandar uma mensagem no WhatsApp do TotexCar Co-pilot dizendo o que pagou. A inteligência artificial entende e registra o gasto sozinha, na categoria certa: combustível, peças, revisão, seguro, IPVA, multa e muito mais.",
@@ -20,19 +30,19 @@ const faqs = [
       "O TotexCar Co-pilot acompanha as datas do seu veículo e da sua CNH e te avisa pelo WhatsApp antes de vencer: IPVA, licenciamento, seguro e até a revisão por quilometragem. Você nunca mais perde um prazo.",
   },
   {
-    question: "Preciso instalar algo?",
+    question: "Como funciona o acompanhamento da manutenção?",
     answer:
-      "Não precisa instalar nenhum aplicativo. Você usa o TotexCar Co-pilot direto pelo WhatsApp para registrar os gastos e acessa o painel completo com gráficos e relatórios pelo navegador, no celular ou no computador.",
+      "Você informa o km (ou manda a foto do painel) e o Co-pilot acompanha as revisões por quilometragem — óleo, filtros, pneus — além dos vencimentos de IPVA, licenciamento, seguro e CNH. Quando algo está chegando, ele te avisa no WhatsApp antes.",
   },
   {
-    question: "Quanto custa?",
+    question: "Como funciona o QR Code do para-brisa?",
     answer:
-      "Nada. O TotexCar Co-pilot é grátis pra todo mundo — sem mensalidade e sem cartão. Você só paga por serviços avulsos quando quiser usá-los (como Raio-X do carro, CRLV-e, consulta de débitos ou laudos e vistorias de parceiros), e o valor sempre aparece antes de você confirmar. O pagamento desses serviços é via PIX ou cartão.",
+      "É a etiqueta da troca de óleo, versão inteligente: você aponta a câmera, o Co-pilot abre já com o seu carro e a próxima manutenção lembrada. Oficinas parceiras podem ter o adesivo delas, com um benefício pra quem escaneia.",
   },
   {
-    question: "Meus dados estão seguros?",
+    question: "A Totex vende meus dados? Meus dados estão seguros?",
     answer:
-      "Sim. Levamos a segurança a sério: seus dados ficam protegidos e criptografados, e só você tem acesso às informações do seu carro e dos seus gastos. Nada é compartilhado sem a sua autorização.",
+      "Não vendemos seus dados. Suas conversas, gastos e documentos são seus — a loja nunca lê o que você fala com o Co-pilot. Os dados servem pra uma coisa: deixar o Co-pilot mais útil pro seu carro. Você edita, exporta ou apaga quando quiser, e tudo segue a LGPD.",
   },
 ];
 

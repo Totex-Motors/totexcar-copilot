@@ -20,8 +20,8 @@ export const CTA = () => {
           viewport={{ once: true }}
           className="text-5xl md:text-6xl lg:text-7xl font-semibold text-white tracking-tight mb-6"
         >
-          Comece a controlar os gastos <br />
-          do seu carro hoje
+          Seu carro já faz parte da sua vida. <br />
+          Agora organize a vida dele.
         </motion.h2>
 
         <motion.p
@@ -31,8 +31,8 @@ export const CTA = () => {
           transition={{ delay: 0.1 }}
           className="text-lg md:text-xl text-gray-300 mb-12 max-w-2xl mx-auto"
         >
-          Crie sua conta no TotexCar Co-pilot e deixe a inteligência artificial
-          registrar seus gastos pelo WhatsApp. É de graça, sem mensalidade e sem cartão.
+          A Totex acredita que a experiência com o carro não começa nem termina na compra — ela acontece
+          todo dia, do primeiro km à próxima manutenção. O Co-pilot nasceu pra acompanhar essa jornada. Grátis, sem cartão.
         </motion.p>
 
         <motion.div
@@ -50,15 +50,15 @@ export const CTA = () => {
               to="/entrar?tab=register"
               className="w-full sm:w-auto px-8 py-3.5 bg-black text-white font-medium rounded-full hover:bg-gray-900 transition-colors flex items-center justify-center gap-2 group"
             >
-              <RollingText text="Começar grátis" />
+              <RollingText text="Criar meu Co-pilot" />
             </Link>
           </GradientBorder>
 
           <Link
-            to="/pricing"
+            to="/parceiro"
             className="w-full sm:w-auto px-8 py-3.5 text-white font-medium border border-white/20 rounded-full hover:bg-white/10 transition-colors backdrop-blur-sm flex items-center justify-center gap-2 group"
           >
-            <RollingText text="Ver planos" />
+            <RollingText text="Sou uma oficina" />
           </Link>
         </motion.div>
       </div>

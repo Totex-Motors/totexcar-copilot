@@ -1,42 +1,40 @@
 import React from 'react';
 import { Hero } from '../components/Hero';
-import { InteractiveDemo } from '../components/InteractiveDemo';
-import { TrustLogos } from '../components/TrustLogos';
-import { Features } from '../components/Features';
-import { InstantActions } from '../components/InstantActions';
-import { StackedCards } from '../components/StackedCards';
-import { ScaleManage } from '../components/ScaleManage';
-import { IntegrationsTicker } from '../components/IntegrationsTicker';
-import { Testimonials } from '../components/Testimonials';
+import { DemoVideo } from '../components/DemoVideo';
+import { PainSection } from '../components/PainSection';
+import { CopilotChat } from '../components/CopilotChat';
+import { SmartAlerts } from '../components/SmartAlerts';
 import { WorkflowSteps } from '../components/WorkflowSteps';
+import { FreeSection } from '../components/FreeSection';
+import { ContextualServices } from '../components/ContextualServices';
+import { BeforeAfter } from '../components/BeforeAfter';
+import { TrustData } from '../components/TrustData';
+import { QrSticker } from '../components/QrSticker';
 import { FAQ } from '../components/FAQ';
 import { CTA } from '../components/CTA';
+import { StickyCta } from '../components/StickyCta';
 
+// HOME — conta uma história: curiosidade → dor → descoberta → demonstração → desejo → confiança → ação.
+// Posicionamento: "copiloto do carro" (grátis), não "app de controle de gastos".
+// Régua: "não parece uma loja tentando me vender um carro; parece a tecnologia que deveria vir com o carro".
+// Sem prova social fabricada (logos placeholder / depoimentos fictícios foram removidos).
 export const Home = () => {
   return (
     <>
       <Hero />
-      <InteractiveDemo />
-      <TrustLogos />
-      <Features />
-      {/* Merged Header + Instant Actions Card */}
-      <InstantActions />
-      
-      {/* Stacked Cards */}
-      <StackedCards />
-
-      {/* Carousel Dashboard */}
-      <ScaleManage />
-      {/* Integrations Ticker */}
-      <IntegrationsTicker />
-      
-      {/* New Sections */}
-      <Testimonials />
-      <WorkflowSteps />
-      
-      {/* Final Sections */}
+      <DemoVideo />
+      <PainSection />
+      <CopilotChat />
+      <SmartAlerts />
+      <div id="como-funciona"><WorkflowSteps /></div>
+      <FreeSection />
+      <ContextualServices />
+      <BeforeAfter />
+      <TrustData />
+      <QrSticker />
       <FAQ />
       <CTA />
+      <StickyCta />
     </>
   );
 };
