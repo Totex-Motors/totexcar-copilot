@@ -1,6 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
 import Index from "./Index";
-import { MarketingLayout } from "@/marketing/MarketingLayout";
 import { Home as MarketingHome } from "@/marketing/pages/Home";
 
 // Home pública: visitante deslogado vê a landing (site de marketing); logado vê o dashboard.
@@ -14,9 +13,5 @@ export default function Home() {
     );
   }
   if (user) return <Index />;
-  return (
-    <MarketingLayout>
-      <MarketingHome />
-    </MarketingLayout>
-  );
+  return <MarketingHome />;
 }
