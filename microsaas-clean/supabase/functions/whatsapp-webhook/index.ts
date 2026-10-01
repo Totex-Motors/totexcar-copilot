@@ -1531,7 +1531,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         .select("dealership").eq("role", "dealer").not("dealership", "is", null);
       // PARCEIROS cadastrados do Radar: entram na lista + selo + topo (prioridade)
       const cityTok = local.split(/[,\-]/)[0].replace(/[,()%]/g, " ").trim();
-      let pQuery = supabase.from("service_partners").select("*").eq("active", true)
+      let pQuery = supabase.from("service_partners").select("*").eq("active", true).eq("status", "approved")
         .or(`city.is.null,city.ilike.%${cityTok}%`);
       // busca livre casa parceiro pelo termo (categoria/nome); busca por categoria casa a categoria exata
       const livreSan = (buscaLivre || "").replace(/[,()%]/g, " ").trim();
@@ -1604,6 +1604,9 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           atende_24h: prov.open_24h ?? "não informado",
           vai_ate_voce: prov.mobile_service ?? "não informado",
           porque: prov.matched_reasons,
+          // Clube de Parceiros: benefício pro usuário + código que ele fala no estabelecimento
+          beneficio: prov.provider_status === "parceiro_totex" ? ((prov as any).benefit || null) : null,
+          codigo_resgate: prov.provider_status === "parceiro_totex" ? ((prov as any).partner_code || null) : null,
         });
       }
 
@@ -1612,7 +1615,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         servico: def.label, local, emergencia: emEmergencia,
         total: saida.length, opcoes: saida,
         instrucao: saida.length
-          ? `Apresente as ${saida.length} opções de forma CURTA (WhatsApp): nome, o motivo (campo 'porque'), nota e telefone/link. Marque quem é PARCEIRO TOTEX e diga que o resto é resultado público — encontrado em fonte pública, a confirmar direto com o estabelecimento; a Totex não credencia nem garante. NUNCA invente preço, disponibilidade, garantia ou tempo de chegada: o que veio "não informado" fica "não informado". Feche com UMA próxima ação (mandar o link do WhatsApp dele, ligar ou abrir a rota). Se ele quiser que a gente peça orçamento, aí sim peça autorização explícita e diga quais dados vão.`
+          ? `Apresente as ${saida.length} opções de forma CURTA (WhatsApp): nome, o motivo (campo 'porque'), nota e telefone/link. Marque quem é PARCEIRO TOTEX — e se tiver 'beneficio', DESTAQUE o benefício e diga que basta falar o 'codigo_resgate' no estabelecimento. O resto é resultado público — encontrado em fonte pública, a confirmar direto com o estabelecimento; a Totex não credencia nem garante. NUNCA invente preço, disponibilidade, garantia ou tempo de chegada: o que veio "não informado" fica "não informado". Feche com UMA próxima ação (mandar o link do WhatsApp dele, ligar ou abrir a rota). Se ele quiser que a gente peça orçamento, aí sim peça autorização explícita e diga quais dados vão.`
           : `Não achei estabelecimento confiável para ${def.label.toLowerCase()} em ${local}. Diga isso com honestidade e ofereça ampliar a região ou tentar categoria parecida. NÃO invente nome de oficina.`,
       };
     }

@@ -3,10 +3,10 @@ import { Link } from "react-router-dom";
 import {
   Wrench, Truck, CircleDot, KeyRound, LifeBuoy, Disc3, Zap, BatteryCharging, Wind, SprayCan,
   Sparkles, ClipboardCheck, PlugZap, Frame, MapPin, Phone, MessageCircle, Star, Clock, Loader2,
-  Navigation, ShieldCheck, Stamp, Ticket,
+  Navigation, ShieldCheck, Stamp, Ticket, Gift, Handshake, ChevronRight,
 } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
-import { useRadar, SERVICOS } from "@/hooks/useRadar";
+import { useRadar, SERVICOS, type RadarProvider } from "@/hooks/useRadar";
 import { toast } from "@/hooks/use-toast";
 
 const WA = "5511963786699";
@@ -38,10 +38,18 @@ export default function Servicos() {
     await buscar({ service_type, mode: "balanced", emergency, location_text: loc.trim() || undefined, latitude: coords?.lat, longitude: coords?.lng });
   };
 
-  const abrir = (url: string | null | undefined, pid: string | null | undefined, tipo: string) => {
+  const abrir = (url: string | null | undefined, pid: string | null | undefined, tipo: string, partnerId?: string | null) => {
     if (!url) return;
-    if (pid) registrarAcao(pid, tipo, result?.search_id);
+    if (pid) registrarAcao(pid, tipo, result?.search_id, partnerId);
     window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  // Clube de Parceiros: abre o WhatsApp do parceiro já com o benefício + código de resgate
+  const resgatar = (p: RadarProvider) => {
+    const zap = String(p.whatsapp || p.phone || "").replace(/\D/g, "");
+    if (!zap) { toast({ title: "Parceiro sem WhatsApp cadastrado", description: "Use Ligar ou Rota." }); return; }
+    const msg = `Oi! Vim pelo TotexCar Co-pilot 🚗 e quero usar o benefício: ${p.benefit}${p.partner_code ? ` (código ${String(p.partner_code).toUpperCase()})` : ""}.`;
+    abrir(`https://wa.me/55${zap}?text=${encodeURIComponent(msg)}`, p.provider_id, "redeemed_benefit", p.partner_id);
   };
 
   const emergencias = SERVICOS.filter((s) => EMERG.includes(s.value));
@@ -110,10 +118,18 @@ export default function Servicos() {
                     {p.open_24h && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={13} /> 24h</span>}
                     {p.mobile_service && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Truck size={13} /> Vai até você</span>}
                   </div>
+                  {/* Clube de Parceiros: benefício em destaque + resgate */}
+                  {p.provider_status === "parceiro_totex" && p.benefit && (
+                    <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "var(--brand-soft)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--brand)", letterSpacing: ".04em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}><Gift size={13} /> Benefício Co-pilot</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 3 }}>{p.benefit}</div>
+                      <button className="btn-primary" style={{ marginTop: 8, height: 40, fontSize: 14 }} onClick={() => resgatar(p)}><Gift size={15} /> Resgatar no WhatsApp</button>
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 11 }}>
-                    {p.maps_uri && <button className="sbtn" onClick={() => abrir(p.maps_uri, p.provider_id, "opened_route")}><MapPin size={14} /> Rota</button>}
-                    {p.call_uri && <button className="sbtn" onClick={() => abrir(p.call_uri, p.provider_id, "opened_phone")}><Phone size={14} /> Ligar</button>}
-                    {p.whatsapp_uri && <button className="sbtn wa" onClick={() => abrir(p.whatsapp_uri, p.provider_id, "opened_whatsapp")}><MessageCircle size={14} /> WhatsApp</button>}
+                    {p.maps_uri && <button className="sbtn" onClick={() => abrir(p.maps_uri, p.provider_id, "opened_route", p.partner_id)}><MapPin size={14} /> Rota</button>}
+                    {p.call_uri && <button className="sbtn" onClick={() => abrir(p.call_uri, p.provider_id, "opened_phone", p.partner_id)}><Phone size={14} /> Ligar</button>}
+                    {p.whatsapp_uri && <button className="sbtn wa" onClick={() => abrir(p.whatsapp_uri, p.provider_id, "opened_whatsapp", p.partner_id)}><MessageCircle size={14} /> WhatsApp</button>}
                   </div>
                 </div>
               ))}
@@ -142,6 +158,13 @@ export default function Servicos() {
             })}
           </section>
         </div>
+
+        {/* captação orgânica de parceiros */}
+        <Link to="/parceiro" className="card list-row">
+          <span className="offer-ico"><Handshake size={19} /></span>
+          <div style={{ flex: 1 }}><div className="t">Tem uma oficina ou serviço?</div><div className="s">Cadastre um benefício e apareça primeiro aqui. Grátis.</div></div>
+          <ChevronRight size={20} style={{ color: "var(--faint)" }} />
+        </Link>
 
         <p className="foot-note">Resultados públicos + parceiros Totex. A gente mostra o que dá pra confiar; o que não vier, não aparece.</p>
       </div>

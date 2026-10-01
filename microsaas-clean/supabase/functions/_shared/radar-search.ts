@@ -47,6 +47,8 @@ export interface RawProvider {
   external_id?: string | null;
   priority?: number | null;   // parceiro cadastrado: quanto maior, mais no topo entre os parceiros
   partner_id?: string | null; // id em service_partners (p/ contar indicações)
+  benefit?: string | null;      // Clube de Parceiros: benefício oferecido ao usuário do Co-pilot
+  partner_code?: string | null; // código curto de resgate (o usuário fala no estabelecimento)
 }
 
 export interface RankedProvider extends RawProvider {
@@ -141,6 +143,8 @@ export function partnerToRaw(row: any): RawProvider {
     external_id: `partner:${row.id}`,
     priority: Number(row.priority) || 0,
     partner_id: String(row.id),
+    benefit: row.benefit || null,
+    partner_code: row.code || null,
   };
 }
 

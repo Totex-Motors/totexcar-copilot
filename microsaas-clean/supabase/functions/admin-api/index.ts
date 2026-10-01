@@ -215,17 +215,34 @@ Deno.serve(async (req) => {
           priority: Number(b.priority) || 0,
           active: b.active !== false,
           notes: String(b.notes || "").trim() || null,
+          benefit: String(b.benefit || "").trim() || null,
+          email: String(b.email || "").trim().toLowerCase() || null,
+          contact_name: String(b.contact_name || "").trim() || null,
           updated_at: new Date().toISOString(),
         };
+        if (["pending", "approved", "rejected"].includes(String(b.status))) row.status = String(b.status);
         if (!row.name) return json({ error: "name_required" }, 400);
         if (b.id) {
           const { error } = await admin.from("service_partners").update(row).eq("id", b.id);
           if (error) throw error;
           return json({ ok: true, id: b.id });
         }
-        const { data, error } = await admin.from("service_partners").insert({ ...row, created_by: caller.id }).select("id").single();
+        const { data, error } = await admin.from("service_partners").insert({ ...row, code: crypto.randomUUID().replace(/-/g, "").slice(0, 6), created_by: caller.id }).select("id").single();
         if (error) throw error;
         return json({ ok: true, id: data!.id });
+      }
+
+      // Clube de Parceiros: aprova/recusa um cadastro self-service (/parceiro). Aprovado = entra no Radar.
+      case "set_partner_status": {
+        const id = String(payload.id || "");
+        const status = String(payload.status || "");
+        if (!id || !["pending", "approved", "rejected"].includes(status)) return json({ error: "params" }, 400);
+        const upd: Record<string, unknown> = { status, active: status === "approved", updated_at: new Date().toISOString() };
+        const { data: cur } = await admin.from("service_partners").select("code").eq("id", id).maybeSingle();
+        if (status === "approved" && !cur?.code) upd.code = crypto.randomUUID().replace(/-/g, "").slice(0, 6);
+        const { error } = await admin.from("service_partners").update(upd).eq("id", id);
+        if (error) throw error;
+        return json({ ok: true });
       }
 
       case "delete_partner": {

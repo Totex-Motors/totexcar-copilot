@@ -1323,8 +1323,11 @@ const catLabel = (v: string) => RADAR_CATS.find((c) => c.value === v)?.label || 
 type Partner = {
   id?: string; name: string; category: string; city: string; phone: string; whatsapp: string;
   address: string; website: string; priority: number; active: boolean; shown_count?: number; notes: string;
+  // Clube de Parceiros (cadastro self-service em /parceiro)
+  benefit?: string; status?: string; email?: string; contact_name?: string; code?: string;
+  click_count?: number; redeem_count?: number; source?: string;
 };
-const emptyPartner: Partner = { name: "", category: "oficina", city: "", phone: "", whatsapp: "", address: "", website: "", priority: 0, active: true, notes: "" };
+const emptyPartner: Partner = { name: "", category: "oficina", city: "", phone: "", whatsapp: "", address: "", website: "", priority: 0, active: true, notes: "", benefit: "", status: "approved", email: "", contact_name: "" };
 
 function PartnersTab() {
   const qc = useQueryClient();
@@ -1362,6 +1365,15 @@ function PartnersTab() {
     await supabase.functions.invoke("admin-api", { body: { action: "save_partner", ...p, active: !p.active } });
     qc.invalidateQueries({ queryKey: ["radar-partners"] });
   };
+  // Clube de Parceiros: aprova/recusa cadastro self-service. Aprovado = entra no Radar na hora.
+  const setStatus = async (id: string | undefined, status: "approved" | "rejected" | "pending") => {
+    if (!id) return;
+    const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "set_partner_status", id, status } });
+    if (error || (data as any)?.error) { toast({ title: "Erro", description: String((data as any)?.error || error?.message), variant: "destructive" }); return; }
+    qc.invalidateQueries({ queryKey: ["radar-partners"] });
+    toast({ title: status === "approved" ? "Parceiro aprovado ✅ — já aparece no Radar" : status === "rejected" ? "Cadastro recusado" : "Voltou pra pendente" });
+  };
+  const pend = (partners || []).filter((x) => x.status === "pending").length;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1384,6 +1396,15 @@ function PartnersTab() {
             <div className="space-y-2"><Label>WhatsApp</Label><Input value={f.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} placeholder="11 9xxxx-xxxx" /></div>
           </div>
           <div className="space-y-2"><Label>Endereço</Label><Input value={f.address} onChange={(e) => set("address", e.target.value)} placeholder="Rua, número, bairro" /></div>
+          <div className="space-y-2">
+            <Label>Benefício pro usuário Co-pilot</Label>
+            <Input value={f.benefit || ""} onChange={(e) => set("benefit", e.target.value)} placeholder='Ex.: "10% na primeira visita" ou "Diagnóstico grátis"' maxLength={160} />
+            <p className="text-xs text-muted-foreground">Aparece em destaque no Radar (app e WhatsApp) com o botão “Resgatar”.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2"><Label>Contato (opcional)</Label><Input value={f.contact_name || ""} onChange={(e) => set("contact_name", e.target.value)} placeholder="Nome do responsável" /></div>
+            <div className="space-y-2"><Label>E-mail (opcional)</Label><Input value={f.email || ""} onChange={(e) => set("email", e.target.value)} placeholder="contato@..." /></div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2"><Label>Site (opcional)</Label><Input value={f.website} onChange={(e) => set("website", e.target.value)} placeholder="https://..." /></div>
             <div className="space-y-2"><Label>Prioridade</Label><Input type="number" value={f.priority} onChange={(e) => set("priority", Number(e.target.value))} placeholder="0" /></div>
@@ -1400,23 +1421,33 @@ function PartnersTab() {
       </Card>
 
       <Card className="border-0 shadow-premium-md">
-        <CardHeader><CardTitle className="text-lg">Parceiros cadastrados ({partners?.length || 0})</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2">Parceiros cadastrados ({partners?.length || 0}){pend > 0 && <Badge className="border-0 bg-amber-100 text-amber-800">{pend} pendente{pend > 1 ? "s" : ""}</Badge>}</CardTitle></CardHeader>
         <CardContent className="p-0">
           {isLoading ? <div className="p-8 text-center text-muted-foreground">Carregando...</div>
             : !partners?.length ? <div className="p-8 text-center text-muted-foreground">Nenhum parceiro ainda. Cadastre o primeiro ao lado — ele já entra no Radar com selo e prioridade.</div>
             : <div className="divide-y divide-border">
-              {partners.map((p) => (
-                <div key={p.id} className="p-4 flex items-center justify-between gap-3">
+              {[...partners].sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)).map((p) => (
+                <div key={p.id} className={`p-4 flex items-center justify-between gap-3 ${p.status === "pending" ? "bg-amber-50/60" : ""}`}>
                   <div className="min-w-0">
                     <p className="font-medium truncate flex items-center gap-2">{p.name}
-                      {!p.active && <Badge className="border-0 bg-muted text-muted-foreground">inativo</Badge>}
+                      {p.status === "pending" && <Badge className="border-0 bg-amber-100 text-amber-800">pendente</Badge>}
+                      {p.status === "rejected" && <Badge className="border-0 bg-muted text-muted-foreground">recusado</Badge>}
+                      {p.status !== "pending" && p.status !== "rejected" && !p.active && <Badge className="border-0 bg-muted text-muted-foreground">inativo</Badge>}
                       {p.priority > 0 && <Badge className="border-0 bg-primary/15 text-primary">prio {p.priority}</Badge>}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">{catLabel(p.category)}{p.city ? ` · ${p.city}` : ""}{p.whatsapp ? ` · zap ${p.whatsapp}` : ""}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Eye className="w-3 h-3" /> {p.shown_count || 0} indicações</p>
+                    <p className="text-xs text-muted-foreground truncate">{catLabel(p.category)}{p.city ? ` · ${p.city}` : ""}{p.whatsapp ? ` · zap ${p.whatsapp}` : ""}{p.contact_name ? ` · ${p.contact_name}` : ""}{p.source && p.source !== "self_service" ? ` · via ${p.source}` : ""}</p>
+                    {p.benefit && <p className="text-xs text-primary truncate">🎁 {p.benefit}{p.code ? ` · cód. ${p.code.toUpperCase()}` : ""}</p>}
+                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Eye className="w-3 h-3" /> {p.shown_count || 0} aparições · {p.click_count || 0} cliques · {p.redeem_count || 0} resgates</p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <Switch checked={p.active} onCheckedChange={() => toggle(p)} />
+                    {p.status === "pending" ? (
+                      <>
+                        <Button size="sm" className="bg-gradient-primary" onClick={() => setStatus(p.id, "approved")}>Aprovar</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setStatus(p.id, "rejected")}>Recusar</Button>
+                      </>
+                    ) : (
+                      <Switch checked={p.active} onCheckedChange={() => toggle(p)} />
+                    )}
                     <Button size="sm" variant="ghost" onClick={() => setF({ ...emptyPartner, ...p })}>Editar</Button>
                     <Button size="sm" variant="ghost" className="text-destructive" onClick={() => remove(p.id)}><Trash2 className="w-4 h-4" /></Button>
                   </div>
