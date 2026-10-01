@@ -1,7 +1,6 @@
 import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { Navbar } from "./components/Navbar";
-import { Footer } from "./components/Footer";
+import { CSS, Nav, useEditorialFonts } from "./editorial";
 
 const ScrollToAnchor = () => {
   const { pathname, hash } = useLocation();
@@ -23,16 +22,16 @@ const ScrollToAnchor = () => {
   return null;
 };
 
-// Layout do site público (landing/marketing): fundo escuro + navbar + footer.
-// As páginas do app (dashboard, /entrar, /admin etc.) NÃO usam este layout.
-// Usa `children` quando montado direto (rota "/"); senão renderiza <Outlet/> (rotas aninhadas).
+// Layout do site público (páginas internas): sistema editorial (../editorial.tsx) + nav fixa mínima.
+// Cada página fecha com <Closing/> (que já traz o rodapé). As páginas do app (dashboard, /entrar, /admin…) NÃO usam isto.
 export const MarketingLayout = ({ children }: { children?: React.ReactNode }) => {
+  useEditorialFonts();
   return (
-    <div className="min-h-screen bg-[#050505] text-white selection:bg-teal-500/30 font-sans overflow-x-hidden">
+    <div className="h2x">
+      <style>{CSS}</style>
       <ScrollToAnchor />
-      <Navbar />
+      <Nav />
       {children ?? <Outlet />}
-      <Footer />
     </div>
   );
 };
