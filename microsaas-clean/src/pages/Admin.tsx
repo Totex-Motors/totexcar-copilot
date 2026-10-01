@@ -1331,8 +1331,9 @@ type Partner = {
   // Clube de Parceiros (cadastro self-service em /parceiro)
   benefit?: string; status?: string; email?: string; contact_name?: string; code?: string;
   click_count?: number; redeem_count?: number; source?: string;
+  benefit_value?: number; honored_count?: number; not_honored_count?: number;
 };
-const emptyPartner: Partner = { name: "", category: "oficina", city: "", phone: "", whatsapp: "", address: "", website: "", priority: 0, active: true, notes: "", benefit: "", status: "approved", email: "", contact_name: "" };
+const emptyPartner: Partner = { name: "", category: "oficina", city: "", phone: "", whatsapp: "", address: "", website: "", priority: 0, active: true, notes: "", benefit: "", benefit_value: 0, status: "approved", email: "", contact_name: "" };
 
 // ===================== PROSPECÇÃO — o Radar como fonte de parceiros (convite 1 a 1 pelo WhatsApp) =====================
 type Prospect = {
@@ -1356,6 +1357,8 @@ Nossos clientes usam um assistente no WhatsApp pra cuidar do carro, e quando alg
 Quero colocar vocês como PARCEIRO: aparece primeiro, com selo, e o cliente já chega sabendo que tem um benefício seu (tipo "10% na primeira visita" ou "diagnóstico grátis").
 
 Não tem mensalidade nem taxa. Você só dá o benefício quando o cliente aparecer.
+
+É grátis pra todo mundo, inclusive pros concorrentes, e ninguém paga pra subir: quem dá o maior benefício fica no topo. Simples assim.
 
 Cadastro leva 2 minutos, já deixei preenchido:
 {link}
@@ -1569,6 +1572,11 @@ function PartnersTab() {
             <Input value={f.benefit || ""} onChange={(e) => set("benefit", e.target.value)} placeholder='Ex.: "10% na primeira visita" ou "Diagnóstico grátis"' maxLength={160} />
             <p className="text-xs text-muted-foreground">Aparece em destaque no Radar (app e WhatsApp) com o botão “Resgatar”.</p>
           </div>
+          <div className="space-y-2">
+            <Label>Valor do benefício pro cliente (R$) — regra do topo</Label>
+            <Input type="number" min={0} value={f.benefit_value ?? 0} onChange={(e) => set("benefit_value", Number(e.target.value))} placeholder="80" />
+            <p className="text-xs text-muted-foreground">Os 3 maiores valores da categoria/cidade ficam no topo com selo. Quem não honra (feedback do cliente após resgate) desce. Ninguém paga pra subir.</p>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2"><Label>Contato (opcional)</Label><Input value={f.contact_name || ""} onChange={(e) => set("contact_name", e.target.value)} placeholder="Nome do responsável" /></div>
             <div className="space-y-2"><Label>E-mail (opcional)</Label><Input value={f.email || ""} onChange={(e) => set("email", e.target.value)} placeholder="contato@..." /></div>
@@ -1604,7 +1612,7 @@ function PartnersTab() {
                       {p.priority > 0 && <Badge className="border-0 bg-primary/15 text-primary">prio {p.priority}</Badge>}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">{catLabel(p.category)}{p.city ? ` · ${p.city}` : ""}{p.whatsapp ? ` · zap ${p.whatsapp}` : ""}{p.contact_name ? ` · ${p.contact_name}` : ""}{p.source && p.source !== "self_service" ? ` · via ${p.source}` : ""}</p>
-                    {p.benefit && <p className="text-xs text-primary truncate">🎁 {p.benefit}{p.code ? ` · cód. ${p.code.toUpperCase()}` : ""}</p>}
+                    {p.benefit && <p className="text-xs text-primary truncate">🎁 {p.benefit}{p.benefit_value ? ` · vale R$ ${Math.round(Number(p.benefit_value))}` : " · sem valor (fora do topo)"}{p.code ? ` · cód. ${p.code.toUpperCase()}` : ""}{(p.honored_count || p.not_honored_count) ? ` · honrou ${p.honored_count || 0}/${(p.honored_count || 0) + (p.not_honored_count || 0)}` : ""}</p>}
                     <p className="text-xs text-muted-foreground flex items-center gap-1"><Eye className="w-3 h-3" /> {p.shown_count || 0} aparições · {p.click_count || 0} cliques · {p.redeem_count || 0} resgates</p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">

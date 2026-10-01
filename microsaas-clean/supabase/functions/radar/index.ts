@@ -317,7 +317,7 @@ Deno.serve(async (req) => {
     // Telemetria de produto (o motorista abriu a rota/telefone). NÃO é CRM:
     // não cria cadastro do motorista no estabelecimento.
     if (action === "record_action") {
-      const permitidas = ["viewed", "opened_route", "opened_phone", "opened_whatsapp", "opened_website", "requested_quote", "redeemed_benefit"];
+      const permitidas = ["viewed", "opened_route", "opened_phone", "opened_whatsapp", "opened_website", "requested_quote", "redeemed_benefit", "benefit_honored", "benefit_not_honored"];
       const tipo = String(p.action_type || "");
       if (!permitidas.includes(tipo)) return json({ error: "action_type_invalido" }, 400);
 
@@ -327,10 +327,12 @@ Deno.serve(async (req) => {
         action_type: tipo, metadata: p.metadata || {},
       });
 
-      // Clube de Parceiros: contadores do parceiro (clique em contato / resgate do benefício)
+      // Clube de Parceiros: contadores do parceiro (clique em contato / resgate / honrou ou não — regra do topo)
       const partnerId = p.partner_id ? String(p.partner_id) : null;
       if (partnerId) {
-        const col = tipo === "redeemed_benefit" ? "redeem_count" : "click_count";
+        const col = tipo === "redeemed_benefit" ? "redeem_count"
+          : tipo === "benefit_honored" ? "honored_count"
+          : tipo === "benefit_not_honored" ? "not_honored_count" : "click_count";
         const { data: row } = await admin.from("service_partners").select(col).eq("id", partnerId).maybeSingle();
         if (row) await admin.from("service_partners").update({ [col]: (Number((row as any)[col]) || 0) + 1, updated_at: new Date().toISOString() }).eq("id", partnerId);
       }

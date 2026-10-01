@@ -49,6 +49,33 @@ export interface RawProvider {
   partner_id?: string | null; // id em service_partners (p/ contar indicações)
   benefit?: string | null;      // Clube de Parceiros: benefício oferecido ao usuário do Co-pilot
   partner_code?: string | null; // código curto de resgate (o usuário fala no estabelecimento)
+  benefit_value?: number | null; // valor estimado do benefício pro cliente (R$) — é o que decide o topo
+  honor_rate?: number | null;    // % de resgates em que o cliente confirmou que o benefício foi aplicado (null = sem dados)
+  redeem_count?: number | null;
+  top?: boolean;                 // está entre os 3 do topo da categoria/cidade (regra do topo)
+}
+
+// REGRA DO TOPO (pública, igual pra todo mundo): ninguém paga pra subir; quem dá o maior benefício
+// (em R$) fica no topo — até 3 por categoria/cidade; quem não honra o benefício desce.
+export const TOP_SLOTS = 3;
+export function benefitEffective(row: { benefit_value?: number | null; honored_count?: number | null; not_honored_count?: number | null }): number {
+  const v = Math.max(0, Number(row.benefit_value) || 0);
+  const ok = Number(row.honored_count) || 0, bad = Number(row.not_honored_count) || 0;
+  if (ok + bad < 2) return v;                 // sem amostra: vale o declarado
+  const rate = ok / (ok + bad);
+  if (bad >= 2 && rate < 0.5) return 0;       // não honra: sai do topo
+  return v * rate;
+}
+export function honorRate(row: { honored_count?: number | null; not_honored_count?: number | null }): number | null {
+  const ok = Number(row.honored_count) || 0, bad = Number(row.not_honored_count) || 0;
+  return ok + bad ? Math.round((ok / (ok + bad)) * 100) : null;
+}
+/** Ordena parceiros pela regra do topo: benefício efetivo (R$ × honra) > resgates > prioridade manual. */
+export function sortByTopRule<T extends { benefit_value?: number | null; honored_count?: number | null; not_honored_count?: number | null; redeem_count?: number | null; priority?: number | null }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) =>
+    benefitEffective(b) - benefitEffective(a) ||
+    (Number(b.redeem_count) || 0) - (Number(a.redeem_count) || 0) ||
+    (Number(b.priority) || 0) - (Number(a.priority) || 0));
 }
 
 export interface RankedProvider extends RawProvider {
@@ -145,18 +172,26 @@ export function partnerToRaw(row: any): RawProvider {
     partner_id: String(row.id),
     benefit: row.benefit || null,
     partner_code: row.code || null,
-  };
+    benefit_value: Number(row.benefit_value) || 0,
+    honor_rate: honorRate(row),
+    redeem_count: Number(row.redeem_count) || 0,
+    // guarda os contadores pra regra do topo (não vão pro cliente)
+    ...({ __honored: Number(row.honored_count) || 0, __not_honored: Number(row.not_honored_count) || 0 } as Record<string, number>),
+  } as RawProvider;
 }
 
-// Reordena: PARCEIROS primeiro (por prioridade, depois score), depois os públicos por score.
-// Garante que quem cadastrou/pagou aparece no topo, sem esconder as opções públicas embaixo.
+// REGRA DO TOPO: os (até) 3 parceiros com maior benefício efetivo ficam no topo com selo; os demais
+// parceiros entram na lista comum, ranqueados pelo score como qualquer estabelecimento (mantêm o
+// benefício/resgate, só não têm posição garantida). Ninguém paga pra subir.
 export function partnersFirst(ranked: RankedProvider[]): RankedProvider[] {
+  const eff = (p: any) => benefitEffective({ benefit_value: p.benefit_value, honored_count: p.__honored, not_honored_count: p.__not_honored });
   const part = ranked.filter((p) => p.provider_status === "parceiro_totex")
-    .sort((a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0) || b.rank_score - a.rank_score);
-  const pub = ranked.filter((p) => p.provider_status !== "parceiro_totex")
-    .sort((a, b) => b.rank_score - a.rank_score);
-  const out = [...part, ...pub];
-  out.forEach((p, i) => { p.rank_position = i + 1; });
+    .sort((a: any, b: any) => eff(b) - eff(a) || (Number(b.redeem_count) || 0) - (Number(a.redeem_count) || 0) || (Number(b.priority) || 0) - (Number(a.priority) || 0) || b.rank_score - a.rank_score);
+  const top = part.filter((p) => eff(p) > 0).slice(0, TOP_SLOTS);
+  top.forEach((p) => { p.top = true; });
+  const rest = ranked.filter((p) => !top.includes(p)).sort((a, b) => b.rank_score - a.rank_score);
+  const out = [...top, ...rest];
+  out.forEach((p, i) => { p.rank_position = i + 1; delete (p as any).__honored; delete (p as any).__not_honored; });
   return out;
 }
 

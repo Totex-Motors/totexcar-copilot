@@ -217,6 +217,7 @@ Deno.serve(async (req) => {
           active: b.active !== false,
           notes: String(b.notes || "").trim() || null,
           benefit: String(b.benefit || "").trim() || null,
+          benefit_value: Math.min(5000, Math.max(0, Math.round(Number(String(b.benefit_value ?? "").replace(",", ".")) || 0))),
           email: String(b.email || "").trim().toLowerCase() || null,
           contact_name: String(b.contact_name || "").trim() || null,
           updated_at: new Date().toISOString(),

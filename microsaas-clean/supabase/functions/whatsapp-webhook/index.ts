@@ -1607,6 +1607,9 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           // Clube de Parceiros: benefício pro usuário + código que ele fala no estabelecimento
           beneficio: prov.provider_status === "parceiro_totex" ? ((prov as any).benefit || null) : null,
           codigo_resgate: prov.provider_status === "parceiro_totex" ? ((prov as any).partner_code || null) : null,
+          // Regra do topo: os 3 parceiros com maior benefício (R$) ficam no topo; ninguém paga pra subir
+          no_topo: !!(prov as any).top,
+          valor_beneficio_reais: prov.provider_status === "parceiro_totex" ? (Number((prov as any).benefit_value) || null) : null,
         });
       }
 

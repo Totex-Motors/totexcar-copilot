@@ -17,6 +17,8 @@ const ICONS: Record<string, any> = {
 };
 const EMERG = ["guincho", "borracharia", "chaveiro", "socorro"];
 
+const HONRA_KEY = "radar_honra_pendente";
+
 export default function Servicos() {
   const { loading, result, buscar, registrarAcao } = useRadar();
   const [loc, setLoc] = useState("");
@@ -50,6 +52,24 @@ export default function Servicos() {
     if (!zap) { toast({ title: "Parceiro sem WhatsApp cadastrado", description: "Use Ligar ou Rota." }); return; }
     const msg = `Oi! Vim pelo TotexCar Co-pilot 🚗 e quero usar o benefício: ${p.benefit}${p.partner_code ? ` (código ${String(p.partner_code).toUpperCase()})` : ""}.`;
     abrir(`https://wa.me/55${zap}?text=${encodeURIComponent(msg)}`, p.provider_id, "redeemed_benefit", p.partner_id);
+    // regra do topo: na próxima visita (depois de 30 min) a gente pergunta se o benefício foi aplicado
+    try { localStorage.setItem(HONRA_KEY, JSON.stringify({ provider_id: p.provider_id, partner_id: p.partner_id, name: p.name, benefit: p.benefit, ts: Date.now() })); } catch { /* */ }
+  };
+
+  // pergunta "o benefício foi aplicado?" — alimenta a regra do topo (quem não honra, desce)
+  const [pendHonra, setPendHonra] = useState<{ provider_id?: string | null; partner_id?: string | null; name: string; benefit?: string | null; ts: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem(HONRA_KEY); if (!raw) return null;
+      const v = JSON.parse(raw); const age = Date.now() - Number(v.ts || 0);
+      return age > 30 * 60 * 1000 && age < 14 * 24 * 3600 * 1000 ? v : null;
+    } catch { return null; }
+  });
+  const responderHonra = async (ok: boolean) => {
+    if (!pendHonra) return;
+    if (pendHonra.provider_id) await registrarAcao(pendHonra.provider_id, ok ? "benefit_honored" : "benefit_not_honored", null, pendHonra.partner_id);
+    try { localStorage.removeItem(HONRA_KEY); } catch { /* */ }
+    setPendHonra(null);
+    toast({ title: ok ? "Valeu! Isso mantém o parceiro no topo." : "Anotado. Parceiro que não honra o benefício perde posição." });
   };
 
   const emergencias = SERVICOS.filter((s) => EMERG.includes(s.value));
@@ -60,6 +80,18 @@ export default function Servicos() {
       <div className="stack">
         <div className="sec-title" style={{ fontSize: 20, marginTop: 2 }}>Serviços</div>
         <p className="s" style={{ color: "var(--muted)", fontSize: 13, margin: "-6px 2px 0" }}>Oficina, guincho, borracharia, chaveiro — a gente acha, compara e mostra as opções perto de você.</p>
+
+        {/* regra do topo: feedback do último resgate */}
+        {pendHonra && (
+          <div className="card pad" style={{ borderLeft: "4px solid var(--brand)" }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>Você resgatou um benefício em {pendHonra.name}.</div>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>{pendHonra.benefit ? `"${pendHonra.benefit}" — ` : ""}foi aplicado? Sua resposta decide quem fica no topo.</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button className="btn-primary" style={{ height: 38, fontSize: 14, flex: 1 }} onClick={() => responderHonra(true)}>Sim, foi aplicado</button>
+              <button className="sbtn" style={{ height: 38, flex: 1, justifyContent: "center" }} onClick={() => responderHonra(false)}>Não foi</button>
+            </div>
+          </div>
+        )}
 
         {/* localização */}
         <div style={{ display: "flex", gap: 8 }}>
@@ -107,7 +139,7 @@ export default function Servicos() {
                 <div key={p.provider_id || i} className="card pad">
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div className="prov-name">{p.name} {p.provider_status === "parceiro_totex" && <span className="badge-p">Parceiro</span>}</div>
+                      <div className="prov-name">{p.name} {p.provider_status === "parceiro_totex" && <span className="badge-p">{p.top ? "No topo" : "Parceiro"}</span>}</div>
                       {p.address && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3, display: "flex", gap: 4 }}><MapPin size={13} style={{ flex: "none", marginTop: 1 }} /> {p.address}</div>}
                     </div>
                     {p.distance_km != null && <span style={{ color: "var(--brand)", fontWeight: 700, flex: "none" }}>{p.distance_km} km</span>}
@@ -122,7 +154,8 @@ export default function Servicos() {
                   {p.provider_status === "parceiro_totex" && p.benefit && (
                     <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "var(--brand-soft)" }}>
                       <div style={{ fontSize: 11, fontWeight: 800, color: "var(--brand)", letterSpacing: ".04em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}><Gift size={13} /> Benefício Co-pilot</div>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 3 }}>{p.benefit}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 3 }}>{p.benefit}{p.benefit_value ? <span style={{ fontWeight: 600, color: "var(--muted)" }}> · vale ≈ R$ {Math.round(p.benefit_value)}</span> : null}</div>
+                      {p.honor_rate != null && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{p.honor_rate}% dos clientes confirmaram o benefício</div>}
                       <button className="btn-primary" style={{ marginTop: 8, height: 40, fontSize: 14 }} onClick={() => resgatar(p)}><Gift size={15} /> Resgatar no WhatsApp</button>
                     </div>
                   )}
