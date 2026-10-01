@@ -83,7 +83,7 @@ completo grátis**. Um único arquivo (`index.html`), sem backend, sem instalaç
 **https://jjespetos.vercel.app** — projeto próprio na Vercel, deployado pelo workflow
 `.github/workflows/deploy-jj.yml` a cada push na main que mude `jj-fidelidade/`
 (ou manualmente por workflow_dispatch). O endereço antigo
-`totexcarco-pilot.vercel.app/jj/` redireciona pra cá preservando `?c=`/`?i=`.
+`co-pilot.totexmotors.com/jj/` redireciona pra cá preservando `?c=`/`?i=`.
 
 Teste local: `npx http-server jj-fidelidade` e abra o endereço que aparecer.
 

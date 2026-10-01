@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
   const vehicle = vehicles?.[0] || null;
 
   const s = await getSettings();
-  const appUrl = (s.app_url || "https://totexcarco-pilot.vercel.app").replace(/\/+$/, "");
+  const appUrl = (s.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
 
   const system = `Você é o SUPORTE oficial do TotexCar Co-pilot / TotexCar Co-pilot (ecossistema Totexmotors). Português do Brasil, cordial, objetivo, no máximo 1 emoji. Seu objetivo: RESOLVER o problema do cliente aqui mesmo. Você é o "braço direito" do dono — só escale o que realmente precisar de humano.
 
