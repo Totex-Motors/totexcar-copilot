@@ -319,11 +319,17 @@ async function montaStatus(settings: any, v: any, temaFipe = false): Promise<{ p
   const code = await ofertaCode(String(v.id));
   const link = code ? `${appUrl}/o/${code}` : `${SB}/functions/v1/oferta?c=${encodeURIComponent(String(v.id))}`;
 
+  // o marketplace devolve enums em inglês (AUTOMATIC, GASOLINE…) → português curto
+  const PT: Record<string, string> = {
+    automatic: "Automático", manual: "Manual", cvt: "CVT", automated: "Automatizado",
+    gasoline: "Gasolina", flex: "Flex", ethanol: "Etanol", diesel: "Diesel", hybrid: "Híbrido", electric: "Elétrico", gnv: "GNV",
+  };
+  const pt = (s: unknown) => { const k = String(s || "").trim(); return PT[k.toLowerCase()] || (k.toUpperCase() === k ? k.charAt(0) + k.slice(1).toLowerCase() : k); };
   const specs: string[] = [];
   if (Number(v.mileage) > 0) specs.push(`${Number(v.mileage).toLocaleString("pt-BR")} km`);
-  if (v.transmission) specs.push(String(v.transmission));
-  if (v.fuel || v.fuelType) specs.push(String(v.fuel || v.fuelType));
-  if (v.color) specs.push(String(v.color));
+  if (v.transmission) specs.push(pt(v.transmission));
+  if (v.fuel || v.fuelType) specs.push(pt(v.fuel || v.fuelType));
+  if (v.color) specs.push(pt(v.color));
 
   const recem = v.createdAt && new Date(v.createdAt).getTime() > Date.now() - 7 * 24 * 3600_000;
   const aberturas = temaFipe && abaixoFipe
