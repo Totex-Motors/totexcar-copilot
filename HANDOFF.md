@@ -1007,12 +1007,18 @@ Tabelas em `public` (reaproveita a lógica do template: **accounts = veículo**,
 ### app_settings (id=1) — onde tudo é configurado (lido pelas Edge Functions e pelo painel /admin)
 - IA: `ai_provider` ('anthropic'|'openai'|'gemini'), `ai_model`, `anthropic_api_key`,
   `openai_api_key`, `gemini_api_key`. **ATUAL: OpenAI `gpt-4o`** (a chave OpenAI tem créditos).
-- WhatsApp (Uazapi): `uazapi_url` (`https://totexmotors.uazapi.com`), `uazapi_token`, `uazapi_number`.
+- WhatsApp (Uazapi, legado): `uazapi_url` / `uazapi_token` **vazios desde 02/10/2026** — a instância
+  `totexmotors.uazapi.com` virou a instância do **Status pessoal do dono** (abaixo). Provedor ativo: `wa_provider = meta`.
+- Canal do WhatsApp (uazapi `totexcar.uazapi.com`, número 11 96581-1425): `canal_uazapi_url/token`, `canal_newsletter_id`,
+  `canal_autopost`, `comunidade_grupos`. Edge `carro-do-dia` (crons 9h/12h/16h carro do dia, 19h abaixo da FIPE, 13h seg/qua/sex quanto vale, 10h/18h grupo VIP).
+- **Status do dono** (uazapi `totexmotors.uazapi.com`, número pessoal 11 94744-8137, webhook APAGADO): `status_uazapi_url/token`,
+  `status_autopost`, `status_dealership_id` (Cardoso Veículos). `carro-do-dia?job=status[&tema=fipe][&preview=1]`; crons
+  `totex-status-cardoso-manha` (13h UTC) e `-tarde` (21h UTC, tema fipe). Só `/send/status`; nenhuma função de mensagem usa esses campos.
 - Pagamento: `payment_provider` ('asaas'), `asaas_api_key`, `asaas_sandbox`, `asaas_webhook_token`.
 - Preços: `plan_monthly_price` (109.90), `plan_annual_price`, `member_monthly_price` (10.99),
   `member_annual_price` (109.90), `ecosystem_discount_pct` (90), `plan_name` ("Totex Care").
 - Integração: `integration_api_key` = `tcf_int_21bb1b52307945738498f044b9b47f18`, `os_webhook_url`.
-- `app_url` = `https://microsaas-clean.vercel.app`.
+- `app_url` = `https://co-pilot.totexmotors.com`.
 
 ### RLS — GOTCHA IMPORTANTE
 Existe a função `public.is_admin()` (SECURITY DEFINER) usada nas policies de `users`/`coupons`/
