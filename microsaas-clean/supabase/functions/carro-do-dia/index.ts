@@ -16,6 +16,14 @@
 // Jobs (?job=):  post (padrão, publica e loga em canal_posts) | preview (gera e devolve JSON,
 // não publica) | discover (varre endpoints da uazapi atrás do id do canal).  ?car=<id> força carro.
 // Protegida por ?secret= (mesmo WEBHOOK_SECRET dos outros crons). Deploy com verify_jwt=false.
+//
+// STATUS (stories) DO WHATSAPP PESSOAL DO DONO — ?job=status [&tema=fipe] [&car=<id>] [&preview=1]
+//   status_uazapi_url / status_uazapi_token → instância uazapi SÓ do Status (nunca envia mensagem;
+//     o webhook dessa instância fica apagado e nenhuma função de envio enxerga esses campos)
+//   status_dealership_id                   → só carros desta loja (Cardoso Veículos)
+//   status_autopost                        → false = cron vira no-op
+//   Publica a foto do carro com legenda curta (limite do Status: 656 caracteres) via /send/status.
+//   Rotação própria (canal_posts.raw.tipo = "status"), 14 dias sem repetir. Cron: 10h e 18h BRT.
 
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
 const MKT = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
@@ -217,7 +225,9 @@ function catDe(v: any): string | null {
   return null;
 }
 
-async function escolheCarros(forcarId?: string, temaFipe = false, cats?: string[] | null): Promise<any[]> {
+// opts.dealershipId → só carros daquela loja (Status da Cardoso). opts.canal="status" → rotação
+// separada da do Canal (um carro pode sair no Canal hoje e no Status amanhã, sem se atrapalharem).
+async function escolheCarros(forcarId?: string, temaFipe = false, cats?: string[] | null, opts?: { dealershipId?: string; canal?: "canal" | "status" }): Promise<any[]> {
   if (forcarId) {
     try {
       const res = await fetch(`${MKT}/api/vehicles/${encodeURIComponent(forcarId)}`, { headers: { Accept: "application/json" } });
@@ -227,12 +237,15 @@ async function escolheCarros(forcarId?: string, temaFipe = false, cats?: string[
   }
   let lote: any[] = [];
   try {
-    const res = await fetch(`${MKT}/api/vehicles?limit=200`, { headers: { Accept: "application/json" } });
+    const filtroLoja = opts?.dealershipId ? `&dealershipId=${encodeURIComponent(opts.dealershipId)}` : "";
+    const res = await fetch(`${MKT}/api/vehicles?limit=500${filtroLoja}`, { headers: { Accept: "application/json" } });
     const d = await res.json();
     lote = Array.isArray(d?.data) ? d.data : [];
   } catch { return []; }
   const desde = new Date(Date.now() - 14 * 24 * 3600_000).toISOString();
-  const recentes = await sbSelect(`canal_posts?posted_at=gte.${desde}&select=car_id`);
+  const soStatus = opts?.canal === "status";
+  const filtroTipo = soStatus ? "&raw->>tipo=eq.status" : "&or=(raw->>tipo.is.null,raw->>tipo.neq.status)";
+  const recentes = await sbSelect(`canal_posts?posted_at=gte.${desde}${filtroTipo}&select=car_id`);
   const jaPostados = new Set(recentes.map((r: any) => r.car_id));
   let cands = lote.filter((v: any) => v?.id && Number(v.price) > 0 && carFoto(v));
   if (cats?.length) {
@@ -290,6 +303,46 @@ function montaPostVale(settings: any): { post: string; link: string } {
   return { post, link };
 }
 
+// LEGENDA DO STATUS (stories): curta, sem IA (o Status some em 24h e o limite é 656 caracteres).
+// Quem vê é contato pessoal do dono → tom de dono de loja, não de robô. Preço e link por código.
+const STATUS_MAX = 600;
+async function montaStatus(settings: any, v: any, temaFipe = false): Promise<{ post: string; preco: string | null; link: string; foto: string }> {
+  const nome = carNome(v) || "esse carro";
+  const nomeAno = `${nome}${v.year ? ` ${v.year}` : ""}`;
+  const precoNum = Number(v.price);
+  const preco = precoNum > 0 ? `R$ ${precoNum.toLocaleString("pt-BR")}` : "";
+  const fipeNum = Number(v.fipePrice);
+  const abaixoFipe = fipeNum > 0 && precoNum > 0 && precoNum < fipeNum;
+  const loja = v?.dealership?.name || "Cardoso Veículos";
+  const cidade = v?.dealership?.city || v?.city || "";
+  const appUrl = (settings?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
+  const code = await ofertaCode(String(v.id));
+  const link = code ? `${appUrl}/o/${code}` : `${SB}/functions/v1/oferta?c=${encodeURIComponent(String(v.id))}`;
+
+  const specs: string[] = [];
+  if (Number(v.mileage) > 0) specs.push(`${Number(v.mileage).toLocaleString("pt-BR")} km`);
+  if (v.transmission) specs.push(String(v.transmission));
+  if (v.fuel || v.fuelType) specs.push(String(v.fuel || v.fuelType));
+  if (v.color) specs.push(String(v.color));
+
+  const recem = v.createdAt && new Date(v.createdAt).getTime() > Date.now() - 7 * 24 * 3600_000;
+  const aberturas = temaFipe && abaixoFipe
+    ? ["🔥 Abaixo da FIPE na loja hoje", "🚨 Oportunidade do dia na Cardoso", "📉 Esse está abaixo da tabela"]
+    : recem
+      ? ["✨ Acabou de chegar na loja", "🆕 Novidade no estoque da Cardoso", "🚗 Chegou hoje e já está na vitrine"]
+      : ["🚗 Olha esse que está na loja", "👀 Destaque do estoque da Cardoso", "💎 Carro bom pra quem vê primeiro"];
+  const ab = aberturas[Math.floor(Math.random() * aberturas.length)];
+  const linhaFipe = abaixoFipe ? `\n📉 FIPE R$ ${fipeNum.toLocaleString("pt-BR")} — R$ ${(fipeNum - precoNum).toLocaleString("pt-BR")} abaixo` : "";
+
+  let post = `${ab}\n\n*${nomeAno}*`
+    + (specs.length ? `\n${specs.join(" · ")}` : "")
+    + (preco ? `\n\n💰 ${preco}${linhaFipe}` : "")
+    + `\n📍 ${loja}${cidade ? ` · ${cidade}` : ""}`
+    + `\n\nQuer ver mais fotos ou agendar uma visita? Toca no link que eu te atendo no WhatsApp 👇\n${link}`;
+  if (post.length > STATUS_MAX) post = post.replace(/\nQuer ver mais fotos[^\n]*\n/, "\n👇 ");
+  return { post, preco: preco || null, link, foto: carFoto(v) };
+}
+
 // posta o conteúdo do TEMA num grupo (não-oficial/uazapi). cat: suv|sedan|picape|hatch|oportunidade|vale|radar
 async function postaGrupo(cfg: any, uazUrl: string, uazToken: string, waId: string, cat: string): Promise<{ ok: boolean; tipo: string; detalhe: string }> {
   const c = (cat || "").toLowerCase();
@@ -328,7 +381,7 @@ Deno.serve(async (req) => {
   const job = (url.searchParams.get("job") || "post").toLowerCase();
 
   const cfg = (await sbSelect(
-    "app_settings?id=eq.1&select=app_url,ai_provider,ai_model,anthropic_api_key,openai_api_key,gemini_api_key,canal_uazapi_url,canal_uazapi_token,canal_newsletter_id,canal_autopost,comunidade_grupos&limit=1",
+    "app_settings?id=eq.1&select=app_url,ai_provider,ai_model,anthropic_api_key,openai_api_key,gemini_api_key,canal_uazapi_url,canal_uazapi_token,canal_newsletter_id,canal_autopost,comunidade_grupos,status_uazapi_url,status_uazapi_token,status_autopost,status_dealership_id&limit=1",
   ))?.[0] || {};
   const uazUrl = String(cfg.canal_uazapi_url || "").replace(/\/+$/, "");
   const uazToken = String(cfg.canal_uazapi_token || "");
@@ -391,6 +444,49 @@ Deno.serve(async (req) => {
   }
 
   const tema = (url.searchParams.get("tema") || "").toLowerCase();
+
+  // STATUS DO WHATSAPP PESSOAL DO DONO — só carros da loja configurada, instância própria do Status.
+  if (job === "status") {
+    const stUrl = String(cfg.status_uazapi_url || "").replace(/\/+$/, "");
+    const stToken = String(cfg.status_uazapi_token || "");
+    const lojaId = String(cfg.status_dealership_id || "");
+    const preview = url.searchParams.get("preview") === "1";
+    const temaFipeSt = tema === "fipe";
+    if (!lojaId) return json({ ok: false, error: "status_dealership_id não configurado" }, 400);
+    const cands = await escolheCarros(url.searchParams.get("car") || undefined, temaFipeSt, null, { dealershipId: lojaId, canal: "status" });
+    if (!cands.length) return json({ ok: false, error: "sem_carro_elegivel_da_loja" }, 404);
+    if (preview) {
+      const carro = cands[0];
+      const g = await montaStatus(cfg, carro, temaFipeSt);
+      return json({ ok: true, preview: true, tema: "status", carro: `${carNome(carro)} ${carro.year || ""}`.trim(), car_id: carro.id, loja: carro?.dealership?.name || null, chars: g.post.length, ...g });
+    }
+    if (!cfg.status_autopost) return json({ ok: true, skipped: "status_autopost desligado" });
+    if (!stUrl || !stToken) return json({ ok: false, error: "status_uazapi_url/token não configurados" }, 400);
+    const pulados: string[] = [];
+    for (const carro of cands) {
+      const nomeC = `${carNome(carro)} ${carro.year || ""}`.trim();
+      const fotoJpg = fotoNormalizada(carFoto(carro));
+      if (!(await fotoViva(fotoJpg))) {
+        pulados.push(nomeC);
+        await sbInsert("canal_posts", { car_id: carro.id, ok: false, raw: { tipo: "status", detalhe: "foto morta na origem — carro pulado" } });
+        continue;
+      }
+      const g = await montaStatus(cfg, carro, temaFipeSt);
+      let ok = false, detalhe = "";
+      try {
+        const res = await fetch(`${stUrl}/send/status`, {
+          method: "POST", headers: { "content-type": "application/json", token: stToken },
+          body: JSON.stringify({ type: "image", file: fotoJpg, text: g.post }),
+        });
+        detalhe = (await res.text()).slice(0, 1000); ok = res.ok;
+      } catch (e) { detalhe = String(e); }
+      await sbInsert("canal_posts", { car_id: carro.id, code: g.link.split("/o/")[1] || null, ok, raw: { tipo: "status", tema: temaFipeSt ? "fipe" : "dia", detalhe: detalhe.slice(0, 500) } });
+      console.log(`carro-do-dia status: ${ok ? "publicado" : "FALHOU"} — ${nomeC} — ${detalhe.slice(0, 200)}`);
+      if (ok) return json({ ok, tema: "status", carro: nomeC, car_id: carro.id, pulados, ...g });
+      pulados.push(nomeC);
+    }
+    return json({ ok: false, tema: "status", error: "nenhum candidato publicável", pulados }, 502);
+  }
 
   // tema=vale → post de captação "quanto vale seu carro" (dirige pro /vale). Não depende de carro.
   if (tema === "vale") {

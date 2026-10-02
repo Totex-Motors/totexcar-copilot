@@ -503,6 +503,8 @@ function ConfigTab() {
     referral_buyer_offer: "Transferência grátis",
     support_owner_phone: "",
     wa_provider: "uazapi", meta_wa_token: "", meta_wa_phone_id: "", meta_wa_verify_token: "", meta_waba_id: "",
+    // Canal (carro do dia) e Status pessoal do dono — instâncias uazapi não-oficiais, só publicação
+    canal_autopost: false, status_autopost: false, status_uazapi_url: "", status_uazapi_token: "", status_dealership_id: "",
   });
 
   useEffect(() => {
@@ -545,6 +547,11 @@ function ConfigTab() {
         meta_wa_phone_id: (settings as any).meta_wa_phone_id || "",
         meta_wa_verify_token: (settings as any).meta_wa_verify_token || "",
         meta_waba_id: (settings as any).meta_waba_id || "",
+        canal_autopost: !!(settings as any).canal_autopost,
+        status_autopost: !!(settings as any).status_autopost,
+        status_uazapi_url: (settings as any).status_uazapi_url || "",
+        status_uazapi_token: (settings as any).status_uazapi_token || "",
+        status_dealership_id: (settings as any).status_dealership_id || "",
       });
     }
   }, [settings]);
@@ -586,7 +593,12 @@ function ConfigTab() {
         meta_wa_phone_id: f.meta_wa_phone_id || null,
         meta_wa_verify_token: f.meta_wa_verify_token || null,
         meta_waba_id: f.meta_waba_id || null,
-      },
+        canal_autopost: f.canal_autopost,
+        status_autopost: f.status_autopost,
+        status_uazapi_url: f.status_uazapi_url.trim().replace(/\/+$/, "") || null,
+        status_uazapi_token: f.status_uazapi_token.trim() || null,
+        status_dealership_id: f.status_dealership_id.trim() || null,
+      } as any,
       {
         onSuccess: () => toast({ title: "Configurações salvas" }),
         onError: (e: any) => toast({ title: "Erro ao salvar", description: String(e?.message || e), variant: "destructive" }),
@@ -676,6 +688,35 @@ function ConfigTab() {
             <Label className="text-xs">URL de callback do webhook (cole no app do Meta → WhatsApp → Configuration):</Label>
             <code className="block text-xs bg-muted p-2 rounded break-all">{wppWebhook}</code>
             <p className="text-xs text-muted-foreground">Use o Verify Token acima na verificação. Guia completo + templates prontos: TEMPLATES-WHATSAPP-META.md no repositório.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Canal + Status (uazapi não-oficial, SÓ publicação — nunca mensagem) */}
+      <Card className="border-0 shadow-premium-md lg:col-span-2">
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Send className="w-5 h-5" /> Canal do WhatsApp &amp; Status do dono (publicação automática)</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Dois números <strong>não-oficiais</strong> (uazapi) que só publicam: o do Canal (carro do dia 9h/12h/16h, abaixo da FIPE 19h, grupo VIP)
+            e o <strong>Status pessoal do dono</strong> (só carros da loja escolhida, 10h e 18h). A instância do Status fica sem webhook e fora do
+            envio de mensagens: nenhuma função do sistema consegue mandar mensagem por ela.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div><Label>Canal: publicar automaticamente</Label><p className="text-xs text-muted-foreground">Desligado = os crons do Canal e do grupo VIP viram no-op</p></div>
+              <Switch checked={f.canal_autopost} onCheckedChange={(v) => set("canal_autopost", v)} />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div><Label>Status do dono: publicar automaticamente</Label><p className="text-xs text-muted-foreground">10h e 18h, só carros da loja abaixo</p></div>
+              <Switch checked={f.status_autopost} onCheckedChange={(v) => set("status_autopost", v)} />
+            </div>
+            <div className="space-y-2"><Label>Instância uazapi do Status (URL)</Label><Input value={f.status_uazapi_url} onChange={(e) => set("status_uazapi_url", e.target.value)} placeholder="https://xxx.uazapi.com" /></div>
+            <div className="space-y-2"><Label>Token da instância do Status</Label><Input type="password" value={f.status_uazapi_token} onChange={(e) => set("status_uazapi_token", e.target.value)} placeholder="token..." /></div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Loja cujos carros saem no Status (id no marketplace)</Label>
+              <Input value={f.status_dealership_id} onChange={(e) => set("status_dealership_id", e.target.value)} placeholder="ex.: cmolwv3l105la143rmfkwzs4g (Cardoso Veículos)" />
+              <p className="text-xs text-muted-foreground">É o <code>dealership.id</code> que aparece em totexmotors.com/api/vehicles. Vazio = o job de Status não publica.</p>
+            </div>
           </div>
         </CardContent>
       </Card>
