@@ -106,7 +106,7 @@ async function montaPost(settings: any, v: any, temaFipe = false, vouched = fals
   const precoNum = Number(v.price);
   const preco = precoNum > 0 ? `R$ ${precoNum.toLocaleString("pt-BR")}` : "";
   const loja = v?.dealership?.name || "";
-  const appUrl = (settings?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
+  const appUrl = (settings?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
   const code = await ofertaCode(String(v.id));
   const link = code ? `${appUrl}/o/${code}` : `${SB}/functions/v1/oferta?c=${encodeURIComponent(String(v.id))}`;
 
@@ -290,7 +290,7 @@ async function isVouched(carId: string): Promise<boolean> {
 // POST DE CAPTAÇÃO "quanto vale seu carro" (tema=vale) — não usa carro; dirige pro /vale.
 // Alimenta o funil grátis a partir do Canal (topo de funil do playbook).
 function montaPostVale(settings: any): { post: string; link: string } {
-  const appUrl = (settings?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
+  const appUrl = (settings?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
   const link = `${appUrl}/vale`;
   const aberturas = [
     "Você sabe QUANTO vale o seu carro hoje? 🤔",
@@ -315,7 +315,7 @@ async function montaStatus(settings: any, v: any, temaFipe = false): Promise<{ p
   const abaixoFipe = fipeNum > 0 && precoNum > 0 && precoNum < fipeNum;
   const loja = v?.dealership?.name || "Cardoso Veículos";
   const cidade = v?.dealership?.city || v?.city || "";
-  const appUrl = (settings?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
+  const appUrl = (settings?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
   const code = await ofertaCode(String(v.id));
   const link = code ? `${appUrl}/o/${code}` : `${SB}/functions/v1/oferta?c=${encodeURIComponent(String(v.id))}`;
 

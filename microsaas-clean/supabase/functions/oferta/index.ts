@@ -13,7 +13,7 @@
 
 const WA = "5511963786699";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
-const APP = (Deno.env.get("APP_URL") || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
+const APP = (Deno.env.get("APP_URL") || "https://copilot.totexmotors.com").replace(/\/+$/, "");
 const SB_URL = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 

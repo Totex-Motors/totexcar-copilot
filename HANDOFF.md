@@ -1018,7 +1018,7 @@ Tabelas em `public` (reaproveita a lógica do template: **accounts = veículo**,
 - Preços: `plan_monthly_price` (109.90), `plan_annual_price`, `member_monthly_price` (10.99),
   `member_annual_price` (109.90), `ecosystem_discount_pct` (90), `plan_name` ("Totex Care").
 - Integração: `integration_api_key` = `tcf_int_21bb1b52307945738498f044b9b47f18`, `os_webhook_url`.
-- `app_url` = `https://co-pilot.totexmotors.com`.
+- `app_url` = `https://copilot.totexmotors.com`.
 
 ### RLS — GOTCHA IMPORTANTE
 Existe a função `public.is_admin()` (SECURITY DEFINER) usada nas policies de `users`/`coupons`/

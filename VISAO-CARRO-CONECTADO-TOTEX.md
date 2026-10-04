@@ -62,7 +62,7 @@ Token inválido → 401. O token sai no QR Code como `{"url":"...car-ingest","to
 - **Fase D — Produto:** serviço em segundo plano (foreground service) que roda sozinho; tela de pareamento
   lendo o QR; eventos (porta/ignição/viagem); auto-start ao ligar o carro.
 
-**Distribuição:** APK hospedado (ex.: `co-pilot.totexmotors.com/car-apk`) + guia de instalação
+**Distribuição:** APK hospedado (ex.: `copilot.totexmotors.com/car-apk`) + guia de instalação
 (igual o Electro faz: "Baixar APK para o Carro" + FAQ "como instalar").
 
 ---
