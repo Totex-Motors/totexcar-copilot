@@ -472,7 +472,7 @@ Deno.serve(async (req) => {
         const loja = v?.dealership?.name || me.dealership || "";
         // link CURTO no domínio do app (/o/<code>) — nada de "supabase" nem código gigante na cara do cliente
         const { data: stApp } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
-        const appUrl = (stApp?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
+        const appUrl = (stApp?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
         const codeMap = await ofertaCodes([carId]);
         const base = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
         const link = codeMap[carId] ? `${appUrl}/o/${codeMap[carId]}` : `${base}/functions/v1/oferta?c=${encodeURIComponent(carId)}`;
@@ -950,7 +950,7 @@ Deno.serve(async (req) => {
         // Boas-vindas + convite pra ativar o Co-pilot com o bônus da loja (semi-automático).
         // Iniciado pelo negócio → TEMPLATE na API oficial (cortesia = utilidade; convite bônus = marketing).
         const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
-        const appUrl = (st?.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
+        const appUrl = (st?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
         const link = `${appUrl}/entrar?tab=register${coupon ? `&coupon=${encodeURIComponent(coupon)}` : ""}`;
         const primeiro = name ? name.split(" ")[0] : "tudo bem";
         const wa = await loadWaSettings(admin);

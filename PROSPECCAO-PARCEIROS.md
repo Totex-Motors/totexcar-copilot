@@ -28,7 +28,7 @@ semanas, uma cidade inteira coberta nas categorias de urgência.
 ## O link personalizado
 
 ```
-https://co-pilot.totexmotors.com/parceiro?ref=zap1&n=Guincho+do+Zé&cat=guincho&c=Santana+de+Parnaíba
+https://copilot.totexmotors.com/parceiro?ref=zap1&n=Guincho+do+Zé&cat=guincho&c=Santana+de+Parnaíba
 ```
 
 | Parâmetro | O que faz |
@@ -106,7 +106,7 @@ contato que eu faço o mesmo convite.
   reais** pro dono do carro.
 - Depois de cada resgate o cliente responde "foi aplicado?". Quem não honra, desce.
 - O parceiro vê a posição dele e muda o benefício quando quiser, pelo link
-  `co-pilot.totexmotors.com/parceiro?code=CÓDIGO` (o código de resgate dele).
+  `copilot.totexmotors.com/parceiro?code=CÓDIGO` (o código de resgate dele).
 - Quando alguém reclamar que "não apareceu no topo": a resposta é a regra, não o favor.
 
 ## O que o admin mostra

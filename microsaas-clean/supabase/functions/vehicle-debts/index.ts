@@ -234,7 +234,7 @@ Deno.serve(async (req) => {
       if (insErr || !created) return json({ error: insErr?.message || "erro_criar_consulta" }, 400);
 
       const base = cfg.asaas_sandbox ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
-      const appUrl = String(cfg.app_url || "https://co-pilot.totexmotors.com").replace(/\/+$/, "");
+      const appUrl = String(cfg.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
       const res = await fetch(`${base}/checkouts`, {
         method: "POST",
         headers: { "Content-Type": "application/json", access_token: cfg.asaas_api_key },

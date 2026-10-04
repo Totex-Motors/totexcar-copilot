@@ -110,7 +110,7 @@ Na criação, o Meta pede um **exemplo** para cada variável — está na tabela
 | 1 | multa + valor | excesso de velocidade (R$ 195,23) |
 | 2 | situação | termina em 3 dias |
 | 3 | data | 22/07/2026 |
-| 4 | instrução | Seu recurso já está PRONTO no app: https://co-pilot.totexmotors.com/multas |
+| 4 | instrução | Seu recurso já está PRONTO no app: https://copilot.totexmotors.com/multas |
 
 **assinatura_vencendo**
 ```
@@ -118,13 +118,13 @@ Na criação, o Meta pede um **exemplo** para cada variável — está na tabela
 ```
 | 1 | quando | em 3 dias |
 | 2 | data | 20/07/2026 |
-| 3 | link | https://co-pilot.totexmotors.com/plans |
+| 3 | link | https://copilot.totexmotors.com/plans |
 
 **assinatura_vencida**
 ```
 ⚠️ Sua assinatura do TotexCar Co-pilot venceu. Para continuar registrando gastos, consumo e usando o assistente, renove em {{1}} e volte a ficar em dia. 🚗
 ```
-| 1 | link | https://co-pilot.totexmotors.com/plans |
+| 1 | link | https://copilot.totexmotors.com/plans |
 
 **cortesia_vencendo**
 ```
@@ -133,14 +133,14 @@ Na criação, o Meta pede um **exemplo** para cada variável — está na tabela
 | 1 | loja | Cardoso Veículos |
 | 2 | quando | amanhã |
 | 3 | data | 15/07/2027 |
-| 4 | link | https://co-pilot.totexmotors.com/plans?coupon=CARDOSO90 |
+| 4 | link | https://copilot.totexmotors.com/plans?coupon=CARDOSO90 |
 
 **cortesia_vencida**
 ```
 ⚠️ Seu ano de cortesia do TotexCar Co-pilot, oferecido pela {{1}}, chegou ao fim. Continue com tudo (gastos, consumo, revisões e multas) por R$ 10,99/mês, preço de membro, renovando em {{2}}. Até já! 🚗
 ```
 | 1 | loja | Cardoso Veículos |
-| 2 | link | https://co-pilot.totexmotors.com/plans?coupon=CARDOSO90 |
+| 2 | link | https://copilot.totexmotors.com/plans?coupon=CARDOSO90 |
 
 **resumo_pro_semanal**
 ```
@@ -243,7 +243,7 @@ Olá {{1}}! 🎉 Obrigado por comprar {{2}} na {{3}}. Como nosso cliente, você 
 | 1 | nome | Renata |
 | 2 | carro | seu Nivus |
 | 3 | loja | Cardoso Veículos |
-| 4 | link | https://co-pilot.totexmotors.com/entrar?tab=register&coupon=CARDOSO90 |
+| 4 | link | https://copilot.totexmotors.com/entrar?tab=register&coupon=CARDOSO90 |
 
 **radar_match** *(carro do desejo chegou — "back in stock" = marketing)*
 ```
