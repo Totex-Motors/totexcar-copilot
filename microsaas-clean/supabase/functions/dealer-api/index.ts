@@ -1092,6 +1092,19 @@ Deno.serve(async (req) => {
         return json({ ok: true, tag: r.tag });
       }
 
+      // apaga um LOTE inteiro — só etiquetas livres e nunca escaneadas (impresso errado, lote de teste…)
+      case "tags_delete_batch": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const batch = String(p.batch || "").trim();
+        if (!batch) return json({ error: "lote_obrigatorio" }, 400);
+        const { data: del, error } = await admin.from("car_tags").delete()
+          .eq("dealership", writeStore).eq("batch", batch).eq("status", "livre").eq("scans", 0).is("bound_at", null)
+          .select("id");
+        if (error) return json({ error: error.message }, 400);
+        const { count: sobraram } = await admin.from("car_tags").select("id", { count: "exact", head: true }).eq("dealership", writeStore).eq("batch", batch);
+        return json({ ok: true, apagadas: (del || []).length, mantidas: sobraram || 0 });
+      }
+
       case "tags_unbind": {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
         const lbl = normLabel(p.label);

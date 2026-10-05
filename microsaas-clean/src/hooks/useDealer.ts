@@ -200,6 +200,8 @@ export const useTagsCreate = () =>
   useMutation({ mutationFn: async (p: { qty: number; prefix?: string; dealership?: string }) => callDealer("tags_create", p) as Promise<{ batch: string; loja: string; app_url: string; tags: { id: string; label: string; token: string }[] }> });
 export const useTagsBind = () =>
   useMutation({ mutationFn: async (p: { label: string; journey_id?: string; customer_phone?: string; customer_name?: string; car_desc?: string; placa?: string; km_entrega?: number; dealership?: string }) => callDealer("tags_bind", p) });
+export const useTagsDeleteBatch = () =>
+  useMutation({ mutationFn: async (p: { batch: string; dealership?: string }) => callDealer("tags_delete_batch", p) as Promise<{ apagadas: number; mantidas: number }> });
 export const useTagsUnbind = () =>
   useMutation({ mutationFn: async (p: { label: string; dealership?: string }) => callDealer("tags_unbind", p) });
 
