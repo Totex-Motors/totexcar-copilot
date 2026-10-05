@@ -39,20 +39,20 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
     const url = `${appUrl}/q/${t.token}`;
     const qr = await QRCode.toDataURL(url, { width: 480, margin: 0, errorCorrectionLevel: "M", color: { dark: NAVY, light: "#ffffff" } });
     return `
-      <div class="st verso">
+      <div class="pg"><div class="st verso">
         <div class="topo">MANUTENÇÃO DO SEU CARRO</div>
         <div class="qrbox"><img class="qr" src="${qr}" /></div>
         <div class="num">${esc(t.label)}</div>
         <div class="cta">Aponte a câmera e acompanhe<br/>a manutenção do seu carro</div>
         <div class="marca">TotexCar Co-pilot</div>
-      </div>`;
+      </div></div>`;
   }));
   const frentes = tags.map((t) => `
-      <div class="st frente">
+      <div class="pg"><div class="st frente">
         <div class="logowrap">${logo ? `<img class="logo" src="${esc(logo)}" />` : `<div class="lojatxt">${esc(loja).toUpperCase()}</div>`}</div>
         <div class="slogan">Nós ajudamos você<br/>a cuidar do seu carro.</div>
         <div class="numf">${esc(t.label)}</div>
-      </div>`);
+      </div></div>`);
   const grafica = modo === "grafica";
   const corpo = grafica
     // gráfica: frente e verso de cada etiqueta em páginas consecutivas, sem margem nem linha de corte
@@ -65,11 +65,13 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
     html, body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; color: ${NAVY}; background: #fff; }
     .grid { display: grid; grid-template-columns: repeat(3, 50mm); grid-auto-rows: 65mm; gap: 6mm 8mm; justify-content: center; padding-top: 2mm; }
     .pg2 { page-break-before: always; break-before: page; }
-    .st { width: 50mm; height: 65mm; border: ${grafica ? "0" : "0.3mm dashed #bbb"}; border-radius: ${grafica ? "0" : "3mm"}; overflow: hidden; text-align: center; display: flex; flex-direction: column; align-items: center; page-break-inside: avoid; break-inside: avoid; background: #fff; ${grafica ? "page-break-after: always; break-after: page;" : ""} }
-    .st:last-child { page-break-after: auto; break-after: auto; }
+    /* .pg = área de corte (50 × 65 mm); .st = a arte, com moldura azul fina e cantos arredondados, 1 mm pra dentro do corte */
+    .pg { width: 50mm; height: 65mm; padding: 1mm; background: #fff; page-break-inside: avoid; break-inside: avoid; ${grafica ? "page-break-after: always; break-after: page;" : "outline: 0.2mm dashed #bbb; border-radius: 3.5mm;"} }
+    .pg:last-child { page-break-after: auto; break-after: auto; }
+    .st { width: 48mm; height: 63mm; border: 0.45mm solid ${NAVY}; border-radius: 3mm; overflow: hidden; text-align: center; display: flex; flex-direction: column; align-items: center; background: #fff; }
     /* VERSO (QR) */
     .verso { justify-content: space-between; padding: 0 2.5mm 2.5mm; }
-    .topo { width: 50mm; background: ${NAVY}; color: #fff; font-size: 6.5pt; font-weight: 800; letter-spacing: .18em; padding: 1.8mm 0; }
+    .topo { width: 100%; background: ${NAVY}; color: #fff; font-size: 6.2pt; font-weight: 800; letter-spacing: .12em; padding: 1.8mm 0; white-space: nowrap; }
     .qrbox { border: 0.5mm solid ${NAVY}; border-radius: 2.5mm; padding: 2mm; margin-top: 1mm; }
     .qr { width: 30mm; height: 30mm; display: block; }
     .num { font-family: "Courier New", monospace; font-weight: 700; font-size: 11pt; letter-spacing: .12em; color: ${NAVY}; }
@@ -77,8 +79,8 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
     .marca { font-size: 6.5pt; color: #8a8fa8; letter-spacing: .06em; }
     /* FRENTE (logo) */
     .frente { justify-content: center; gap: 3.5mm; padding: 4mm 3mm; position: relative; }
-    .logowrap { width: 42mm; height: 16mm; display: flex; align-items: center; justify-content: center; }
-    .logo { max-width: 42mm; max-height: 16mm; }
+    .logowrap { width: 40mm; height: 16mm; display: flex; align-items: center; justify-content: center; }
+    .logo { max-width: 40mm; max-height: 16mm; }
     .lojatxt { font-size: 12pt; font-weight: 900; letter-spacing: .06em; }
     .slogan { font-size: 8.5pt; line-height: 1.3; font-weight: 700; font-style: italic; }
     .numf { position: absolute; bottom: 2mm; right: 0; left: 0; font-family: "Courier New", monospace; font-size: 6pt; color: #8a8fa8; letter-spacing: .1em; }
