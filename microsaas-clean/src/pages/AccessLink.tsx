@@ -33,7 +33,7 @@ export default function AccessLink() {
           <h1 className="text-lg font-semibold">Este link de acesso expirou ou já foi usado</h1>
           <p className="text-sm text-muted-foreground">
             Por segurança, cada link vale por 1 hora e só funciona uma vez.
-            Peça um novo no WhatsApp — é só mandar <strong>"quero o painel"</strong> pro Co-pilot.
+            Peça um novo no WhatsApp — é só mandar <strong>"acessar o sistema"</strong> pro Co-pilot.
           </p>
           <Button asChild variant="outline"><Link to="/entrar">Entrar com minha conta</Link></Button>
         </div>

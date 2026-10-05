@@ -167,7 +167,7 @@ async function garagemDealerId(name?: string | null): Promise<string | null> {
   return _mktDealers[String(name).toLowerCase()] || null;
 }
 // Opção do menu que gera o link mágico de acesso ao painel web (atalho determinístico)
-const PAINEL_LABEL = "🖥️ Quero o painel";
+const PAINEL_LABEL = "🔑 Acessar o sistema";
 
 // Ações rápidas exibidas após cada resposta. WhatsApp só permite 3 BOTÕES, então com 4+ opções
 // usamos uma LISTA (type:"list"). A 4ª opção (Garagem Totex) abre a janela de carros do marketplace.
@@ -2173,7 +2173,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           if (!insErr) shortUrl = `${base}/a/${code}`;
         } catch { /* fallback: manda o link longo mesmo */ }
         // Envia direto pra garantir o token intacto (o modelo não deve reescrever o link).
-        await sendText(String(user.phone), `🔐 Aqui está seu acesso ao painel do TotexCar Co-pilot — link seguro, de uso único, válido por ~1 hora:\n${shortUrl}\n\nÉ só tocar pra entrar (não precisa de senha). Dica: no navegador, use "Adicionar à tela inicial" pra deixar como um atalho de app. 📲`);
+        await sendText(String(user.phone), `🔑 Aqui está seu acesso ao sistema do TotexCar Co-pilot — link seguro, de uso único, válido por ~1 hora:\n${shortUrl}\n\nÉ só tocar pra entrar (não precisa de senha). Dica: no navegador, use "Adicionar à tela inicial" pra deixar como um atalho de app. 📲`);
         return { ok: true, enviado: true, message: "Link de acesso enviado ao usuário. Apenas confirme em 1 frase que o link foi enviado e que é de uso único/expira em ~1h. NÃO repita o link." };
       } catch (e) {
         return { ok: false, error: "link_falhou", message: `Falha ao gerar o link: ${String((e as any)?.message || e)}. Oriente abrir ${base}.` };
@@ -2900,8 +2900,8 @@ async function handleStandActivate(phone: string, text: string): Promise<boolean
   const r = await activateStandTrial(phone, nome);
   await sendText(phone, r.ok
     ? (r.already
-      ? `Você já tem seu Co-pilot ativo por aqui 👍 É só me pedir o que precisa: ver carros, avaliar o seu, ou *"quero o painel"* pra cuidar do seu carro. 🚗`
-      : `🎉 Pronto! Seus *30 dias grátis* já estão ativos.\n\nAgora é só usar — me pede *"quero o painel"* que eu te mando o acesso pra cadastrar seu carro (sem senha), ou me diz o que procura. 🚗`)
+      ? `Você já tem seu Co-pilot ativo por aqui 👍 É só me pedir o que precisa: ver carros, avaliar o seu, ou *"acessar o sistema"* pra cuidar do seu carro. 🚗`
+      : `🎉 Pronto! Seus *30 dias grátis* já estão ativos.\n\nAgora é só usar — me pede *"acessar o sistema"* que eu te mando o acesso pra cadastrar seu carro (sem senha), ou me diz o que procura. 🚗`)
     : "Tive um probleminha pra ativar agora 😕 Tenta de novo em instantes, por favor.");
   return true;
 }
@@ -3555,8 +3555,8 @@ async function handleStandFollowup(phone: string, text: string): Promise<boolean
     const r = await activateStandTrial(phone, nome);
     if (r.ok) {
       await sendText(phone, r.already
-        ? `Você já tem seu Co-pilot ativo por aqui 👍 Me diz o que precisa: ver mais carros, ou cuidar do SEU carro (é só pedir *"quero o painel"* que eu te mando o acesso). 🚗`
-        : `🎉 Pronto! Seus *30 dias grátis* já estão ativos.\n\nAgora é só usar:\n• Quer ver mais carros? Me diz o que procura (ex.: "SUV até 100 mil").\n• Quer que eu cuide do SEU carro — gasto, revisão, IPVA, quanto vale? Me pede *"quero o painel"* que eu te mando o acesso pra cadastrar ele (sem senha). 🚗`);
+        ? `Você já tem seu Co-pilot ativo por aqui 👍 Me diz o que precisa: ver mais carros, ou cuidar do SEU carro (é só pedir *"acessar o sistema"* que eu te mando o acesso). 🚗`
+        : `🎉 Pronto! Seus *30 dias grátis* já estão ativos.\n\nAgora é só usar:\n• Quer ver mais carros? Me diz o que procura (ex.: "SUV até 100 mil").\n• Quer que eu cuide do SEU carro — gasto, revisão, IPVA, quanto vale? Me pede *"acessar o sistema"* que eu te mando o acesso pra cadastrar ele (sem senha). 🚗`);
     } else {
       await sendText(phone, "Tive um probleminha pra ativar agora 😕 Tenta de novo em instantes, por favor.");
     }
@@ -3874,7 +3874,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       return new Response(JSON.stringify({ ok: true, blocked: true, avisado: !jaAvisadoHoje }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
-    // "🖥️ Quero o painel" no menu SÓ para conta provisionada pela loja (cortesia/bônus: email
+    // "🔑 Acessar o sistema" no menu SÓ para conta provisionada pela loja (cortesia/bônus: email
     // sintético, sem senha própria — o link mágico é o único jeito de entrar). Quem se cadastrou
     // sozinho tem senha e não vê a opção (pode pedir por texto se quiser).
     const provisioned = String(user.email || "").toLowerCase().endsWith("@totexcarfinance.app");
@@ -4075,6 +4075,7 @@ ${JSON.stringify(snapshot)}`;
       "/viagem": VIAGEM_LABEL,
       "/multas": "Quais minhas multas e recursos?",
       "/painel": PAINEL_LABEL,
+      "/sistema": PAINEL_LABEL,
       "/suporte": "Preciso falar com o suporte",
     };
     const cmdKey = inputText.trim().toLowerCase().split(/\s/)[0];
@@ -4304,7 +4305,7 @@ ${JSON.stringify(snapshot)}`;
       if (gptProduto) {
         const placaGpt = (vehicle?.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
         if (!placaGpt) {
-          await reply(`Pra puxar o *${GPT_NOME[gptProduto]}* eu preciso da placa do seu carro. Me manda *"quero o painel"* que te mando o acesso pra cadastrar (rapidinho). 🚗`);
+          await reply(`Pra puxar o *${GPT_NOME[gptProduto]}* eu preciso da placa do seu carro. Me manda *"acessar o sistema"* que te mando o acesso pra cadastrar (rapidinho). 🚗`);
         } else {
           const ck = await createGptCheckout(supabase, { userId: user.id, produto: gptProduto, placa: placaGpt, uf: (vehicle as any)?.uf || undefined, phone: msg.phone, origem: "whatsapp" });
           if (ck.ok && ck.url) {
@@ -4318,9 +4319,9 @@ ${JSON.stringify(snapshot)}`;
       }
     }
 
-    // Atalho: opção "Quero o painel" do menu (ou pedido direto) → link mágico de acesso, SEM IA.
+    // Atalho: opção "Acessar o sistema" do menu (ou pedido direto) → link mágico de acesso, SEM IA.
     // Fica DEPOIS do accessBlocked: premium vencido (fim do ano cortesia) não recebe link, recebe a cobrança.
-    if (msg.kind !== "image" && /quero (o )?painel|link de acesso|acessar o painel|entrar no painel/i.test(inputText)) {
+    if (msg.kind !== "image" && /quero (o )?painel|link de acesso|acessar (o )?(painel|sistema|app)|entrar no (painel|sistema|app)|acesso ao sistema/i.test(inputText)) {
       const r: any = await dispatchTool("link_acesso", {}, { user, vehicle, today, inputText });
       if (r?.ok) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "link_acesso", input: inputText, reply: "[link de acesso enviado]" }, user_id: user.id }).eq("id", eventId);
