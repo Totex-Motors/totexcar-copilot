@@ -29,8 +29,11 @@ const rel = (s?: string | null) => {
 // Folha A4 com 12 adesivos (50 × 65 mm), FRENTE E VERSO. Vai pra gráfica em vinil frente-e-verso pra vidro:
 //   página 1 = VERSO (lado do motorista): QR em azul + nº + frase.
 //   página 2 = FRENTE (lado do vidro, visto de fora): logo da loja + frase da marca, mesma posição de cada adesivo.
+// modo "grafica": 1 etiqueta por página de 50 × 65 mm (frente, verso, frente, verso…) — é o que a gráfica pede
+// quando cada adesivo tem código próprio. modo "a4": 12 por folha, pra impressora comum / conferência.
 const NAVY = "#000080";
-async function imprimirFolha(tags: { label: string; token: string }[], loja: string, appUrl: string, logoUrl?: string | null) {
+type ModoImpressao = "a4" | "grafica";
+async function imprimirFolha(tags: { label: string; token: string }[], loja: string, appUrl: string, logoUrl?: string | null, modo: ModoImpressao = "grafica") {
   const logo = logoUrl ? (/^https?:\/\//i.test(logoUrl) ? logoUrl : `${window.location.origin}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`) : "";
   const versos = await Promise.all(tags.map(async (t) => {
     const url = `${appUrl}/q/${t.token}`;
@@ -50,14 +53,20 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
         <div class="slogan">Nós ajudamos você<br/>a cuidar do seu carro.</div>
         <div class="numf">${esc(t.label)}</div>
       </div>`);
+  const grafica = modo === "grafica";
+  const corpo = grafica
+    // gráfica: frente e verso de cada etiqueta em páginas consecutivas, sem margem nem linha de corte
+    ? tags.map((_, i) => frentes[i] + versos[i]).join("")
+    : `<div class="grid">${versos.join("")}</div><div class="grid pg2">${frentes.join("")}</div>`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas ${esc(tags[0]?.label || "")} – ${esc(tags[tags.length - 1]?.label || "")} — ${esc(loja)}</title>
   <style>
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    @page { size: A4; margin: 8mm; }
-    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: ${NAVY}; background: #fff; }
+    @page { size: ${grafica ? "50mm 65mm" : "A4"}; margin: ${grafica ? "0" : "8mm"}; }
+    html, body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; color: ${NAVY}; background: #fff; }
     .grid { display: grid; grid-template-columns: repeat(3, 50mm); grid-auto-rows: 65mm; gap: 6mm 8mm; justify-content: center; padding-top: 2mm; }
     .pg2 { page-break-before: always; break-before: page; }
-    .st { width: 50mm; height: 65mm; border: 0.3mm dashed #bbb; border-radius: 3mm; overflow: hidden; text-align: center; display: flex; flex-direction: column; align-items: center; page-break-inside: avoid; break-inside: avoid; background: #fff; }
+    .st { width: 50mm; height: 65mm; border: ${grafica ? "0" : "0.3mm dashed #bbb"}; border-radius: ${grafica ? "0" : "3mm"}; overflow: hidden; text-align: center; display: flex; flex-direction: column; align-items: center; page-break-inside: avoid; break-inside: avoid; background: #fff; ${grafica ? "page-break-after: always; break-after: page;" : ""} }
+    .st:last-child { page-break-after: auto; break-after: auto; }
     /* VERSO (QR) */
     .verso { justify-content: space-between; padding: 0 2.5mm 2.5mm; }
     .topo { width: 50mm; background: ${NAVY}; color: #fff; font-size: 6.5pt; font-weight: 800; letter-spacing: .18em; padding: 1.8mm 0; }
@@ -74,8 +83,7 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
     .slogan { font-size: 8.5pt; line-height: 1.3; font-weight: 700; font-style: italic; }
     .numf { position: absolute; bottom: 2mm; right: 0; left: 0; font-family: "Courier New", monospace; font-size: 6pt; color: #8a8fa8; letter-spacing: .1em; }
   </style></head><body>
-    <div class="grid">${versos.join("")}</div>
-    <div class="grid pg2">${frentes.join("")}</div>
+    ${corpo}
     <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 700); };</script>
   </body></html>`;
   const w = window.open("", "_blank");
@@ -96,6 +104,7 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
   const [qty, setQty] = useState("50");
   const [prefix, setPrefix] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null); // null = ainda não editado (usa o do servidor)
+  const [modo, setModo] = useState<ModoImpressao>("grafica");
   const [bind, setBind] = useState({ label: "", journey_id: "", customer_name: "", customer_phone: "", car_desc: "", placa: "", km_entrega: "" });
   const [filtro, setFiltro] = useState("");
   const [printing, setPrinting] = useState(false);
@@ -125,7 +134,7 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
       onSuccess: async (r) => {
         toast({ title: `Lote gerado: ${r.tags.length} etiquetas`, description: `${r.tags[0]?.label} a ${r.tags[r.tags.length - 1]?.label}. Abrindo a folha de impressão…` });
         refresh();
-        await imprimirFolha(r.tags, r.loja || loja, r.app_url || appUrl(), logoAtual);
+        await imprimirFolha(r.tags, r.loja || loja, r.app_url || appUrl(), logoAtual, modo);
       },
       onError: (e: any) => toast({ title: "Não consegui gerar o lote", description: String(e?.message || e), variant: "destructive" }),
     });
@@ -133,7 +142,7 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
 
   const imprimirLote = async (lote: CarTag[]) => {
     setPrinting(true);
-    try { await imprimirFolha(lote, loja, appUrl(), logoAtual); } finally { setPrinting(false); }
+    try { await imprimirFolha(lote, loja, appUrl(), logoAtual, modo); } finally { setPrinting(false); }
   };
 
   const apagar = (nome: string, ts: CarTag[]) => {
@@ -212,10 +221,18 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
         <Card className="border-0 shadow-premium-md">
           <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><QrCode className="w-4 h-4 text-primary" /> Gerar lote de etiquetas</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">Cada etiqueta sai com um QR próprio e um número (ex.: CV-0001). Nada do cliente vai no adesivo. A folha abre pronta pra salvar em PDF: página 1 é o <strong>verso</strong> (QR, lado do motorista) e página 2 a <strong>frente</strong> (logo, lado do vidro).</p>
+            <p className="text-sm text-muted-foreground">Cada etiqueta sai com um QR próprio e um número (ex.: CV-0001). Nada do cliente vai no adesivo. O arquivo abre pronto pra salvar em PDF (na janela de impressão, escolha "Salvar como PDF").</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><Label className="text-xs">Quantidade</Label><Input type="number" min={1} max={500} value={qty} onChange={(e) => setQty(e.target.value)} /></div>
               <div className="space-y-1"><Label className="text-xs">Prefixo (opcional)</Label><Input value={prefix} onChange={(e) => setPrefix(e.target.value.toUpperCase())} placeholder="CV" maxLength={4} /></div>
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs">Formato do arquivo</Label>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant={modo === "grafica" ? "default" : "outline"} className="flex-1" onClick={() => setModo("grafica")}>Gráfica: 1 por página (50×65 mm)</Button>
+                  <Button type="button" size="sm" variant={modo === "a4" ? "default" : "outline"} className="flex-1" onClick={() => setModo("a4")}>Folha A4: 12 por página</Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">{modo === "grafica" ? "Páginas de 50×65 mm, frente e verso de cada etiqueta em sequência (frente, verso, frente, verso…). É o formato que a gráfica pede quando cada adesivo tem código próprio." : "Página 1 = verso (QR, lado do motorista), página 2 = frente (logo, lado do vidro), com linha de corte. Bom pra impressora comum e conferência."}</p>
+              </div>
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs">Logo da loja (frente da etiqueta)</Label>
                 <div className="flex gap-2">
