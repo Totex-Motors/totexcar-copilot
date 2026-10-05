@@ -37,7 +37,6 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
         <img class="qr" src="${qr}" />
         <div class="num">${esc(t.label)}</div>
         <div class="cta">Aponte a câmera e acompanhe<br/>a manutenção do seu carro</div>
-        <div class="oleo">Próxima troca: ________ km</div>
         <div class="marca">TotexCar Co-pilot</div>
       </div>`;
   }));
@@ -47,13 +46,12 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
     @page { size: A4; margin: 8mm; }
     body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
     .grid { display: grid; grid-template-columns: repeat(3, 50mm); grid-auto-rows: 65mm; gap: 6mm 8mm; justify-content: center; padding-top: 2mm; }
-    .st { width: 50mm; height: 65mm; border: 0.3mm dashed #bbb; border-radius: 3mm; padding: 3mm 2.5mm 2mm; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: space-between; page-break-inside: avoid; break-inside: avoid; }
-    .loja { font-size: 8.5pt; font-weight: 800; letter-spacing: .06em; }
-    .qr { width: 30mm; height: 30mm; }
+    .st { width: 50mm; height: 65mm; border: 0.3mm dashed #bbb; border-radius: 3mm; padding: 3.5mm 2.5mm 2.5mm; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: space-between; page-break-inside: avoid; break-inside: avoid; }
+    .loja { font-size: 9pt; font-weight: 800; letter-spacing: .06em; }
+    .qr { width: 34mm; height: 34mm; }
     .num { font-family: "Courier New", monospace; font-weight: 700; font-size: 10pt; letter-spacing: .08em; margin-top: -1mm; }
-    .cta { font-size: 7.5pt; line-height: 1.25; font-weight: 600; }
-    .oleo { font-size: 7pt; color: #333; border-top: 0.3mm solid #999; width: 100%; padding-top: 1.5mm; }
-    .marca { font-size: 6pt; color: #888; letter-spacing: .04em; }
+    .cta { font-size: 8pt; line-height: 1.3; font-weight: 700; }
+    .marca { font-size: 6.5pt; color: #888; letter-spacing: .04em; }
   </style></head><body>
     <div class="grid">${cards.join("")}</div>
     <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 500); };</script>
