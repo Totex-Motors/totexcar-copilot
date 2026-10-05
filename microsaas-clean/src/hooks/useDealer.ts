@@ -191,9 +191,11 @@ export interface CarTag {
 export const useTagsList = (enabled: boolean, dealership?: string) =>
   useQuery({
     queryKey: ["car-tags", dealership || null],
-    queryFn: async () => (await callDealer("tags_list", dealership ? { dealership } : {})) as { tags: CarTag[]; resumo: { total: number; livres: number; vinculadas: number; ativas: number; scans: number } },
+    queryFn: async () => (await callDealer("tags_list", dealership ? { dealership } : {})) as { tags: CarTag[]; resumo: { total: number; livres: number; vinculadas: number; ativas: number; scans: number }; logo_url: string | null },
     enabled,
   });
+export const useTagsLogoSave = () =>
+  useMutation({ mutationFn: async (p: { logo_url: string; dealership?: string }) => callDealer("tags_logo_save", p) });
 export const useTagsCreate = () =>
   useMutation({ mutationFn: async (p: { qty: number; prefix?: string; dealership?: string }) => callDealer("tags_create", p) as Promise<{ batch: string; loja: string; app_url: string; tags: { id: string; label: string; token: string }[] }> });
 export const useTagsBind = () =>
