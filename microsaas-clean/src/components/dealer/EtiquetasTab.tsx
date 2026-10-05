@@ -36,7 +36,7 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
         <div class="loja">${esc(loja).toUpperCase()}</div>
         <img class="qr" src="${qr}" />
         <div class="num">${esc(t.label)}</div>
-        <div class="cta">Aponte a câmera.<br/>Seu carro te avisa quando cuidar.</div>
+        <div class="cta">Aponte a câmera e acompanhe<br/>a manutenção do seu carro</div>
         <div class="oleo">Próxima troca: ________ km</div>
         <div class="marca">TotexCar Co-pilot</div>
       </div>`;
