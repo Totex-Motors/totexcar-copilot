@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Printer, Tag, Link2, Unlink, QrCode, Smartphone } from "lucide-react";
-import { useTagsList, useTagsCreate, useTagsBind, useTagsUnbind, useTagsLogoSave, usePostsaleList, type CarTag } from "@/hooks/useDealer";
+import { Loader2, Printer, Tag, Link2, Unlink, QrCode, Smartphone, Trash2 } from "lucide-react";
+import { useTagsList, useTagsCreate, useTagsBind, useTagsUnbind, useTagsLogoSave, useTagsDeleteBatch, usePostsaleList, type CarTag } from "@/hooks/useDealer";
 
 // ETIQUETAS QR DO PARA-BRISA — o adesivo "de troca de óleo" com QR. Cada etiqueta tem um número (CV-0001)
 // e um QR próprio; a loja imprime o lote uma vez, cola na entrega e vincula ao cliente. O cliente escaneia,
@@ -91,6 +91,7 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
   const vincular = useTagsBind();
   const desvincular = useTagsUnbind();
   const salvarLogo = useTagsLogoSave();
+  const apagarLote = useTagsDeleteBatch();
 
   const [qty, setQty] = useState("50");
   const [prefix, setPrefix] = useState("");
@@ -133,6 +134,16 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
   const imprimirLote = async (lote: CarTag[]) => {
     setPrinting(true);
     try { await imprimirFolha(lote, loja, appUrl(), logoAtual); } finally { setPrinting(false); }
+  };
+
+  const apagar = (nome: string, ts: CarTag[]) => {
+    const livres = ts.filter((t) => t.status === "livre" && !t.scans).length;
+    if (!livres) { toast({ title: "Nada pra apagar", description: "Só etiquetas livres e nunca escaneadas podem ser apagadas." }); return; }
+    if (!confirm(`Apagar o lote "${nome}"? ${livres} etiqueta(s) livre(s) serão removidas. Etiquetas vinculadas ou já escaneadas ficam.`)) return;
+    apagarLote.mutate({ batch: nome, dealership: dealership || undefined }, {
+      onSuccess: (r) => { toast({ title: `${r.apagadas} etiqueta(s) apagada(s)`, description: r.mantidas ? `${r.mantidas} mantida(s) por estarem em uso.` : undefined }); refresh(); },
+      onError: (e: any) => toast({ title: "Erro ao apagar", description: String(e?.message || e), variant: "destructive" }),
+    });
   };
 
   const gravarLogo = () => {
@@ -219,12 +230,17 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
             </Button>
             {lotes.length > 0 && (
               <div className="pt-2 border-t space-y-1">
-                <Label className="text-xs text-muted-foreground">Reimprimir um lote</Label>
+                <Label className="text-xs text-muted-foreground">Lotes (reimprimir / apagar)</Label>
                 <div className="flex flex-wrap gap-2">
                   {lotes.map(([nome, ts]) => (
-                    <Button key={nome} variant="outline" size="sm" className="h-8 gap-1.5" disabled={printing} onClick={() => imprimirLote(ts)}>
-                      <Printer className="w-3.5 h-3.5" /> {nome} ({ts.length})
-                    </Button>
+                    <div key={nome} className="inline-flex rounded-md border overflow-hidden">
+                      <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-none" disabled={printing} onClick={() => imprimirLote(ts)}>
+                        <Printer className="w-3.5 h-3.5" /> {nome} ({ts.length})
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-none border-l text-destructive" title="Apagar lote (só etiquetas livres)" disabled={apagarLote.isPending} onClick={() => apagar(nome, ts)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </div>
