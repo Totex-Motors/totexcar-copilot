@@ -21,10 +21,11 @@ import {
   Car, Users, LogOut, Search, Store, CalendarClock, Wallet,
   Phone, Mail, Gauge, AlertTriangle, ShieldCheck, BadgeCheck, Fuel,
   Megaphone, Sparkles, Send, Loader2, MessageCircle, Banknote, HeartHandshake,
-  ExternalLink, KanbanSquare, MessagesSquare, Bot, UserRound, XCircle, Gift, Star, QrCode,
+  ExternalLink, KanbanSquare, MessagesSquare, Bot, UserRound, XCircle, Gift, Star, QrCode, Tag,
 } from "lucide-react";
 import { MgPanelShell } from "@/components/mg/MgPanelShell";
 import { PostSaleTab } from "@/components/dealer/PostSaleTab";
+import { EtiquetasTab } from "@/components/dealer/EtiquetasTab";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useSearchParams } from "react-router-dom";
 import { useCurrentUser, useAuth } from "@/hooks/useAuth";
@@ -230,6 +231,7 @@ export default function Dealer() {
             <TabsTrigger value="recompras" className="gap-2"><Banknote className="w-4 h-4" /> Recompras</TabsTrigger>
             <TabsTrigger value="posvenda" className="gap-2"><HeartHandshake className="w-4 h-4" /> Sucesso do Cliente</TabsTrigger>
             <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
+            <TabsTrigger value="etiquetas" className="gap-2"><Tag className="w-4 h-4" /> Etiquetas</TabsTrigger>
             <TabsTrigger value="indicacoes" className="gap-2"><Gift className="w-4 h-4" /> Indicações</TabsTrigger>
           </TabsList>
 
@@ -308,6 +310,10 @@ export default function Dealer() {
 
           <TabsContent value="stand" className="mt-6">
             <StandLeadsPanel source="dealer" dealership={viewStore} />
+          </TabsContent>
+
+          <TabsContent value="etiquetas" className="mt-6">
+            <EtiquetasTab dealership={viewStore} />
           </TabsContent>
 
           <TabsContent value="indicacoes" className="mt-6">

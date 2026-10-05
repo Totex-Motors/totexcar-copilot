@@ -2906,6 +2906,133 @@ async function handleStandActivate(phone: string, text: string): Promise<boolean
   return true;
 }
 
+// ===================== ETIQUETA QR DO PARA-BRISA (car_tags) =====================
+// Adesivo com QR (/q/<token>) colado na entrega do carro. O scan abre o WhatsApp com "#etiqueta <token>".
+// A etiqueta é do CARRO, não do telefone: o vendedor vincula no pós-venda (nome, carro, placa, km).
+//   • telefone do dono  → 1ª vez: convite "sim, começar" (cria conta + carro, sem formulário);
+//                         depois: resumo do carro + menu.
+//   • outro telefone    → "esse carro agora é seu?" → assume (carro revendido vira cliente novo).
+// Nunca mostra dados do cliente pra telefone diferente antes de ele assumir.
+const ETIQUETA_RE = /#etiqueta\s+([a-z0-9]{6,16})/i;
+const fone8 = (p: string) => onlyDigits(p).slice(-8);
+const kmTxt = (n: unknown) => Number(n) > 0 ? `${Number(n).toLocaleString("pt-BR")} km` : "";
+
+// garante conta (trial 30 dias, se não existir) + carro ativo (copiado da etiqueta) pro telefone
+async function etiquetaGarantirConta(phone: string, tag: any, kmInicial: number | null): Promise<{ userId: string | null; accountId: string | null }> {
+  const digits = onlyDigits(phone);
+  let user: any = null;
+  if (tag.user_id) user = (await supabase.from("users").select("id").eq("id", tag.user_id).maybeSingle()).data;
+  if (!user) user = await findUserByPhone(phone);
+  if (!user) {
+    const r = await activateStandTrial(phone, tag.customer_name || null);
+    if (!r.ok) return { userId: null, accountId: null };
+    user = (await supabase.from("users").select("id").ilike("email", `${digits}@totexcarfinance.app`).limit(1)).data?.[0] || null;
+    if (!user) return { userId: null, accountId: null };
+    if (tag.dealership) await supabase.from("users").update({ dealership: tag.dealership, phone: digits }).eq("id", user.id);
+  }
+  const { data: acc } = await supabase.from("accounts").select("id, placa").eq("user_id", user.id).eq("is_active", true).limit(1);
+  if (acc && acc.length) return { userId: user.id, accountId: acc[0].id };
+  const { data: novo } = await supabase.from("accounts").insert({
+    user_id: user.id, name: tag.car_desc || "Meu carro", type: "carro", is_active: true,
+    placa: tag.placa || null, hodometro: kmInicial && kmInicial > 0 ? kmInicial : null,
+  }).select("id").single();
+  return { userId: user.id, accountId: novo?.id || null };
+}
+
+async function etiquetaPergunta(phone: string, texto: string, opcoes: string[]) {
+  const s = await getSettings();
+  const ok = await waSendMenu(s, phone, texto, opcoes);
+  if (!ok) await sendText(phone, `${texto}\n\nResponde *${opcoes[0]}* ou *${opcoes[1] || "não"}*.`);
+}
+
+async function handleEtiqueta(phone: string, text: string, contactName?: string): Promise<boolean> {
+  const m = ETIQUETA_RE.exec(String(text || ""));
+  if (!m) return false;
+  const token = m[1].toLowerCase();
+  const digits = onlyDigits(phone);
+  const { data: tag } = await supabase.from("car_tags").select("*").eq("token", token).maybeSingle();
+  if (!tag) {
+    await sendText(phone, "Não reconheci essa etiqueta 🤔 Confere se o QR está inteiro e tenta de novo. Se preferir, me diz a placa do carro que eu te ajudo por aqui.");
+    return true;
+  }
+  const loja = tag.dealership || "loja";
+  if (tag.status === "livre" || !tag.customer_phone) {
+    await supabase.from("whatsapp_events").insert({ from_phone: digits, kind: "etiqueta_scan", status: "processed", raw: { token }, parsed: { label: tag.label, resultado: "nao_vinculada" } });
+    await sendText(phone, `Essa etiqueta (*${tag.label}*) ainda não foi vinculada a nenhum carro pela ${loja}. 🏷️\n\nPede pro vendedor vincular no painel, ou me manda a *placa* do seu carro que eu cadastro por aqui mesmo. 🚗`);
+    return true;
+  }
+  const carro = `${tag.car_desc || "carro"}${tag.placa ? ` (${tag.placa})` : ""}`;
+  const primeiro = String(tag.customer_name || "").split(" ")[0] || String(contactName || "").split(" ")[0] || "";
+  const meu = fone8(tag.customer_phone) === fone8(phone);
+  await supabase.from("whatsapp_events").insert({ from_phone: digits, kind: "etiqueta_scan", status: "processed", raw: { token }, parsed: { label: tag.label, resultado: meu ? (tag.activated_at ? "dono" : "dono_primeira_vez") : "outro_telefone", loja: tag.dealership } });
+
+  if (meu) {
+    if (tag.activated_at) {
+      const acc = tag.account_id ? (await supabase.from("accounts").select("hodometro").eq("id", tag.account_id).maybeSingle()).data : null;
+      const km = kmTxt(acc?.hodometro) || (tag.km_entrega ? `${kmTxt(tag.km_entrega)} na entrega` : "");
+      await sendMenu(phone, `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Esse é o seu *${carro}*${km ? ` · ${km}` : ""}.\n\nO que você quer fazer agora? Pode mandar foto de nota, do painel com o km, ou escolher aqui embaixo 👇`, QUICK_ACTIONS);
+      return true;
+    }
+    await supabase.from("whatsapp_events").insert({ from_phone: digits, kind: "etiqueta_pending", status: "pending", raw: { token }, parsed: { token, action: "activate", label: tag.label } });
+    await etiquetaPergunta(phone,
+      `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Essa etiqueta é do seu *${carro}*${tag.km_entrega ? `, ${kmTxt(tag.km_entrega)} na entrega` : ""}, da ${loja}.\n\nQuer que eu comece a cuidar dele por aqui? Eu aviso de troca de óleo, revisão, IPVA, licenciamento e multa, e guardo todo o histórico do carro. 🚗`,
+      ["Sim, começar", "Agora não"]);
+    return true;
+  }
+
+  // telefone diferente do dono vinculado (carro revendido, segundo motorista…): oferece assumir
+  await supabase.from("whatsapp_events").insert({ from_phone: digits, kind: "etiqueta_pending", status: "pending", raw: { token }, parsed: { token, action: "transfer", label: tag.label } });
+  await etiquetaPergunta(phone,
+    `Essa etiqueta está vinculada a um *${tag.car_desc || "carro"}* da ${loja}. 🚗\n\nEsse carro agora é seu? Se for, eu passo ele pro seu WhatsApp e começo a cuidar dele com você: óleo, revisão, IPVA, multa, histórico.`,
+    ["Sim, é meu agora", "Não, foi engano"]);
+  return true;
+}
+
+// resposta ao convite da etiqueta (sim/não), só se existe um convite pendente recente deste telefone
+async function handleEtiquetaReply(phone: string, text: string): Promise<boolean> {
+  const t = String(text || "").toLowerCase().trim().replace(/[!.]+$/, "");
+  const sim = /^(sim(,)?( começar| é meu agora| quero| pode)?|começar|bora|quero|pode|é meu|é meu agora)$/.test(t);
+  const nao = /^(n[aã]o(,)?( foi engano)?|agora n[aã]o|foi engano|depois)$/.test(t);
+  if (!sim && !nao) return false;
+  const digits = onlyDigits(phone);
+  const desde = new Date(Date.now() - 2 * 3600_000).toISOString();
+  const { data: pend } = await supabase.from("whatsapp_events").select("id, parsed")
+    .eq("from_phone", digits).eq("kind", "etiqueta_pending").eq("status", "pending").gte("created_at", desde)
+    .order("created_at", { ascending: false }).limit(1);
+  const p = pend?.[0];
+  if (!p) return false;
+  await supabase.from("whatsapp_events").update({ status: "processed", parsed: { ...(p.parsed as any), resposta: sim ? "sim" : "nao" } }).eq("id", p.id);
+  const token = String((p.parsed as any)?.token || "");
+  const { data: tag } = await supabase.from("car_tags").select("*").eq("token", token).maybeSingle();
+  if (!tag) return false;
+  if (nao) {
+    await sendText(phone, "Tranquilo! 👍 Quando quiser, é só apontar a câmera pra etiqueta de novo que eu estou por aqui.");
+    return true;
+  }
+  const carro = `${tag.car_desc || "carro"}${tag.placa ? ` (${tag.placa})` : ""}`;
+  const action = String((p.parsed as any)?.action || "activate");
+  const agora = new Date().toISOString();
+
+  if (action === "activate") {
+    const r = await etiquetaGarantirConta(phone, tag, Number(tag.km_entrega) || null);
+    if (!r.userId) { await sendText(phone, "Tive um probleminha pra ativar agora 😕 Tenta de novo em instantes, por favor."); return true; }
+    await supabase.from("car_tags").update({ status: "ativa", activated_at: agora, user_id: r.userId, account_id: r.accountId, customer_phone: digits }).eq("id", tag.id);
+    await sendMenu(phone, `🎉 Pronto! Seu *${carro}* está sob meus cuidados.\n\nManda foto da nota da oficina, do painel com o km, ou me pergunta qualquer coisa do carro. Pra começar 👇`, QUICK_ACTIONS);
+    return true;
+  }
+
+  // transferência: o carro passa pro telefone novo (conta nova ou existente); a etiqueta troca de dono
+  const r = await etiquetaGarantirConta(phone, { ...tag, user_id: null, account_id: null, customer_name: null }, null);
+  if (!r.userId) { await sendText(phone, "Tive um probleminha pra passar o carro pra você agora 😕 Tenta de novo em instantes, por favor."); return true; }
+  await supabase.from("car_tags").update({
+    status: "ativa", activated_at: agora, user_id: r.userId, account_id: r.accountId, customer_phone: digits, customer_name: null, journey_id: null,
+    transfers: (Number(tag.transfers) || 0) + 1, notes: `${tag.notes ? tag.notes + "\n" : ""}transferida de ${tag.customer_phone} em ${agora.slice(0, 10)}`,
+  }).eq("id", tag.id);
+  await supabase.from("whatsapp_events").insert({ from_phone: digits, kind: "etiqueta_transfer", status: "processed", raw: { label: tag.label }, parsed: { label: tag.label, de: tag.customer_phone, carro: tag.car_desc, placa: tag.placa, loja: tag.dealership } });
+  await sendMenu(phone, `Feito! O *${carro}* agora está no seu nome aqui no Co-pilot. 🤝\n\nMe manda o km atual do painel (pode ser foto) pra eu acertar os lembretes. E se precisar de ajuda com a transferência do documento, a ${tag.dealership || "loja"} pode te orientar.`, QUICK_ACTIONS);
+  return true;
+}
+
 // intenção de ATIVAR (botão "Ativar 30 dias" ou texto) — sem confundir com busca de carro
 function querAtivar(t: string): boolean {
   const s = String(t || "").toLowerCase().trim();
@@ -3589,6 +3716,15 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     // Pós-venda (antes do cadastro, funciona p/ quem ainda não é usuário):
     if (msg.kind !== "image") {
       const psText = msg.text || msg.transcription || "";
+      // ETIQUETA QR do para-brisa — scan ("#etiqueta <token>") e a resposta sim/não ao convite
+      if (await handleEtiqueta(msg.phone, psText, msg.contactName)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "etiqueta_scan" } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, etiqueta: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      if (await handleEtiquetaReply(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "etiqueta_reply", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, etiqueta_reply: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       // QR "#vender" do stand — vendedor quer vender: abre a avaliação FIPE
       if (await handleStandSell(msg.phone, psText, msg.contactName)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_sell" } }).eq("id", eventId);

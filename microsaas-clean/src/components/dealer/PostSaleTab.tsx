@@ -43,7 +43,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
   const create = usePostsaleCreate();
   const saveCfg = usePostsaleConfigSave();
 
-  const [form, setForm] = useState({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "" });
+  const [form, setForm] = useState({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
   const [cortesia, setCortesia] = useState(false);
   const [reviewUrl, setReviewUrl] = useState("");
   const [delay, setDelay] = useState("");
@@ -73,20 +73,24 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
       car_desc: form.car_desc || undefined,
       purchase_date: form.purchase_date || undefined,
       cortesia: cortesia || undefined,
-      placa: cortesia && form.placa ? form.placa : undefined,
+      placa: form.placa || undefined,
       valor_compra: cortesia && Number(form.valor_compra) > 0 ? Number(form.valor_compra) : undefined,
+      tag_label: form.tag_label.trim() || undefined,
+      km_entrega: Number(form.km_entrega) > 0 ? Number(form.km_entrega) : undefined,
       dealership: dealership || undefined,
     }, {
       onSuccess: (r: any) => {
         toast({
           title: "Cliente registrado! 🎉",
-          description: r?.sponsored
+          description: (r?.sponsored
             ? `Cortesia de 1 ano ativada — conta premium criada${r?.vehicle_created ? " e veículo cadastrado" : ""}.`
-            : r?.welcome_sent ? "Mensagem de boas-vindas enviada no WhatsApp." : "Jornada criada (WhatsApp não enviou — confira as credenciais).",
+            : r?.welcome_sent ? "Mensagem de boas-vindas enviada no WhatsApp." : "Jornada criada (WhatsApp não enviou — confira as credenciais).")
+            + (r?.tag ? ` Etiqueta ${r.tag.label} vinculada.` : r?.tag_error ? ` Etiqueta NÃO vinculada (${r.tag_error}).` : ""),
         });
-        setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "" });
+        setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
         setCortesia(false);
         refresh();
+        qc.invalidateQueries({ queryKey: ["car-tags"] });
       },
       onError: (e: any) => toast({ title: "Não foi possível registrar", description: String(e?.message || e), variant: "destructive" }),
     });
@@ -145,6 +149,14 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
               <div className="space-y-1"><Label className="text-xs">Data da compra</Label><Input type="date" value={form.purchase_date} onChange={(e) => setForm((p) => ({ ...p, purchase_date: e.target.value }))} /></div>
             </div>
 
+            {/* Etiqueta QR do para-brisa colada na entrega (opcional): vincula ao cliente na hora */}
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-dashed p-3">
+              <div className="col-span-3 text-[12px] text-muted-foreground -mb-1">🏷️ Colou a etiqueta QR no para-brisa? Informe o nº impresso e o km pra ela já ficar vinculada a este cliente.</div>
+              <div className="space-y-1"><Label className="text-xs">Etiqueta nº</Label><Input value={form.tag_label} onChange={(e) => setForm((p) => ({ ...p, tag_label: e.target.value.toUpperCase() }))} placeholder="CV-0001" /></div>
+              <div className="space-y-1"><Label className="text-xs">Placa</Label><Input value={form.placa} onChange={(e) => setForm((p) => ({ ...p, placa: e.target.value.toUpperCase() }))} placeholder="ABC1D23" maxLength={8} /></div>
+              <div className="space-y-1"><Label className="text-xs">Km na entrega</Label><Input type="number" inputMode="numeric" value={form.km_entrega} onChange={(e) => setForm((p) => ({ ...p, km_entrega: e.target.value }))} placeholder="48200" /></div>
+            </div>
+
             {/* Cortesia da loja: assinatura patrocinada (pós-pago) */}
             <label className="flex items-start gap-2.5 rounded-lg border border-primary/30 bg-primary/5 p-3 cursor-pointer">
               <Checkbox checked={cortesia} onCheckedChange={(v) => setCortesia(v === true)} className="mt-0.5" />
@@ -157,8 +169,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
             {/* Com cortesia, já provisionamos o veículo do cliente — placa autopreenche marca/modelo/ano */}
             {cortesia && (
               <div className="grid grid-cols-2 gap-3 rounded-lg border border-dashed p-3">
-                <div className="col-span-2 text-[12px] text-muted-foreground -mb-1">Dados do veículo (opcional) — deixa a conta do cliente pronta pra usar. A placa autopreenche marca, modelo, ano e mais.</div>
-                <div className="space-y-1"><Label className="text-xs">Placa</Label><Input value={form.placa} onChange={(e) => setForm((p) => ({ ...p, placa: e.target.value.toUpperCase() }))} placeholder="ABC1D23" maxLength={8} /></div>
+                <div className="col-span-2 text-[12px] text-muted-foreground -mb-1">Dados do veículo (opcional) — deixa a conta do cliente pronta pra usar. A placa (acima) autopreenche marca, modelo, ano e mais.</div>
                 <div className="space-y-1"><Label className="text-xs">Valor de compra (R$)</Label><Input type="number" inputMode="decimal" value={form.valor_compra} onChange={(e) => setForm((p) => ({ ...p, valor_compra: e.target.value }))} placeholder="Ex.: 55000" /></div>
               </div>
             )}

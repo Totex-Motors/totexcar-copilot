@@ -1011,6 +1011,12 @@ Tabelas em `public` (reaproveita a lógica do template: **accounts = veículo**,
   `totexmotors.uazapi.com` virou a instância do **Status pessoal do dono** (abaixo). Provedor ativo: `wa_provider = meta`.
 - Canal do WhatsApp (uazapi `totexcar.uazapi.com`, número 11 96581-1425): `canal_uazapi_url/token`, `canal_newsletter_id`,
   `canal_autopost`, `comunidade_grupos`. Edge `carro-do-dia` (crons 9h/12h/16h carro do dia, 19h abaixo da FIPE, 13h seg/qua/sex quanto vale, 10h/18h grupo VIP).
+- **Etiquetas QR do para-brisa** (tabela `car_tags`): adesivo "de troca de óleo" com QR `{app_url}/q/<token>` e nº impresso
+  (CV-0001). Lote gerado no painel do lojista (aba Etiquetas → `dealer-api tags_create/tags_list/tags_bind/tags_unbind`), vínculo
+  na entrega (aba Etiquetas ou campo "Etiqueta nº" do pós-venda → `postsale_create.tag_label`). Scan: página `/q/:token` → edge
+  `etiqueta` (conta scan, devolve wa.me com `#etiqueta <token>`) → webhook `handleEtiqueta`/`handleEtiquetaReply`: telefone do dono
+  → convite "Sim, começar" (cria conta trial + carro, `status=ativa`); outro telefone → "esse carro agora é seu?" → transfere
+  (`transfers++`, evento `etiqueta_transfer`). Eventos: `etiqueta_scan`, `etiqueta_pending` (2h), `etiqueta_transfer`.
 - **Status do dono** (uazapi `totexmotors.uazapi.com`, número pessoal 11 94744-8137, webhook APAGADO): `status_uazapi_url/token`,
   `status_autopost`, `status_dealership_id` (Cardoso Veículos). `carro-do-dia?job=status[&tema=fipe][&preview=1]`; crons
   `totex-status-cardoso-manha` (13h UTC) e `-tarde` (21h UTC, tema fipe). Só `/send/status`; nenhuma função de mensagem usa esses campos.

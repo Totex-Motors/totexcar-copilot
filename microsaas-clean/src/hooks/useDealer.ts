@@ -176,9 +176,30 @@ export const usePostsaleConfig = (enabled: boolean, dealership?: string) =>
 
 export const usePostsaleCreate = () =>
   useMutation({
-    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string }) =>
+    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string; tag_label?: string; km_entrega?: number }) =>
       callDealer("postsale_create", p),
   });
+
+// ===== Etiquetas QR do para-brisa (car_tags) =====
+export interface CarTag {
+  id: string; label: string; token: string; dealership: string | null; batch: string | null;
+  status: "livre" | "vinculada" | "ativa" | "inativa";
+  journey_id: string | null; user_id: string | null; account_id: string | null;
+  customer_phone: string | null; customer_name: string | null; car_desc: string | null; placa: string | null; km_entrega: number | null;
+  bound_at: string | null; activated_at: string | null; transfers: number; scans: number; last_scan_at: string | null; notes: string | null; created_at: string;
+}
+export const useTagsList = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["car-tags", dealership || null],
+    queryFn: async () => (await callDealer("tags_list", dealership ? { dealership } : {})) as { tags: CarTag[]; resumo: { total: number; livres: number; vinculadas: number; ativas: number; scans: number } },
+    enabled,
+  });
+export const useTagsCreate = () =>
+  useMutation({ mutationFn: async (p: { qty: number; prefix?: string; dealership?: string }) => callDealer("tags_create", p) as Promise<{ batch: string; loja: string; app_url: string; tags: { id: string; label: string; token: string }[] }> });
+export const useTagsBind = () =>
+  useMutation({ mutationFn: async (p: { label: string; journey_id?: string; customer_phone?: string; customer_name?: string; car_desc?: string; placa?: string; km_entrega?: number; dealership?: string }) => callDealer("tags_bind", p) });
+export const useTagsUnbind = () =>
+  useMutation({ mutationFn: async (p: { label: string; dealership?: string }) => callDealer("tags_unbind", p) });
 
 // Admin: saldo devedor de cortesias por loja + quitar
 export const useSponsorBalance = (enabled: boolean) =>
