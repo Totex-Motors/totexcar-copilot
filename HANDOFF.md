@@ -1015,7 +1015,7 @@ Tabelas em `public` (reaproveita a lógica do template: **accounts = veículo**,
   (CV-0001). Lote gerado no painel do lojista (aba Etiquetas → `dealer-api tags_create/tags_list/tags_bind/tags_unbind`), vínculo
   na entrega (aba Etiquetas ou campo "Etiqueta nº" do pós-venda → `postsale_create.tag_label`). Scan: página `/q/:token` → edge
   `etiqueta` (conta scan, devolve wa.me com `#etiqueta <token>`) → webhook `handleEtiqueta`/`handleEtiquetaReply`: telefone do dono
-  → convite "Sim, começar" (cria conta trial + carro, `status=ativa`); outro telefone → "esse carro agora é seu?" → transfere
+  → ATIVA NA HORA, sem perguntar (cria conta trial + carro, `status=ativa`); outro telefone → "esse carro agora é seu?" → transfere
   (`transfers++`, evento `etiqueta_transfer`). Eventos: `etiqueta_scan`, `etiqueta_pending` (2h), `etiqueta_transfer`.
 - **Status do dono** (uazapi `totexmotors.uazapi.com`, número pessoal 11 94744-8137, webhook APAGADO): `status_uazapi_url/token`,
   `status_autopost`, `status_dealership_id` (Cardoso Veículos). `carro-do-dia?job=status[&tema=fipe][&preview=1]`; crons

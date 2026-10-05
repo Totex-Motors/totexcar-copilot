@@ -2909,7 +2909,7 @@ async function handleStandActivate(phone: string, text: string): Promise<boolean
 // ===================== ETIQUETA QR DO PARA-BRISA (car_tags) =====================
 // Adesivo com QR (/q/<token>) colado na entrega do carro. O scan abre o WhatsApp com "#etiqueta <token>".
 // A etiqueta é do CARRO, não do telefone: o vendedor vincula no pós-venda (nome, carro, placa, km).
-//   • telefone do dono  → 1ª vez: convite "sim, começar" (cria conta + carro, sem formulário);
+//   • telefone do dono  → 1ª vez: ATIVA NA HORA (cria conta + carro, sem formulário nem pergunta);
 //                         depois: resumo do carro + menu.
 //   • outro telefone    → "esse carro agora é seu?" → assume (carro revendido vira cliente novo).
 // Nunca mostra dados do cliente pra telefone diferente antes de ele assumir.
@@ -2973,10 +2973,14 @@ async function handleEtiqueta(phone: string, text: string, contactName?: string)
       await sendMenu(phone, `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Esse é o seu *${carro}*${km ? ` · ${km}` : ""}.\n\nO que você quer fazer agora? Pode mandar foto de nota, do painel com o km, ou escolher aqui embaixo 👇`, QUICK_ACTIONS);
       return true;
     }
-    await supabase.from("whatsapp_events").insert({ from_phone: digits, kind: "etiqueta_pending", status: "pending", raw: { token }, parsed: { token, action: "activate", label: tag.label } });
-    await etiquetaPergunta(phone,
-      `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Essa etiqueta é do seu *${carro}*${tag.km_entrega ? `, ${kmTxt(tag.km_entrega)} na entrega` : ""}, da ${loja}.\n\nQuer que eu comece a cuidar dele por aqui? Eu aviso de troca de óleo, revisão, IPVA, licenciamento e multa, e guardo todo o histórico do carro. 🚗`,
-      ["Sim, começar", "Agora não"]);
+    // 1ª vez do dono: ATIVA NA HORA (sem perguntar) — a etiqueta é a porta de entrada; o carro já
+    // fica cadastrado e organizado, e o dono passa a ser lembrado. Zero fricção, zero decisão.
+    const r = await etiquetaGarantirConta(phone, tag, Number(tag.km_entrega) || null);
+    if (!r.userId) { await sendText(phone, "Tive um probleminha pra ativar agora 😕 Tenta escanear de novo em instantes, por favor."); return true; }
+    await supabase.from("car_tags").update({ status: "ativa", activated_at: new Date().toISOString(), user_id: r.userId, account_id: r.accountId, customer_phone: digits }).eq("id", tag.id);
+    await sendMenu(phone,
+      `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Essa etiqueta é do seu *${carro}*${tag.km_entrega ? `, ${kmTxt(tag.km_entrega)} na entrega` : ""}, da ${loja}.\n\n✅ Pronto: a partir de agora eu cuido dele por aqui. Aviso de troca de óleo, revisão, IPVA, licenciamento e multa, e guardo todo o histórico do carro.\n\nPode mandar foto da nota da oficina ou do painel com o km, ou escolher aqui embaixo 👇`,
+      QUICK_ACTIONS);
     return true;
   }
 
@@ -2988,7 +2992,8 @@ async function handleEtiqueta(phone: string, text: string, contactName?: string)
   return true;
 }
 
-// resposta ao convite da etiqueta (sim/não), só se existe um convite pendente recente deste telefone
+// resposta à pergunta da etiqueta (sim/não) — hoje só a de TRANSFERÊNCIA ("esse carro agora é seu?");
+// só roda se existe uma pergunta pendente recente deste telefone
 async function handleEtiquetaReply(phone: string, text: string): Promise<boolean> {
   const t = String(text || "").toLowerCase().trim().replace(/[!.]+$/, "");
   const sim = /^(sim(,)?( começar| é meu agora| quero| pode)?|começar|bora|quero|pode|é meu|é meu agora)$/.test(t);
@@ -3006,7 +3011,7 @@ async function handleEtiquetaReply(phone: string, text: string): Promise<boolean
   const { data: tag } = await supabase.from("car_tags").select("*").eq("token", token).maybeSingle();
   if (!tag) return false;
   if (nao) {
-    await sendText(phone, "Tranquilo! 👍 Quando quiser, é só apontar a câmera pra etiqueta de novo que eu estou por aqui.");
+    await sendText(phone, "Tranquilo! 👍 Se foi engano, não precisa fazer nada. Se um dia o carro for seu, é só apontar a câmera pra etiqueta de novo.");
     return true;
   }
   const carro = `${tag.car_desc || "carro"}${tag.placa ? ` (${tag.placa})` : ""}`;
