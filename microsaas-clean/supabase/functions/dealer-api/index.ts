@@ -280,6 +280,47 @@ async function provisionSponsoredOwner(phone: string, name: string | null, deale
   return id;
 }
 
+// ===== ETIQUETAS QR DO PARA-BRISA (car_tags) =====
+// Vincula uma etiqueta impressa (label, ex.: CV-0001) a um cliente/carro da loja. Idempotente: revincular
+// sobrescreve (carro revendido pela própria loja, etiqueta reaproveitada). Devolve a etiqueta atualizada.
+const normLabel = (s: unknown) => String(s || "").toUpperCase().replace(/\s+/g, "").replace(/^([A-Z]+)-?(\d+)$/, (_m, p, n) => `${p}-${n.padStart(4, "0")}`);
+async function bindTag(label: string, loja: string, by: string, data: {
+  journey_id?: string | null; customer_phone?: string | null; customer_name?: string | null;
+  car_desc?: string | null; placa?: string | null; km_entrega?: number | null; user_id?: string | null;
+}): Promise<{ ok: boolean; error?: string; tag?: any }> {
+  const lbl = normLabel(label);
+  const { data: tag } = await admin.from("car_tags").select("*").eq("label", lbl).maybeSingle();
+  if (!tag) return { ok: false, error: "etiqueta_nao_encontrada" };
+  if (tag.dealership && tag.dealership !== loja) return { ok: false, error: "etiqueta_de_outra_loja" };
+
+  let j: any = null;
+  if (data.journey_id) {
+    const { data: jj } = await admin.from("postsale_journeys").select("id, customer_phone, customer_name, car_desc, user_id, dealership").eq("id", data.journey_id).maybeSingle();
+    if (!jj || jj.dealership !== loja) return { ok: false, error: "cliente_nao_encontrado" };
+    j = jj;
+  }
+  const phone = String(data.customer_phone || j?.customer_phone || "").replace(/\D/g, "");
+  if (phone.length < 10) return { ok: false, error: "telefone_invalido" };
+  const userId = data.user_id || j?.user_id || null;
+  // carro ativo do cliente provisionado (se houver) — pra responder km atual no scan
+  let accountId: string | null = null;
+  if (userId) {
+    const { data: acc } = await admin.from("accounts").select("id").eq("user_id", userId).eq("is_active", true).limit(1);
+    accountId = acc?.[0]?.id || null;
+  }
+  const placa = data.placa ? String(data.placa).toUpperCase().replace(/[^A-Z0-9]/g, "") : null;
+  const upd = {
+    dealership: loja, status: "vinculada", journey_id: j?.id || null, user_id: userId, account_id: accountId,
+    customer_phone: phone, customer_name: String(data.customer_name || j?.customer_name || "").trim() || null,
+    car_desc: String(data.car_desc || j?.car_desc || "").trim() || null, placa,
+    km_entrega: Number(data.km_entrega) > 0 ? Math.round(Number(data.km_entrega)) : null,
+    bound_at: new Date().toISOString(), bound_by: by, activated_at: null,
+  };
+  const { data: saved, error } = await admin.from("car_tags").update(upd).eq("id", tag.id).select("*").single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, tag: saved };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
@@ -983,7 +1024,70 @@ Deno.serve(async (req) => {
             raw: { via: "postsale_create" }, parsed: { template: "boas_vindas_cortesia_pdf" },
           });
         }
-        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated });
+        // etiqueta QR do para-brisa informada na entrega → vincula ao cliente recém-registrado
+        let tagBound: any = null, tagError: string | null = null;
+        if (p.tag_label) {
+          const r = await bindTag(String(p.tag_label), loja, me.id, {
+            journey_id: created.id, customer_phone: phone, customer_name: name, car_desc: car, placa,
+            km_entrega: Number(p.km_entrega) || null, user_id: provisionedUserId,
+          });
+          if (r.ok) tagBound = r.tag; else tagError = r.error || "falha";
+        }
+        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError });
+      }
+
+      // ===== ETIQUETAS QR DO PARA-BRISA =====
+      case "tags_list": {
+        let q = admin.from("car_tags").select("*").order("label", { ascending: true }).limit(2000);
+        if (scopeDealership && scopeDealership !== "__none__") q = q.eq("dealership", scopeDealership);
+        else if (!isAdmin) return json({ ok: true, tags: [] });
+        const { data, error } = await q;
+        if (error) return json({ error: error.message }, 400);
+        const tags = (data || []).map((t: any) => ({ ...t, customer_phone: t.customer_phone ? String(t.customer_phone).replace(/^(\d{2})(\d{2})(\d{4,5})(\d{4})$/, "($2) $3-$4") : null }));
+        const resumo = { total: tags.length, livres: tags.filter((t: any) => t.status === "livre").length, vinculadas: tags.filter((t: any) => t.status === "vinculada").length, ativas: tags.filter((t: any) => t.status === "ativa").length, scans: tags.reduce((s: number, t: any) => s + (Number(t.scans) || 0), 0) };
+        return json({ ok: true, tags, resumo });
+      }
+
+      // gera um LOTE: labels sequenciais por prefixo (CV-0001…) + token aleatório (vai no QR)
+      case "tags_create": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const loja = writeStore;
+        const qty = Math.max(1, Math.min(500, Math.round(Number(p.qty) || 50)));
+        const prefix = String(p.prefix || loja.split(/\s+/).map((w: string) => w[0]).join("")).toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4) || "TX";
+        const { data: last } = await admin.from("car_tags").select("label").like("label", `${prefix}-%`).order("label", { ascending: false }).limit(1);
+        let n = Number(String(last?.[0]?.label || "").split("-")[1] || 0);
+        const alfa = "abcdefghjkmnpqrstuvwxyz23456789";
+        const mkToken = () => Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => alfa[b % alfa.length]).join("");
+        const batch = `${new Date().toISOString().slice(0, 10)} ${prefix} ${String(n + 1).padStart(4, "0")}–${String(n + qty).padStart(4, "0")}`;
+        const rows = Array.from({ length: qty }, () => ({ label: `${prefix}-${String(++n).padStart(4, "0")}`, token: mkToken(), dealership: loja, batch, status: "livre" }));
+        const { data: created, error } = await admin.from("car_tags").insert(rows).select("id, label, token, batch");
+        if (error) return json({ error: error.message }, 400);
+        const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
+        const appUrl = (st?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
+        return json({ ok: true, batch, loja, app_url: appUrl, tags: created });
+      }
+
+      case "tags_bind": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const r = await bindTag(String(p.label || ""), writeStore, me.id, {
+          journey_id: p.journey_id || null, customer_phone: p.customer_phone || null, customer_name: p.customer_name || null,
+          car_desc: p.car_desc || null, placa: p.placa || null, km_entrega: Number(p.km_entrega) || null,
+        });
+        if (!r.ok) return json({ error: r.error }, 400);
+        return json({ ok: true, tag: r.tag });
+      }
+
+      case "tags_unbind": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const lbl = normLabel(p.label);
+        const { data: tag } = await admin.from("car_tags").select("id, dealership").eq("label", lbl).maybeSingle();
+        if (!tag || tag.dealership !== writeStore) return json({ error: "etiqueta_nao_encontrada" }, 404);
+        const { error } = await admin.from("car_tags").update({
+          status: "livre", journey_id: null, user_id: null, account_id: null, customer_phone: null, customer_name: null,
+          car_desc: null, placa: null, km_entrega: null, bound_at: null, bound_by: null, activated_at: null,
+        }).eq("id", tag.id);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
       }
 
       case "postsale_transfer_save": {
