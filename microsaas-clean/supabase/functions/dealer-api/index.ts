@@ -1045,7 +1045,22 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 400);
         const tags = (data || []).map((t: any) => ({ ...t, customer_phone: t.customer_phone ? String(t.customer_phone).replace(/^(\d{2})(\d{2})(\d{4,5})(\d{4})$/, "($2) $3-$4") : null }));
         const resumo = { total: tags.length, livres: tags.filter((t: any) => t.status === "livre").length, vinculadas: tags.filter((t: any) => t.status === "vinculada").length, ativas: tags.filter((t: any) => t.status === "ativa").length, scans: tags.reduce((s: number, t: any) => s + (Number(t.scans) || 0), 0) };
-        return json({ ok: true, tags, resumo });
+        // logo da loja pra FRENTE da etiqueta (lado do vidro)
+        let logo_url: string | null = null;
+        const lojaLogo = (scopeDealership && scopeDealership !== "__none__") ? scopeDealership : (me.dealership || null);
+        if (lojaLogo) {
+          const { data: ds } = await admin.from("dealership_settings").select("tag_logo_url").eq("dealership", lojaLogo).maybeSingle();
+          logo_url = ds?.tag_logo_url || null;
+        }
+        return json({ ok: true, tags, resumo, logo_url });
+      }
+
+      case "tags_logo_save": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const url = String(p.logo_url || "").trim() || null;
+        const { error } = await admin.from("dealership_settings").upsert({ dealership: writeStore, tag_logo_url: url, updated_at: new Date().toISOString() }, { onConflict: "dealership" });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true, logo_url: url });
       }
 
       // gera um LOTE: labels sequenciais por prefixo (CV-0001…) + token aleatório (vai no QR)
