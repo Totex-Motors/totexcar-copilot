@@ -505,6 +505,7 @@ function ConfigTab() {
     wa_provider: "uazapi", meta_wa_token: "", meta_wa_phone_id: "", meta_wa_verify_token: "", meta_waba_id: "",
     // Canal (carro do dia) e Status pessoal do dono — instâncias uazapi não-oficiais, só publicação
     canal_autopost: false, status_autopost: false, status_uazapi_url: "", status_uazapi_token: "", status_dealership_id: "",
+    google_places_api_key: "",
   });
 
   useEffect(() => {
@@ -552,6 +553,7 @@ function ConfigTab() {
         status_uazapi_url: (settings as any).status_uazapi_url || "",
         status_uazapi_token: (settings as any).status_uazapi_token || "",
         status_dealership_id: (settings as any).status_dealership_id || "",
+        google_places_api_key: (settings as any).google_places_api_key || "",
       });
     }
   }, [settings]);
@@ -598,6 +600,7 @@ function ConfigTab() {
         status_uazapi_url: f.status_uazapi_url.trim().replace(/\/+$/, "") || null,
         status_uazapi_token: f.status_uazapi_token.trim() || null,
         status_dealership_id: f.status_dealership_id.trim() || null,
+        google_places_api_key: f.google_places_api_key.trim() || null,
       } as any,
       {
         onSuccess: () => toast({ title: "Configurações salvas" }),
@@ -634,6 +637,11 @@ function ConfigTab() {
           <div className="space-y-2"><Label>Claude (Anthropic)</Label><Input type="password" value={f.anthropic} onChange={(e) => set("anthropic", e.target.value)} placeholder="sk-ant-..." /></div>
           <div className="space-y-2"><Label>OpenAI</Label><Input type="password" value={f.openai} onChange={(e) => set("openai", e.target.value)} placeholder="sk-..." /></div>
           <div className="space-y-2"><Label>Google Gemini</Label><Input type="password" value={f.gemini} onChange={(e) => set("gemini", e.target.value)} placeholder="AIza..." /></div>
+          <div className="space-y-2 pt-2 border-t">
+            <Label>Google Places (Modo Viagem: roteiro dia a dia · Radar)</Label>
+            <Input type="password" value={f.google_places_api_key} onChange={(e) => set("google_places_api_key", e.target.value)} placeholder="AIza... (Google Cloud → APIs: Places API (New))" />
+            <p className="text-xs text-muted-foreground">Sem a chave, o Modo Viagem funciona sem o roteiro de lugares com foto. Custo aprox. R$ 1 por roteiro.</p>
+          </div>
         </CardContent>
       </Card>
 
