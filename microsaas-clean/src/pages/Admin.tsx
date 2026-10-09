@@ -480,7 +480,7 @@ function SponsorBalanceCard() {
 }
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const WPP_SECRET = "TCF-uaz-2026-7Kp9Qm3Xv8Rn";
+// O WEBHOOK_SECRET NÃO fica no front (bundle é público): a URL abaixo mostra um marcador e o valor real está em Supabase → Edge Functions → Secrets.
 
 function ConfigTab() {
   const { data: settings, isLoading } = useAppSettings(true);
@@ -611,7 +611,7 @@ function ConfigTab() {
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
 
-  const wppWebhook = `${SUPA_URL}/functions/v1/whatsapp-webhook?secret=${WPP_SECRET}`;
+  const wppWebhook = `${SUPA_URL}/functions/v1/whatsapp-webhook?secret=<WEBHOOK_SECRET>`;
   const asaasWebhook = `${SUPA_URL}/functions/v1/asaas-webhook`;
 
   return (
@@ -658,7 +658,7 @@ function ConfigTab() {
             <p className="text-xs text-muted-foreground">Chamados que a IA de suporte não resolver são enviados pra este número.</p>
           </div>
           <div className="space-y-1 pt-2 border-t">
-            <Label className="text-xs">Webhook (cole no Uazapi → mensagens recebidas):</Label>
+            <Label className="text-xs">Webhook (troque &lt;WEBHOOK_SECRET&gt; pelo valor em Supabase → Edge Functions → Secrets):</Label>
             <code className="block text-xs bg-muted p-2 rounded break-all">{wppWebhook}</code>
           </div>
         </CardContent>

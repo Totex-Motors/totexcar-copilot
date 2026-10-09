@@ -26,7 +26,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const UAZAPI_URL = (Deno.env.get("UAZAPI_URL") || "").replace(/\/+$/, "");
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
+import { secretOk, unauthorized } from "../_shared/secret.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -3662,9 +3662,9 @@ Deno.serve(async (req) => {
     return new Response("ok", { status: 200, headers: cors });
   }
 
-  if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
-    return new Response("unauthorized", { status: 401, headers: cors });
-  }
+  // POST do Meta/uazapi/crons: exige o secret (fail-closed). ⚠️ Só ligar depois de a URL de callback
+  // no Meta carregar o secret NOVO (ver roteiro de troca).
+  if (!secretOk(url)) return unauthorized(cors);
 
   let body: any = {};
   try { body = await req.json(); } catch { /* ignore */ }
