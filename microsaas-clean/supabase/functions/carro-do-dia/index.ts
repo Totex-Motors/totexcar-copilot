@@ -381,14 +381,16 @@ async function postaGrupo(cfg: any, uazUrl: string, uazToken: string, waId: stri
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
+  const cfg = (await sbSelect(
+    "app_settings?id=eq.1&select=app_url,ai_provider,ai_model,anthropic_api_key,openai_api_key,gemini_api_key,canal_uazapi_url,canal_uazapi_token,canal_newsletter_id,canal_autopost,comunidade_grupos,status_uazapi_url,status_uazapi_token,status_autopost,status_dealership_id,webhook_secret&limit=1",
+  ))?.[0] || {};
+  // secret: env WEBHOOK_SECRET ou app_settings.webhook_secret — SEMPRE exigido (esta função publica no canal e no Status)
+  const expected = WEBHOOK_SECRET || String(cfg.webhook_secret || "");
+  if (!expected || url.searchParams.get("secret") !== expected) {
     return new Response("unauthorized", { status: 401 });
   }
   const job = (url.searchParams.get("job") || "post").toLowerCase();
 
-  const cfg = (await sbSelect(
-    "app_settings?id=eq.1&select=app_url,ai_provider,ai_model,anthropic_api_key,openai_api_key,gemini_api_key,canal_uazapi_url,canal_uazapi_token,canal_newsletter_id,canal_autopost,comunidade_grupos,status_uazapi_url,status_uazapi_token,status_autopost,status_dealership_id&limit=1",
-  ))?.[0] || {};
   const uazUrl = String(cfg.canal_uazapi_url || "").replace(/\/+$/, "");
   const uazToken = String(cfg.canal_uazapi_token || "");
 

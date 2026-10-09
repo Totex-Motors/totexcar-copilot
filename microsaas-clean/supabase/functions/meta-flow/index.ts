@@ -12,10 +12,11 @@ const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: 
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  if (!WEBHOOK_SECRET || url.searchParams.get("secret") !== WEBHOOK_SECRET) return new Response("unauthorized", { status: 401 });
+  const { data: s } = await admin.from("app_settings").select("meta_wa_token, meta_waba_id, webhook_secret").eq("id", 1).single();
+  const expected = WEBHOOK_SECRET || String(s?.webhook_secret || "");
+  if (!expected || url.searchParams.get("secret") !== expected) return new Response("unauthorized", { status: 401 });
   const action = url.searchParams.get("action") || "status";
 
-  const { data: s } = await admin.from("app_settings").select("meta_wa_token, meta_waba_id").eq("id", 1).single();
   const token = String(s?.meta_wa_token || "").trim();
   const waba = String(s?.meta_waba_id || "").trim();
   if (!token || !waba) return json({ ok: false, error: "meta_wa_token/meta_waba_id não configurados" }, 400);
