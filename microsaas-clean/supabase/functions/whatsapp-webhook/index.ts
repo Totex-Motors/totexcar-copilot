@@ -1201,6 +1201,7 @@ const TOOL_SPECS = [
         origem: { type: "string", description: "Cidade de partida, se informada" },
         dias: { type: "number", description: "Duração em dias, se informada" },
         perfil: { type: "string", description: "Perfil da viagem: familia, casal, amigos, sozinho, pet, carro_novo" },
+        interesses: { type: "string", description: "O que a pessoa quer fazer lá, separado por vírgula: praia, gastronomia, cultura, aventura, familia (crianças), descanso. Pergunte em 1 linha se não ficou claro; se ela não souber, deixe vazio." },
       },
     },
   },
@@ -1661,7 +1662,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         const resV = await fetch(`${SUPABASE_URL}/functions/v1/viagem`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
-          body: JSON.stringify({ user_id: user.id, destino: args?.destino || undefined, origem: args?.origem || undefined, dias: args?.dias || undefined, perfil: args?.perfil || undefined }),
+          body: JSON.stringify({ user_id: user.id, destino: args?.destino || undefined, origem: args?.origem || undefined, dias: args?.dias || undefined, perfil: args?.perfil || undefined, interesses: args?.interesses || undefined }),
         });
         const rv = await resV.json().catch(() => ({}));
         if (rv?.ok && (rv.plano || rv.plano_texto)) {
@@ -1669,11 +1670,18 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           const appUrl = String(cfgApp?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
           // link só quando o plano ESTRUTURADO existe (é ele que vira cards e fica salvo)
           const linkCards = rv.plano ? `${appUrl}/viagem` : null;
+          // roteiro dia a dia (lugares reais): resumo compacto pra IA listar no WhatsApp (fotos e horários ficam no app)
+          const dias = Array.isArray(rv.plano?.roteiro_dias) ? rv.plano.roteiro_dias : [];
+          const roteiroResumo = dias.map((d: any) => ({
+            dia: d.dia, km_carro: d.km_carro, combustivel: d.combustivel,
+            paradas: (d.paradas || []).map((x: any) => `${x.nome}${x.nota ? ` (★ ${x.nota})` : ""} ${x.inicio}–${x.fim}`),
+          }));
           return {
             ok: true, plano: rv.plano || null, plano_texto: rv.plano_texto || null,
             dados_do_carro: rv.dados, pesquisa_web: rv.pesquisa_web,
+            roteiro_dia_a_dia: roteiroResumo.length ? roteiroResumo : null,
             link_cards: linkCards,
-            instrucao: `Transforme o PLANO em uma mensagem de WhatsApp gostosa de ler: título com origem→destino, a conta do combustível MOSTRADA (cite a fonte do consumo que está em dados_do_carro.fonte_consumo — se for estimativa, DIGA que é estimativa), pedágios (total ida+volta), balsa se houver (preço + dica), 2-3 hospedagens por faixa, comidas imperdíveis e o alerta de manutenção pré-viagem se existir. Use *negrito* e emojis com moderação.${linkCards ? " FECHE SEMPRE com: '✨ Seu plano ficou salvo no app com cards e valores: " + linkCards + "'" : ""} NUNCA invente valor que não está no plano.`,
+            instrucao: `Transforme o PLANO em uma mensagem de WhatsApp gostosa de ler: título com origem→destino, a conta do combustível MOSTRADA (cite a fonte do consumo que está em dados_do_carro.fonte_consumo — se for estimativa, DIGA que é estimativa), pedágios (total ida+volta), balsa se houver (preço + dica), 2-3 hospedagens por faixa, comidas imperdíveis e o alerta de manutenção pré-viagem se existir.${roteiroResumo.length ? " DEPOIS, a seção *O que fazer lá, dia a dia*: um bloco curto por dia (📍 Dia N) com as paradas na ordem, horário e a nota ★, e no fim do dia os km de carro e o combustível do dia (são lugares REAIS e bem avaliados, com foto e horário no app)." : ""} Use *negrito* e emojis com moderação.${linkCards ? " FECHE SEMPRE com: '✨ Seu plano ficou salvo no app com cards" + (roteiroResumo.length ? ", fotos dos lugares" : "") + " e valores: " + linkCards + "'" : ""} NUNCA invente valor que não está no plano.`,
           };
         }
       } catch (e) { console.error("edge viagem falhou, caindo no caminho inline:", e); }

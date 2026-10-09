@@ -17,6 +17,16 @@ const PERFIS = [
   ["carro_novo", "Primeira viagem com o carro novo"],
 ];
 
+// interesses do roteiro dia a dia (mesmas chaves do _shared/roteiro.ts)
+const INTERESSES: [string, string][] = [
+  ["praia", "🏖️ Praia e natureza"],
+  ["gastronomia", "🍽️ Gastronomia"],
+  ["cultura", "🏛️ Cultura e história"],
+  ["aventura", "🧗 Aventura"],
+  ["familia", "👨‍👩‍👧 Com crianças"],
+  ["descanso", "🌅 Descanso"],
+];
+
 const FAIXA_LABEL: Record<string, { label: string; color: string; soft: string }> = {
   economica: { label: "Econômica", color: "var(--good)", soft: "var(--good-soft)" },
   intermediaria: { label: "Intermediária", color: "#2f80ed", soft: "rgba(47,128,237,.14)" },
@@ -49,7 +59,15 @@ interface Plano {
   passeios?: string[];
   antes_de_viajar?: string[];
   checklist?: string[];
+  interesses?: string[];
+  roteiro_dias?: DiaRoteiro[];
 }
+interface Parada {
+  nome: string; categoria?: string | null; nota?: number | null; avaliacoes?: number | null; foto?: string | null;
+  endereco?: string | null; horario?: string | null; maps_url?: string | null; descricao?: string | null;
+  lat?: number | null; lng?: number | null; inicio: string; fim: string; km_do_anterior?: number | null;
+}
+interface DiaRoteiro { dia: number; titulo: string; paradas: Parada[]; km_carro: number; combustivel: number | null; dica?: string | null }
 
 function Section({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
   return (
@@ -75,6 +93,8 @@ function Stat({ icon: Icon, label, value, highlight }: { icon: any; label: strin
 // pesquisa ao vivo de pedágio/balsa/hospedagem. Mesma função "viagem"; reskin no padrão Minha Garagem.
 export default function Viagem() {
   const [form, setForm] = useState({ destino: "", origem: "", dias: "", perfil: "" });
+  const [interesses, setInteresses] = useState<string[]>(["praia", "gastronomia"]);
+  const [diaAtivo, setDiaAtivo] = useState(1);
   const [loading, setLoading] = useState(false);
   const [plano, setPlano] = useState<Plano | null>(null);
   const [planoTexto, setPlanoTexto] = useState<string | null>(null);
@@ -109,10 +129,12 @@ export default function Viagem() {
           origem: form.origem || undefined,
           dias: Number(form.dias) > 0 ? Number(form.dias) : undefined,
           perfil: form.perfil || undefined,
+          interesses,
         },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      setDiaAtivo(1);
       setPlano(data.plano || null);
       setPlanoTexto(data.plano_texto || null);
       setDados(data.dados || null);
@@ -150,6 +172,18 @@ export default function Viagem() {
                     {PERFIS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
+              </div>
+              <label className="lbl" style={{ display: "block", marginTop: 12 }}>O que você quer fazer lá? (até 3)</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {INTERESSES.map(([k, l]) => {
+                  const on = interesses.includes(k);
+                  return (
+                    <button key={k} type="button" onClick={() => setInteresses((p) => on ? p.filter((x) => x !== k) : p.length >= 3 ? p : [...p, k])}
+                      className="badge-p" style={{ cursor: "pointer", border: on ? "1.5px solid var(--brand)" : "1.5px solid var(--line)", background: on ? "var(--brand-soft)" : "transparent", color: on ? "var(--brand)" : "var(--muted)", fontWeight: on ? 700 : 500 }}>
+                      {l}
+                    </button>
+                  );
+                })}
               </div>
               <button onClick={montar} disabled={loading} className="btn-primary" style={{ marginTop: 16 }}>
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Plane size={16} />}
@@ -243,8 +277,57 @@ export default function Viagem() {
                   </Section>
                 )}
 
+                {/* ROTEIRO DIA A DIA — lugares reais (Google), com foto, nota, horário e os km/combustível do dia */}
+                {(plano.roteiro_dias?.length || 0) > 0 && (() => {
+                  const dias = plano.roteiro_dias!;
+                  const d = dias.find((x) => x.dia === diaAtivo) || dias[0];
+                  return (
+                    <Section icon={MapPin} title="O que fazer lá, dia a dia">
+                      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 10 }}>
+                        {dias.map((x) => (
+                          <button key={x.dia} type="button" onClick={() => setDiaAtivo(x.dia)} className="badge-p"
+                            style={{ cursor: "pointer", flex: "none", border: x.dia === d.dia ? "1.5px solid var(--brand)" : "1.5px solid var(--line)", background: x.dia === d.dia ? "var(--brand)" : "transparent", color: x.dia === d.dia ? "#fff" : "var(--muted)", fontWeight: 700 }}>
+                            Dia {x.dia}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 12, fontSize: 12, color: "var(--muted)" }}>
+                        <span className="badge-p">🚗 {d.km_carro} km de carro</span>
+                        {d.combustivel != null && <span className="badge-p">⛽ {brl(d.combustivel)} no seu carro</span>}
+                        <span className="badge-p">📍 {d.paradas.length} paradas</span>
+                      </div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        {d.paradas.map((s, i) => (
+                          <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden" }}>
+                            {s.foto && <img src={s.foto} alt={s.nome} loading="lazy" style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }} />}
+                            <div style={{ padding: 12 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 14, fontWeight: 800 }}>{i + 1}. {s.nome}</div>
+                                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                                    {[s.categoria, s.nota ? `★ ${s.nota}${s.avaliacoes ? ` (${s.avaliacoes.toLocaleString("pt-BR")})` : ""}` : null].filter(Boolean).join(" · ")}
+                                  </div>
+                                </div>
+                                <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: "var(--brand)", flex: "none" }}>{s.inicio}–{s.fim}</span>
+                              </div>
+                              {s.descricao && <p style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.4 }}>{s.descricao}</p>}
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, alignItems: "center", fontSize: 11.5, color: "var(--muted)" }}>
+                                {s.km_do_anterior != null && s.km_do_anterior > 0 && <span>🚗 {s.km_do_anterior} km da parada anterior</span>}
+                                {s.horario && <span>🕒 {s.horario}</span>}
+                                {s.maps_url && <a href={s.maps_url} target="_blank" rel="noreferrer" style={{ color: "var(--brand)", fontWeight: 700 }}>Abrir no Maps ↗</a>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {d.dica && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>💡 {d.dica}</p>}
+                      <p style={{ fontSize: 11, color: "var(--faint)", marginTop: 10 }}>Lugares com nota 4+ no Google. Km e combustível estimados com o consumo do seu carro.</p>
+                    </Section>
+                  );
+                })()}
+
                 {(plano.roteiro?.length || 0) > 0 && (
-                  <Section icon={MapPin} title="Roteiro e paradas">
+                  <Section icon={MapPin} title={plano.roteiro_dias?.length ? "Paradas no caminho" : "Roteiro e paradas"}>
                     <div className="stack" style={{ gap: 12 }}>
                       {plano.roteiro!.map((r, i) => (
                         <div key={i} style={{ display: "flex", gap: 11 }}>

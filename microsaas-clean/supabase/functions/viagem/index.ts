@@ -3,6 +3,7 @@
 // destino/origem/dias/perfil e recebe o plano pronto (IA) + os dados usados na conta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
+import { buscarAtracoes, montarDias, normalizarInteresses, INTERESSES } from "../_shared/roteiro.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -126,7 +127,18 @@ Deno.serve(async (req) => {
       loja: me?.dealership || null,
     };
 
-    const { data: s } = await admin.from("app_settings").select("ai_provider, ai_model, openai_api_key, anthropic_api_key, gemini_api_key").eq("id", 1).single();
+    const { data: s } = await admin.from("app_settings").select("ai_provider, ai_model, openai_api_key, anthropic_api_key, gemini_api_key, google_places_api_key").eq("id", 1).single();
+
+    // ROTEIRO DIA A DIA (lugares reais do Google Places, conforme os interesses) — roda em paralelo
+    // com as pesquisas; sem chave do Places, o plano continua só com o roteiro em texto da IA.
+    const interesses = normalizarInteresses(p.interesses);
+    const nDias = Number(p.dias) > 0 ? Number(p.dias) : 2;
+    const placesKey = String(s?.google_places_api_key || "").trim();
+    const roteiroDiasP = (p.destino && placesKey)
+      ? buscarAtracoes(placesKey, String(p.destino), interesses)
+          .then((lug) => montarDias(lug, nDias, interesses, { custoPorKm: real?.custo_por_km ?? null, kml: kmPorLitro, precoLitro }))
+          .catch((e) => { console.error("roteiro dias:", e); return []; })
+      : Promise.resolve([]);
 
     // PESQUISAS EM TEMPO REAL (paralelas): rota (pedágios/balsa/condições) + lugares (onde ficar/comer)
     let pesquisa: string | null = null;
@@ -137,6 +149,7 @@ Deno.serve(async (req) => {
         pesquisarLugares(s.openai_api_key, String(p.destino), p.perfil ? String(p.perfil) : undefined),
       ]);
     }
+    const roteiroDias = await roteiroDiasP;
 
     const sys = `Você é o TotexCar Co-pilot no MODO VIAGEM. Monte o plano de viagem de CARRO e responda APENAS com um JSON válido (sem markdown, sem crase), neste formato exato:
 {
@@ -154,7 +167,8 @@ Deno.serve(async (req) => {
  "checklist": ${JSON.stringify(CHECKLIST)}
 }
 REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_km: km ida+volta × custo/km; senão (km ÷ km/L) × preço do litro; se faltar dado, explique na "conta" o que falta medir e use null no total). ${pesquisa || lugares ? "Use as PESQUISAS EM TEMPO REAL como FONTE DA VERDADE de rota, pedágios, balsa, hospedagens e restaurantes — NÃO chute valores nem invente estabelecimentos; onde a pesquisa não encontrou, use null." : "Sem pesquisa ao vivo: valores aproximados e diga isso nas obs."} NUNCA invente diária de hospedagem (null se não veio na pesquisa). Sem destino → "titulo": "Sugestões pra sua próxima viagem" e preencha "roteiro" com 2-3 destinos destes conforme o perfil: ${DESTINOS_2026.join("; ")}. Números como number (sem "R$"). Tudo em português do Brasil.`;
-    const userMsg = `Dados reais do carro do cliente: ${JSON.stringify(dados)}\n\nPedido: destino=${p.destino || "(sem destino, sugerir)"}; origem=${p.origem || "(não informada)"}; dias=${p.dias || "?"}; perfil=${p.perfil || "não informado"}.${pesquisa ? `\n\nPESQUISA EM TEMPO REAL — ROTA (fonte da verdade):\n${pesquisa}` : ""}${lugares ? `\n\nPESQUISA EM TEMPO REAL — ONDE FICAR E COMER (fonte da verdade):\n${lugares}` : ""}`;
+    const nomesRoteiro = roteiroDias.flatMap((d) => d.paradas.map((x) => x.nome)).slice(0, 12);
+    const userMsg = `Dados reais do carro do cliente: ${JSON.stringify(dados)}\n\nPedido: destino=${p.destino || "(sem destino, sugerir)"}; origem=${p.origem || "(não informada)"}; dias=${p.dias || "?"}; perfil=${p.perfil || "não informado"}; interesses=${interesses.map((k) => INTERESSES[k]?.label || k).join(", ")}.${pesquisa ? `\n\nPESQUISA EM TEMPO REAL — ROTA (fonte da verdade):\n${pesquisa}` : ""}${lugares ? `\n\nPESQUISA EM TEMPO REAL — ONDE FICAR E COMER (fonte da verdade):\n${lugares}` : ""}${nomesRoteiro.length ? `\n\nATRAÇÕES JÁ ESCOLHIDAS PRO ROTEIRO DIA A DIA (Google, bem avaliadas — use estes nomes em "passeios"; não repita no "roteiro", que é só das paradas NA ESTRADA): ${nomesRoteiro.join("; ")}` : ""}`;
 
     const bruto = await aiText(s, sys, userMsg);
     // extrai o JSON (tolerante a cercas de código)
@@ -165,6 +179,13 @@ REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_
       if (a >= 0 && b > a) t = t.slice(a, b + 1);
       plano = JSON.parse(t);
     } catch { /* cai no texto cru */ }
+
+    // o roteiro dia a dia (lugares reais) entra no plano estruturado; se a IA falhou no JSON, vira um plano mínimo
+    if (!plano && roteiroDias.length) plano = { titulo: `Roteiro em ${p.destino}`, resumo: bruto.slice(0, 300) };
+    if (plano) {
+      plano.roteiro_dias = roteiroDias;
+      plano.interesses = interesses;
+    }
 
     // salva o plano estruturado — a página /viagem abre o último em cards sem recalcular
     if (plano) {
@@ -177,7 +198,7 @@ REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_
       } catch (e) { console.error("erro ao salvar plano:", e); }
     }
 
-    return json({ ok: true, plano, plano_texto: plano ? null : bruto, dados, pesquisa_web: !!(pesquisa || lugares) });
+    return json({ ok: true, plano, plano_texto: plano ? null : bruto, dados, pesquisa_web: !!(pesquisa || lugares), roteiro_dias: roteiroDias.length, places: !!placesKey });
   } catch (e) {
     console.error("viagem erro:", e);
     return json({ error: String((e as any)?.message || e) }, 500);
