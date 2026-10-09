@@ -127,6 +127,57 @@ export async function buscarAtracoes(apiKey: string, destino: string, interesses
   return lugares;
 }
 
+// ONDE FICAR / ONDE COMER com foto, nota e faixa de preço (Places). A pesquisa da OpenAI continua
+// dando o "por quê" e a diária; aqui entram os cards. 2 buscas + fotos por plano.
+export interface LugarCard {
+  nome: string; categoria: string | null; nota: number | null; avaliacoes: number | null; foto: string | null;
+  endereco: string | null; regiao: string | null; maps_url: string | null; descricao: string | null; preco_nivel: number | null; // 1 (barato) … 4
+}
+const PRECO: Record<string, number> = { PRICE_LEVEL_FREE: 1, PRICE_LEVEL_INEXPENSIVE: 1, PRICE_LEVEL_MODERATE: 2, PRICE_LEVEL_EXPENSIVE: 3, PRICE_LEVEL_VERY_EXPENSIVE: 4 };
+export async function buscarLugaresTipo(apiKey: string, destino: string, tipo: "hospedagem" | "comida", max = 6): Promise<LugarCard[]> {
+  const q = tipo === "hospedagem" ? `hotéis e pousadas bem avaliados em ${destino}` : `melhores restaurantes em ${destino}`;
+  let places: any[] = [];
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json", "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.primaryTypeDisplayName,places.editorialSummary,places.photos,places.googleMapsUri,places.priceLevel,places.addressComponents",
+      },
+      body: JSON.stringify({ textQuery: q, languageCode: "pt-BR", regionCode: "BR", maxResultCount: 12, includedType: tipo === "hospedagem" ? "lodging" : "restaurant" }),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) { console.error("places", tipo, res.status, (await res.text()).slice(0, 160)); return []; }
+    places = (await res.json())?.places || [];
+  } catch (e) { console.error("places", tipo, String((e as any)?.message || e).slice(0, 160)); return []; }
+  const cards: (LugarCard & { score: number; fotoName: string | null })[] = [];
+  for (const p of places) {
+    const nota = typeof p?.rating === "number" ? p.rating : null;
+    const avals = typeof p?.userRatingCount === "number" ? p.userRatingCount : 0;
+    if (nota == null || nota < 4.2 || avals < 30) continue;
+    const bairro = (p?.addressComponents || []).find((c: any) => (c?.types || []).includes("sublocality") || (c?.types || []).includes("sublocality_level_1") || (c?.types || []).includes("neighborhood"))?.longText || null;
+    cards.push({
+      nome: p?.displayName?.text || "", categoria: p?.primaryTypeDisplayName?.text || null, nota, avaliacoes: avals,
+      foto: null, fotoName: p?.photos?.[0]?.name || null, endereco: p?.formattedAddress || null, regiao: bairro,
+      maps_url: p?.googleMapsUri || null, descricao: p?.editorialSummary?.text || null,
+      preco_nivel: PRECO[String(p?.priceLevel || "")] ?? null,
+      score: nota * Math.log10(avals + 10),
+    });
+  }
+  cards.sort((a, b) => b.score - a.score);
+  const top = cards.slice(0, max);
+  await Promise.all(top.map(async (c) => { c.foto = c.fotoName ? await fotoUrl(apiKey, c.fotoName) : null; }));
+  return top.map(({ score: _s, fotoName: _f, ...rest }) => rest);
+}
+
+// casa o nome que a IA escreveu com o card do Google (acento/caixa/pontuação ignorados)
+export const nomeChave = (s: unknown) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\b(hotel|pousada|restaurante|bar|cafe|resort|inn|spa)\b/g, "").replace(/\s+/g, " ").trim();
+export function casarCard(nome: unknown, cards: LugarCard[]): LugarCard | null {
+  const k = nomeChave(nome);
+  if (!k) return null;
+  return cards.find((c) => { const ck = nomeChave(c.nome); return ck === k || ck.includes(k) || k.includes(ck); }) || null;
+}
+
 const toRad = (x: number) => (x * Math.PI) / 180;
 function km(a: { lat: number | null; lng: number | null }, b: { lat: number | null; lng: number | null }): number | null {
   if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return null;

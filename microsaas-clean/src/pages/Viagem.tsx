@@ -58,8 +58,8 @@ interface Plano {
   pedagios?: { itens?: { praca: string; valor: number | null }[]; total_ida_volta?: number | null; obs?: string | null };
   balsa?: { descricao?: string; preco_carro?: number | null; dica?: string } | null;
   roteiro?: { titulo: string; descricao?: string }[];
-  hospedagem?: { faixa?: string; nome: string; regiao?: string; motivo?: string; diaria?: number | null }[];
-  comida?: { nome: string; especialidade?: string }[];
+  hospedagem?: { faixa?: string; nome: string; regiao?: string; motivo?: string; diaria?: number | null; foto?: string | null; nota?: number | null; avaliacoes?: number | null; preco_nivel?: number | null; maps_url?: string | null }[];
+  comida?: { nome: string; especialidade?: string; regiao?: string | null; foto?: string | null; nota?: number | null; avaliacoes?: number | null; preco_nivel?: number | null; maps_url?: string | null }[];
   passeios?: string[];
   antes_de_viajar?: string[];
   checklist?: string[];
@@ -72,6 +72,22 @@ interface Parada {
   lat?: number | null; lng?: number | null; inicio: string; fim: string; km_do_anterior?: number | null;
 }
 interface DiaRoteiro { dia: number; titulo: string; paradas: Parada[]; km_carro: number; combustivel: number | null; dica?: string | null }
+
+// linha "★ 4.7 (1.234) · $$ · bairro" + link do Maps — usada em hospedagem e comida
+function MetaLugar({ nota, avaliacoes, preco_nivel, regiao, maps_url }: { nota?: number | null; avaliacoes?: number | null; preco_nivel?: number | null; regiao?: string | null; maps_url?: string | null }) {
+  const partes = [
+    nota ? `★ ${nota}${avaliacoes ? ` (${avaliacoes.toLocaleString("pt-BR")})` : ""}` : null,
+    preco_nivel ? "$".repeat(preco_nivel) : null,
+    regiao || null,
+  ].filter(Boolean);
+  if (!partes.length && !maps_url) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+      {partes.length > 0 && <span>{partes.join(" · ")}</span>}
+      {maps_url && <a href={maps_url} target="_blank" rel="noreferrer" style={{ color: "var(--brand)", fontWeight: 700 }}>Abrir no Maps ↗</a>}
+    </div>
+  );
+}
 
 function Section({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
   return (
@@ -350,15 +366,19 @@ export default function Viagem() {
                       {hospedagemOrdenada.map((h, i) => {
                         const fx = FAIXA_LABEL[String(h.faixa)] || null;
                         return (
-                          <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 12 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                              <span style={{ fontSize: 13.5, fontWeight: 700 }}>{h.nome}</span>
-                              <span style={{ display: "flex", alignItems: "center", gap: 7, flex: "none" }}>
-                                {h.diaria != null && <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--brand)" }}>{brl(h.diaria)}<span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 400 }}>/noite</span></span>}
-                                {fx && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: fx.soft, color: fx.color }}>{fx.label}</span>}
-                              </span>
+                          <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+                            {h.foto && <img src={h.foto} alt={h.nome} loading="lazy" style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }} />}
+                            <div style={{ padding: 12 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                <span style={{ fontSize: 13.5, fontWeight: 700 }}>{h.nome}</span>
+                                <span style={{ display: "flex", alignItems: "center", gap: 7, flex: "none" }}>
+                                  {h.diaria != null && <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--brand)" }}>{brl(h.diaria)}<span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 400 }}>/noite</span></span>}
+                                  {fx && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: fx.soft, color: fx.color }}>{fx.label}</span>}
+                                </span>
+                              </div>
+                              {h.motivo && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{h.motivo}</p>}
+                              <MetaLugar nota={h.nota} avaliacoes={h.avaliacoes} preco_nivel={h.preco_nivel} regiao={h.regiao} maps_url={h.maps_url} />
                             </div>
-                            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{[h.regiao, h.motivo].filter(Boolean).join(" · ")}</p>
                           </div>
                         );
                       })}
@@ -371,9 +391,13 @@ export default function Viagem() {
                   <Section icon={UtensilsCrossed} title="Onde comer e beber">
                     <div className="stack" style={{ gap: 10 }}>
                       {plano.comida!.map((c, i) => (
-                        <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 12 }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 700 }}>{c.nome}</div>
-                          {c.especialidade && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>{c.especialidade}</div>}
+                        <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+                          {c.foto && <img src={c.foto} alt={c.nome} loading="lazy" style={{ width: "100%", height: 130, objectFit: "cover", display: "block" }} />}
+                          <div style={{ padding: 12 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 700 }}>{c.nome}</div>
+                            {c.especialidade && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>{c.especialidade}</div>}
+                            <MetaLugar nota={c.nota} avaliacoes={c.avaliacoes} preco_nivel={c.preco_nivel} regiao={c.regiao} maps_url={c.maps_url} />
+                          </div>
                         </div>
                       ))}
                     </div>
