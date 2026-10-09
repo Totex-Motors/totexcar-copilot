@@ -2,7 +2,7 @@
 // Mesmo motor do agente WhatsApp (tool planejar_viagem), exposto pro app: o front manda
 // destino/origem/dias/perfil e recebe o plano pronto (IA) + os dados usados na conta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { pesquisarRota, pesquisarLugares, consumoDoVeiculo } from "../_shared/route-research.ts";
+import { pesquisarRota, pesquisarLugares, consumoDoVeiculo, extrairPedagios } from "../_shared/route-research.ts";
 import { buscarAtracoes, montarDias, normalizarInteresses, INTERESSES } from "../_shared/roteiro.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -50,7 +50,7 @@ async function aiText(s: any, sys: string, user: string): Promise<string> {
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model, max_tokens: 1200, messages: [{ role: "system", content: sys }, { role: "user", content: user }] }),
+      body: JSON.stringify({ model, max_tokens: 2200, messages: [{ role: "system", content: sys }, { role: "user", content: user }] }),
     });
     if (!res.ok) throw new Error(`OpenAI ${res.status}`);
     return (await res.json()).choices?.[0]?.message?.content?.trim() || "";
@@ -66,7 +66,7 @@ async function aiText(s: any, sys: string, user: string): Promise<string> {
   }
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST", headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model, max_tokens: 1200, system: sys, messages: [{ role: "user", content: user }] }),
+    body: JSON.stringify({ model, max_tokens: 2200, system: sys, messages: [{ role: "user", content: user }] }),
   });
   if (!res.ok) throw new Error(`Anthropic ${res.status}`);
   return (((await res.json()).content || []).find((b: any) => b.type === "text")?.text || "").trim();
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
  "antes_de_viajar": ["recomendações de manutenção pré-viagem, citando a loja do cliente se houver — ou lista vazia"],
  "checklist": ${JSON.stringify(CHECKLIST)}
 }
-REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_km: km ida+volta × custo/km; senão (km ÷ km/L) × preço do litro; se faltar dado, explique na "conta" o que falta medir e use null no total). ${pesquisa || lugares ? "Use as PESQUISAS EM TEMPO REAL como FONTE DA VERDADE de rota, pedágios, balsa, hospedagens e restaurantes — NÃO chute valores nem invente estabelecimentos; onde a pesquisa não encontrou, use null." : "Sem pesquisa ao vivo: valores aproximados e diga isso nas obs."} NUNCA invente diária de hospedagem (null se não veio na pesquisa). Sem destino → "titulo": "Sugestões pra sua próxima viagem" e preencha "roteiro" com 2-3 destinos destes conforme o perfil: ${DESTINOS_2026.join("; ")}. Números como number (sem "R$"). Tudo em português do Brasil.`;
+REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_km: km ida+volta × custo/km; senão (km ÷ km/L) × preço do litro; se faltar dado, explique na "conta" o que falta medir e use null no total). ${pesquisa || lugares ? "Use as PESQUISAS EM TEMPO REAL como FONTE DA VERDADE de rota, pedágios, balsa, hospedagens e restaurantes — NÃO chute valores nem invente estabelecimentos; onde a pesquisa não encontrou, use null. PEDÁGIOS: copie pra \"pedagios.itens\" TODAS as praças que a PESQUISA — ROTA listou, cada uma com seu valor, e some ida+volta em total_ida_volta; só deixe a lista vazia se a pesquisa não trouxe NENHUMA praça." : "Sem pesquisa ao vivo: valores aproximados e diga isso nas obs."} NUNCA invente diária de hospedagem (null se não veio na pesquisa). Sem destino → "titulo": "Sugestões pra sua próxima viagem" e preencha "roteiro" com 2-3 destinos destes conforme o perfil: ${DESTINOS_2026.join("; ")}. Números como number (sem "R$"). Tudo em português do Brasil.`;
     const nomesRoteiro = roteiroDias.flatMap((d) => d.paradas.map((x) => x.nome)).slice(0, 12);
     const userMsg = `Dados reais do carro do cliente: ${JSON.stringify(dados)}\n\nPedido: destino=${p.destino || "(sem destino, sugerir)"}; origem=${p.origem || "(não informada)"}; dias=${p.dias || "?"}; perfil=${p.perfil || "não informado"}; interesses=${interesses.map((k) => INTERESSES[k]?.label || k).join(", ")}.${pesquisa ? `\n\nPESQUISA EM TEMPO REAL — ROTA (fonte da verdade):\n${pesquisa}` : ""}${lugares ? `\n\nPESQUISA EM TEMPO REAL — ONDE FICAR E COMER (fonte da verdade):\n${lugares}` : ""}${nomesRoteiro.length ? `\n\nATRAÇÕES JÁ ESCOLHIDAS PRO ROTEIRO DIA A DIA (Google, bem avaliadas — use estes nomes em "passeios"; não repita no "roteiro", que é só das paradas NA ESTRADA): ${nomesRoteiro.join("; ")}` : ""}`;
 
@@ -182,6 +182,20 @@ REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_
 
     // o roteiro dia a dia (lugares reais) entra no plano estruturado; se a IA falhou no JSON, vira um plano mínimo
     if (!plano && roteiroDias.length) plano = { titulo: `Roteiro em ${p.destino}`, resumo: bruto.slice(0, 300) };
+
+    // PEDÁGIOS: se a IA deixou a lista vazia mas a pesquisa trouxe praça a praça, usa a pesquisa
+    if (plano && pesquisa) {
+      const itens = Array.isArray(plano.pedagios?.itens) ? plano.pedagios.itens.filter((x: any) => x && Number(x.valor) > 0) : [];
+      if (!itens.length) {
+        const achados = extrairPedagios(pesquisa);
+        if (achados.length) {
+          const ida = achados.reduce((s, x) => s + x.valor, 0);
+          plano.pedagios = { itens: achados, total_ida_volta: Math.round(ida * 2 * 100) / 100, obs: "Praças e valores encontrados na pesquisa ao vivo (total = ida + volta). Confira na estrada: tarifas mudam." };
+        }
+      } else if (plano.pedagios.total_ida_volta == null) {
+        plano.pedagios.total_ida_volta = Math.round(itens.reduce((s: number, x: any) => s + Number(x.valor), 0) * 2 * 100) / 100;
+      }
+    }
     if (plano) {
       plano.roteiro_dias = roteiroDias;
       plano.interesses = interesses;
