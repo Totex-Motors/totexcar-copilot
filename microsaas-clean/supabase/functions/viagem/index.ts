@@ -3,7 +3,7 @@
 // destino/origem/dias/perfil e recebe o plano pronto (IA) + os dados usados na conta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo, extrairPedagios } from "../_shared/route-research.ts";
-import { buscarAtracoes, montarDias, normalizarInteresses, INTERESSES } from "../_shared/roteiro.ts";
+import { buscarAtracoes, montarDias, normalizarInteresses, INTERESSES, buscarLugaresTipo, casarCard, type LugarCard } from "../_shared/roteiro.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -139,6 +139,11 @@ Deno.serve(async (req) => {
           .then((lug) => montarDias(lug, nDias, interesses, { custoPorKm: real?.custo_por_km ?? null, kml: kmPorLitro, precoLitro }))
           .catch((e) => { console.error("roteiro dias:", e); return []; })
       : Promise.resolve([]);
+    // ONDE FICAR / ONDE COMER com foto, nota e faixa de preço (Places), em paralelo com o resto
+    const cardsP: Promise<[LugarCard[], LugarCard[]]> = (p.destino && placesKey)
+      ? Promise.all([buscarLugaresTipo(placesKey, String(p.destino), "hospedagem"), buscarLugaresTipo(placesKey, String(p.destino), "comida")])
+          .catch((e) => { console.error("cards places:", e); return [[], []] as [LugarCard[], LugarCard[]]; })
+      : Promise.resolve([[], []] as [LugarCard[], LugarCard[]]);
 
     // PESQUISAS EM TEMPO REAL (paralelas): rota (pedágios/balsa/condições) + lugares (onde ficar/comer)
     let pesquisa: string | null = null;
@@ -150,6 +155,7 @@ Deno.serve(async (req) => {
       ]);
     }
     const roteiroDias = await roteiroDiasP;
+    const [hospCards, comidaCards] = await cardsP;
 
     const sys = `Você é o TotexCar Co-pilot no MODO VIAGEM. Monte o plano de viagem de CARRO e responda APENAS com um JSON válido (sem markdown, sem crase), neste formato exato:
 {
@@ -199,6 +205,26 @@ REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_
     if (plano) {
       plano.roteiro_dias = roteiroDias;
       plano.interesses = interesses;
+      // ONDE FICAR: itens da IA ganham foto/nota/preço do card que casar; cards que sobraram entram em seguida (até 6)
+      const faixaDe = (n: number | null) => n == null ? null : n <= 1 ? "economica" : n === 2 ? "intermediaria" : "charme";
+      const enriquecer = (lista: any[], cards: LugarCard[], tipo: "hospedagem" | "comida") => {
+        const usados = new Set<string>();
+        const out = (Array.isArray(lista) ? lista : []).map((it: any) => {
+          const c = casarCard(it?.nome, cards);
+          if (c) usados.add(c.nome);
+          return c ? { ...it, nome: it.nome || c.nome, foto: c.foto, nota: c.nota, avaliacoes: c.avaliacoes, preco_nivel: c.preco_nivel, maps_url: c.maps_url, regiao: it.regiao || c.regiao, fonte: "ia+google" } : { ...it, fonte: "ia" };
+        });
+        for (const c of cards) {
+          if (out.length >= 6) break;
+          if (usados.has(c.nome) || out.some((o: any) => casarCard(o?.nome, [c]))) continue;
+          out.push(tipo === "hospedagem"
+            ? { nome: c.nome, faixa: faixaDe(c.preco_nivel), regiao: c.regiao, motivo: c.descricao || `${c.categoria || "Hospedagem"} bem avaliada no Google`, diaria: null, foto: c.foto, nota: c.nota, avaliacoes: c.avaliacoes, preco_nivel: c.preco_nivel, maps_url: c.maps_url, fonte: "google" }
+            : { nome: c.nome, especialidade: c.descricao || c.categoria || null, regiao: c.regiao, foto: c.foto, nota: c.nota, avaliacoes: c.avaliacoes, preco_nivel: c.preco_nivel, maps_url: c.maps_url, fonte: "google" });
+        }
+        return out;
+      };
+      if (hospCards.length) plano.hospedagem = enriquecer(plano.hospedagem, hospCards, "hospedagem");
+      if (comidaCards.length) plano.comida = enriquecer(plano.comida, comidaCards, "comida");
     }
 
     // salva o plano estruturado — a página /viagem abre o último em cards sem recalcular
