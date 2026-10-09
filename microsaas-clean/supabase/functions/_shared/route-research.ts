@@ -40,6 +40,31 @@ Se algum valor não for encontrado, diga explicitamente "não encontrei valor at
   return r.text || null;
 }
 
+// PEDÁGIOS direto do texto da pesquisa (rede de segurança): a IA às vezes deixa a lista vazia mesmo
+// com a pesquisa trazendo praça a praça. Lê linhas tipo "- **Osasco** no km 8: R$ 4,20".
+export function extrairPedagios(pesquisa: string | null): { praca: string; valor: number }[] {
+  if (!pesquisa) return [];
+  const bloco = (() => {
+    const i = pesquisa.search(/ped[aá]gio/i);
+    if (i < 0) return pesquisa;
+    const fim = pesquisa.slice(i).search(/\n\s*(\*\*|#+)?\s*3\.|balsa|travessia|tempo de viagem/i);
+    return fim > 0 ? pesquisa.slice(i, i + fim) : pesquisa.slice(i);
+  })();
+  const out: { praca: string; valor: number }[] = [];
+  for (const bruta of bloco.split("\n")) {
+    const linha = bruta.replace(/\*\*/g, "").replace(/__/g, "");
+    if (!/^\s*[-•*\d]/.test(linha) || !/R\$/.test(linha)) continue;
+    const m = /R\$\s*([\d.]+,\d{2}|\d+(?:[.,]\d+)?)/i.exec(linha);
+    if (!m) continue;
+    const antes = linha.slice(0, m.index).replace(/^\s*(?:[-•*]|\d+[.)])\s*/, "");
+    const nome = antes.replace(/\s*(?:\(|no km|km\s*\d).*$/i, "").replace(/[\s:–-]+$/, "").trim();
+    const valor = Number(m[1].replace(/\./g, "").replace(",", "."));
+    if (!nome || !(valor > 0) || valor > 200 || /total/i.test(nome)) continue;
+    out.push({ praca: nome, valor: Math.round(valor * 100) / 100 });
+  }
+  return out.slice(0, 15);
+}
+
 // ---- CONSUMO DO VEÍCULO (cadeia de fontes) ----
 // real (tanque-a-tanque) > oficial INMETRO (Auto Data: cidade_gasolina/estrada_gasolina/
 // referencia_media — ⚠️ NÃO é estrada_kml, bug que deixava o Modo Viagem "sem dados") >
