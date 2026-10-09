@@ -140,7 +140,10 @@ const RECOMPRA_FLOW_ID = "2122157961991407";
 // de publicar o flow na Meta — sem o id, o código cai no caminho de texto do agente
 // em vez de mandar um formulário quebrado.
 const RADAR_FLOW_ID = Deno.env.get("RADAR_FLOW_ID") || "";
-const VIAGEM_FLOW_ID = Deno.env.get("VIAGEM_FLOW_ID") || "";
+const VIAGEM_FLOW_ID_ENV = Deno.env.get("VIAGEM_FLOW_ID") || "";
+// id do flow do Modo Viagem: app_settings.viagem_flow_id (trocável sem redeploy, ex.: versão nova publicada pela
+// função meta-flow) > secret VIAGEM_FLOW_ID
+async function viagemFlowId(): Promise<string> { const s = await getSettings(); return String((s as any)?.viagem_flow_id || VIAGEM_FLOW_ID_ENV || ""); }
 
 // pedido de SERVIÇO no carro → abre o flow do Radar
 function isRadarQuery(t: string): boolean {
@@ -686,6 +689,28 @@ async function handleRadarFlowReply(phone: string, flow: Record<string, any>): P
 // Resposta do FLOW do MODO VIAGEM: o formulário só COLETA (destino/origem/dias/perfil).
 // O plano é montado aqui e volta no chat — a pesquisa de rota + composição pela IA leva
 // bem mais que o timeout do endpoint de Flow, então não dá pra fazer dentro da tela.
+// Estilos de viagem (mesma lista do _shared/roteiro.ts e do app): id = chave que a edge viagem entende.
+const VIAGEM_INTERESSES: { id: string; title: string }[] = [
+  { id: "praia", title: "🏖️ Praia e mar" },
+  { id: "natureza", title: "🌿 Natureza e cachoeira" },
+  { id: "serra", title: "⛰️ Serra e montanha" },
+  { id: "cultura", title: "🏛️ História e cultura" },
+  { id: "gastronomia", title: "🍷 Gastronomia e vinhos" },
+  { id: "aventura", title: "🧗 Aventura e esportes" },
+  { id: "familia", title: "👧 Com crianças" },
+  { id: "descanso", title: "🧘 Descanso e bem-estar" },
+  { id: "compras", title: "🛍️ Compras e vida noturna" },
+  { id: "geral", title: "✨ O que o destino tem de melhor" },
+];
+const VIAGEM_INTERESSES_ROWS = VIAGEM_INTERESSES.map((x) => x.title);
+function interesseDoTexto(t: string): string | null {
+  const s = String(t || "").trim().toLowerCase();
+  if (!s) return null;
+  const hit = VIAGEM_INTERESSES.find((x) => x.title.toLowerCase() === s || x.title.toLowerCase().slice(0, 24) === s.slice(0, 24) || s.includes(x.id));
+  if (hit) return hit.id;
+  return /tanto faz|qualquer|n[ãa]o sei|melhor/.test(s) ? "geral" : null;
+}
+
 async function handleViagemFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
   if (flow?.tipo !== "viagem_plano") return false;
   const destino = String(flow.destino || "").trim();
@@ -693,24 +718,50 @@ async function handleViagemFlowReply(phone: string, flow: Record<string, any>): 
     await sendText(phone, "Não peguei o destino. Pra onde você quer ir? 🏖️");
     return true;
   }
+  const ints = Array.isArray(flow.interesses) ? flow.interesses : String(flow.interesses || "").split(",");
+  await rodarPlanoViagem(phone, { destino, origem: flow.origem, dias: flow.dias, perfil: flow.perfil, interesses: ints.map((x: any) => String(x || "").trim()).filter(Boolean) });
+  return true;
+}
+
+// Toque na lista de estilos (mandada pela tool planejar_viagem quando faltou o interesse) → monta o plano
+async function handleViagemInteresseReply(phone: string, text: string): Promise<boolean> {
+  const escolha = interesseDoTexto(text);
+  if (!escolha) return false;
+  const digits = onlyDigits(phone);
+  const desde = new Date(Date.now() - 2 * 3600_000).toISOString();
+  const { data: pend } = await supabase.from("whatsapp_events").select("id, parsed")
+    .eq("from_phone", digits).eq("kind", "viagem_interesses").eq("status", "pending").gte("created_at", desde)
+    .order("created_at", { ascending: false }).limit(1);
+  const p = pend?.[0];
+  if (!p) return false;
+  await supabase.from("whatsapp_events").update({ status: "processed", parsed: { ...(p.parsed as any), escolha } }).eq("id", p.id);
+  const d = (p.parsed as any) || {};
+  await rodarPlanoViagem(phone, { destino: String(d.destino || ""), origem: d.origem, dias: d.dias, perfil: d.perfil, interesses: [escolha] });
+  return true;
+}
+
+// Monta o plano (formulário ou lista): runAgent chama planejar_viagem e compõe o texto do WhatsApp.
+async function rodarPlanoViagem(phone: string, dados: { destino: string; origem?: any; dias?: any; perfil?: any; interesses?: string[] }): Promise<void> {
+  const destino = String(dados.destino || "").trim();
   const user = await findUserByPhone(phone);
   if (!user) {
     await sendText(phone, "Pra montar o plano com os dados do seu carro preciso te identificar. Cadastre-se no app com este mesmo número. 🚗");
-    return true;
+    return;
   }
 
-  await sendText(phone, `Fechou! Montando seu plano pra *${destino}* com o consumo real do seu carro — pesquisando pedágio, balsa e onde ficar. Só um instante… 🔎`);
+  await sendText(phone, `Fechou! Montando seu plano pra *${destino}* com o consumo real do seu carro — pesquisando pedágio, balsa, onde ficar e o que fazer lá. Só um instante… 🔎`);
 
   const { data: vehicles } = await supabase.from("accounts").select("*")
     .eq("user_id", user.id).eq("is_active", true).limit(1);
   const vehicle = vehicles?.[0] || null;
   const today = new Date().toISOString().slice(0, 10);
-  const pedido = `Planejar viagem de carro. Destino: ${destino}. Origem: ${flow.origem || "não informada"}. Dias: ${flow.dias || "não informado"}. Perfil: ${flow.perfil || "não informado"}.`;
+  const ints = (dados.interesses || []).filter((x) => x && x !== "geral");
+  const pedido = `Planejar viagem de carro. Destino: ${destino}. Origem: ${dados.origem || "não informada"}. Dias: ${dados.dias || "não informado"}. Perfil: ${dados.perfil || "não informado"}. Interesses: ${ints.length ? ints.join(", ") : "geral"}.`;
 
   // runAgent já faz o tool-use: ele mesmo chama planejar_viagem e compõe o plano.
   const sysViagem = `Você é o **TotexCar Co-pilot** no MODO VIAGEM, respondendo no WhatsApp em português do Brasil.
 O cliente acabou de preencher o formulário de viagem, então NÃO se reapresente e NÃO pergunte o destino de novo — ele já disse.
-Chame a ferramenta planejar_viagem com os dados do pedido e monte o plano seguindo a instrução que ela devolver.
+Chame a ferramenta planejar_viagem com os dados do pedido (passe "interesses" EXATAMENTE como está no pedido, inclusive "geral") e monte o plano seguindo a instrução que ela devolver.
 Formato WhatsApp: *negrito* nos títulos de seção (nada de # markdown), frases curtas, no máximo 2 emojis no total, e a conta do combustível explicada de forma simples.
 NUNCA invente pedágio, preço de hospedagem ou estabelecimento: o que a pesquisa não trouxe, diga que não encontrou.`;
 
@@ -722,7 +773,6 @@ NUNCA invente pedágio, preço de hospedagem ou estabelecimento: o que a pesquis
   ).catch((e) => { console.error("viagem flow runAgent:", e); return ""; });
 
   await sendText(phone, texto || "Tive um problema pra montar o plano agora. Pode tentar de novo em instantes? 🙏");
-  return true;
 }
 
 // Resposta do FLOW de RECOMPRA FIPE (endpoint dinâmico): payload {tipo:"recompra", ...} do nfm_reply.
@@ -1201,7 +1251,7 @@ const TOOL_SPECS = [
         origem: { type: "string", description: "Cidade de partida, se informada" },
         dias: { type: "number", description: "Duração em dias, se informada" },
         perfil: { type: "string", description: "Perfil da viagem: familia, casal, amigos, sozinho, pet, carro_novo" },
-        interesses: { type: "string", description: "O que a pessoa quer fazer lá, separado por vírgula: praia, gastronomia, cultura, aventura, familia (crianças), descanso. Pergunte em 1 linha se não ficou claro; se ela não souber, deixe vazio." },
+        interesses: { type: "string", description: "Estilo da viagem, separado por vírgula: praia, natureza, serra, cultura, gastronomia, aventura, familia (crianças), descanso, compras, religioso. Se o usuário NÃO disse, deixe VAZIO (a ferramenta manda uma lista pra ele escolher). Se o pedido veio do formulário dizendo 'Interesses: geral', passe 'geral'." },
       },
     },
   },
@@ -1656,6 +1706,19 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
     }
 
     if (name === "planejar_viagem") {
+      // SELETOR DE ESTILO: destino sem interesses → manda a lista interativa (10 opções) e espera o toque.
+      // A resposta cai em handleViagemInteresseReply, que monta o plano. "geral" = pula (formulário/sem preferência).
+      if (args?.destino && !String(args?.interesses || "").trim()) {
+        const ph = onlyDigits(String(user?.phone || ""));
+        if (ph) {
+          await supabase.from("whatsapp_events").insert({
+            from_phone: ph, user_id: user.id, kind: "viagem_interesses", status: "pending", raw: {},
+            parsed: { destino: String(args.destino), origem: args?.origem || null, dias: args?.dias || null, perfil: args?.perfil || null },
+          });
+          await sendMenu(ph, `Pra montar o roteiro de *${args.destino}* do seu jeito: o que você mais quer fazer lá? 👇\n\n(Toca numa opção. Se tanto faz, escolhe "O que o destino tem de melhor".)`, VIAGEM_INTERESSES_ROWS, "Modo Viagem");
+          return { ok: true, aguardando_escolha: true, instrucao: "Você JÁ mandou a lista de estilos de viagem pro usuário escolher. Responda em NO MÁXIMO 1 frase curta dizendo que é só tocar numa opção que o plano vem em seguida. NÃO monte o plano agora, NÃO repita as opções." };
+        }
+      }
       // CAMINHO PRINCIPAL: edge viagem (mesmo motor do app) — pesquisa ao vivo, monta o plano
       // ESTRUTURADO e SALVA em viagem_planos → a página /viagem abre em cards sem recalcular.
       try {
@@ -3738,6 +3801,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "etiqueta_reply", input: psText } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, etiqueta_reply: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
+      // MODO VIAGEM — toque na lista de estilos (praia, serra, gastronomia…) → monta o plano
+      if (await handleViagemInteresseReply(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "viagem_interesse", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, viagem_interesse: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       // QR "#vender" do stand — vendedor quer vender: abre a avaliação FIPE
       if (await handleStandSell(msg.phone, psText, msg.contactName)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_sell" } }).eq("id", eventId);
@@ -4248,7 +4316,7 @@ ${JSON.stringify(snapshot)}`;
 
     // Atalho: planejar viagem → FLOW do Modo Viagem (formulário; o PLANO volta no chat,
     // porque a pesquisa de rota + composição pela IA passa MUITO do timeout do endpoint).
-    if (msg.kind !== "image" && VIAGEM_FLOW_ID && isViagemQuery(inputText)) {
+    if (msg.kind !== "image" && isViagemQuery(inputText) && await viagemFlowId()) {
       const sVia = await getSettings();
       const fallbackViagem = "Pra onde você quer viajar? Me diga o destino que eu monto o plano com o consumo real do seu carro. 🏖️";
       // ⚠️ modo_viagem é formulário PURO (sem endpoint): precisa de flow_action NAVIGATE com a
@@ -4265,7 +4333,7 @@ ${JSON.stringify(snapshot)}`;
         header: "Modo Viagem 🏖️",
         body: "Vou montar seu plano de viagem com o consumo REAL do seu carro: combustível, pedágio, balsa, onde ficar e onde comer. Só me diga pra onde você vai.",
         cta: "Planejar viagem",
-        flowId: VIAGEM_FLOW_ID,
+        flowId: await viagemFlowId(),
         token: `viagem:${user.id}`,
         screen: "VIAGEM",
         data: {
@@ -4286,6 +4354,8 @@ ${JSON.stringify(snapshot)}`;
             { id: "pet", title: "🐶 Com pet" },
             { id: "carro_novo", title: "✨ Primeira viagem com o carro novo" },
           ],
+          // estilos da viagem (CheckboxGroup do flow; versões antigas do flow ignoram o campo)
+          interesses: VIAGEM_INTERESSES.filter((x) => x.id !== "geral"),
         },
         fallbackText: fallbackViagem,
       });

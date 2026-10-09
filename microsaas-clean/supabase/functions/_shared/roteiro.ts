@@ -30,27 +30,37 @@ export interface DiaRoteiro {
   dica: string | null;
 }
 
-export const INTERESSES: Record<string, { label: string; queries: string[]; duracaoH: number }> = {
-  praia:       { label: "Praia e natureza",   queries: ["melhores praias em {d}", "cachoeiras e trilhas em {d}", "mirantes em {d}"], duracaoH: 3 },
-  gastronomia: { label: "Gastronomia",        queries: ["melhores restaurantes em {d}", "comida típica em {d}"], duracaoH: 1.5 },
-  cultura:     { label: "Cultura e história", queries: ["pontos turísticos históricos em {d}", "museus e centro histórico em {d}"], duracaoH: 1.5 },
-  aventura:    { label: "Aventura",           queries: ["trilhas e passeios de aventura em {d}", "passeio de barco em {d}"], duracaoH: 3 },
-  familia:     { label: "Com crianças",       queries: ["passeios para crianças em {d}", "parques e aquários em {d}"], duracaoH: 2 },
-  descanso:    { label: "Descanso",           queries: ["lugares tranquilos para relaxar em {d}", "pôr do sol em {d}"], duracaoH: 2 },
+// 10 estilos de viagem — mesma lista no app (/viagem), no formulário do WhatsApp e na lista interativa.
+// Nada vem pré-marcado: sem escolha, o roteiro usa o modo "geral" (o que fazer no destino + gastronomia).
+export const INTERESSES: Record<string, { label: string; emoji: string; queries: string[]; duracaoH: number }> = {
+  praia:       { label: "Praia e mar",            emoji: "🏖️", queries: ["melhores praias em {d}", "passeio de barco e mergulho em {d}"], duracaoH: 3 },
+  natureza:    { label: "Natureza e cachoeira",   emoji: "🌿", queries: ["cachoeiras e trilhas em {d}", "parques naturais e mirantes em {d}"], duracaoH: 2.5 },
+  serra:       { label: "Serra e montanha",       emoji: "⛰️", queries: ["mirantes e passeios de serra em {d}", "pontos turísticos na montanha em {d}"], duracaoH: 2 },
+  cultura:     { label: "História e cultura",     emoji: "🏛️", queries: ["centro histórico e pontos turísticos históricos em {d}", "museus em {d}"], duracaoH: 1.5 },
+  gastronomia: { label: "Gastronomia e vinhos",   emoji: "🍷", queries: ["melhores restaurantes em {d}", "vinícolas, cervejarias e comida típica em {d}"], duracaoH: 1.5 },
+  aventura:    { label: "Aventura e esportes",    emoji: "🧗", queries: ["passeios de aventura e esportes radicais em {d}", "trilhas e rapel em {d}"], duracaoH: 3 },
+  familia:     { label: "Com crianças",           emoji: "👧", queries: ["passeios para crianças em {d}", "parques, aquários e zoológicos em {d}"], duracaoH: 2 },
+  descanso:    { label: "Descanso e bem-estar",   emoji: "🧘", queries: ["spas e lugares tranquilos para relaxar em {d}", "pôr do sol e jardins em {d}"], duracaoH: 2 },
+  compras:     { label: "Compras e vida noturna", emoji: "🛍️", queries: ["compras e lojas em {d}", "bares e vida noturna em {d}"], duracaoH: 2 },
+  religioso:   { label: "Turismo religioso",      emoji: "⛪", queries: ["igrejas e santuários em {d}", "turismo religioso em {d}"], duracaoH: 1.5 },
+  geral:       { label: "O que o destino tem de melhor", emoji: "✨", queries: ["o que fazer em {d}", "pontos turísticos em {d}", "melhores restaurantes em {d}"], duracaoH: 2 },
 };
-const PADRAO = ["praia", "cultura", "gastronomia"];
+export const INTERESSES_ESCOLHIVEIS = Object.keys(INTERESSES).filter((k) => k !== "geral");
 
 export function normalizarInteresses(raw: unknown): string[] {
   const arr = Array.isArray(raw) ? raw : String(raw || "").split(/[,;/]/);
   const out: string[] = [];
   for (const x of arr) {
-    const s = String(x || "").toLowerCase().trim();
-    if (!s) continue;
-    const k = Object.keys(INTERESSES).find((key) => s.includes(key) || INTERESSES[key].label.toLowerCase().includes(s))
-      || (/natureza|cachoeira|trilha|mar|sol/.test(s) ? "praia" : /comida|restaurante|gastro/.test(s) ? "gastronomia" : /hist|museu|igreja|cultura/.test(s) ? "cultura" : /crian|fam[ií]lia|kids/.test(s) ? "familia" : /relax|descans|sossego/.test(s) ? "descanso" : /radical|aventura|barco|mergulho/.test(s) ? "aventura" : null);
+    const s = String(x || "").toLowerCase().trim().replace(/[^\p{L}\p{N} ]/gu, "").trim();
+    if (!s || /^(geral|tanto faz|qualquer|nao sei|não sei)$/.test(s)) continue;
+    const k = INTERESSES_ESCOLHIVEIS.find((key) => s === key || s.includes(key) || INTERESSES[key].label.toLowerCase().includes(s))
+      || (/praia|mar\b|litoral/.test(s) ? "praia" : /cachoeira|trilha|natureza|ecoturismo/.test(s) ? "natureza" : /serra|montanha|frio/.test(s) ? "serra"
+        : /comida|restaurante|gastro|vinho|cerveja/.test(s) ? "gastronomia" : /hist|museu|cultura|colonial/.test(s) ? "cultura" : /crian|fam[ií]lia|kids/.test(s) ? "familia"
+        : /relax|descans|sossego|spa|bem.?estar/.test(s) ? "descanso" : /radical|aventura|esporte|rapel|mergulho/.test(s) ? "aventura" : /compra|shopping|balada|noite|bar/.test(s) ? "compras"
+        : /igreja|religio|santu|romaria/.test(s) ? "religioso" : null);
     if (k && !out.includes(k)) out.push(k);
   }
-  return out.length ? out.slice(0, 3) : PADRAO;
+  return out.slice(0, 3); // vazio = modo geral (decide pelo destino)
 }
 
 type Lugar = Omit<Parada, "inicio" | "fim" | "km_do_anterior"> & { id: string; score: number; interesse: string };
@@ -82,9 +92,10 @@ async function fotoUrl(apiKey: string, photoName: string): Promise<string | null
 }
 
 export async function buscarAtracoes(apiKey: string, destino: string, interesses: string[], maxFotos = 10): Promise<Lugar[]> {
+  const chaves = interesses.length ? interesses : ["geral"];
   const queries: { q: string; interesse: string }[] = [];
-  for (const k of interesses) for (const q of INTERESSES[k].queries.slice(0, 2)) queries.push({ q: q.replace("{d}", destino), interesse: k });
-  if (!queries.some((x) => /pontos tur/i.test(x.q))) queries.push({ q: `pontos turísticos em ${destino}`, interesse: interesses[0] });
+  for (const k of chaves) for (const q of (INTERESSES[k] || INTERESSES.geral).queries.slice(0, chaves.length === 1 ? 3 : 2)) queries.push({ q: q.replace("{d}", destino), interesse: k });
+  if (!queries.some((x) => /pontos tur|o que fazer/i.test(x.q))) queries.push({ q: `pontos turísticos em ${destino}`, interesse: chaves[0] });
   const resultados = await Promise.all(queries.slice(0, 5).map((x) => textSearch(apiKey, x.q).then((places) => places.map((p) => ({ p, interesse: x.interesse })))));
   const vistos = new Set<string>();
   const lugares: Lugar[] = [];
@@ -135,8 +146,9 @@ export function montarDias(
   const porDia = nDias <= 2 ? 4 : 3;
   const alvo = Math.min(lugares.length, nDias * porDia);
   if (!alvo) return [];
-  // seleção balanceada por interesse (round-robin nas listas ordenadas por score)
-  const filas = interesses.map((k) => lugares.filter((l) => l.interesse === k));
+  // seleção balanceada por interesse (round-robin nas listas ordenadas por score); sem escolha, pelas chaves que vieram
+  const chaves = interesses.length ? interesses : Array.from(new Set(lugares.map((l) => l.interesse)));
+  const filas = chaves.map((k) => lugares.filter((l) => l.interesse === k));
   const escolhidos: Lugar[] = [];
   const usados = new Set<string>();
   while (escolhidos.length < alvo) {
