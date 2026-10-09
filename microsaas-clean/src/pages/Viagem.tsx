@@ -19,12 +19,16 @@ const PERFIS = [
 
 // interesses do roteiro dia a dia (mesmas chaves do _shared/roteiro.ts)
 const INTERESSES: [string, string][] = [
-  ["praia", "🏖️ Praia e natureza"],
-  ["gastronomia", "🍽️ Gastronomia"],
-  ["cultura", "🏛️ Cultura e história"],
-  ["aventura", "🧗 Aventura"],
-  ["familia", "👨‍👩‍👧 Com crianças"],
-  ["descanso", "🌅 Descanso"],
+  ["praia", "🏖️ Praia e mar"],
+  ["natureza", "🌿 Natureza e cachoeira"],
+  ["serra", "⛰️ Serra e montanha"],
+  ["cultura", "🏛️ História e cultura"],
+  ["gastronomia", "🍷 Gastronomia e vinhos"],
+  ["aventura", "🧗 Aventura e esportes"],
+  ["familia", "👧 Com crianças"],
+  ["descanso", "🧘 Descanso e bem-estar"],
+  ["compras", "🛍️ Compras e vida noturna"],
+  ["religioso", "⛪ Turismo religioso"],
 ];
 
 const FAIXA_LABEL: Record<string, { label: string; color: string; soft: string }> = {
@@ -93,7 +97,7 @@ function Stat({ icon: Icon, label, value, highlight }: { icon: any; label: strin
 // pesquisa ao vivo de pedágio/balsa/hospedagem. Mesma função "viagem"; reskin no padrão Minha Garagem.
 export default function Viagem() {
   const [form, setForm] = useState({ destino: "", origem: "", dias: "", perfil: "" });
-  const [interesses, setInteresses] = useState<string[]>(["praia", "gastronomia"]);
+  const [interesses, setInteresses] = useState<string[]>([]);
   const [diaAtivo, setDiaAtivo] = useState(1);
   const [loading, setLoading] = useState(false);
   const [plano, setPlano] = useState<Plano | null>(null);
@@ -173,7 +177,7 @@ export default function Viagem() {
                   </select>
                 </div>
               </div>
-              <label className="lbl" style={{ display: "block", marginTop: 12 }}>O que você quer fazer lá? (até 3)</label>
+              <label className="lbl" style={{ display: "block", marginTop: 12 }}>O que você quer fazer lá? (até 3 · opcional)</label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                 {INTERESSES.map(([k, l]) => {
                   const on = interesses.includes(k);
@@ -185,6 +189,7 @@ export default function Viagem() {
                   );
                 })}
               </div>
+              <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>Deixa em branco que eu escolho pelo destino.</p>
               <button onClick={montar} disabled={loading} className="btn-primary" style={{ marginTop: 16 }}>
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Plane size={16} />}
                 {loading ? "Pesquisando rota e lugares…" : "Montar meu plano de viagem"}
