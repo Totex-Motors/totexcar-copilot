@@ -293,7 +293,7 @@ flows antigos foram feitos na mão; agora é reproduzível).
   1. No **Flow Builder**, apontar o ENDPOINT do `radar_servicos` para
      `https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/wa-flow-endpoint` (o `modo_viagem` NÃO usa endpoint).
   2. `node scripts/create-wa-flows.mjs 1300328208581382 <TOKEN> --publish` (publish é IRREVERSÍVEL p/ a versão).
-  3. `supabase secrets set RADAR_FLOW_ID=2305034016700306 VIAGEM_FLOW_ID=2086296845310231 --project-ref …` +
+  3. `supabase secrets set RADAR_FLOW_ID=2305034016700306 VIAGEM_FLOW_ID=2086296845310231 --project-ref …` + (desde 09/10/2026 o Modo Viagem lê `app_settings.viagem_flow_id` = `1828966718134957` (modo_viagem_v2, com CheckboxGroup "interesses"), publicado pela edge `meta-flow?secret=…&action=publicar_viagem`) +
      redeploy do `whatsapp-webhook`. SEM os secrets, o código cai no caminho de TEXTO do agente (funciona, só
      sem a tela bonita) — por isso nada quebra enquanto não publica.
 
