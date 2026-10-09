@@ -5,7 +5,7 @@
 // GET /functions/v1/fipe-sync?secret=...&part=N&parts=M   → processa 1 fatia (evita estourar memória).
 //   part=0 limpa a tabela antes de inserir; chame part=0..M-1 pra popular tudo (ex.: parts=8).
 
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
+import { secretOk, unauthorized } from "../_shared/secret.ts";
 const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
 const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const H = { apikey: KEY, authorization: `Bearer ${KEY}`, "content-type": "application/json" };
@@ -30,7 +30,7 @@ async function urlMesAtual(): Promise<string | null> {
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) return new Response("unauthorized", { status: 401 });
+  if (!secretOk(url)) return new Response("unauthorized", { status: 401 });
 
   // ORQUESTRADOR: sem ?part, chama a si mesmo pra cada fatia (cada uma é um worker com budget próprio).
   // É o modo do cron mensal — 1 chamada popula tudo.

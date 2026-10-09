@@ -1023,7 +1023,7 @@ Tabelas em `public` (reaproveita a lógica do template: **accounts = veículo**,
 - Pagamento: `payment_provider` ('asaas'), `asaas_api_key`, `asaas_sandbox`, `asaas_webhook_token`.
 - Preços: `plan_monthly_price` (109.90), `plan_annual_price`, `member_monthly_price` (10.99),
   `member_annual_price` (109.90), `ecosystem_discount_pct` (90), `plan_name` ("Totex Care").
-- Integração: `integration_api_key` = `tcf_int_21bb1b52307945738498f044b9b47f18`, `os_webhook_url`.
+- Integração: `integration_api_key` = `<integration_api_key — só em app_settings>`, `os_webhook_url`.
 - `app_url` = `https://copilot.totexmotors.com`.
 
 ### RLS — GOTCHA IMPORTANTE
@@ -1052,12 +1052,12 @@ policies, mantenha o GRANT.
 | `send-welcome-webhook` | — | legado (template), não usado |
 
 ### Secrets das Edge Functions (Supabase → Settings → Functions)
-- `WEBHOOK_SECRET` = `TCF-uaz-2026-7Kp9Qm3Xv8Rn` (auth do webhook do Uazapi e do cron)
+- `WEBHOOK_SECRET` = (só em Supabase → Edge Functions → Secrets; NUNCA neste arquivo) — auth de crons, webhook, carro-do-dia, meta-flow
 - `ANTHROPIC_API_KEY` (fallback de IA; o provedor ativo vem do app_settings)
 - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (automáticos)
 
 ### Webhook do Uazapi (configurado no painel do Uazapi)
-- URL: `https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/whatsapp-webhook?secret=TCF-uaz-2026-7Kp9Qm3Xv8Rn`
+- URL: `https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/whatsapp-webhook?secret=<WEBHOOK_SECRET>`
 - "Escutar eventos" = `messages`; excluir `wasSentByApi` e `isGroupYes`; as 2 caixas (addUrlEvents/
   addUrlTypesMessages) **DESMARCADAS** (senão elas grudam `/{evento}` no fim e quebram o `?secret`).
 
@@ -1103,7 +1103,7 @@ policies, mantenha o GRANT.
 
 ## 7. INTEGRAÇÃO OS ↔ TCF (Edge Function `integration`)
 - URL: `https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/integration`
-- Header: `x-api-key: tcf_int_21bb1b52307945738498f044b9b47f18` (= `app_settings.integration_api_key`;
+- Header: `x-api-key: <integration_api_key — só em app_settings>` (= `app_settings.integration_api_key`;
   no OS é a secret `TCF_INTEGRATION_KEY`). POST JSON. Sucesso `{ ok:true, ... }`, erro `{ error }` 4xx.
 - O OS chama via proxy `tcf-proxy` (Edge Function do OS) → frontend `TcfPanel` na página do lojista.
 
