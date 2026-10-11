@@ -106,6 +106,22 @@ export const MG_CSS = `
 .mg[data-theme="dark"] .car-cam{background:rgba(20,32,29,.85)}
 .mg .car-add{font-size:13px;font-weight:700;color:var(--brand);background:var(--brand-soft);border:0;border-radius:10px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
 .mg .car-meta{font-size:12.5px;color:var(--muted);margin-top:2px}
+.mg .doc-card{position:relative;border-radius:20px;overflow:hidden;color:#fff;padding:16px 16px 14px;background:linear-gradient(135deg,#0E7C77 0%,#0A5350 60%,#083F3D 100%);box-shadow:0 12px 30px rgba(10,83,80,.28)}
+.mg .doc-card::before{content:"";position:absolute;right:-60px;top:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.06)}
+.mg .doc-card::after{content:"";position:absolute;left:-40px;bottom:-80px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,.04)}
+.mg .doc-card .dh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;position:relative;z-index:1}
+.mg .doc-card .dl{font-size:10px;font-weight:700;letter-spacing:.12em;opacity:.7;text-transform:uppercase}
+.mg .doc-card .dn{font-size:17px;font-weight:800;margin-top:3px}
+.mg .doc-card .dcat{min-width:54px;height:54px;border-radius:14px;background:rgba(255,255,255,.14);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 6px;flex:none}
+.mg .doc-card .dcat b{font-size:22px;line-height:1}.mg .doc-card .dcat small{font-size:9px;opacity:.75;font-weight:700;letter-spacing:.08em;margin-top:2px}
+.mg .doc-card .dg{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:14px;position:relative;z-index:1}
+.mg .doc-card .dg b{display:block;font-size:14px;font-weight:700;margin-top:2px}
+.mg .doc-card .dp{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;margin-top:12px;position:relative;z-index:1}
+.mg .doc-card .dp i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.mg .doc-card .blur{filter:blur(5px);user-select:none;pointer-events:none}
+.mg .doc-card .lock{position:absolute;left:0;right:0;bottom:0;top:96px;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center;background:linear-gradient(180deg,rgba(8,63,61,.55) 0%,rgba(8,63,61,.96) 40%)}
+.mg .doc-card .lock .lt{font-size:14.5px;font-weight:800}.mg .doc-card .lock .ls{font-size:12px;opacity:.85;margin:3px 0 10px}
+.mg .doc-card .lock button{background:#fff;color:var(--brand-deep);font-weight:800;font-size:14px;border-radius:12px;padding:10px 16px;border:0;cursor:pointer}
 .mg .status{flex:1;border-radius:12px;padding:10px 11px;display:flex;align-items:center;gap:9px}
 .mg .status.ok{background:var(--good-soft)}
 .mg .status.warn{background:var(--gain-soft)}
