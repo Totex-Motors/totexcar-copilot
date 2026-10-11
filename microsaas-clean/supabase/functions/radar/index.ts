@@ -114,8 +114,11 @@ Deno.serve(async (req) => {
       let custo = 0;
       let erroBusca: string | null = null;
 
+      const usarPlaces = settings?.radar_search_provider === "google_places" && !!settings?.google_places_api_key;
       let q = admin.from("discovered_providers").select("*")
         .eq("category", def.label).gte("last_checked_at", cacheDesde).limit(40);
+      // com Places ligado, cache antigo da busca por texto (sem foto/nota) não segura a busca nova
+      if (usarPlaces) q = q.eq("external_source", "google_places").not("service_attributes->>photo_url", "is", null);
       if (locationText) q = q.ilike("city", `%${locationText.split(/[,\-]/)[0].trim()}%`);
       const { data: cached } = await q;
 
@@ -132,10 +135,11 @@ Deno.serve(async (req) => {
           supports_ev: c.service_attributes?.supports_ev ?? null,
           supports_hybrid: c.service_attributes?.supports_hybrid ?? null,
           source: c.external_source, external_id: c.external_id,
+          photo_url: c.service_attributes?.photo_url ?? null,
+          maps_url: c.service_attributes?.maps_url ?? null,
         }));
       } else {
         // ---- BUSCA AO VIVO ----
-        const usarPlaces = settings?.radar_search_provider === "google_places" && !!settings?.google_places_api_key;
         const r = usarPlaces
           ? await searchViaGooglePlaces(settings!.google_places_api_key!, {
               serviceType, latitude: lat, longitude: lon, locationText, radiusKm, limit: limite,
@@ -235,6 +239,7 @@ Deno.serve(async (req) => {
           service_attributes: {
             open_24h: prov.open_24h, mobile_service: prov.mobile_service,
             supports_ev: prov.supports_ev, supports_hybrid: prov.supports_hybrid,
+            photo_url: prov.photo_url ?? null, maps_url: prov.maps_url ?? null,
           },
           last_checked_at: new Date().toISOString(),
         }, { onConflict: "external_source,external_id" }).select().single();
@@ -249,7 +254,7 @@ Deno.serve(async (req) => {
         const uris = {
           call_uri: tel ? `tel:+55${tel}` : null,
           whatsapp_uri: zap ? `https://wa.me/55${zap}` : null,
-          maps_uri: `https://www.google.com/maps/search/?api=1&query=${destino}`,
+          maps_uri: prov.maps_url || `https://www.google.com/maps/search/?api=1&query=${destino}`,
           website_uri: prov.website || null,
         };
 
