@@ -5,7 +5,7 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waSendContact, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waSendContact, waSendLocation, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { createGptCheckout, GPT_NOME } from "../_shared/gptorder.ts";
 import type { GptProduto } from "../_shared/gptmotors.ts";
@@ -264,14 +264,19 @@ function limparVoz(s: string): string {
     .replace(/\s{2,}/g, " ")
     .trim();
 }
-function paraVoz(text: string): { fala: string; links: string[] } {
+const MAPA_RE = /^https?:\/\/(?:www\.)?(?:google\.[a-z.]+\/maps|maps\.google\.|maps\.app\.goo\.gl|goo\.gl\/maps|waze\.com|maps\.apple\.com)/i;
+function paraVoz(text: string): { fala: string; links: string[]; mapas: string[] } {
   const links: string[] = [];
+  const mapas: string[] = [];
   const linhas: string[] = [];
   for (const bruta of String(text || "").split(/\n+/)) {
     const urls = bruta.match(URL_RE);
     if (urls?.length) {
       const sem = limparVoz(bruta.replace(URL_RE, "")).replace(/[:\-–—,]\s*$/, "").trim();
-      links.push(`🔗 ${sem ? `${sem}: ` : ""}${urls.join(" ")}`);
+      const mapa = urls.filter((u) => MAPA_RE.test(u));
+      const outros = urls.filter((u) => !MAPA_RE.test(u));
+      if (mapa.length) mapas.push(`📍 ${sem ? `${sem}: ` : ""}${mapa.join(" ")}`);
+      if (outros.length) links.push(`🔗 ${sem ? `${sem}: ` : ""}${outros.join(" ")}`);
       if (sem.length >= 15) linhas.push(sem);
       continue;
     }
@@ -280,7 +285,7 @@ function paraVoz(text: string): { fala: string; links: string[] } {
   }
   let fala = linhas.join("\n").trim();
   if (links.length) fala += `${fala ? "\n" : ""}Guardei o link pra quando você parar.`;
-  return { fala, links };
+  return { fala, links, mapas };
 }
 
 const MODO_CARRO_PROMPT = `
@@ -288,9 +293,9 @@ const MODO_CARRO_PROMPT = `
 MODO CARRO ATIVO (vale MAIS que qualquer regra de formato acima): o dono está DIRIGINDO e vai OUVIR sua resposta pela Siri (CarPlay) ou pelo Gemini (Android Auto). Regras:
 1) No máximo 2 frases curtas (~250 caracteres). Sem lista, sem negrito, sem emoji, sem link, sem linha digitável/código de barras.
 2) NUNCA peça foto, toque em botão, digitação ou para abrir o app agora. Se faltar um dado, pergunte por voz, UMA coisa por vez.
-3) Se o resultado precisa de TELA (fotos de carros, link, pagamento, plano de viagem completo, texto de recurso de multa, documento), diga o essencial em 1 frase e avise que o resto fica guardado pra quando ele parar (é só dizer "parei").
-4) Oficina/serviço: cite no máximo 2 opções pelo NOME e bairro, e lembre que ele pode pedir à Siri ou ao Gemini "navegar até <nome>".
-5) Viagem: só distância, combustível ida e volta e pedágio total. Vender/avaliar o carro ou ver a Garagem com fotos: ofereça fazer quando ele parar.
+3) O que é ÚTIL dirigindo vai NA HORA: localização/rota (vira mapa na tela do carro), fotos de carros e documentos (vão pro celular). Só fica guardado pra quando ele parar (é só dizer "parei") o que não serve dirigindo: link de pagamento, link do app, plano de viagem completo, texto de recurso de multa. Fale o essencial em 1 frase.
+4) Oficina/serviço: cite no máximo 2 opções pelo NOME e bairro; a localização delas já vai no chat (um toque abre a rota na tela do carro) e ele também pode pedir à Siri ou ao Gemini "navegar até <nome>".
+5) Viagem: só distância, combustível ida e volta e pedágio total; a rota até o destino já vai no chat. Vender/avaliar o carro: ofereça fazer quando ele parar.
 6) Segurança primeiro: luz de alerta, fumaça, barulho estranho, pneu, superaquecimento → mande parar em local seguro ANTES de qualquer outra coisa.
 7) Termine com pergunta de sim ou não só quando precisar de decisão.`;
 
@@ -1045,15 +1050,6 @@ function carNome(v: any): string {
 }
 
 // resumo compacto de um carro pro chat (com link rastreável ?ref do dono → comissão do Indique)
-// MODO CARRO: uma linha por carro (com link) pra fila entregue quando o motorista parar
-function filaCarros(cars: any[], refCode?: string | null): string[] {
-  return cars.slice(0, 6).map((v: any) => {
-    const r = mktResumo(v, refCode);
-    const preco = r.preco != null ? ` · R$ ${Number(r.preco).toLocaleString("pt-BR")}` : "";
-    return `🚗 ${r.carro} ${r.ano || ""}${preco}\n${r.link}`.replace(/\s+\n/, "\n");
-  });
-}
-
 function mktResumo(v: any, refCode?: string | null) {
   return {
     carro: carNome(v),
@@ -1520,7 +1516,7 @@ const TOOL_SPECS = [
   },
 ];
 
-type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[] };
+type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[]; mapas?: string[] };
 
 // ArquivoZap: sobe os bytes do documento pro Storage e grava a ficha (o arquivamento é automático —
 // dispara em background depois do turno, com a classificação que a IA já fez na foto/PDF).
@@ -1782,9 +1778,24 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         });
       }
 
+      // MODO CARRO: pino de localização das 2 primeiras opções JÁ no chat — um toque abre o
+      // Maps/Waze e a rota aparece na tela do carro. Sem coordenada, vai o link da rota.
+      let pinos = 0;
+      if (ctx.carMode && user.phone) {
+        const sPin = await getSettings();
+        for (const prov of ranked.slice(0, 2)) {
+          const lat = Number(prov.latitude), lng = Number(prov.longitude);
+          const ok = prov.latitude != null && prov.longitude != null
+            && await waSendLocation(sPin, String(user.phone), lat, lng, prov.name, prov.address || undefined);
+          if (ok) pinos++;
+          else ctx.mapas = [...(ctx.mapas || []), `📍 ${prov.name}: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(prov.address ? `${prov.name} ${prov.address}` : prov.name)}`];
+        }
+      }
+
       return {
         ok: true, search_id: busca?.id || null,
         servico: def.label, local, emergencia: emEmergencia,
+        ...(ctx.carMode ? { modo_carro: { pinos_enviados: pinos, instrucao: "MODO CARRO: a localização das 2 primeiras opções JÁ foi pro chat. Fale só nome e bairro dessas 2, e diga que tocando no pino a rota abre na tela do carro, ou que ele pode pedir à Siri ou ao Gemini: navegar até <nome>." } } : {}),
         total: saida.length, opcoes: saida,
         instrucao: saida.length
           ? `Apresente as ${saida.length} opções de forma CURTA (WhatsApp): nome, o motivo (campo 'porque'), nota e telefone/link. Marque quem é PARCEIRO TOTEX — e se tiver 'beneficio', DESTAQUE o benefício e diga que basta falar o 'codigo_resgate' no estabelecimento. O resto é resultado público — encontrado em fonte pública, a confirmar direto com o estabelecimento; a Totex não credencia nem garante. NUNCA invente preço, disponibilidade, garantia ou tempo de chegada: o que veio "não informado" fica "não informado". Feche com UMA próxima ação (mandar o link do WhatsApp dele, ligar ou abrir a rota). Se ele quiser que a gente peça orçamento, aí sim peça autorização explícita e diga quais dados vão.`
@@ -1837,6 +1848,9 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           await sendMenu(ph, `Pra montar o roteiro de *${args.destino}* do seu jeito: o que você mais quer fazer lá? 👇\n\n(Toca numa opção. Se tanto faz, escolhe "O que o destino tem de melhor".)`, VIAGEM_INTERESSES_ROWS, "Modo Viagem");
           return { ok: true, aguardando_escolha: true, instrucao: "Você JÁ mandou a lista de estilos de viagem pro usuário escolher. Responda em NO MÁXIMO 1 frase curta dizendo que é só tocar numa opção que o plano vem em seguida. NÃO monte o plano agora, NÃO repita as opções." };
         }
+      }
+      if (ctx.carMode && args?.destino) {
+        ctx.mapas = [...(ctx.mapas || []), `🗺️ Rota até ${args.destino}: https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(String(args.destino))}`];
       }
       // CAMINHO PRINCIPAL: edge viagem (mesmo motor do app) — pesquisa ao vivo, monta o plano
       // ESTRUTURADO e SALVA em viagem_planos → a página /viagem abre em cards sem recalcular.
@@ -2039,13 +2053,14 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         const alvo = busca || catFiltro || [args?.marca].filter(Boolean).join(" ") || "esse perfil";
         return { ok: true, total: 0, categoria: catFiltro || undefined, message: `NENHUM carro no estoque com "${alvo}". Seja DIRETO e honesto: diga que NÃO tem "${alvo}" no estoque agora — NÃO mostre nem sugira outros carros como se fossem a resposta. No máximo ofereça, em 1 linha, criar um radar (criar_radar) pra avisar quando aparecer, OU pergunte se ele topa ver algo parecido (aí sim, só se ele aceitar).` };
       }
-      // MODO CARRO: foto não serve pra quem está dirigindo → os carros vão pra fila (com link)
+      // MODO CARRO: as fotos vão pro CELULAR na hora (a tela do carro não mostra foto de WhatsApp);
+      // a fala fica curta pra Siri/Gemini lerem
       if (ctx.carMode) {
-        ctx.fila = [...(ctx.fila || []), ...filaCarros(cars, user.referral_code)];
+        const enviadosC = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
         ctx.shownCars = true;
-        return { ok: true, total: cars.length, fotos_enviadas: 0, guardado_para_quando_parar: true,
+        return { ok: true, total: cars.length, fotos_enviadas: enviadosC,
           carros: cars.map((v: any) => mktResumo(v, user.referral_code)),
-          instrucao: "MODO CARRO: NÃO mandei fotos. Diga em até 2 frases quantos carros achou e cite 1 destaque (modelo, ano e preço falado de forma natural). Avise que as fotos e os links ficam guardados pra quando ele parar." };
+          instrucao: "MODO CARRO: as fotos JÁ foram pro celular dele. Diga em até 2 frases quantos carros achou e cite 1 destaque (modelo, ano e preço falado de forma natural). Lembre que as fotos estão no celular, pra ver com o carro parado ou pro passageiro." };
       }
       // VITRINE: manda as fotos dos carros direto no chat
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
@@ -2077,13 +2092,6 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       const own = `${vehicle?.marca || ""} ${vehicle?.modelo || ""}`.trim().toLowerCase();
       if (own) cars = cars.filter((c: any) => `${c.brand} ${c.model}`.toLowerCase() !== own || c.year !== vehicle?.ano_modelo);
       cars = cars.slice(0, 6);
-      if (ctx.carMode && cars.length) {
-        ctx.fila = [...(ctx.fila || []), ...filaCarros(cars, user.referral_code)];
-        ctx.shownCars = true;
-        return { ok: true, criterio, fotos_enviadas: 0, guardado_para_quando_parar: true,
-          carros: cars.map((c: any) => mktResumo(c, user.referral_code)),
-          instrucao: "MODO CARRO: NÃO mandei fotos. Comente em 1 frase 1 carro que faz sentido e avise que as fotos ficam guardadas pra quando ele parar." };
-      }
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
       if (enviados > 0) ctx.shownCars = true; // já mostrou carros → motor de intenção não duplica
       return {
@@ -4432,8 +4440,9 @@ ${JSON.stringify(snapshot)}`;
     const reply = async (text: string) => {
       if (carMode) {
         // resposta pra ser OUVIDA: sem emoji/negrito; links vão pra fila de "quando parar"
-        const { fala, links } = paraVoz(text);
+        const { fala, links, mapas } = paraVoz(text);
         await sendText(msg.phone, fala || "Feito.");
+        if (mapas.length) await sendText(msg.phone, mapas.join("\n"));
         await modoCarroGuardar(msg.phone, links);
         return;
       }
@@ -4612,7 +4621,9 @@ ${JSON.stringify(snapshot)}`;
     if (!replyText) replyText = "Recebi sua mensagem! Pode detalhar um pouco mais pra eu te ajudar? 🙂";
 
     await reply(replyText);
-    // MODO CARRO: o que as ferramentas separaram pra tela (fotos dos carros) vai pra fila de "quando parar"
+    // MODO CARRO: rotas que as ferramentas montaram vão NA HORA (o mapa aparece na tela do carro);
+    // o que não serve dirigindo fica na fila de "quando parar"
+    if (ctx.mapas?.length) await sendText(msg.phone, ctx.mapas.join("\n"));
     if (ctx.fila?.length) await modoCarroGuardar(msg.phone, ctx.fila);
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
     if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText }, user_id: user.id }).eq("id", eventId);

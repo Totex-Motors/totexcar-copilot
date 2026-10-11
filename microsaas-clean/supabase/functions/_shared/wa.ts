@@ -119,6 +119,21 @@ export async function waSendImage(s: WaSettings, phone: string, imageUrl: string
   return uazapiPost(s, "/send/media", { number: to, type: "image", file: imageUrl, text: caption || "" });
 }
 
+// ---------------- envio: PINO DE LOCALIZAÇÃO (janela de 24h) ----------------
+// Modo Carro: um toque no pino abre Google Maps/Waze/Apple Maps e a ROTA aparece na tela do carro
+// (navegação é categoria permitida no CarPlay/Android Auto; foto e link de WhatsApp não aparecem lá).
+export async function waSendLocation(s: WaSettings, phone: string, lat: number, lng: number, name: string, address?: string): Promise<boolean> {
+  const to = onlyDigits(phone);
+  if (!to || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (waProvider(s) === "meta") {
+    return metaPost(s, {
+      messaging_product: "whatsapp", to, type: "location",
+      location: { latitude: lat, longitude: lng, name: String(name || "").slice(0, 100), ...(address ? { address: String(address).slice(0, 200) } : {}) },
+    });
+  }
+  return uazapiPost(s, "/send/location", { number: to, name: name || "", address: address || "", latitude: lat, longitude: lng });
+}
+
 // ---------------- envio: CARTÃO DE CONTATO (vCard; janela de 24h) ----------------
 // Modo Carro: a Siri (CarPlay) e o Gemini (Android Auto) só acham contato SALVO na agenda —
 // mandamos o cartão do próprio Co-pilot com um nome fácil de falar ("Copiloto").
