@@ -5,7 +5,9 @@
 //   2) casa com a tabela FIPE LOCAL (public.fipe_tabela, dataset CC0 fipex-labs, atualizada 1x/mês
 //      pela função fipe-sync) → uma query só, sem API externa, sem rate limit.
 // Devolve SEMPRE o modelo identificado junto do valor (pra pessoa ver se acertou; nunca número solto).
-// Cache por placa em valor_cache (não repaga a consulta de placa).
+// Cache por placa em valor_cache (não repaga a consulta de placa). Quando a FIPE vira de mês
+// (fipe-sync todo dia 6), o valor guardado é RECALCULADO na hora com os dados do veículo já
+// guardados — sem pagar a placa de novo. Antes, o cache de 20 dias segurava o mês anterior.
 //
 // GET /functions/v1/quanto-vale?placa=ABC1D23
 // Deploy com verify_jwt=false (a página grátis é pública). Custo protegido pelo cache por placa.
@@ -91,16 +93,28 @@ Deno.serve(async (req) => {
   const placa = placaIn.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (placa.length < 7) return json({ ok: false, error: "placa_invalida" }, 400);
 
+  // mês de referência ATUAL da tabela local (MM/AAAA)
+  const refRow = await sbGet("fipe_tabela?select=ref_mes,ref_ano&limit=1");
+  const refAtual = refRow?.[0]?.ref_mes && refRow?.[0]?.ref_ano ? `${String(refRow[0].ref_mes).padStart(2, "0")}/${refRow[0].ref_ano}` : null;
+
+  let veh: any = null;
   if (!nocache) {
     const c = await sbGet(`valor_cache?placa=eq.${placa}&select=resultado,fetched_at&limit=1`);
-    if (c?.[0] && Date.now() - new Date(c[0].fetched_at).getTime() < 20 * 24 * 3600_000) return json({ ...c[0].resultado, cached: true });
+    const r = c?.[0]?.resultado;
+    const fresco = c?.[0] && Date.now() - new Date(c[0].fetched_at).getTime() < 20 * 24 * 3600_000;
+    const mesmoMes = !refAtual || !r?.ref || r.ref === refAtual;
+    if (r && fresco && mesmoMes) return json({ ...r, cached: true });
+    // FIPE virou de mês (ou cache velho): reaproveita o VEÍCULO guardado — os dados da placa não mudam
+    if (r?.marca && (r?.veiculo_placa?.modelo || r?.modelo_placa)) {
+      veh = r.veiculo_placa || { marca: r.marca, modelo: r.modelo_placa, ano: r.ano, ano_fab: null, combustivel: r.combustivel, cor: r.cor };
+    }
   }
 
-  const veh = await consultaPlaca(placa);
+  if (!veh) veh = await consultaPlaca(placa);
   if (!veh?.marca || !veh?.modelo) return json({ ok: false, error: "placa_nao_encontrada", placa }, 404);
 
   const anoAlvo = veh.ano || veh.ano_fab;
-  const out: any = { ok: true, placa, marca: veh.marca, modelo_placa: veh.modelo, ano: anoAlvo, combustivel: veh.combustivel, cor: veh.cor };
+  const out: any = { ok: true, placa, marca: veh.marca, modelo_placa: veh.modelo, ano: anoAlvo, combustivel: veh.combustivel, cor: veh.cor, veiculo_placa: veh };
 
   // FIPE local: pega os carros da marca nos anos próximos e ranqueia o modelo
   const alias = MARCA_ALIAS[norm(veh.marca)] || [norm(veh.marca)];
