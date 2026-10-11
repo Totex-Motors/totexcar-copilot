@@ -3,6 +3,20 @@
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
 > Última atualização: 2026-07-22.
 
+## 💲 FIPE "Quanto vale" (2026-10-11) — cache segurava o mês anterior (CORRIGIDO e NO AR)
+- A `fipe_tabela` atualizou certo no dia 6 (ref 10/2026, 30.550 carros), mas o `valor_cache` da `quanto-vale` (20 dias por placa) seguia mostrando 09/2026.
+- Correção (commit 0ca59cc): se a referência guardada difere da `fipe_tabela`, recalcula na hora reaproveitando o veículo guardado (`veiculo_placa`), sem pagar a consulta de placa de novo.
+- ⚠️ Publicada via workflow_dispatch A PARTIR DA BRANCH `claude/carousel-card-photos-c72jz4` (o PR #188 ainda não foi mesclado). Não redeployar `quanto-vale` a partir da `main` antes do merge, senão a correção some.
+
+## 🚗 MODO CARRO (2026-10-11) — Co-pilot no CarPlay e no Android Auto, sem app nativo
+- **Decisão:** o caminho universal é o assistente do carro mandando WhatsApp pro Co-pilot (Siri no CarPlay, Gemini no Android Auto). Gemini NÃO serve de padrão: não tem app de CarPlay e não aceita integração de terceiros aberta. App nativo de CarPlay/Android Auto descartado por ora (nenhuma categoria serve; custo alto).
+- **Ligar:** "modo carro", "tô dirigindo", "vou pegar estrada" ou `/carro` (3h, renova a cada mensagem). **Desligar:** "parei", "estacionei", "sair do modo carro".
+- **Com o modo ligado (whatsapp-webhook):** resposta curta só em texto, sem emoji/negrito/lista/botão/flow. O que é útil dirigindo vai NA HORA: pino de localização das 2 primeiras oficinas do Radar (`waSendLocation`; um toque abre a rota, que aparece na tela do carro), link de rota até o destino da viagem, fotos de carros e documentos (vão pro celular). Só link de pagamento/app e textos longos vão para a FILA (`whatsapp_events` kind `modo_carro`, `parsed.fila`), entregue quando ele disser "parei" ou na 1ª mensagem após expirar. Flows (Garagem, Radar, Viagem, Recompra) viram resposta falada pela IA; Viagem pula a lista de estilos; oferta instantânea de carro não dispara.
+- **Limite das plataformas:** a tela do carro só mostra navegação, mídia, chamadas e a lista de conversas. Foto e link de WhatsApp NÃO aparecem lá (regra de segurança da Apple/Google); o mapa aparece porque navegação é categoria permitida.
+- **Navegador preferido:** Waze por padrão; o motorista troca dizendo "uso Google Maps", "uso Waze" ou "uso Apple Maps" (`whatsapp_events` kind `navegador`). Os links de rota (`rotaLink`) já abrem navegando no app escolhido; o pino de localização deixa escolher o app no toque.
+- **Contato:** na 1ª ativação manda o cartão de contato "Copiloto" (`waSendContact`); `/contato` reenvia. Número do bot: env `COPILOT_WA_NUMBER` (padrão 5511963786699).
+- **Botões ditados:** respostas de proativa ditadas ("Sim, quero.") agora casam com os botões (pontuação normalizada).
+
 ## 0-AAAAAA. ⭐ SESSÃO 2026-07-25 — correções Modo Viagem, repo privado, CI e cliente de shopping
 
 - **Repo GitHub agora é PRIVADO.** Consequência: o app da Vercel perdeu acesso (só OWNER da org
@@ -1023,7 +1037,7 @@ Tabelas em `public` (reaproveita a lógica do template: **accounts = veículo**,
 - Pagamento: `payment_provider` ('asaas'), `asaas_api_key`, `asaas_sandbox`, `asaas_webhook_token`.
 - Preços: `plan_monthly_price` (109.90), `plan_annual_price`, `member_monthly_price` (10.99),
   `member_annual_price` (109.90), `ecosystem_discount_pct` (90), `plan_name` ("Totex Care").
-- Integração: `integration_api_key` = `tcf_int_21bb1b52307945738498f044b9b47f18`, `os_webhook_url`.
+- Integração: `integration_api_key` = `<integration_api_key — só em app_settings>`, `os_webhook_url`.
 - `app_url` = `https://copilot.totexmotors.com`.
 
 ### RLS — GOTCHA IMPORTANTE
@@ -1052,12 +1066,12 @@ policies, mantenha o GRANT.
 | `send-welcome-webhook` | — | legado (template), não usado |
 
 ### Secrets das Edge Functions (Supabase → Settings → Functions)
-- `WEBHOOK_SECRET` = `TCF-uaz-2026-7Kp9Qm3Xv8Rn` (auth do webhook do Uazapi e do cron)
+- `WEBHOOK_SECRET` = (só em Supabase → Edge Functions → Secrets; NUNCA neste arquivo) — auth de crons, webhook, carro-do-dia, meta-flow
 - `ANTHROPIC_API_KEY` (fallback de IA; o provedor ativo vem do app_settings)
 - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (automáticos)
 
 ### Webhook do Uazapi (configurado no painel do Uazapi)
-- URL: `https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/whatsapp-webhook?secret=TCF-uaz-2026-7Kp9Qm3Xv8Rn`
+- URL: `https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/whatsapp-webhook?secret=<WEBHOOK_SECRET>`
 - "Escutar eventos" = `messages`; excluir `wasSentByApi` e `isGroupYes`; as 2 caixas (addUrlEvents/
   addUrlTypesMessages) **DESMARCADAS** (senão elas grudam `/{evento}` no fim e quebram o `?secret`).
 
@@ -1103,7 +1117,7 @@ policies, mantenha o GRANT.
 
 ## 7. INTEGRAÇÃO OS ↔ TCF (Edge Function `integration`)
 - URL: `https://gkkjhnzkqhpgrwrmofev.supabase.co/functions/v1/integration`
-- Header: `x-api-key: tcf_int_21bb1b52307945738498f044b9b47f18` (= `app_settings.integration_api_key`;
+- Header: `x-api-key: <integration_api_key — só em app_settings>` (= `app_settings.integration_api_key`;
   no OS é a secret `TCF_INTEGRATION_KEY`). POST JSON. Sucesso `{ ok:true, ... }`, erro `{ error }` 4xx.
 - O OS chama via proxy `tcf-proxy` (Edge Function do OS) → frontend `TcfPanel` na página do lojista.
 

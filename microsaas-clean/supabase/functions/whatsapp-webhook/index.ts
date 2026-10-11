@@ -5,7 +5,7 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waSendContact, waSendLocation, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { createGptCheckout, GPT_NOME } from "../_shared/gptorder.ts";
 import type { GptProduto } from "../_shared/gptmotors.ts";
@@ -26,7 +26,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const UAZAPI_URL = (Deno.env.get("UAZAPI_URL") || "").replace(/\/+$/, "");
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
+import { secretOk, unauthorized } from "../_shared/secret.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -184,6 +184,148 @@ async function sendMenu(phone: string, text: string, choices: string[], footerTe
   const s = await getSettings();
   await waSendMenu(s, phone, text, choices, footerText);
 }
+
+// ---------- MODO CARRO (CarPlay / Android Auto) ----------
+// O motorista fala com o Co-pilot pela Siri (CarPlay) ou pelo Gemini (Android Auto): a mensagem
+// chega como texto ditado e a resposta é LIDA em voz alta. Então, com o modo ligado: nada de
+// lista/botão/flow (ninguém toca na tela dirigindo), nada de emoji/negrito (a voz lê) e nada de
+// link no meio da fala — links e fotos vão para uma FILA entregue quando ele disser "parei"
+// (ou na 1ª mensagem depois que o modo expira). Estado em whatsapp_events kind "modo_carro".
+const COPILOT_WA = (Deno.env.get("COPILOT_WA_NUMBER") || "5511963786699").replace(/\D/g, "");
+const CARRO_CONTATO = "Copiloto"; // nome fácil de falar pra Siri/Gemini acharem o contato
+const CARRO_JANELA_MS = 3 * 3600_000;
+// (frases estreitas de propósito: "tô no carro esperando a oficina" NÃO deve ligar o modo por 3h)
+const CARRO_ON_RE = /^\/carro\b|\bmodo (?:carro|dire[çc][ãa]o)\b|\b(?:t[ôo]|tou|estou) (?:dirigindo|na estrada)\b|\bvou (?:dirigir|pegar (?:a )?estrada)\b/i;
+const CARRO_OFF_RE = /\b(?:sa(?:i|ir) do modo (?:carro|dire[çc][ãa]o)|desliga(?:r)? (?:o )?modo (?:carro|dire[çc][ãa]o)|modo carro off|parei de dirigir|parei o carro|j[áa] parei|estacionei|cheguei (?:no destino|em casa))\b|^parei\W*$/i;
+const CONTATO_RE = /^\/contato\b|\b(?:salvar|salva|manda|me manda) (?:o )?(?:seu|teu) contato\b/i;
+
+// sobra relevante da mensagem depois de tirar a frase de comando ("tô dirigindo, quanto gastei?")
+const restoComando = (txt: string, re: RegExp) => txt.replace(re, " ").replace(/[\s,.!?;:\-]+/g, " ").trim();
+
+async function modoCarroGet(phone: string): Promise<{ ativo: boolean; row: any | null }> {
+  const { data } = await supabase.from("whatsapp_events")
+    .select("id, status, parsed").eq("from_phone", phone).eq("kind", "modo_carro")
+    .order("created_at", { ascending: false }).limit(1);
+  const row = data?.[0];
+  if (!row || row.status !== "on") return { ativo: false, row: null };
+  const ate = Date.parse(String(row.parsed?.ate || "")) || 0;
+  return { ativo: ate > Date.now(), row };
+}
+
+async function modoCarroLigar(phone: string, userId: string, row: any | null) {
+  const ate = new Date(Date.now() + CARRO_JANELA_MS).toISOString();
+  if (row) {
+    await supabase.from("whatsapp_events").update({ parsed: { ...(row.parsed || {}), ate } }).eq("id", row.id);
+  } else {
+    await supabase.from("whatsapp_events").insert({
+      from_phone: phone, user_id: userId, kind: "modo_carro", status: "on", raw: {}, parsed: { ate, fila: [] },
+    });
+  }
+}
+
+// guarda o que precisa de TELA (links, fotos de carros) pra entregar quando ele parar
+async function modoCarroGuardar(phone: string, itens: string[]) {
+  if (!itens.length) return;
+  const { row } = await modoCarroGet(phone);
+  if (!row) return;
+  const fila = [...(Array.isArray(row.parsed?.fila) ? row.parsed.fila : []), ...itens].slice(-15);
+  await supabase.from("whatsapp_events").update({ parsed: { ...(row.parsed || {}), fila } }).eq("id", row.id);
+}
+
+// desliga e entrega a fila (relê a linha: a fila pode ter crescido no meio do caminho)
+async function modoCarroFechar(phone: string, rowId: string, aviso: string | null) {
+  const { data } = await supabase.from("whatsapp_events").select("parsed").eq("id", rowId).maybeSingle();
+  const fila: string[] = Array.isArray(data?.parsed?.fila) ? data!.parsed.fila : [];
+  await supabase.from("whatsapp_events").update({ status: "off", parsed: { ...(data?.parsed || {}), fila: [], fechado_em: new Date().toISOString() } }).eq("id", rowId);
+  if (fila.length) await sendText(phone, `📌 O que ficou guardado enquanto você dirigia:\n\n${fila.join("\n\n")}`);
+  if (aviso) await sendText(phone, aviso);
+}
+
+// manda o cartão de contato do Co-pilot (1x por usuário, salvo se ele pedir de novo)
+async function enviarContatoCopiloto(phone: string, userId: string, forcar = false): Promise<boolean> {
+  if (!forcar) {
+    const { count } = await supabase.from("whatsapp_events").select("id", { count: "exact", head: true })
+      .eq("user_id", userId).eq("kind", "contato_copiloto");
+    if (count) return false;
+  }
+  const ok = await waSendContact(await getSettings(), phone, CARRO_CONTATO, COPILOT_WA);
+  if (ok) await supabase.from("whatsapp_events").insert({ from_phone: phone, user_id: userId, kind: "contato_copiloto", status: "sent", raw: {}, parsed: {} });
+  return ok;
+}
+
+// NAVEGADOR PREFERIDO do motorista (Waze padrão — o mais usado no Brasil). O pino de localização
+// já deixa escolher o app no toque; o LINK de rota abre direto no app preferido e já inicia a navegação.
+type NavApp = "waze" | "google" | "apple";
+const NAV_NOME: Record<NavApp, string> = { waze: "Waze", google: "Google Maps", apple: "Apple Maps" };
+const NAV_PREF_RE = /\b(?:uso|usa|prefiro|quero|meu navegador (?:é|e)|navega(?:r|ção)? (?:com|pelo|no)|abre? (?:no|com|pelo)|abrir (?:no|com|pelo))\s+(?:o\s+)?(waze|google maps|maps do google|apple maps|mapas da apple|mapas do iphone)\b/i;
+function navDoTexto(t: string): NavApp | null {
+  const m = String(t || "").match(NAV_PREF_RE);
+  if (!m) return null;
+  const v = m[1].toLowerCase();
+  return v.includes("waze") ? "waze" : v.includes("google") ? "google" : "apple";
+}
+async function navPref(phone: string): Promise<NavApp> {
+  const { data } = await supabase.from("whatsapp_events").select("parsed").eq("from_phone", phone)
+    .eq("kind", "navegador").order("created_at", { ascending: false }).limit(1);
+  const a = data?.[0]?.parsed?.app;
+  return a === "google" || a === "apple" ? a : "waze";
+}
+// link que ABRE a rota já navegando (destino por coordenada quando houver; senão por texto)
+function rotaLink(app: NavApp, dest: { lat?: number | null; lng?: number | null; q?: string }): string {
+  const temLL = dest.lat != null && dest.lng != null && Number.isFinite(Number(dest.lat)) && Number.isFinite(Number(dest.lng));
+  const ll = temLL ? `${Number(dest.lat)},${Number(dest.lng)}` : "";
+  const q = encodeURIComponent(String(dest.q || ll));
+  if (app === "google") return `https://www.google.com/maps/dir/?api=1&destination=${temLL ? encodeURIComponent(ll) : q}&travelmode=driving&dir_action=navigate`;
+  // Apple: destino por TEXTO (daddr com coordenada teve regressão no iOS 18.4)
+  if (app === "apple") return `https://maps.apple.com/?daddr=${q}&dirflg=d`;
+  return temLL ? `https://waze.com/ul?ll=${encodeURIComponent(ll)}&navigate=yes` : `https://waze.com/ul?q=${q}&navigate=yes`;
+}
+
+// texto pra ser OUVIDO: tira emoji, negrito, marcador de lista e separa os links (vão pra fila)
+const URL_RE = /https?:\/\/[^\s)>\]]+/gi;
+function limparVoz(s: string): string {
+  return String(s || "")
+    .replace(/\p{Extended_Pictographic}|[\u{FE0F}\u{200D}\u{20E3}]|[\u{1F1E6}-\u{1F1FF}]|[★☆✓✔✨]/gu, "")
+    .replace(/\s*(?:→|->)\s*/g, " para ")
+    .replace(/[*_~`]/g, "")
+    .replace(/^\s*(?:[-•▪►]|\d+[.)])\s+/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+const MAPA_RE = /^https?:\/\/(?:www\.)?(?:google\.[a-z.]+\/maps|maps\.google\.|maps\.app\.goo\.gl|goo\.gl\/maps|waze\.com|maps\.apple\.com)/i;
+function paraVoz(text: string): { fala: string; links: string[]; mapas: string[] } {
+  const links: string[] = [];
+  const mapas: string[] = [];
+  const linhas: string[] = [];
+  for (const bruta of String(text || "").split(/\n+/)) {
+    const urls = bruta.match(URL_RE);
+    if (urls?.length) {
+      const sem = limparVoz(bruta.replace(URL_RE, "")).replace(/[:\-–—,]\s*$/, "").trim();
+      const mapa = urls.filter((u) => MAPA_RE.test(u));
+      const outros = urls.filter((u) => !MAPA_RE.test(u));
+      if (mapa.length) mapas.push(`📍 ${sem ? `${sem}: ` : ""}${mapa.join(" ")}`);
+      if (outros.length) links.push(`🔗 ${sem ? `${sem}: ` : ""}${outros.join(" ")}`);
+      if (sem.length >= 15) linhas.push(sem);
+      continue;
+    }
+    const l = limparVoz(bruta);
+    if (l) linhas.push(l);
+  }
+  let fala = linhas.join("\n").trim();
+  if (links.length) fala += `${fala ? "\n" : ""}Guardei o link pra quando você parar.`;
+  return { fala, links, mapas };
+}
+
+const MODO_CARRO_PROMPT = `
+
+MODO CARRO ATIVO (vale MAIS que qualquer regra de formato acima): o dono está DIRIGINDO e vai OUVIR sua resposta pela Siri (CarPlay) ou pelo Gemini (Android Auto). Regras:
+1) No máximo 2 frases curtas (~250 caracteres). Sem lista, sem negrito, sem emoji, sem link, sem linha digitável/código de barras.
+2) NUNCA peça foto, toque em botão, digitação ou para abrir o app agora. Se faltar um dado, pergunte por voz, UMA coisa por vez.
+3) O que é ÚTIL dirigindo vai NA HORA: localização/rota (vira mapa na tela do carro), fotos de carros e documentos (vão pro celular). Só fica guardado pra quando ele parar (é só dizer "parei") o que não serve dirigindo: link de pagamento, link do app, plano de viagem completo, texto de recurso de multa. Fale o essencial em 1 frase.
+4) Oficina/serviço: cite no máximo 2 opções pelo NOME e bairro; a localização delas já vai no chat (um toque abre a rota na tela do carro) e ele também pode pedir à Siri ou ao Gemini "navegar até <nome>". As rotas abrem no navegador preferido dele (Waze por padrão); pra trocar é só dizer "uso Google Maps", "uso Waze" ou "uso Apple Maps".
+5) Viagem: só distância, combustível ida e volta e pedágio total; a rota até o destino já vai no chat. Vender/avaliar o carro: ofereça fazer quando ele parar.
+6) Segurança primeiro: luz de alerta, fumaça, barulho estranho, pneu, superaquecimento → mande parar em local seguro ANTES de qualquer outra coisa.
+7) Termine com pergunta de sim ou não só quando precisar de decisão.`;
 
 async function fetchImageBase64(url: string): Promise<{ data: string; media_type: string } | null> {
   try {
@@ -1402,7 +1544,7 @@ const TOOL_SPECS = [
   },
 ];
 
-type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any } };
+type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[]; mapas?: string[]; nav?: NavApp };
 
 // ArquivoZap: sobe os bytes do documento pro Storage e grava a ficha (o arquivamento é automático —
 // dispara em background depois do turno, com a classificação que a IA já fez na foto/PDF).
@@ -1664,9 +1806,24 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         });
       }
 
+      // MODO CARRO: pino de localização das 2 primeiras opções JÁ no chat — um toque abre o
+      // Maps/Waze e a rota aparece na tela do carro. Sem coordenada, vai o link da rota.
+      let pinos = 0;
+      if (ctx.carMode && user.phone) {
+        const sPin = await getSettings();
+        for (const prov of ranked.slice(0, 2)) {
+          const lat = Number(prov.latitude), lng = Number(prov.longitude);
+          const ok = prov.latitude != null && prov.longitude != null
+            && await waSendLocation(sPin, String(user.phone), lat, lng, prov.name, prov.address || undefined);
+          if (ok) pinos++;
+          else ctx.mapas = [...(ctx.mapas || []), `📍 ${prov.name} (${NAV_NOME[ctx.nav || "waze"]}): ${rotaLink(ctx.nav || "waze", { q: prov.address ? `${prov.name} ${prov.address}` : prov.name })}`];
+        }
+      }
+
       return {
         ok: true, search_id: busca?.id || null,
         servico: def.label, local, emergencia: emEmergencia,
+        ...(ctx.carMode ? { modo_carro: { pinos_enviados: pinos, instrucao: "MODO CARRO: a localização das 2 primeiras opções JÁ foi pro chat. Fale só nome e bairro dessas 2, e diga que tocando no pino a rota abre na tela do carro, ou que ele pode pedir à Siri ou ao Gemini: navegar até <nome>." } } : {}),
         total: saida.length, opcoes: saida,
         instrucao: saida.length
           ? `Apresente as ${saida.length} opções de forma CURTA (WhatsApp): nome, o motivo (campo 'porque'), nota e telefone/link. Marque quem é PARCEIRO TOTEX — e se tiver 'beneficio', DESTAQUE o benefício e diga que basta falar o 'codigo_resgate' no estabelecimento. O resto é resultado público — encontrado em fonte pública, a confirmar direto com o estabelecimento; a Totex não credencia nem garante. NUNCA invente preço, disponibilidade, garantia ou tempo de chegada: o que veio "não informado" fica "não informado". Feche com UMA próxima ação (mandar o link do WhatsApp dele, ligar ou abrir a rota). Se ele quiser que a gente peça orçamento, aí sim peça autorização explícita e diga quais dados vão.`
@@ -1708,7 +1865,8 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
     if (name === "planejar_viagem") {
       // SELETOR DE ESTILO: destino sem interesses → manda a lista interativa (10 opções) e espera o toque.
       // A resposta cai em handleViagemInteresseReply, que monta o plano. "geral" = pula (formulário/sem preferência).
-      if (args?.destino && !String(args?.interesses || "").trim()) {
+      // (no MODO CARRO não tem lista pra tocar: segue direto com "o que o destino tem de melhor")
+      if (args?.destino && !String(args?.interesses || "").trim() && !ctx.carMode) {
         const ph = onlyDigits(String(user?.phone || ""));
         if (ph) {
           await supabase.from("whatsapp_events").insert({
@@ -1718,6 +1876,9 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           await sendMenu(ph, `Pra montar o roteiro de *${args.destino}* do seu jeito: o que você mais quer fazer lá? 👇\n\n(Toca numa opção. Se tanto faz, escolhe "O que o destino tem de melhor".)`, VIAGEM_INTERESSES_ROWS, "Modo Viagem");
           return { ok: true, aguardando_escolha: true, instrucao: "Você JÁ mandou a lista de estilos de viagem pro usuário escolher. Responda em NO MÁXIMO 1 frase curta dizendo que é só tocar numa opção que o plano vem em seguida. NÃO monte o plano agora, NÃO repita as opções." };
         }
+      }
+      if (ctx.carMode && args?.destino) {
+        ctx.mapas = [...(ctx.mapas || []), `🗺️ Rota até ${args.destino} (${NAV_NOME[ctx.nav || "waze"]}): ${rotaLink(ctx.nav || "waze", { q: String(args.destino) })}`];
       }
       // CAMINHO PRINCIPAL: edge viagem (mesmo motor do app) — pesquisa ao vivo, monta o plano
       // ESTRUTURADO e SALVA em viagem_planos → a página /viagem abre em cards sem recalcular.
@@ -1919,6 +2080,15 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       if (!cars.length) {
         const alvo = busca || catFiltro || [args?.marca].filter(Boolean).join(" ") || "esse perfil";
         return { ok: true, total: 0, categoria: catFiltro || undefined, message: `NENHUM carro no estoque com "${alvo}". Seja DIRETO e honesto: diga que NÃO tem "${alvo}" no estoque agora — NÃO mostre nem sugira outros carros como se fossem a resposta. No máximo ofereça, em 1 linha, criar um radar (criar_radar) pra avisar quando aparecer, OU pergunte se ele topa ver algo parecido (aí sim, só se ele aceitar).` };
+      }
+      // MODO CARRO: as fotos vão pro CELULAR na hora (a tela do carro não mostra foto de WhatsApp);
+      // a fala fica curta pra Siri/Gemini lerem
+      if (ctx.carMode) {
+        const enviadosC = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
+        ctx.shownCars = true;
+        return { ok: true, total: cars.length, fotos_enviadas: enviadosC,
+          carros: cars.map((v: any) => mktResumo(v, user.referral_code)),
+          instrucao: "MODO CARRO: as fotos JÁ foram pro celular dele. Diga em até 2 frases quantos carros achou e cite 1 destaque (modelo, ano e preço falado de forma natural). Lembre que as fotos estão no celular, pra ver com o carro parado ou pro passageiro." };
       }
       // VITRINE: manda as fotos dos carros direto no chat
       const enviados = user.phone ? await sendCarShowcase(user.phone, cars, user.referral_code) : 0;
@@ -3662,9 +3832,9 @@ Deno.serve(async (req) => {
     return new Response("ok", { status: 200, headers: cors });
   }
 
-  if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
-    return new Response("unauthorized", { status: 401, headers: cors });
-  }
+  // POST do Meta/uazapi/crons: exige o secret (fail-closed). ⚠️ Só ligar depois de a URL de callback
+  // no Meta carregar o secret NOVO (ver roteiro de troca).
+  if (!secretOk(url)) return unauthorized(cors);
 
   let body: any = {};
   try { body = await req.json(); } catch { /* ignore */ }
@@ -4160,8 +4330,10 @@ ${JSON.stringify(snapshot)}`;
     // BOTÕES DAS PROATIVAS (quick replies dos templates copilot_msg*): o rótulo é fixo
     // ("Sim, quero" etc.) e sozinho não diz do que se trata — embrulha com o contexto da
     // última proativa enviada (≤72h) pra IA saber o que o usuário está aceitando/recusando.
-    const PROATIVE_BTNS = ["sim, quero", "agora não", "já resolvi", "me ajuda", "ver agora", "depois"];
-    if (PROATIVE_BTNS.includes(inputText.trim().toLowerCase())) {
+    // Normaliza pontuação: resposta DITADA pela Siri/Gemini chega como "Sim, quero." / "sim quero"
+    const normBtn = (t: string) => t.toLowerCase().replace(/[.,!?;:]+/g, " ").replace(/\s+/g, " ").trim();
+    const PROATIVE_BTNS = ["sim, quero", "agora não", "já resolvi", "me ajuda", "ver agora", "depois"].map(normBtn);
+    if (PROATIVE_BTNS.includes(normBtn(inputText))) {
       try {
         const desde = new Date(Date.now() - 72 * 3600_000).toISOString();
         const { data: pro } = await supabase.from("whatsapp_events")
@@ -4235,31 +4407,92 @@ ${JSON.stringify(snapshot)}`;
       if (!inputText) inputText = "Analise este PDF. Se for um carnê/boletos de financiamento, extraia TODAS as parcelas (número e linha digitável completa de cada) e salve com salvar_carne. Se for um DOCUMENTO pra guardar (boleto avulso, IPVA, apólice de seguro, nota fiscal, CRLV, manual), chame arquivar_documento.";
     }
 
+    // ---- MODO CARRO (CarPlay/Android Auto): liga, renova, desliga e entrega a fila ----
+    const okResp = () => new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    const marcaEvt = async (action: string) => {
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action, input: inputText }, user_id: user.id }).eq("id", eventId);
+    };
+    let carMode = false;
+    if (msg.kind !== "image" && msg.kind !== "pdf") {
+      const txtC = inputText.trim();
+      const mc = await modoCarroGet(msg.phone);
+      carMode = mc.ativo;
+      const navEscolhido = navDoTexto(txtC);
+      if (navEscolhido && restoComando(txtC, NAV_PREF_RE).length < 12) {
+        await supabase.from("whatsapp_events").insert({ from_phone: msg.phone, user_id: user.id, kind: "navegador", status: "set", raw: {}, parsed: { app: navEscolhido } });
+        await sendText(msg.phone, `Combinado: as rotas que eu mandar vão abrir no ${NAV_NOME[navEscolhido]}, já navegando. Na tela do carro aparece o mapa dele.`);
+        await marcaEvt("navegador_pref");
+        return okResp();
+      }
+      if (CONTATO_RE.test(txtC) && restoComando(txtC, CONTATO_RE).length < 4) {
+        await enviarContatoCopiloto(msg.phone, user.id, true);
+        await sendText(msg.phone, `Aí está meu contato. Salve como *${CARRO_CONTATO}* que a Siri (CarPlay) e o Gemini (Android Auto) me acham pela voz. Ex.: "Ei Siri, manda WhatsApp pro ${CARRO_CONTATO}: abasteci 40 litros". 🚗`);
+        await marcaEvt("contato_copiloto");
+        return okResp();
+      }
+      if (mc.row && (CARRO_OFF_RE.test(txtC) || !mc.ativo)) {
+        // pediu pra desligar OU o modo expirou: entrega o que ficou guardado e desliga
+        const pediuOff = CARRO_OFF_RE.test(txtC);
+        await modoCarroFechar(msg.phone, mc.row.id, pediuOff ? "Modo carro desligado. Voltei ao normal, com botões e fotos. 👍" : null);
+        carMode = false;
+        if (pediuOff && restoComando(txtC, CARRO_OFF_RE).length < 4) { await marcaEvt("modo_carro_off"); return okResp(); }
+      } else if (!mc.row && /modo (?:carro|dire)/i.test(txtC) && CARRO_OFF_RE.test(txtC) && restoComando(txtC, CARRO_OFF_RE).length < 4) {
+        await sendText(msg.phone, "O modo carro já está desligado. Pra ligar quando for dirigir, é só dizer: modo carro. 🚗");
+        await marcaEvt("modo_carro_off");
+        return okResp();
+      }
+      if (CARRO_ON_RE.test(txtC) && !CARRO_OFF_RE.test(txtC)) {
+        await modoCarroLigar(msg.phone, user.id, carMode ? mc.row : null);
+        const jaEstava = carMode;
+        carMode = true;
+        if (restoComando(txtC, CARRO_ON_RE).length < 4) {
+          await sendText(msg.phone, jaEstava
+            ? "Modo carro continua ligado por mais 3 horas. Pode falar."
+            : "Modo carro ligado. Nas próximas 3 horas eu respondo curto, sem botões e sem links, pra você ouvir pela Siri ou pelo Gemini. O que for de ver na tela eu guardo e te mando quando você disser: parei. Boa viagem.");
+          if (!jaEstava) await enviarContatoCopiloto(msg.phone, user.id);
+          await marcaEvt("modo_carro_on");
+          return okResp();
+        }
+      } else if (carMode && mc.row) {
+        await modoCarroLigar(msg.phone, user.id, mc.row); // cada mensagem renova as 3h
+      }
+    }
+
     // MENU INTELIGENTE: a lista de ações só acompanha a resposta na 1ª conversa em 12h+ ou quando
     // o usuário pede ("menu"/"ajuda"/"opções"). No meio do papo, resposta limpa (menos robótico) —
     // os atalhos permanentes ficam nos comandos de barra e nos ice breakers do número.
-    let showMenu = /\b(menu|ajuda|op[çc][õo]es)\b/i.test(inputText);
-    if (!showMenu && eventId) {
+    // No MODO CARRO nunca vai lista: ninguém toca na tela dirigindo.
+    let showMenu = !carMode && /\b(menu|ajuda|op[çc][õo]es)\b/i.test(inputText);
+    if (!carMode && !showMenu && eventId) {
       const { data: prevEvt } = await supabase.from("whatsapp_events")
         .select("created_at").eq("from_phone", msg.phone)
         .lt("created_at", eventAt)
-        .not("kind", "in", "(status_evt,status_fail)")
+        .not("kind", "in", "(status_evt,status_fail,modo_carro,contato_copiloto,navegador)")
         .order("created_at", { ascending: false }).limit(1);
       const lastAt = prevEvt?.[0]?.created_at ? Date.parse(prevEvt[0].created_at) : 0;
       showMenu = !lastAt || (Date.now() - lastAt) > 12 * 3600 * 1000;
     }
-    const reply = (text: string) =>
-      showMenu ? sendMenu(msg.phone, text, quickActions, "Toque numa ação ou mande um gasto 🚗") : sendText(msg.phone, text);
+    const reply = async (text: string) => {
+      if (carMode) {
+        // resposta pra ser OUVIDA: sem emoji/negrito; links vão pra fila de "quando parar"
+        const { fala, links, mapas } = paraVoz(text);
+        await sendText(msg.phone, fala || "Feito.");
+        if (mapas.length) await sendText(msg.phone, mapas.join("\n"));
+        await modoCarroGuardar(msg.phone, links);
+        return;
+      }
+      return showMenu ? sendMenu(msg.phone, text, quickActions, "Toque numa ação ou mande um gasto 🚗") : sendText(msg.phone, text);
+    };
 
     // "/" sozinho (comando nativo sem escolha): mostra o menu como ajuda
-    if (inputText.trim() === "/") {
+    if (inputText.trim() === "/" && !carMode) {
       await sendMenu(msg.phone, "É só escolher uma opção 👇 ou me mandar sua dúvida/um gasto que eu resolvo. 🚗", quickActions, "Toque numa ação");
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "menu_barra" }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     // Atalho: avaliar/vender o próprio carro → FLOW da Recompra FIPE (avalia dentro do WhatsApp)
-    if (msg.kind !== "image" && isRecompraQuery(inputText)) {
+    if (msg.kind !== "image" && !carMode && isRecompraQuery(inputText)) {
       const sR = await getSettings();
       await waSendFlow(sR, msg.phone, {
         header: "Avalie seu carro 🚗",
@@ -4275,7 +4508,7 @@ ${JSON.stringify(snapshot)}`;
 
     // Atalho: opção "Garagem Totex" (menu ou pedido direto) → FLOW com o ESTOQUE AO VIVO.
     // Cliente de loja vê só o estoque da loja dele (token garagem:{dealershipId}); demais veem tudo.
-    if (msg.kind !== "image" && isGaragemQuery(inputText)) {
+    if (msg.kind !== "image" && !carMode && isGaragemQuery(inputText)) {
       const sGar = await getSettings();
       let token = "garagem";
       try {
@@ -4297,7 +4530,7 @@ ${JSON.stringify(snapshot)}`;
     // Atalho: precisa de SERVIÇO no carro → FLOW do Radar (busca dentro do WhatsApp).
     // Sem RADAR_FLOW_ID publicado, NÃO manda formulário quebrado: deixa a IA usar a
     // tool buscar_servico e responder em texto (mesmo resultado, sem a tela bonita).
-    if (msg.kind !== "image" && RADAR_FLOW_ID && isRadarQuery(inputText)) {
+    if (msg.kind !== "image" && !carMode && RADAR_FLOW_ID && isRadarQuery(inputText)) {
       const sRad = await getSettings();
       const fallbackRadar = "Me diga qual serviço você precisa (oficina, pneu, bateria, guincho…) e em que cidade/bairro você está, que eu procuro pra você. 🔎";
       const okFlow = await waSendFlow(sRad, msg.phone, {
@@ -4316,7 +4549,7 @@ ${JSON.stringify(snapshot)}`;
 
     // Atalho: planejar viagem → FLOW do Modo Viagem (formulário; o PLANO volta no chat,
     // porque a pesquisa de rota + composição pela IA passa MUITO do timeout do endpoint).
-    if (msg.kind !== "image" && isViagemQuery(inputText) && await viagemFlowId()) {
+    if (msg.kind !== "image" && !carMode && isViagemQuery(inputText) && await viagemFlowId()) {
       const sVia = await getSettings();
       const fallbackViagem = "Pra onde você quer viajar? Me diga o destino que eu monto o plano com o consumo real do seu carro. 🏖️";
       // ⚠️ modo_viagem é formulário PURO (sem endpoint): precisa de flow_action NAVIGATE com a
@@ -4413,16 +4646,20 @@ ${JSON.stringify(snapshot)}`;
     const aiConfig = await getAIConfig();
     // ctx nomeado: os handlers marcam ctx.shownCars quando mostram a vitrine, e o motor de
     // intenção lê isso depois pra não mandar oferta repetida.
-    const ctx: ToolCtx = { user, vehicle, today, inputText };
+    const ctx: ToolCtx = { user, vehicle, today, inputText, carMode, nav: carMode ? await navPref(msg.phone) : undefined };
     let replyText = "";
     try {
-      replyText = await runAgent(aiConfig, system, parts, ctx);
+      replyText = await runAgent(aiConfig, carMode ? system + MODO_CARRO_PROMPT : system, parts, ctx);
     } catch (e) {
       console.error("runAgent erro:", e);
     }
     if (!replyText) replyText = "Recebi sua mensagem! Pode detalhar um pouco mais pra eu te ajudar? 🙂";
 
     await reply(replyText);
+    // MODO CARRO: rotas que as ferramentas montaram vão NA HORA (o mapa aparece na tela do carro);
+    // o que não serve dirigindo fica na fila de "quando parar"
+    if (ctx.mapas?.length) await sendText(msg.phone, ctx.mapas.join("\n"));
+    if (ctx.fila?.length) await modoCarroGuardar(msg.phone, ctx.fila);
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
     if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText }, user_id: user.id }).eq("id", eventId);
 
@@ -4453,7 +4690,7 @@ ${JSON.stringify(snapshot)}`;
     try {
       const ci = (async () => {
         const intent = await detectCarIntent(supabase, aiConfig, user.id, inputText);
-        if (intent && !ctx.shownCars) await maybeInstantOffer(user, intent);
+        if (intent && !ctx.shownCars && !ctx.carMode) await maybeInstantOffer(user, intent);
       })();
       (globalThis as any).EdgeRuntime?.waitUntil?.(ci) ?? ci.catch(() => {});
     } catch { /* */ }

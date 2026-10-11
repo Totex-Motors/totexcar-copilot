@@ -1,5 +1,4 @@
--- O secret WEBHOOK_SECRET nunca foi setado nas edge functions (a checagem "if (WEBHOOK_SECRET && …)"
--- ficava desligada → carro-do-dia, whatsapp-webhook e crons aceitavam qualquer chamada).
--- Fallback em app_settings.webhook_secret (mesmo valor das URLs dos crons e do callback do Meta) até o env existir.
+-- (substituída) O fallback app_settings.webhook_secret foi criado em 09/10/2026 e REMOVIDO em seguida:
+-- o valor acabou commitado neste arquivo (repositório público). O secret vive só em Supabase → Edge Functions → Secrets.
+-- Mantido apenas pelo histórico de migrations; a coluna é apagada em 20261010000000_drop_webhook_secret.sql.
 alter table public.app_settings add column if not exists webhook_secret text;
-update public.app_settings set webhook_secret = 'TCF-uaz-2026-7Kp9Qm3Xv8Rn' where id = 1 and webhook_secret is null;

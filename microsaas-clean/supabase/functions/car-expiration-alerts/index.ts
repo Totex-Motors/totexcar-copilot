@@ -12,7 +12,7 @@ import { kmMedioDia, syncCalendar, projectRevisions } from "../_shared/calendar.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
+import { secretOk, unauthorized } from "../_shared/secret.ts";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
@@ -740,7 +740,7 @@ Deno.serve(async (req) => {
   _ai = null;
   // proteção: aceita secret na query (usado pelo cron) — ou execução manual autenticada
   const url = new URL(req.url);
-  if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
+  if (!secretOk(url)) {
     return new Response("unauthorized", { status: 401 });
   }
 

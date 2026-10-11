@@ -11,8 +11,7 @@ import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-// mesmo secret dos crons existentes (query ?secret=) — fallback fixo porque a env não está definida no projeto
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "TCF-uaz-2026-7Kp9Qm3Xv8Rn";
+import { secretOk, unauthorized } from "../_shared/secret.ts";
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 // Banco do app de sorteio (projeto TotexMotors OS) — leitura/registro via REST com a chave publishable.
@@ -39,7 +38,7 @@ const dig = (s: unknown) => String(s || "").replace(/\D/g, "");
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  if (WEBHOOK_SECRET && url.searchParams.get("secret") !== WEBHOOK_SECRET) {
+  if (!secretOk(url)) {
     return new Response("unauthorized", { status: 401 });
   }
 

@@ -5,16 +5,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import viagemFlow from "./viagem-flow.json" with { type: "json" };
 
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") || "";
+import { secretOk, unauthorized } from "../_shared/secret.ts";
 const GRAPH = "https://graph.facebook.com/v21.0";
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  const { data: s } = await admin.from("app_settings").select("meta_wa_token, meta_waba_id, webhook_secret").eq("id", 1).single();
-  const expected = WEBHOOK_SECRET || String(s?.webhook_secret || "");
-  if (!expected || url.searchParams.get("secret") !== expected) return new Response("unauthorized", { status: 401 });
+  if (!secretOk(url)) return unauthorized();
+  const { data: s } = await admin.from("app_settings").select("meta_wa_token, meta_waba_id").eq("id", 1).single();
   const action = url.searchParams.get("action") || "status";
 
   const token = String(s?.meta_wa_token || "").trim();
