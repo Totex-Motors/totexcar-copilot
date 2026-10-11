@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { CalendarDays, ChevronRight, MessageCircle, ShieldAlert, Pencil, Info, Loader2, Sparkles, IdCard } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
+import { supabase } from "@/integrations/supabase/client";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
 
@@ -18,6 +19,30 @@ function daysUntil(dateStr?: string | null): number | null {
   return Math.round((t.getTime() - today.getTime()) / 86400000);
 }
 const fmtBR = (d?: string | null) => { if (!d) return null; const [y, m, day] = String(d).split("-"); return day && m && y ? `${day}/${m}/${y}` : String(d); };
+// "12/03/2031" (formato do Detran) → "2031-03-12"
+const brToIso = (d?: string | null) => { const m = String(d || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
+const nomeCurto = (n?: string | null) => { const p = String(n || "").trim().split(/\s+/).filter(Boolean); return p.length > 2 ? `${p[0]} ${p[p.length - 1]}` : p.join(" "); };
+const titulo = (n: string) => n.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+
+// Lê o retorno da consulta de CNH (GPT Motors / Detran) no formato do cartão.
+// Pontos: o Detran não manda um total pronto — somamos o campo de pontos das ocorrências quando vier;
+// sem ocorrências, mostramos "nenhuma ocorrência" (nunca um 0 inventado).
+function lerCnh(dados: any) {
+  const c = dados?.cnh || {};
+  const oc: any[] = Array.isArray(dados?.ocorrencias) ? dados.ocorrencias : [];
+  const pts = oc.reduce((t, o) => t + (Number(o?.pontos ?? o?.pontuacao ?? o?.quantidadePontos) || 0), 0);
+  return {
+    nome: dados?.dadosPessoais?.nome ? titulo(nomeCurto(dados.dadosPessoais.nome)) : null,
+    categoria: c.categoriaAtual || c.categoriaAutorizada || null,
+    registro: c.numeroRegistro ? `••••••${String(c.numeroRegistro).slice(-4)}` : null,
+    validade: c.dataValidade || null,
+    validadeIso: brToIso(c.dataValidade),
+    primeira: c.dataPrimeiraHabilitacao || null,
+    situacao: c.situacaoAtual || null,
+    ocorrencias: oc.length,
+    pontos: oc.length ? pts : null,
+  };
+}
 
 // TELA CNH — habilitação: vencimento (status real), consulta de pontos (via Co-pilot), regra de
 // renovação e atalho pra multas. Dado hoje: cnh_vencimento (no cadastro do dono).
@@ -28,6 +53,23 @@ export default function Cnh() {
   const [res, setRes] = useState<GptResult | null>(null);
   const [params, setParams] = useSearchParams();
   const { data: consultasCnh } = useMinhasConsultas(userId, "cnh");
+  // última consulta paga → cartão desbloqueado (fica preenchido até a próxima consulta)
+  const [ultima, setUltima] = useState<GptResult | null>(null);
+  const consultaRef = useRef<HTMLDivElement>(null);
+  const cpfRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (userId) fetchUltimaConsulta(userId, "cnh").then((r) => r && setUltima(r)); }, [userId]);
+  useEffect(() => { if (res?.ok) setUltima(res); }, [res]);
+  const cartao = ultima?.ok ? lerCnh(ultima.dados) : null;
+  // validade oficial preenche o vencimento (os avisos de renovação passam a funcionar sozinhos)
+  useEffect(() => {
+    if (!userId || !cartao?.validadeIso || userData?.cnh_vencimento === cartao.validadeIso) return;
+    supabase.from("users").update({ cnh_vencimento: cartao.validadeIso, ...(cartao.categoria ? { cnh_categoria: cartao.categoria } : {}) }).eq("id", userId).then(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, cartao?.validadeIso]);
+  const irParaConsulta = () => {
+    consultaRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => cpfRef.current?.focus(), 400);
+  };
 
   useEffect(() => {
     if (params.get("status") !== "success" || !userId) return;
@@ -54,7 +96,7 @@ export default function Cnh() {
   if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
   if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
 
-  const venc = userData?.cnh_vencimento || null;
+  const venc = cartao?.validadeIso || userData?.cnh_vencimento || null;
   const d = daysUntil(venc);
   const st = venc == null ? null
     : d! < 0 ? { txt: "Vencida", cls: "due", cor: "var(--alert)" }
@@ -66,30 +108,45 @@ export default function Cnh() {
       <div className="stack">
         <div className="sec-title" style={{ fontSize: 20, marginTop: 2 }}>Minha CNH</div>
 
-        {/* cartão da habilitação */}
-        <section className="hero" style={{ background: "linear-gradient(150deg,#0C6E6A,#0A5350)" }}>
-          <div className="eyebrow">Habilitação</div>
-          {venc ? (
-            <>
-              <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8 }}>{st!.txt}</div>
-              <span className="trend" style={{ marginTop: 8 }}><CalendarDays size={13} /> Vence {fmtBR(venc)}</span>
-            </>
+        {/* cartão da habilitação: bloqueado até a consulta paga; depois fica preenchido */}
+        <section className="doc-card">
+          <div className="dh">
+            <div style={{ minWidth: 0 }}><div className="dl">Habilitação</div><div className="dn">{cartao?.nome || nomeCurto(userData?.name) || "Motorista"}</div></div>
+            <div className={`dcat ${cartao ? "" : "blur"}`}><b>{cartao?.categoria || "AB"}</b><small>CATEGORIA</small></div>
+          </div>
+          <div className={`dg ${cartao ? "" : "blur"}`}>
+            <div><span className="dl">Nº de registro</span><b>{cartao ? (cartao.registro || "—") : "••••••0000"}</b></div>
+            <div><span className="dl">Validade</span><b>{cartao ? (cartao.validade || "—") : "00/00/0000"}</b></div>
+            <div><span className="dl">1ª habilitação</span><b>{cartao ? (cartao.primeira || "—") : "00/00/0000"}</b></div>
+            <div><span className="dl">Situação</span><b>{cartao ? (cartao.situacao || "Não informada") : "Regular"}</b></div>
+          </div>
+          {cartao ? (
+            <span className="dp"><i style={{ background: st?.cls === "ok" ? "#7BE0A6" : "#F5B97A" }} /> {st ? st.txt : "Consultado"} · consultado em {ultima?.id && consultasCnh?.find((c: any) => c.id === ultima.id) ? new Date((consultasCnh.find((c: any) => c.id === ultima.id) as any).created_at).toLocaleDateString("pt-BR") : "hoje"}</span>
           ) : (
             <>
-              <div style={{ fontSize: 18, fontWeight: 800, marginTop: 8 }}>Cadastre o vencimento</div>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,.8)", marginTop: 6 }}>Informe quando sua CNH vence pra eu te avisar antes.</p>
+              <div style={{ height: 34 }} />
+              <div className="lock">
+                <div className="lt">🔒 Veja sua CNH completa</div>
+                <div className="ls">Categoria, registro, validade oficial, pontos e situação, direto do Detran.</div>
+                <button onClick={irParaConsulta}>Desbloquear por R$ {PRECO_CNH.toFixed(2).replace(".", ",")}</button>
+              </div>
             </>
           )}
-          <div className="hero-foot">
-            <span className="updated">{userData?.name || "Motorista"}</span>
-            <Link to="/settings" className="hero-cta">{venc ? "Editar" : "Informar"} <ChevronRight size={13} /></Link>
-          </div>
         </section>
 
+        {cartao && (
+          <section className="card pad">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div><div style={{ fontWeight: 800, fontSize: 14.5 }}>Pontos no Detran</div><div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>{cartao.ocorrencias ? `${cartao.ocorrencias} ocorrência(s) · limite para suspensão: 40 pontos` : "Nenhuma ocorrência registrada na consulta"}</div></div>
+              <span style={{ fontSize: 26, fontWeight: 800, color: "var(--brand)" }}>{cartao.pontos != null ? cartao.pontos : "—"}</span>
+            </div>
+          </section>
+        )}
+
         {/* consultar pontos/situação (GPT Motors, por CPF) */}
-        <section className="card pad">
-          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={16} style={{ color: "var(--brand)" }} /> Pontos e situação da CNH</div>
-          <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Consulta oficial por CPF: pontos, situação e validade.</p>
+        <section className="card pad" ref={consultaRef as any}>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={16} style={{ color: "var(--brand)" }} /> {cartao ? "Atualizar minha CNH" : "Desbloquear minha CNH"}</div>
+          <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>{cartao ? "Consulta nova no Detran por CPF: pontos, situação e validade de hoje." : "Consulta oficial no Detran por CPF. O cartão acima fica completo e salvo no app."}</p>
 
           {res?.ok ? (
             <div style={{ marginBottom: 8 }}>
@@ -114,10 +171,10 @@ export default function Cnh() {
 
           {!res?.ok && (
             <>
-              <input className="field" inputMode="numeric" placeholder="CPF do motorista" value={cpf} onChange={(e) => setCpf(maskCpf(e.target.value))} />
+              <input ref={cpfRef} className="field" inputMode="numeric" placeholder="CPF do motorista" value={cpf} onChange={(e) => setCpf(maskCpf(e.target.value))} />
               <button className="btn-primary" style={{ marginTop: 10 }} onClick={consultar} disabled={busy || cpfLimpo.length !== 11}>
                 {busy ? <Loader2 size={16} className="animate-spin" /> : <ShieldAlert size={16} />}
-                {busy ? "Consultando…" : `Consultar pontos · R$ ${PRECO_CNH.toFixed(2).replace(".", ",")}`}
+                {busy ? "Consultando…" : `${cartao ? "Atualizar" : "Desbloquear"} · R$ ${PRECO_CNH.toFixed(2).replace(".", ",")}`}
               </button>
             </>
           )}
@@ -176,7 +233,7 @@ export default function Cnh() {
         </a>
 
         <Link to="/settings"><button className="btn-primary"><Pencil size={17} /> Editar dados da CNH</button></Link>
-        <p className="foot-note">Te aviso antes de vencer, se você informar a data. Documento sempre com você no ArquivoZap.</p>
+        <p className="foot-note">Não substitui a CNH digital oficial (Carteira Digital de Trânsito). Te aviso antes de vencer.</p>
       </div>
     </MgShell>
   );

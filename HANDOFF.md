@@ -3,6 +3,12 @@
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
 > Última atualização: 2026-07-22.
 
+## 🔒 CARTÕES BLOQUEADOS das consultas pagas (2026-10-11) — CNH, Multas e Raio-X
+- **Conceito:** o cliente vê o próprio cartão com os dados embaçados e o cadeado "Desbloquear por R$ X"; depois da consulta paga o cartão fica PREENCHIDO com a última consulta (`fetchUltimaConsulta`) e a data. Estilo compartilhado `.doc-card` no MgShell.
+- **CNH (/cnh, R$ 9,90 por CPF):** nome, categoria, registro mascarado, validade, 1ª habilitação, situação; pontos somados das ocorrências do Detran (sem ocorrência = "nenhuma ocorrência", nunca 0 inventado). A validade oficial grava `users.cnh_vencimento`/`cnh_categoria`. Visual próprio + aviso "não substitui a CNH digital oficial".
+- **Multas (/multas, R$ 19,90 por placa):** a consulta devolve sempre as mesmas 13 linhas (status, zeros e total) — o cartão lê pela `chave`: IPVA+DPVAT+LICENCIAMENTO, TOTAL_DEBITOS_MULTAS, pendências = linhas com valor > 0; federais pelo resumo do Renainf.
+- **Raio-X/cautelar (/historico, R$ 69):** leilão, sinistro, roubo/furto, gravame; `temAlerta()` só alerta com registro de fato (ainda sem retorno real para validar — as 2 consultas existentes deram erro).
+
 ## 📸 FOTO DO CARRO no card "Meu carro" (2026-10-11)
 - **Colunas:** `accounts.foto_url/foto_fonte/foto_at`, `postsale_journeys.vehicle_id/foto_url`, `app_settings.photoroom_api_key`; bucket público `car-photos` (nome aleatório por arquivo).
 - **`_shared/car-photo.ts`:** recorte do fundo no Photoroom (`sdk.photoroom.com/v1/segment`, crop, WebP com transparência); sem chave guarda a original. Também busca estoque/capa no marketplace (`isPrimary`).

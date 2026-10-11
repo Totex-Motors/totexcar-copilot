@@ -9,6 +9,18 @@ import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaByI
 const WA = "5511963786699";
 const PRECO = 69; // preço de exibição (o valor final vem do servidor)
 const fmtDT = (s?: string) => s ? new Date(s).toLocaleDateString("pt-BR") : "";
+// Um bloco da cautelar só vira ALERTA se trouxer registro de fato: lista com itens, ou um sinal
+// "possui/existe/consta" = sim. Objeto preenchido dizendo "não possui" é ficha limpa.
+function temAlerta(v: any): boolean {
+  if (!v) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v !== "object") return /^(sim|s|true|consta|existe)/i.test(String(v));
+  const flags = Object.entries(v).filter(([k]) => /^(possui|existe|consta|tem|indicio|registro)/i.test(k));
+  if (flags.length) return flags.some(([, x]) => x === true || /^(sim|s|true|consta|existe)/i.test(String(x)));
+  const listas = Object.values(v).filter(Array.isArray) as any[][];
+  if (listas.length) return listas.some((l) => l.length > 0);
+  return true; // formato desconhecido: melhor pedir pra verificar do que dizer "nada consta"
+}
 
 // TELA HISTÓRICO — Raio-X do Carro (Veicular PRO via GPT Motors): procedência, débitos, leilão,
 // sinistro, gravame, roubo/furto — resumido pela IA. Consulta paga sob demanda.
@@ -36,6 +48,14 @@ export default function Historico() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, userId, vehicle?.placa]);
 
+  // última consulta paga desta placa → cartão desbloqueado (fica preenchido até a próxima)
+  useEffect(() => {
+    const pl = vehicle?.placa || "";
+    if (!userId || !pl || params.get("status") === "success") return;
+    fetchUltimaConsulta(userId, "raiox", pl).then((r) => { if (r) setRes((atual) => atual || r); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, vehicle?.placa]);
+
   if (loading) return <div className="min-h-screen grid place-items-center bg-[#EEF2F0]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0C6E6A]" /></div>;
   if (userData?.role === "dealer") return <Navigate to="/lojista" replace />;
 
@@ -56,14 +76,39 @@ export default function Historico() {
     { ic: FileCheck2, t: "Gravame e procedência", s: "Financiamento e dados do veículo" },
   ];
   const basicos = res?.dados?.veiculoDadosBasicos || null;
+  const checks: [string, any][] = [
+    ["Leilão", res?.dados?.leilaoDados], ["Sinistro", res?.dados?.sinistroDados],
+    ["Roubo / furto", res?.dados?.rouboFurtoDados], ["Gravame", res?.dados?.gravameDados],
+  ];
+  const alertas = res?.ok ? checks.filter(([, v]) => temAlerta(v)).length : 0;
+  const consultadoEm = res?.id ? (laudos as any[] | undefined)?.find((c: any) => c.id === res.id)?.created_at : null;
 
   return (
     <MgShell title="Raio-X do carro" back="/">
       <div className="stack">
-        <section className="hero" style={{ background: "linear-gradient(150deg,#0C6E6A,#0A5350)" }}>
-          <div className="eyebrow">Raio-X do carro · consulta cautelar</div>
-          <div style={{ fontSize: 20, fontWeight: 800, marginTop: 8 }}>A ficha completa do veículo</div>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,.82)", marginTop: 6 }}>Procedência, débitos, leilão, sinistro, roubo/furto e gravame — resumidos pela IA{placa ? ` · placa ${placa}` : ""}.</p>
+        {/* cartão da cautelar: bloqueado até a consulta paga; depois fica preenchido */}
+        <section className="doc-card">
+          <div className="dh">
+            <div style={{ minWidth: 0 }}><div className="dl">Raio-X · consulta cautelar</div><div className="dn">{[vehicle?.marca, vehicle?.modelo].filter(Boolean).join(" ") || "Meu carro"}{placa ? ` · ${placa}` : ""}</div></div>
+            <div className={`dcat ${res?.ok ? "" : "blur"}`}><b>{res?.ok ? alertas : 0}</b><small>ALERTAS</small></div>
+          </div>
+          <div className={`dg ${res?.ok ? "" : "blur"}`}>
+            {checks.map(([label, val]) => (
+              <div key={label}><span className="dl">{label}</span><b style={res?.ok && temAlerta(val) ? { color: "#FED7AA" } : undefined}>{res?.ok ? (temAlerta(val) ? "Verificar" : "Nada consta") : "Nada consta"}</b></div>
+            ))}
+          </div>
+          {res?.ok ? (
+            <span className="dp"><i style={{ background: alertas ? "#F5B97A" : "#7BE0A6" }} /> {alertas ? "Tem ponto de atenção" : "Ficha limpa"} · consultado em {consultadoEm ? new Date(consultadoEm).toLocaleDateString("pt-BR") : "hoje"}</span>
+          ) : (
+            <>
+              <div style={{ height: 34 }} />
+              <div className="lock">
+                <div className="lt">🔒 Descubra a ficha do seu carro</div>
+                <div className="ls">Leilão, sinistro, roubo/furto, gravame e procedência, em uma consulta.</div>
+                <button onClick={consultar} disabled={busy || !placa}>{busy ? "Consultando…" : `Desbloquear por R$ ${PRECO}`}</button>
+              </div>
+            </>
+          )}
         </section>
 
         {!placa && (
@@ -100,7 +145,7 @@ export default function Historico() {
               ].map(([label, val]) => (
                 <div key={label as string} className="box" style={{ flex: 1 }}>
                   <div className="l">{label as string}</div>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginTop: 2, color: val ? "var(--warn)" : "var(--good)" }}>{val ? "Verificar" : "Nada consta"}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginTop: 2, color: temAlerta(val) ? "var(--warn)" : "var(--good)" }}>{temAlerta(val) ? "Verificar" : "Nada consta"}</div>
                 </div>
               ))}
             </div>

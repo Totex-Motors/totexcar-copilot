@@ -52,6 +52,12 @@ export default function Multas() {
     tick();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, userId, placa]);
+  // última consulta paga desta placa → cartão desbloqueado (fica preenchido até a próxima)
+  useEffect(() => {
+    if (!userId || !placa || params.get("status") === "success") return;
+    fetchUltimaConsulta(userId, "debitos", placa).then((r) => { if (r) setRes((atual) => atual || r); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, placa]);
   const waDebitos = `https://wa.me/${WA}?text=${encodeURIComponent(`Quero consultar os débitos do meu carro${placa ? ` (placa ${placa})` : ""} 💸`)}`;
   const consultarDebitos = async () => {
     if (!placa || busy) return;
@@ -62,6 +68,18 @@ export default function Multas() {
   const est = res?.ok ? res.dados?.estadual : null;
   const ren = res?.ok ? res.dados?.renainf : null;
   const debEst: any[] = Array.isArray(est?.debitosEstaduais) ? est.debitosEstaduais : [];
+  const valorNum = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")); return Number.isFinite(n) ? n : 0; };
+  // a consulta devolve SEMPRE as mesmas linhas (status, zeros e um total) — lê pela chave
+  const isValor = (v: any) => /^[\d.]+,\d{2}$/.test(String(v ?? "").trim());
+  const valDe = (...chaves: string[]) => debEst.filter((d) => chaves.includes(String(d.chave || "").toUpperCase())).reduce((t, d) => t + (isValor(d.valor) ? valorNum(d.valor) : 0), 0);
+  const ipvaLic = valDe("IPVA", "DPVAT", "LICENCIAMENTO");
+  const totalMultasLinha = debEst.find((d) => String(d.chave || "").toUpperCase() === "TOTAL_DEBITOS_MULTAS");
+  const multasEst = totalMultasLinha && isValor(totalMultasLinha.valor)
+    ? valorNum(totalMultasLinha.valor)
+    : debEst.filter((d) => /^MULTAS_/i.test(String(d.chave || ""))).reduce((t, d) => t + (isValor(d.valor) ? valorNum(d.valor) : 0), 0);
+  const pendEst = debEst.filter((d) => !/^(STATUS_|TOTAL_)/i.test(String(d.chave || "")) && isValor(d.valor) && valorNum(d.valor) > 0).length;
+  const qtdFed = Number(ren?.resumo?.quantidadeOcorrencias ?? ren?.resumo?.quantidadeOcorrenciasTotal ?? 0) || 0;
+  const consultadoEm = res?.id ? (consultasDeb as any[] | undefined)?.find((c: any) => c.id === res.id)?.created_at : null;
 
   const copiar = async (t: string) => { try { await navigator.clipboard.writeText(t); toast({ title: "Recurso copiado!", description: "Cole no site/formulário do órgão autuador." }); } catch { toast({ title: "Não consegui copiar", variant: "destructive" }); } };
   const baixar = (m: Multa) => { const b = new Blob([m.recurso_texto || ""], { type: "text/plain;charset=utf-8" }); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `recurso-multa-${m.auto_numero || m.id.slice(0, 8)}.txt`; a.click(); URL.revokeObjectURL(a.href); };
@@ -75,6 +93,34 @@ export default function Multas() {
   return (
     <MgShell title="Multas & Débitos" back="/">
       <div className="stack">
+        {/* cartão dos débitos: bloqueado até a consulta paga; depois fica preenchido */}
+        {placa && (
+          <section className="doc-card">
+            <div className="dh">
+              <div style={{ minWidth: 0 }}><div className="dl">Débitos e multas</div><div className="dn">{[vehicle?.marca, vehicle?.modelo].filter(Boolean).join(" ") || "Meu carro"} · {placa}</div></div>
+              <div className={`dcat ${res?.ok ? "" : "blur"}`}><b>{res?.ok ? pendEst : 2}</b><small>PENDÊNCIAS</small></div>
+            </div>
+            <div className={`dg ${res?.ok ? "" : "blur"}`}>
+              <div><span className="dl">Situação</span><b>{res?.ok ? (est?.restricoesImpedimentos?.situacaoVeiculo || "Não informada") : "Em circulação"}</b></div>
+              <div><span className="dl">Multas no estado</span><b>{res?.ok ? (multasEst > 0 ? brl(multasEst) : "Nada consta") : "R$ 0.000,00"}</b></div>
+              <div><span className="dl">IPVA e licenciamento</span><b>{res?.ok ? (ipvaLic > 0 ? brl(ipvaLic) : "Em dia") : "R$ 000,00"}</b></div>
+              <div><span className="dl">Multas federais</span><b>{res?.ok ? (qtdFed ? `${qtdFed} ocorrência(s)` : "Nada consta") : "0 ocorrências"}</b></div>
+            </div>
+            {res?.ok ? (
+              <span className="dp"><i style={{ background: pendEst + qtdFed ? "#F5B97A" : "#7BE0A6" }} /> {pendEst + qtdFed ? "Tem pendência" : "Tudo limpo"} · consultado em {consultadoEm ? new Date(consultadoEm).toLocaleDateString("pt-BR") : "hoje"}</span>
+            ) : (
+              <>
+                <div style={{ height: 34 }} />
+                <div className="lock">
+                  <div className="lt">🔒 Veja os débitos do seu carro</div>
+                  <div className="ls">IPVA, licenciamento e multas estaduais e federais, direto do Detran.</div>
+                  <button onClick={consultarDebitos} disabled={busy}>{busy ? "Consultando…" : `Desbloquear por R$ ${PRECO_DEBITOS.toFixed(2).replace(".", ",")}`}</button>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
         {/* CTA WhatsApp */}
         <a className="copilot" href={WA_LINK} target="_blank" rel="noreferrer">
           <span className="av"><MessageCircle size={22} /></span>
