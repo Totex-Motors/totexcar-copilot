@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Loader2, UserPlus, Star, Settings2, Smile, Meh, Frown, Send, FileCheck, ShieldCheck, Gift } from "lucide-react";
 import {
   usePostsaleList, usePostsaleStats, usePostsaleConfig, usePostsaleCreate, usePostsaleConfigSave, usePostsaleTransferSave,
-  type PostsaleJourney,
+  useEstoqueLista, type PostsaleJourney, type EstoqueCarro,
 } from "@/hooks/useDealer";
 import { SeloLojaCard } from "./SeloLojaCard";
 import { SorteioFeiraoCard } from "./SorteioFeiraoCard";
@@ -45,6 +45,11 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
 
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
   const [cortesia, setCortesia] = useState(false);
+  // carro do ESTOQUE (obrigatório escolher, ou marcar que está fora do estoque): a foto de capa vai pro app do cliente
+  const { data: estoque, isLoading: loadingEstoque } = useEstoqueLista(enabled, dealership);
+  const [carroEstoque, setCarroEstoque] = useState<EstoqueCarro | null>(null);
+  const [foraEstoque, setForaEstoque] = useState(false);
+  const [buscaEstoque, setBuscaEstoque] = useState("");
   const [reviewUrl, setReviewUrl] = useState("");
   const [delay, setDelay] = useState("");
   const [editing, setEditing] = useState<PostsaleJourney | null>(null);
@@ -67,10 +72,15 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
       toast({ title: "Telefone inválido", description: "Informe o WhatsApp com DDD.", variant: "destructive" });
       return;
     }
+    if (!carroEstoque && !foraEstoque) {
+      toast({ title: "Escolha o carro do estoque", description: "A foto de capa do anúncio vai pro app do cliente. Se o carro não está no estoque, marque essa opção.", variant: "destructive" });
+      return;
+    }
     create.mutate({
       customer_name: form.customer_name || undefined,
       customer_phone: form.customer_phone,
-      car_desc: form.car_desc || undefined,
+      car_desc: form.car_desc || (carroEstoque ? [carroEstoque.desc, carroEstoque.cor].filter(Boolean).join(" ") : undefined),
+      vehicle_id: carroEstoque?.id || undefined,
       purchase_date: form.purchase_date || undefined,
       cortesia: cortesia || undefined,
       placa: form.placa || undefined,
@@ -85,10 +95,12 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
           description: (r?.sponsored
             ? `Cortesia de 1 ano ativada — conta premium criada${r?.vehicle_created ? " e veículo cadastrado" : ""}.`
             : r?.welcome_sent ? "Mensagem de boas-vindas enviada no WhatsApp." : "Jornada criada (WhatsApp não enviou — confira as credenciais).")
-            + (r?.tag ? ` Etiqueta ${r.tag.label} vinculada.` : r?.tag_error ? ` Etiqueta NÃO vinculada (${r.tag_error}).` : ""),
+            + (r?.tag ? ` Etiqueta ${r.tag.label} vinculada.` : r?.tag_error ? ` Etiqueta NÃO vinculada (${r.tag_error}).` : "")
+            + (r?.foto_estoque?.fotoUrl ? " Foto do carro enviada pro app do cliente." : ""),
         });
         setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
         setCortesia(false);
+        setCarroEstoque(null); setForaEstoque(false); setBuscaEstoque("");
         refresh();
         qc.invalidateQueries({ queryKey: ["car-tags"] });
       },
@@ -142,6 +154,45 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
           <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><UserPlus className="w-4 h-4 text-primary" /> Registrar cliente (pós-venda)</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">Ao registrar, o cliente recebe boas-vindas no WhatsApp com o bônus do Co-pilot, e a jornada de NPS começa automaticamente.</p>
+            {/* CARRO DO ESTOQUE — obrigatório: a foto de capa do anúncio vira a foto do carro no app do cliente */}
+            <div className="space-y-2 rounded-lg border border-primary/30 p-3">
+              <Label className="text-xs font-semibold">Carro vendido (do estoque)</Label>
+              {carroEstoque ? (
+                <div className="flex items-center gap-3">
+                  {carroEstoque.capa && <img src={carroEstoque.capa} alt="" className="w-20 h-14 rounded-md object-cover" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{carroEstoque.desc}</div>
+                    <div className="text-[12px] text-muted-foreground truncate">{[carroEstoque.versao, carroEstoque.cor].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => setCarroEstoque(null)}>Trocar</Button>
+                </div>
+              ) : !foraEstoque ? (
+                <>
+                  <Input value={buscaEstoque} onChange={(e) => setBuscaEstoque(e.target.value)} placeholder="Busque por modelo, ano ou cor (ex.: Tucson 2017)" />
+                  <div className="max-h-56 overflow-y-auto space-y-1">
+                    {loadingEstoque && <div className="text-[12px] text-muted-foreground flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando o estoque…</div>}
+                    {(estoque || [])
+                      .filter((c) => !buscaEstoque.trim() || `${c.desc} ${c.versao || ""} ${c.cor || ""}`.toLowerCase().includes(buscaEstoque.trim().toLowerCase()))
+                      .slice(0, 30)
+                      .map((c) => (
+                        <button key={c.id} type="button" onClick={() => setCarroEstoque(c)} className="w-full flex items-center gap-2.5 rounded-md p-1.5 text-left hover:bg-muted">
+                          {c.capa ? <img src={c.capa} alt="" loading="lazy" className="w-14 h-10 rounded object-cover shrink-0" /> : <div className="w-14 h-10 rounded bg-muted shrink-0" />}
+                          <span className="min-w-0">
+                            <span className="block text-sm truncate">{c.desc}</span>
+                            <span className="block text-[11.5px] text-muted-foreground truncate">{[c.versao, c.cor, c.preco ? `R$ ${Number(c.preco).toLocaleString("pt-BR")}` : null].filter(Boolean).join(" · ")}</span>
+                          </span>
+                        </button>
+                      ))}
+                    {!loadingEstoque && !(estoque || []).length && <div className="text-[12px] text-muted-foreground">Nenhum carro no estoque desta loja no marketplace.</div>}
+                  </div>
+                </>
+              ) : null}
+              <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground cursor-pointer">
+                <Checkbox checked={foraEstoque} onCheckedChange={(v) => { setForaEstoque(v === true); if (v === true) setCarroEstoque(null); }} />
+                O carro não está no estoque (o cliente manda a foto depois)
+              </label>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><Label className="text-xs">Nome</Label><Input value={form.customer_name} onChange={(e) => setForm((p) => ({ ...p, customer_name: e.target.value }))} placeholder="Nome do cliente" /></div>
               <div className="space-y-1"><Label className="text-xs">WhatsApp (com DDD)</Label><Input value={form.customer_phone} onChange={(e) => setForm((p) => ({ ...p, customer_phone: e.target.value }))} placeholder="11987654321" /></div>

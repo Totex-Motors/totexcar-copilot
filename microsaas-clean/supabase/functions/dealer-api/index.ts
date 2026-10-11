@@ -5,6 +5,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
+import { capaDoVeiculo, descVeiculo, fotoDeCapaNaVenda, mktDealerIdByName, mktStock } from "../_shared/car-photo.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1033,7 +1034,28 @@ Deno.serve(async (req) => {
           });
           if (r.ok) tagBound = r.tag; else tagError = r.error || "falha";
         }
-        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError });
+        // FOTO DE CAPA DO ESTOQUE (obrigatória quando o carro é do estoque): carro escolhido na lista
+        // ou casado pelo texto com o estoque da loja → capa recortada vai pra jornada e pro card "Meu carro".
+        let foto: any = null;
+        try {
+          foto = await fotoDeCapaNaVenda(admin, {
+            journeyId: created.id, dealership: loja, vehicleId: p.vehicle_id ? String(p.vehicle_id) : null,
+            carDesc: car, userId: provisionedUserId,
+          });
+        } catch (e) { console.error("foto de capa:", e); }
+        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError, foto_estoque: foto });
+      }
+
+      // estoque da loja pro pós-venda escolher o carro vendido (foto de capa obrigatória)
+      case "estoque_lista": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const did = await mktDealerIdByName(writeStore);
+        if (!did) return json({ ok: true, carros: [], aviso: "loja_sem_estoque_no_marketplace" });
+        const carros = (await mktStock(did)).map((v: any) => ({
+          id: v.id, desc: descVeiculo(v), versao: v.version || null, cor: v.color || null,
+          preco: v.price || null, km: v.mileage || null, capa: capaDoVeiculo(v),
+        }));
+        return json({ ok: true, carros });
       }
 
       // ===== ETIQUETAS QR DO PARA-BRISA =====

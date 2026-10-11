@@ -3,6 +3,13 @@
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
 > Última atualização: 2026-07-22.
 
+## 📸 FOTO DO CARRO no card "Meu carro" (2026-10-11)
+- **Colunas:** `accounts.foto_url/foto_fonte/foto_at`, `postsale_journeys.vehicle_id/foto_url`, `app_settings.photoroom_api_key`; bucket público `car-photos` (nome aleatório por arquivo).
+- **`_shared/car-photo.ts`:** recorte do fundo no Photoroom (`sdk.photoroom.com/v1/segment`, crop, WebP com transparência); sem chave guarda a original. Também busca estoque/capa no marketplace (`isPrimary`).
+- **Estoque (obrigatório):** no pós-venda a loja ESCOLHE o carro do estoque (ação `estoque_lista` no dealer-api) ou marca "fora do estoque". `postsale_create` puxa a capa, recorta e grava na jornada e na conta. Sem escolha, só casa pelo texto se MODELO e ANO baterem (evita foto de outro carro).
+- **Cliente:** card do app (edge `car-photo`: status/upload/remover; foto reduzida no celular antes de subir) e WhatsApp (legenda "foto do meu carro" ou pedido + foto em 20 min, `whatsapp_events` kind `foto_carro_pending`).
+- **Conta sem foto** herda a capa da venda (jornada pelo user_id ou telefone) na primeira abertura do card.
+
 ## 📉 HISTÓRICO DA FIPE + ALERTA DE QUEDA (2026-10-11)
 - **Tabela `fipe_historico`** (código FIPE, ano-modelo, ref AAAAMM, valor): o `fipe-sync` grava todo mês (a `fipe_tabela` continua sendo só o mês atual). Carga inicial jan–out/2026 com `?mes=AAAA/MM&historico_only=1`.
 - **`_shared/fipe-tendencia.ts`:** `calcTendencia` (valorizando / estável / queda / queda_seguida; estável = variação < 0,3%), `textoAlerta` e `tendenciaDaConta` (vincula o carro do dono ao código FIPE em `accounts.fipe_codigo/fipe_ano`: placa via quanto-vale → senão marca/modelo/ano).

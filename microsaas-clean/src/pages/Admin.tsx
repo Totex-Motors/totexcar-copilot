@@ -506,6 +506,7 @@ function ConfigTab() {
     // Canal (carro do dia) e Status pessoal do dono — instâncias uazapi não-oficiais, só publicação
     canal_autopost: false, status_autopost: false, status_uazapi_url: "", status_uazapi_token: "", status_dealership_id: "",
     google_places_api_key: "",
+    photoroom_api_key: "",
   });
 
   useEffect(() => {
@@ -554,6 +555,7 @@ function ConfigTab() {
         status_uazapi_token: (settings as any).status_uazapi_token || "",
         status_dealership_id: (settings as any).status_dealership_id || "",
         google_places_api_key: (settings as any).google_places_api_key || "",
+        photoroom_api_key: (settings as any).photoroom_api_key || "",
       });
     }
   }, [settings]);
@@ -601,6 +603,7 @@ function ConfigTab() {
         status_uazapi_token: f.status_uazapi_token.trim() || null,
         status_dealership_id: f.status_dealership_id.trim() || null,
         google_places_api_key: f.google_places_api_key.trim() || null,
+        photoroom_api_key: f.photoroom_api_key.trim() || null,
       } as any,
       {
         onSuccess: () => toast({ title: "Configurações salvas" }),
@@ -641,6 +644,11 @@ function ConfigTab() {
             <Label>Google Places (Modo Viagem: roteiro dia a dia · Radar)</Label>
             <Input type="password" value={f.google_places_api_key} onChange={(e) => set("google_places_api_key", e.target.value)} placeholder="AIza... (Google Cloud → APIs: Places API (New))" />
             <p className="text-xs text-muted-foreground">Sem a chave, o Modo Viagem funciona sem o roteiro de lugares com foto. Custo aprox. R$ 1 por roteiro.</p>
+          </div>
+          <div className="space-y-2 pt-2 border-t">
+            <Label>Photoroom (recorte do fundo da foto do carro)</Label>
+            <Input type="password" value={f.photoroom_api_key} onChange={(e) => set("photoroom_api_key", e.target.value)} placeholder="sk_pr_... (photoroom.com/api → API key)" />
+            <p className="text-xs text-muted-foreground">Recorta o fundo da foto do carro no card "Meu carro" (foto de capa do estoque e foto enviada pelo cliente). Sem a chave, a foto aparece com o fundo original.</p>
           </div>
         </CardContent>
       </Card>
