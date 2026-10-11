@@ -27,6 +27,7 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const UAZAPI_URL = (Deno.env.get("UAZAPI_URL") || "").replace(/\/+$/, "");
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 import { secretOk, unauthorized } from "../_shared/secret.ts";
+import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -1481,6 +1482,11 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: { de: { type: "string", description: "AAAA-MM-DD (opcional)" }, ate: { type: "string", description: "AAAA-MM-DD (opcional)" } } },
   },
   {
+    name: "valor_do_carro",
+    description: "Valor FIPE ATUAL do carro do dono e a TENDÊNCIA mês a mês (valorizou, estável, em queda, quantos meses SEGUIDOS caiu). Use para 'quanto vale meu carro?', 'meu carro desvalorizou?', 'tá caindo?', 'vale a pena trocar agora?'.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
     name: "boleto_parcela",
     description: "Consulta o financiamento do usuário: próxima parcela (número, valor, vencimento) e a LINHA DIGITÁVEL do boleto salvo, se houver. Use quando o usuário pedir o boleto/código de barras da parcela.",
     parameters: { type: "object", properties: {} },
@@ -2252,6 +2258,25 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         ok: true, periodo: r.periodo, label: r.label, kind, totais: r.totals,
         pdf_enviado, csv_url: r.csv_url,
         orientacao: "Resuma em 2 linhas: lucro do período + R$/km. O PDF já foi enviado na conversa (se pdf_enviado=true). Diga que serve de base pro contador/carnê-leão, mas NUNCA dê conselho fiscal definitivo ('sou seu copiloto, não seu contador'). Se mei_pct >= 70, avise com cuidado que está se aproximando do limite MEI — é proteção, não bronca. Ofereça o CSV (link) só se ele pedir 'pra planilha/contador'.",
+      };
+    }
+
+    if (name === "valor_do_carro") {
+      if (!vehicle?.id) return { ok: false, message: "O dono ainda não tem carro cadastrado. Peça a placa ou marca/modelo/ano pra cadastrar." };
+      const r = await tendenciaDaConta(supabase, vehicle, `${SUPABASE_URL}/functions/v1`, SERVICE_ROLE).catch(() => null);
+      if (!r) return { ok: false, message: "Não consegui casar o carro dele com a tabela FIPE. Peça a placa (ou a versão exata) pra eu localizar. Não invente valor." };
+      const t = r.tendencia;
+      const guia = t.nivel === "queda_seguida"
+        ? `ALERTA DE TROCA: é o ${t.quedas_seguidas}º mês seguido em queda. Diga com clareza e sem alarmismo que quedas seguidas costumam indicar que o valor vai continuar caindo, então é um bom momento pra avaliar a troca enquanto o valor ainda está melhor. Ofereça avaliar o carro dele (é só ele dizer "avaliar meu carro") ou ver opções na Garagem.`
+        : t.nivel === "queda"
+          ? "EM QUEDA (1º mês): avise que o carro está em queda e peça atenção: se cair de novo no próximo mês, é sinal de tendência de queda e você avisa na hora pra ele pensar numa troca. Sem empurrar venda agora."
+          : t.nivel === "valorizando" ? "VALORIZANDO: dê a boa notícia de forma leve. Sem sugerir troca."
+          : t.nivel === "estavel" ? "ESTÁVEL: tranquilize; o valor está segurando bem."
+          : "SEM HISTÓRICO suficiente: informe só o valor atual e diga que a partir do mês que vem você compara mês a mês.";
+      return {
+        ok: true, modelo_fipe: r.modelo, ano_modelo: r.ano, valor_atual: r.valor_atual, referencia: r.ref,
+        tendencia: { nivel: t.nivel, resumo: t.resumo, meses: t.meses, quedas_seguidas: t.quedas_seguidas, variacao_mes: t.variacao_mes, variacao_mes_pct: t.variacao_mes_pct, variacao_periodo_pct: t.variacao_periodo_pct, desde: t.desde },
+        instrucao: `${guia} Mostre o valor atual (R$, mês de referência) e a variação do mês em R$ e %. Se houver 3+ meses, cite a trajetória em 1 linha (ex.: "jul R$ 105 mil → out R$ 99,5 mil"). A FIPE é referência de mercado: nunca prometa que vai subir ou cair, e lembre que a oferta real depende de vistoria.`,
       };
     }
 
@@ -3500,6 +3525,7 @@ async function handleValorVivoOptin(phone: string, text: string, contactName?: s
   // opt-out (botão do aviso mensal ou texto livre) — sempre atende
   if (VV_UNSUB_RE.test(t)) {
     await supabase.from("valor_vivo_subs").update({ active: false }).eq("phone", phone);
+    await supabase.from("whatsapp_events").insert({ from_phone: phone, kind: "fipe_alerta_off", status: "processed", raw: { text }, parsed: {} });
     await sendText(phone, `Prontinho${primeiro} 👍 Parei os avisos de valor. Quando quiser voltar, é só me mandar a placa e pedir de novo.`);
     return true;
   }
@@ -4250,6 +4276,7 @@ REGRA DE OURO DO REGISTRO: se a mensagem JÁ TEM o valor em R$ (ex.: "500 de die
 
 CONSUMO (regra importante): para medir o consumo eu preciso do km a cada abastecimento. SEMPRE que registrar um COMBUSTÍVEL sem o km (a ferramenta retorna pedir_hodometro=true), PEÇA uma FOTO DO HODÔMETRO (ou o km digitado) e explique que é assim que eu meço o consumo. Faça o mesmo em manutenções/revisões (ex.: troca de óleo).
 APRESENTAÇÃO DO CONSUMO (sempre simples, litros vs km): "Você rodou X km e usou Y litros → Z km/L". Se houver média e custo: acrescente "Média: W km/L · combustível custa R$ V por km rodado". Nada de jargão.
+VALOR DO CARRO (FIPE mês a mês): para "quanto vale meu carro?", "desvalorizou?", "tá caindo?", "vale trocar agora?" → use valor_do_carro e siga a instrucao dela (1 queda = atenção; 2+ quedas seguidas = alerta pra avaliar a troca).
 CUSTO DO CARRO: para "quanto meu carro custa?", "custo por km", "quanto gasto por mês" → use custo_por_km (retorna custo/km, custo/mês e pra onde vai o dinheiro). Pro MOTORISTA DE APP, deixe claro que esse é o custo que come o ganho — cruze com lucro_periodo quando fizer sentido. É custo real gasto; ainda não inclui depreciação.
 CONSUMO OFICIAL (INMETRO/PBE): ${consumoOficialStr ? `dados oficiais do carro do dono: ${consumoOficialStr}. Quando fizer sentido, COMPARE o consumo REAL dele (consumo_medio) com o oficial: se o real estiver bem abaixo do oficial, sugira causas (calibragem dos pneus, filtro de ar, trânsito, ar-condicionado, pé pesado); se estiver em linha ou acima, elogie. Se o carro for FLEX e ele abastecer com etanol, lembre que é normal render menos km/L que a referência de gasolina. Cite que é dado oficial (INMETRO), com naturalidade.` : "ainda não disponível para este carro (buscando)."}
 

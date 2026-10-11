@@ -13,6 +13,7 @@ import { kmMedioDia, syncCalendar, projectRevisions } from "../_shared/calendar.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 import { secretOk, unauthorized } from "../_shared/secret.ts";
+import { calcTendencia, tendenciaDaConta, textoAlerta } from "../_shared/fipe-tendencia.ts";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
@@ -724,6 +725,14 @@ async function runValorVivo(): Promise<number> {
     else if (novo > old) tend = `subiu ${brl(novo - old)}`;
     else if (novo < old) tend = `caiu ${brl(old - novo)}`;
     else tend = "está estável";
+    // com HISTÓRICO mensal: diz também se é queda seguida (alerta de troca)
+    try {
+      let hq = supabase.from("fipe_historico").select("ref, valor_centavos").eq("codigo_fipe", s.codigo_fipe);
+      hq = hq.eq("ano_modelo", s.ano || row.ano_modelo);
+      const { data: hist } = await hq.order("ref", { ascending: false }).limit(7);
+      const t = calcTendencia((hist || []).map((h: any) => ({ ref: Number(h.ref), valor: Math.round(Number(h.valor_centavos) / 100) })));
+      if (t.nivel !== "sem_dados") tend = textoAlerta(t);
+    } catch { /* mantém o texto simples */ }
 
     const carro = s.carro || row.nome_modelo || "seu carro";
     const ok = await waSendTemplate(wa, s.phone, "valor_vivo_mensal", [carro, brl(novo), tend]);
@@ -733,6 +742,73 @@ async function runValorVivo(): Promise<number> {
     sent++;
   }
   return sent;
+}
+
+// ---------- ALERTA DE QUEDA DA FIPE (donos com carro cadastrado) ----------
+// Quando a FIPE vira de mês: 1 queda → "atenção, está em queda"; 2+ quedas seguidas → alerta pra
+// avaliar a troca. Só manda em QUEDA (valorização não vira mensagem). Template valor_vivo_mensal
+// (MARKETING, aprovado) com os botões "Quero avaliar"/"Parar avisos". Dedup 1x por mês por dono.
+// Liga/desliga: app_settings.fipe_alerta_auto. ?teste=<telefone> manda só pra esse número (sem dedup).
+async function runFipeTendencia(teste?: string | null): Promise<{ enviados: number; analisados: number; detalhes: any[] }> {
+  const out = { enviados: 0, analisados: 0, detalhes: [] as any[] };
+  if (!teste) {
+    const localHour = new Date(Date.now() - 3 * 3600_000).getUTCHours();
+    if (localHour < 9 || localHour >= 20) return out;
+    const { data: cfg } = await supabase.from("app_settings").select("fipe_alerta_auto").eq("id", 1).single();
+    if (!cfg?.fipe_alerta_auto) return out;
+  }
+  const { data: refRow } = await supabase.from("fipe_tabela").select("ref_mes, ref_ano").limit(1);
+  const rm = refRow?.[0]?.ref_mes, ra = refRow?.[0]?.ref_ano;
+  if (!rm || !ra) return out;
+  const refAtual = `${String(rm).padStart(2, "0")}/${ra}`;
+  const dueMes = `${ra}-${String(rm).padStart(2, "0")}-01`;
+
+  // quem pediu pra parar + quem já recebe o Valor Vivo (esse já leva a tendência no aviso dele)
+  const [{ data: offs }, { data: vv }] = await Promise.all([
+    supabase.from("whatsapp_events").select("from_phone").eq("kind", "fipe_alerta_off"),
+    supabase.from("valor_vivo_subs").select("phone").eq("active", true),
+  ]);
+  const fora = new Set([...(offs || []).map((o: any) => onlyDigits(o.from_phone)), ...(vv || []).map((o: any) => onlyDigits(o.phone))]);
+
+  let uq = supabase.from("users").select("id, name, phone").not("phone", "is", null);
+  if (teste) uq = uq.eq("phone", onlyDigits(teste));
+  const { data: users } = await uq;
+  const wa = await waS();
+  const brl = (n: number) => `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
+  const fnBase = `${SUPABASE_URL}/functions/v1`;
+
+  for (const u of users || []) {
+    if (out.enviados >= 40) break;
+    const phone = onlyDigits(u.phone || "");
+    if (!phone || (!teste && fora.has(phone))) continue;
+    const { data: accs } = await supabase.from("accounts")
+      .select("id, name, placa, marca, modelo, ano_modelo, ano_fabricacao, combustivel, fipe_codigo, fipe_ano")
+      .eq("user_id", u.id).eq("is_active", true).limit(1);
+    const acc = accs?.[0];
+    if (!acc) continue;
+    const r = await tendenciaDaConta(supabase, acc, fnBase, SERVICE_ROLE).catch(() => null);
+    out.analisados++;
+    const t = r?.tendencia;
+    const det: any = { user: u.id, carro: [acc.marca, acc.modelo].filter(Boolean).join(" "), nivel: t?.nivel || "sem_vinculo", resumo: t?.resumo || null };
+    out.detalhes.push(det);
+    if (!r || !t || (t.nivel !== "queda" && t.nivel !== "queda_seguida")) continue;
+    if (t.meses.at(-1)?.ref !== refAtual) continue; // histórico ainda sem o mês atual
+
+    if (!teste) {
+      const { error: dup } = await supabase.from("notification_log").insert({ user_id: u.id, kind: `fipe_tendencia:${refAtual}`, due_date: dueMes, channel: "whatsapp" });
+      if (dup) continue; // já avisado neste mês
+    }
+    const carro = [acc.marca, acc.modelo].filter(Boolean).join(" ") || r.modelo || "seu carro";
+    const ok = await waSendTemplate(wa, phone, "valor_vivo_mensal", [carro, brl(r.valor_atual || t.atual || 0), textoAlerta(t)]);
+    det.enviado = ok;
+    if (!ok) { console.error("fipe_tendencia: envio falhou (template?) — segura a rodada"); break; }
+    await supabase.from("whatsapp_events").insert({
+      from_phone: phone, user_id: u.id, kind: "proativo", status: "sent", raw: { fipe_tendencia: true },
+      parsed: { assunto: "fipe_tendencia", texto: `Seu ${carro} agora vale ${brl(r.valor_atual || 0)} na FIPE — ${textoAlerta(t)}`, nivel: t.nivel },
+    });
+    out.enviados++;
+  }
+  return out;
 }
 
 Deno.serve(async (req) => {
@@ -755,7 +831,17 @@ Deno.serve(async (req) => {
   if (url.searchParams.get("job") === "valor_vivo") {
     let n = 0;
     try { n = await runValorVivo(); } catch (e) { console.error("valor_vivo:", e); }
-    return new Response(JSON.stringify({ ok: true, job: "valor_vivo", sent: n }), { headers: { "Content-Type": "application/json" } });
+    // mesmo ciclo: alerta de queda da FIPE pros donos com carro cadastrado (se ligado)
+    let ft: any = null;
+    try { ft = await runFipeTendencia(); } catch (e) { console.error("fipe_tendencia:", e); }
+    return new Response(JSON.stringify({ ok: true, job: "valor_vivo", sent: n, fipe_tendencia: ft ? { enviados: ft.enviados, analisados: ft.analisados } : null }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // job manual/teste do alerta de queda: ?job=fipe_tendencia[&teste=<telefone>]
+  if (url.searchParams.get("job") === "fipe_tendencia") {
+    let ft: any = null;
+    try { ft = await runFipeTendencia(url.searchParams.get("teste")); } catch (e) { console.error("fipe_tendencia:", e); ft = { erro: String(e) }; }
+    return new Response(JSON.stringify({ ok: true, job: "fipe_tendencia", ...ft }), { headers: { "Content-Type": "application/json" } });
   }
 
   let sent = 0;

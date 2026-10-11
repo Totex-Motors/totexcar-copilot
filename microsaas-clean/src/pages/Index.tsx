@@ -29,7 +29,7 @@ export default function Index() {
   const { vehicle } = useVehicle(userId);
   const { data: totals } = useTotalSpent(userId);
 
-  const [fipe, setFipe] = useState<{ valor?: string; ref?: string; loading: boolean }>({ loading: false });
+  const [fipe, setFipe] = useState<{ valor?: string; ref?: string; tend?: { nivel: string; resumo: string; quedas_seguidas: number }; loading: boolean }>({ loading: false });
   useEffect(() => {
     const placa = (vehicle?.placa || "").replace(/[^A-Za-z0-9]/g, "");
     if (placa.length < 7) return;
@@ -37,7 +37,7 @@ export default function Index() {
     supabase.functions.invoke("quanto-vale", { body: { placa } })
       .then(({ data }) => {
         const d = data as any;
-        setFipe(d?.ok && d.valor ? { valor: d.valor, ref: d.ref, loading: false } : { loading: false });
+        setFipe(d?.ok && d.valor ? { valor: d.valor, ref: d.ref, tend: d.tendencia, loading: false } : { loading: false });
       })
       .catch(() => setFipe({ loading: false }));
   }, [vehicle?.placa]);
@@ -82,6 +82,12 @@ export default function Index() {
           <div className="eyebrow">Quanto vale o seu carro</div>
           <div className="val mono">{fipe.valor || (fipe.loading ? "..." : carro ? "Consultar" : "—")}</div>
           {carro && <span className="trend"><Car size={13} /> {carro}</span>}
+          {fipe.tend && fipe.tend.nivel !== "sem_dados" && (
+            <div style={{ fontSize: 12.5, marginTop: 8, fontWeight: 700, lineHeight: 1.35, padding: "7px 10px", borderRadius: 10, background: "rgba(255,255,255,.12)", color: fipe.tend.nivel.startsWith("queda") ? "#FED7AA" : fipe.tend.nivel === "valorizando" ? "#BBF7D0" : "#fff" }}>
+              {fipe.tend.nivel.startsWith("queda") ? "▼" : fipe.tend.nivel === "valorizando" ? "▲" : "●"} {fipe.tend.resumo.charAt(0).toUpperCase() + fipe.tend.resumo.slice(1)}
+              {fipe.tend.nivel === "queda_seguida" && <span style={{ display: "block", fontWeight: 500 }}>Atenção: quedas seguidas costumam indicar mais desvalorização.</span>}
+            </div>
+          )}
           <div className="hero-foot">
             <span className="updated">{fipe.valor ? `Tabela FIPE · ${fipe.ref || "atualizado"}` : "Descubra na tabela FIPE"}</span>
             <Link to="/vale" className="hero-cta">Ver detalhe <ChevronRight size={13} /></Link>
