@@ -143,6 +143,22 @@ export const MG_CSS = `
 .mg .cat.on .ci{background:var(--brand);color:#fff}
 .mg .cat.em .ci{background:var(--gain-soft);color:var(--warn)}
 .mg .cat .cl{font-size:11.5px;font-weight:700;line-height:1.15}
+.mg .cat.em{border-color:var(--gain-soft)}
+.mg .cat.em .ci{width:42px;height:42px;border-radius:12px;background:#E9852F;color:#fff}
+.mg .svc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mg .svc{position:relative;height:112px;border-radius:16px;overflow:hidden;box-shadow:var(--shadow);border:0;padding:0;cursor:pointer;text-align:left;background:linear-gradient(135deg,var(--brand) 0%,var(--brand-deep) 100%)}
+.mg .svc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.mg .svc::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,83,80,0) 35%,rgba(8,40,38,.82) 100%)}
+.mg .svc .sl{position:absolute;left:11px;right:10px;bottom:9px;z-index:2;color:#fff;font-size:14px;font-weight:800;line-height:1.15;text-shadow:0 1px 3px rgba(0,0,0,.35)}
+.mg .svc .si{position:absolute;top:12px;left:12px;z-index:2;width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.16);color:#fff;display:grid;place-items:center}
+.mg .svc.on{outline:3px solid var(--brand);outline-offset:2px}
+.mg .svc-hero{position:relative;height:150px;border-radius:18px;overflow:hidden;margin-bottom:12px;background:linear-gradient(135deg,var(--brand) 0%,var(--brand-deep) 100%)}
+.mg .svc-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.mg .svc-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,40,38,.05) 20%,rgba(8,40,38,.85) 100%)}
+.mg .svc-hero .ht{position:absolute;left:14px;right:14px;bottom:12px;z-index:2;color:#fff}
+.mg .svc-hero .ht small{font-size:11px;font-weight:800;letter-spacing:.1em;opacity:.85;text-transform:uppercase}
+.mg .svc-hero .ht h2{font-size:21px;font-weight:800;margin-top:2px;line-height:1.15}
+.mg .svc-hero .ht p{font-size:12.5px;opacity:.9;margin-top:2px}
 .mg .sbtn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 12px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
 .mg .sbtn.wa{background:var(--wa);color:#fff;border-color:transparent}
 .mg .sbtn.brand{background:var(--brand);color:#fff;border-color:transparent}

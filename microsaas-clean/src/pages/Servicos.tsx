@@ -19,6 +19,11 @@ const EMERG = ["guincho", "borracharia", "chaveiro", "socorro"];
 
 const HONRA_KEY = "radar_honra_pendente";
 
+// Fotos dos serviços (public/servicos/<valor>.webp, ~25 KB cada, mesmo estilo de luz e cor).
+// Serviço sem foto ainda aparece no mesmo card, em verde com o ícone.
+const FOTOS = new Set(["oficina", "freios", "estetica", "vidros", "ar_condicionado"]);
+const fotoDe = (v: string | null | undefined) => (v && FOTOS.has(v) ? `/servicos/${v}.webp` : null);
+
 export default function Servicos() {
   const { loading, result, buscar, registrarAcao } = useRadar();
   const [loc, setLoc] = useState("");
@@ -117,12 +122,14 @@ export default function Servicos() {
         {/* categorias */}
         <div>
           <div className="eyebrow" style={{ margin: "2px 2px 8px" }}>Todos os serviços</div>
-          <div className="catgrid">
+          <div className="svc-grid">
             {demais.map((s) => {
               const Ic = ICONS[s.value] || Wrench;
+              const foto = fotoDe(s.value);
               return (
-                <button key={s.value} className={`cat ${sel === s.value ? "on" : ""}`} onClick={() => rodar(s.value)}>
-                  <span className="ci"><Ic size={18} /></span><span className="cl">{s.label}</span>
+                <button key={s.value} className={`svc ${sel === s.value ? "on" : ""}`} onClick={() => rodar(s.value)}>
+                  {foto ? <img src={foto} alt="" loading="lazy" /> : <span className="si"><Ic size={18} /></span>}
+                  <span className="sl">{s.label}</span>
                 </button>
               );
             })}
@@ -133,7 +140,14 @@ export default function Servicos() {
         {loading && <div className="card pad" style={{ textAlign: "center", color: "var(--muted)" }}><Loader2 className="animate-spin" style={{ display: "inline" }} size={22} /><div style={{ marginTop: 6, fontSize: 13 }}>Procurando perto de você...</div></div>}
         {!loading && result && (
           <div>
-            <div className="eyebrow" style={{ margin: "2px 2px 8px" }}>{result.providers?.length || 0} opções · {result.service_label}</div>
+            <div className="svc-hero">
+              {fotoDe(sel) && <img src={fotoDe(sel)!} alt="" />}
+              <div className="ht">
+                <small>{result.providers?.length || 0} opções perto de você</small>
+                <h2>{result.service_label}</h2>
+                {result.location_text && !/^coordenadas/i.test(result.location_text) && <p>{result.location_text}</p>}
+              </div>
+            </div>
             <div className="stack">
               {(result.providers || []).map((p, i) => (
                 <div key={p.provider_id || i} className="card pad">
