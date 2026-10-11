@@ -4,6 +4,8 @@
 //
 // GET /functions/v1/fipe-sync?secret=...&part=N&parts=M   → processa 1 fatia (evita estourar memória).
 //   part=0 limpa a tabela antes de inserir; chame part=0..M-1 pra popular tudo (ex.: parts=8).
+// Toda fatia também grava o mês em public.fipe_historico (valorização/depreciação mês a mês).
+// Carga do histórico: ?mes=AAAA/MM&historico_only=1 (não mexe na fipe_tabela; só o histórico).
 
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
@@ -36,20 +38,23 @@ Deno.serve(async (req) => {
   // É o modo do cron mensal — 1 chamada popula tudo.
   if (url.searchParams.get("part") == null) {
     const parts = Math.max(1, parseInt(url.searchParams.get("parts") || "4", 10) || 4);
-    const base = `${SB}/functions/v1/fipe-sync?secret=${encodeURIComponent(url.searchParams.get("secret") || "")}&parts=${parts}`;
+    const extra = ["mes", "historico_only"].map((k) => url.searchParams.get(k) ? `&${k}=${encodeURIComponent(url.searchParams.get(k)!)}` : "").join("");
+    const base = `${SB}/functions/v1/fipe-sync?secret=${encodeURIComponent(url.searchParams.get("secret") || "")}&parts=${parts}${extra}`;
     const res: any[] = [];
     for (let p = 0; p < parts; p++) {
       try { const r = await fetch(`${base}&part=${p}`, { headers: { authorization: `Bearer ${KEY}` } }); res.push(await r.json()); }
       catch (e) { res.push({ part: p, erro: String(e) }); }
     }
     const total = res.reduce((a, x) => a + (x.inseridos || 0), 0);
-    return new Response(JSON.stringify({ ok: total > 0, orquestrado: true, total_inseridos: total, fatias: res }), { headers: { "content-type": "application/json" } });
+    const totalHist = res.reduce((a, x) => a + (x.historico || 0), 0);
+    return new Response(JSON.stringify({ ok: total > 0 || totalHist > 0, orquestrado: true, total_inseridos: total, total_historico: totalHist, fatias: res }), { headers: { "content-type": "application/json" } });
   }
 
   // 1) baixa o CSV (TSV) do mês mais recente (~5MB)
   let txt = "";
   try {
-    const csvUrl = url.searchParams.get("url") || (await urlMesAtual());
+    const mes = url.searchParams.get("mes"); // AAAA/MM (carga do histórico)
+    const csvUrl = url.searchParams.get("url") || (mes && /^\d{4}\/\d{2}$/.test(mes) ? `${HF_BASE}/${mes}/fipex-prices.csv` : await urlMesAtual());
     if (!csvUrl) return new Response(JSON.stringify({ ok: false, error: "sem_arquivo_mes" }), { status: 502, headers: { "content-type": "application/json" } });
     const r = await fetch(csvUrl);
     if (!r.ok) return new Response(JSON.stringify({ ok: false, error: `download ${r.status}` }), { status: 502, headers: { "content-type": "application/json" } });
@@ -86,18 +91,34 @@ Deno.serve(async (req) => {
     });
   }
 
-  // part=0 limpa a tabela antes de começar
-  if (part === 0) await fetch(`${SB}/rest/v1/fipe_tabela?codigo_fipe=neq.__none__`, { method: "DELETE", headers: H });
-
-  let inserted = 0;
+  const historicoOnly = url.searchParams.get("historico_only") === "1";
   const BATCH = 500;
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const slice = rows.slice(i, i + BATCH);
-    const res = await fetch(`${SB}/rest/v1/fipe_tabela`, { method: "POST", headers: { ...H, prefer: "return=minimal" }, body: JSON.stringify(slice) });
-    if (res.ok) inserted += slice.length;
-    else console.error("fipe-sync insert:", res.status, (await res.text()).slice(0, 200));
+  let inserted = 0;
+  if (!historicoOnly) {
+    // part=0 limpa a tabela antes de começar
+    if (part === 0) await fetch(`${SB}/rest/v1/fipe_tabela?codigo_fipe=neq.__none__`, { method: "DELETE", headers: H });
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const slice = rows.slice(i, i + BATCH);
+      const res = await fetch(`${SB}/rest/v1/fipe_tabela`, { method: "POST", headers: { ...H, prefer: "return=minimal" }, body: JSON.stringify(slice) });
+      if (res.ok) inserted += slice.length;
+      else console.error("fipe-sync insert:", res.status, (await res.text()).slice(0, 200));
+    }
+  }
+
+  // HISTÓRICO: 1 linha por código/ano/mês (upsert — rodar de novo o mesmo mês não duplica)
+  let historico = 0;
+  const hist = rows.filter((r) => r.ref_ano && r.ref_mes && r.valor_centavos > 0).map((r) => ({
+    codigo_fipe: r.codigo_fipe, ano_modelo: r.ano_modelo, ref: r.ref_ano * 100 + r.ref_mes, valor_centavos: r.valor_centavos,
+  }));
+  for (let i = 0; i < hist.length; i += BATCH) {
+    const slice = hist.slice(i, i + BATCH);
+    const res = await fetch(`${SB}/rest/v1/fipe_historico?on_conflict=codigo_fipe,ano_modelo,ref`, {
+      method: "POST", headers: { ...H, prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(slice),
+    });
+    if (res.ok) historico += slice.length;
+    else console.error("fipe-sync historico:", res.status, (await res.text()).slice(0, 200));
   }
   const ref = rows[0] ? `${rows[0].ref_mes}/${rows[0].ref_ano}` : "?";
-  console.log(`fipe-sync part ${part}/${parts}: ${inserted} carros (total carros no arquivo: ${carCount}, ref ${ref})`);
-  return new Response(JSON.stringify({ ok: true, part, parts, inseridos: inserted, total_carros_arquivo: carCount, referencia: ref }), { headers: { "content-type": "application/json" } });
+  console.log(`fipe-sync part ${part}/${parts}: ${inserted} carros, ${historico} no histórico (total carros no arquivo: ${carCount}, ref ${ref})`);
+  return new Response(JSON.stringify({ ok: true, part, parts, inseridos: inserted, historico, total_carros_arquivo: carCount, referencia: ref }), { headers: { "content-type": "application/json" } });
 });

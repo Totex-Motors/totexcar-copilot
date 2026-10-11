@@ -12,12 +12,13 @@
 // GET /functions/v1/quanto-vale?placa=ABC1D23
 // Deploy com verify_jwt=false (a página grátis é pública). Custo protegido pelo cache por placa.
 
+import { calcTendencia, MARCA_ALIAS, normFipe as norm, ranquearFipe as ranquear } from "../_shared/fipe-tendencia.ts";
+
 const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
 const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const H = { apikey: KEY, authorization: `Bearer ${KEY}`, "content-type": "application/json" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
 
-const norm = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 const brl = (cent: number) => `R$ ${(cent / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 async function sbGet(path: string): Promise<any> {
@@ -60,30 +61,6 @@ async function consultaPlaca(placa: string): Promise<any | null> {
   } catch { return null; }
 }
 
-// marca da placa → termos que aparecem na marca da FIPE (apelidos comuns)
-const MARCA_ALIAS: Record<string, string[]> = {
-  gm: ["chevrolet"], "general motors": ["chevrolet"], chevrolet: ["chevrolet"],
-  vw: ["volkswagen"], volkswagen: ["volkswagen"],
-  mmc: ["mitsubishi"], mercedes: ["mercedes"], "mercedes benz": ["mercedes"],
-  gwm: ["gwm"], byd: ["byd"], caoa: ["caoa", "chery"], "caoa chery": ["caoa", "chery"], chery: ["chery"],
-};
-
-// escolhe a melhor variante por sobreposição de tokens do modelo (+ dica de combustível)
-function ranquear(rows: any[], modeloPlaca: string, comb: string | null, anoAlvo: number | null) {
-  const toks = norm(modeloPlaca).split(" ").filter((t) => t.length >= 2);
-  const combN = norm(comb || "");
-  const isHib = /hibrid|phev|hev/.test(combN), isDies = /diesel/.test(combN), isEle = /eletric|ev\b/.test(combN);
-  return rows.map((r: any) => {
-    const nm = r.modelo_norm || norm(r.nome_modelo);
-    let sc = toks.reduce((a, t) => a + (nm.includes(t) ? 1 : 0), 0);
-    if (isHib) sc += /hibrid/.test(nm) ? 2 : -1;
-    if (isDies && /diesel/.test(nm)) sc += 2;
-    if (isEle && /eletric/.test(nm)) sc += 2;
-    if (anoAlvo && r.ano_modelo === anoAlvo) sc += 0.5; // desempate: ano exato
-    return { r, sc };
-  }).filter((x) => x.sc > 0).sort((a, b) => b.sc - a.sc);
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, x-client-info, apikey, content-type, x-supabase-api-version", "access-control-allow-methods": "GET, POST, OPTIONS" } });
   const url = new URL(req.url);
@@ -103,7 +80,7 @@ Deno.serve(async (req) => {
     const r = c?.[0]?.resultado;
     const fresco = c?.[0] && Date.now() - new Date(c[0].fetched_at).getTime() < 20 * 24 * 3600_000;
     const mesmoMes = !refAtual || !r?.ref || r.ref === refAtual;
-    if (r && fresco && mesmoMes) return json({ ...r, cached: true });
+    if (r && fresco && mesmoMes && r.tendencia) return json({ ...r, cached: true });
     // FIPE virou de mês (ou cache velho): reaproveita o VEÍCULO guardado — os dados da placa não mudam
     if (r?.marca && (r?.veiculo_placa?.modelo || r?.modelo_placa)) {
       veh = r.veiculo_placa || { marca: r.marca, modelo: r.modelo_placa, ano: r.ano, ano_fab: null, combustivel: r.combustivel, cor: r.cor };
@@ -137,6 +114,9 @@ Deno.serve(async (req) => {
     out.valor_num = Math.round(best.valor_centavos / 100);
     out.codigo_fipe = best.codigo_fipe;
     out.ref = best.ref_mes && best.ref_ano ? `${String(best.ref_mes).padStart(2, "0")}/${best.ref_ano}` : null;
+    // TENDÊNCIA mês a mês (fipe_historico): valorizou, estável, em queda, quedas seguidas
+    const hist = (await sbGet(`fipe_historico?codigo_fipe=eq.${encodeURIComponent(best.codigo_fipe)}&ano_modelo=eq.${best.ano_modelo}&select=ref,valor_centavos&order=ref.desc&limit=7`)) || [];
+    out.tendencia = calcTendencia(hist.map((h: any) => ({ ref: Number(h.ref), valor: Math.round(Number(h.valor_centavos) / 100) })));
   }
 
   if (out.valor_num > 0) await sbUpsert("valor_cache", { placa, resultado: out, fetched_at: new Date().toISOString() });

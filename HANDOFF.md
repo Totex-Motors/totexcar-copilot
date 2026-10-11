@@ -3,6 +3,13 @@
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
 > Última atualização: 2026-07-22.
 
+## 📉 HISTÓRICO DA FIPE + ALERTA DE QUEDA (2026-10-11)
+- **Tabela `fipe_historico`** (código FIPE, ano-modelo, ref AAAAMM, valor): o `fipe-sync` grava todo mês (a `fipe_tabela` continua sendo só o mês atual). Carga inicial jan–out/2026 com `?mes=AAAA/MM&historico_only=1`.
+- **`_shared/fipe-tendencia.ts`:** `calcTendencia` (valorizando / estável / queda / queda_seguida; estável = variação < 0,3%), `textoAlerta` e `tendenciaDaConta` (vincula o carro do dono ao código FIPE em `accounts.fipe_codigo/fipe_ano`: placa via quanto-vale → senão marca/modelo/ano).
+- **Regra do dono:** 1 queda = "atenção, está em queda; se cair de novo eu aviso"; 2+ quedas seguidas = alerta pra avaliar a troca. Texto nunca promete o futuro (FIPE é referência).
+- **Onde aparece:** card do app (quanto-vale devolve `tendencia`), tool `valor_do_carro` no WhatsApp, Valor Vivo (texto com quedas seguidas) e alerta mensal `runFipeTendencia` (car-expiration-alerts, no mesmo cron do valor_vivo; template `valor_vivo_mensal`, só em queda, dedup 1x/mês, respeita "Parar avisos" via `whatsapp_events` kind `fipe_alerta_off`).
+- **Liga/desliga:** `app_settings.fipe_alerta_auto` (começa false). Teste: `car-expiration-alerts?job=fipe_tendencia&teste=<telefone>&secret=...`.
+
 ## 💲 FIPE "Quanto vale" (2026-10-11) — cache segurava o mês anterior (CORRIGIDO e NO AR)
 - A `fipe_tabela` atualizou certo no dia 6 (ref 10/2026, 30.550 carros), mas o `valor_cache` da `quanto-vale` (20 dias por placa) seguia mostrando 09/2026.
 - Correção (commit 0ca59cc): se a referência guardada difere da `fipe_tabela`, recalcula na hora reaproveitando o veículo guardado (`veiculo_placa`), sem pagar a consulta de placa de novo.
