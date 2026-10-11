@@ -253,6 +253,34 @@ async function enviarContatoCopiloto(phone: string, userId: string, forcar = fal
   return ok;
 }
 
+// NAVEGADOR PREFERIDO do motorista (Waze padrão — o mais usado no Brasil). O pino de localização
+// já deixa escolher o app no toque; o LINK de rota abre direto no app preferido e já inicia a navegação.
+type NavApp = "waze" | "google" | "apple";
+const NAV_NOME: Record<NavApp, string> = { waze: "Waze", google: "Google Maps", apple: "Apple Maps" };
+const NAV_PREF_RE = /\b(?:uso|usa|prefiro|quero|meu navegador (?:é|e)|navega(?:r|ção)? (?:com|pelo|no)|abre? (?:no|com|pelo)|abrir (?:no|com|pelo))\s+(?:o\s+)?(waze|google maps|maps do google|apple maps|mapas da apple|mapas do iphone)\b/i;
+function navDoTexto(t: string): NavApp | null {
+  const m = String(t || "").match(NAV_PREF_RE);
+  if (!m) return null;
+  const v = m[1].toLowerCase();
+  return v.includes("waze") ? "waze" : v.includes("google") ? "google" : "apple";
+}
+async function navPref(phone: string): Promise<NavApp> {
+  const { data } = await supabase.from("whatsapp_events").select("parsed").eq("from_phone", phone)
+    .eq("kind", "navegador").order("created_at", { ascending: false }).limit(1);
+  const a = data?.[0]?.parsed?.app;
+  return a === "google" || a === "apple" ? a : "waze";
+}
+// link que ABRE a rota já navegando (destino por coordenada quando houver; senão por texto)
+function rotaLink(app: NavApp, dest: { lat?: number | null; lng?: number | null; q?: string }): string {
+  const temLL = dest.lat != null && dest.lng != null && Number.isFinite(Number(dest.lat)) && Number.isFinite(Number(dest.lng));
+  const ll = temLL ? `${Number(dest.lat)},${Number(dest.lng)}` : "";
+  const q = encodeURIComponent(String(dest.q || ll));
+  if (app === "google") return `https://www.google.com/maps/dir/?api=1&destination=${temLL ? encodeURIComponent(ll) : q}&travelmode=driving&dir_action=navigate`;
+  // Apple: destino por TEXTO (daddr com coordenada teve regressão no iOS 18.4)
+  if (app === "apple") return `https://maps.apple.com/?daddr=${q}&dirflg=d`;
+  return temLL ? `https://waze.com/ul?ll=${encodeURIComponent(ll)}&navigate=yes` : `https://waze.com/ul?q=${q}&navigate=yes`;
+}
+
 // texto pra ser OUVIDO: tira emoji, negrito, marcador de lista e separa os links (vão pra fila)
 const URL_RE = /https?:\/\/[^\s)>\]]+/gi;
 function limparVoz(s: string): string {
@@ -294,7 +322,7 @@ MODO CARRO ATIVO (vale MAIS que qualquer regra de formato acima): o dono está D
 1) No máximo 2 frases curtas (~250 caracteres). Sem lista, sem negrito, sem emoji, sem link, sem linha digitável/código de barras.
 2) NUNCA peça foto, toque em botão, digitação ou para abrir o app agora. Se faltar um dado, pergunte por voz, UMA coisa por vez.
 3) O que é ÚTIL dirigindo vai NA HORA: localização/rota (vira mapa na tela do carro), fotos de carros e documentos (vão pro celular). Só fica guardado pra quando ele parar (é só dizer "parei") o que não serve dirigindo: link de pagamento, link do app, plano de viagem completo, texto de recurso de multa. Fale o essencial em 1 frase.
-4) Oficina/serviço: cite no máximo 2 opções pelo NOME e bairro; a localização delas já vai no chat (um toque abre a rota na tela do carro) e ele também pode pedir à Siri ou ao Gemini "navegar até <nome>".
+4) Oficina/serviço: cite no máximo 2 opções pelo NOME e bairro; a localização delas já vai no chat (um toque abre a rota na tela do carro) e ele também pode pedir à Siri ou ao Gemini "navegar até <nome>". As rotas abrem no navegador preferido dele (Waze por padrão); pra trocar é só dizer "uso Google Maps", "uso Waze" ou "uso Apple Maps".
 5) Viagem: só distância, combustível ida e volta e pedágio total; a rota até o destino já vai no chat. Vender/avaliar o carro: ofereça fazer quando ele parar.
 6) Segurança primeiro: luz de alerta, fumaça, barulho estranho, pneu, superaquecimento → mande parar em local seguro ANTES de qualquer outra coisa.
 7) Termine com pergunta de sim ou não só quando precisar de decisão.`;
@@ -1516,7 +1544,7 @@ const TOOL_SPECS = [
   },
 ];
 
-type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[]; mapas?: string[] };
+type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[]; mapas?: string[]; nav?: NavApp };
 
 // ArquivoZap: sobe os bytes do documento pro Storage e grava a ficha (o arquivamento é automático —
 // dispara em background depois do turno, com a classificação que a IA já fez na foto/PDF).
@@ -1788,7 +1816,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           const ok = prov.latitude != null && prov.longitude != null
             && await waSendLocation(sPin, String(user.phone), lat, lng, prov.name, prov.address || undefined);
           if (ok) pinos++;
-          else ctx.mapas = [...(ctx.mapas || []), `📍 ${prov.name}: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(prov.address ? `${prov.name} ${prov.address}` : prov.name)}`];
+          else ctx.mapas = [...(ctx.mapas || []), `📍 ${prov.name} (${NAV_NOME[ctx.nav || "waze"]}): ${rotaLink(ctx.nav || "waze", { q: prov.address ? `${prov.name} ${prov.address}` : prov.name })}`];
         }
       }
 
@@ -1850,7 +1878,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         }
       }
       if (ctx.carMode && args?.destino) {
-        ctx.mapas = [...(ctx.mapas || []), `🗺️ Rota até ${args.destino}: https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(String(args.destino))}`];
+        ctx.mapas = [...(ctx.mapas || []), `🗺️ Rota até ${args.destino} (${NAV_NOME[ctx.nav || "waze"]}): ${rotaLink(ctx.nav || "waze", { q: String(args.destino) })}`];
       }
       // CAMINHO PRINCIPAL: edge viagem (mesmo motor do app) — pesquisa ao vivo, monta o plano
       // ESTRUTURADO e SALVA em viagem_planos → a página /viagem abre em cards sem recalcular.
@@ -4389,6 +4417,13 @@ ${JSON.stringify(snapshot)}`;
       const txtC = inputText.trim();
       const mc = await modoCarroGet(msg.phone);
       carMode = mc.ativo;
+      const navEscolhido = navDoTexto(txtC);
+      if (navEscolhido && restoComando(txtC, NAV_PREF_RE).length < 12) {
+        await supabase.from("whatsapp_events").insert({ from_phone: msg.phone, user_id: user.id, kind: "navegador", status: "set", raw: {}, parsed: { app: navEscolhido } });
+        await sendText(msg.phone, `Combinado: as rotas que eu mandar vão abrir no ${NAV_NOME[navEscolhido]}, já navegando. Na tela do carro aparece o mapa dele.`);
+        await marcaEvt("navegador_pref");
+        return okResp();
+      }
       if (CONTATO_RE.test(txtC) && restoComando(txtC, CONTATO_RE).length < 4) {
         await enviarContatoCopiloto(msg.phone, user.id, true);
         await sendText(msg.phone, `Aí está meu contato. Salve como *${CARRO_CONTATO}* que a Siri (CarPlay) e o Gemini (Android Auto) me acham pela voz. Ex.: "Ei Siri, manda WhatsApp pro ${CARRO_CONTATO}: abasteci 40 litros". 🚗`);
@@ -4432,7 +4467,7 @@ ${JSON.stringify(snapshot)}`;
       const { data: prevEvt } = await supabase.from("whatsapp_events")
         .select("created_at").eq("from_phone", msg.phone)
         .lt("created_at", eventAt)
-        .not("kind", "in", "(status_evt,status_fail,modo_carro,contato_copiloto)")
+        .not("kind", "in", "(status_evt,status_fail,modo_carro,contato_copiloto,navegador)")
         .order("created_at", { ascending: false }).limit(1);
       const lastAt = prevEvt?.[0]?.created_at ? Date.parse(prevEvt[0].created_at) : 0;
       showMenu = !lastAt || (Date.now() - lastAt) > 12 * 3600 * 1000;
@@ -4611,7 +4646,7 @@ ${JSON.stringify(snapshot)}`;
     const aiConfig = await getAIConfig();
     // ctx nomeado: os handlers marcam ctx.shownCars quando mostram a vitrine, e o motor de
     // intenção lê isso depois pra não mandar oferta repetida.
-    const ctx: ToolCtx = { user, vehicle, today, inputText, carMode };
+    const ctx: ToolCtx = { user, vehicle, today, inputText, carMode, nav: carMode ? await navPref(msg.phone) : undefined };
     let replyText = "";
     try {
       replyText = await runAgent(aiConfig, carMode ? system + MODO_CARRO_PROMPT : system, parts, ctx);
