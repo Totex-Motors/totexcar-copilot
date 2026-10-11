@@ -20,8 +20,12 @@ const EMERG = ["guincho", "borracharia", "chaveiro", "socorro"];
 const HONRA_KEY = "radar_honra_pendente";
 
 // Fotos dos serviços (public/servicos/<valor>.webp, ~25 KB cada, mesmo estilo de luz e cor).
-// Serviço sem foto ainda aparece no mesmo card, em verde com o ícone.
-const FOTOS = new Set(["oficina", "freios", "estetica", "vidros", "ar_condicionado"]);
+// Emergências usam a foto só na faixa do resultado (na grade continuam com ícone).
+// Serviço novo sem foto aparece no mesmo card, em verde com o ícone.
+const FOTOS = new Set([
+  "oficina", "freios", "autoeletrica", "bateria", "pneus", "vidros", "ar_condicionado", "funilaria",
+  "estetica", "vistoria", "eletrico_hibrido", "borracharia", "chaveiro", "guincho", "socorro",
+]);
 const fotoDe = (v: string | null | undefined) => (v && FOTOS.has(v) ? `/servicos/${v}.webp` : null);
 
 export default function Servicos() {
