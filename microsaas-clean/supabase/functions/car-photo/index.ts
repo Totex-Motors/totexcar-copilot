@@ -2,9 +2,11 @@
 // POST { action: "status" }                         → foto atual (herda a foto de capa da venda, se houver)
 // POST { action: "upload", image_base64, mime }     → foto do dono: recorta o fundo (Photoroom) e guarda
 // POST { action: "remover" }                        → tira a foto (volta pro convite)
+// POST ?secret=… { action: "teste_recorte", image_url } → admin: testa o recorte (não mexe em conta)
 // Auth: JWT do usuário. A chave do Photoroom fica no servidor (app_settings.photoroom_api_key).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { herdarFotoDaVenda, salvarFotoCarro } from "../_shared/car-photo.ts";
+import { baixarImagem, herdarFotoDaVenda, salvarFotoCarro } from "../_shared/car-photo.ts";
+import { secretOk } from "../_shared/secret.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -21,6 +23,17 @@ const MAX_BYTES = 8 * 1024 * 1024;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  const url = new URL(req.url);
+  if (secretOk(url)) {
+    const b = await req.json().catch(() => ({}));
+    if (b?.action === "teste_recorte" && b?.image_url) {
+      const img = await baixarImagem(String(b.image_url));
+      if (!img) return json({ error: "download_falhou" }, 400);
+      const salvo = await salvarFotoCarro(admin, "teste", img);
+      return json({ ok: !!salvo, ...(salvo || {}) });
+    }
+    return json({ error: "acao_desconhecida" }, 400);
+  }
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: ud } = token ? await admin.auth.getUser(token) : { data: null as any };
   const userId = ud?.user?.id;
