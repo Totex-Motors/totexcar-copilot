@@ -3,6 +3,11 @@
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
 > Última atualização: 2026-07-22.
 
+## 💲 FIPE "Quanto vale" (2026-10-11) — cache segurava o mês anterior (CORRIGIDO e NO AR)
+- A `fipe_tabela` atualizou certo no dia 6 (ref 10/2026, 30.550 carros), mas o `valor_cache` da `quanto-vale` (20 dias por placa) seguia mostrando 09/2026.
+- Correção (commit 0ca59cc): se a referência guardada difere da `fipe_tabela`, recalcula na hora reaproveitando o veículo guardado (`veiculo_placa`), sem pagar a consulta de placa de novo.
+- ⚠️ Publicada via workflow_dispatch A PARTIR DA BRANCH `claude/carousel-card-photos-c72jz4` (o PR #188 ainda não foi mesclado). Não redeployar `quanto-vale` a partir da `main` antes do merge, senão a correção some.
+
 ## 🚗 MODO CARRO (2026-10-11) — Co-pilot no CarPlay e no Android Auto, sem app nativo
 - **Decisão:** o caminho universal é o assistente do carro mandando WhatsApp pro Co-pilot (Siri no CarPlay, Gemini no Android Auto). Gemini NÃO serve de padrão: não tem app de CarPlay e não aceita integração de terceiros aberta. App nativo de CarPlay/Android Auto descartado por ora (nenhuma categoria serve; custo alto).
 - **Ligar:** "modo carro", "tô dirigindo", "vou pegar estrada" ou `/carro` (3h, renova a cada mensagem). **Desligar:** "parei", "estacionei", "sair do modo carro".
