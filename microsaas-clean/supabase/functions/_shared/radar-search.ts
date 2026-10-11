@@ -19,7 +19,8 @@
 // É estimativa, não fatura: o valor real varia com os tokens da resposta.
 // gpt-4o-search-preview cobra a busca embutida + os tokens gerados.
 export const CUSTO_ESTIMADO_SEARCH_PREVIEW = 0.03;
-export const CUSTO_ESTIMADO_GOOGLE_PLACES = 0.017;
+export const CUSTO_ESTIMADO_GOOGLE_PLACES = 0.035; // Text Search com nota/aberto-agora (SKU Enterprise)
+export const CUSTO_ESTIMADO_FOTO_PLACES = 0.007;    // Place Photos, por foto
 
 export type ProviderStatus = "publico" | "parceiro_totex" | "assistencia_contratada";
 
@@ -53,6 +54,8 @@ export interface RawProvider {
   honor_rate?: number | null;    // % de resgates em que o cliente confirmou que o benefício foi aplicado (null = sem dados)
   redeem_count?: number | null;
   top?: boolean;                 // está entre os 3 do topo da categoria/cidade (regra do topo)
+  photo_url?: string | null;     // foto do lugar (Google Places; URL pública, sem a chave)
+  maps_url?: string | null;      // ficha do lugar no Google Maps
 }
 
 // REGRA DO TOPO (pública, igual pra todo mundo): ninguém paga pra subir; quem dá o maior benefício
@@ -512,18 +515,30 @@ REGRAS ABSOLUTAS:
 // FONTE 2 (opcional): Google Places oficial — só liga se houver chave no /admin.
 // Via legítima pra nota/avaliações/aberto-agora confiáveis.
 // ---------------------------------------------------------------------------
+// URL pública da FOTO (skipHttpRedirect devolve o googleusercontent, sem expor a chave)
+async function placesFotoUrl(apiKey: string, photoName: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&skipHttpRedirect=true&key=${encodeURIComponent(apiKey)}`, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => null);
+    return j?.photoUri || null;
+  } catch { return null; }
+}
+
 export async function searchViaGooglePlaces(
   apiKey: string,
-  params: { serviceType: string; latitude?: number | null; longitude?: number | null; locationText?: string; radiusKm?: number; limit?: number },
+  params: { serviceType: string; latitude?: number | null; longitude?: number | null; locationText?: string; radiusKm?: number; limit?: number; freeQuery?: string | null; fotos?: boolean },
 ): Promise<{ providers: RawProvider[]; cost: number; durationMs: number; error: string | null }> {
   const t0 = Date.now();
   const tipo = normalizeServiceType(params.serviceType);
   const def = SERVICE_TYPES[tipo];
   const limite = Math.min(Math.max(params.limit ?? 6, 3), 10);
+  // "coordenadas -23.5, -46.8" (só GPS) não ajuda o texto: o GPS entra pelo locationBias
+  const local = /^coordenadas/i.test(String(params.locationText || "")) ? "" : String(params.locationText || "");
 
   try {
     const body: Record<string, unknown> = {
-      textQuery: `${def.termos[0]} ${params.locationText || ""}`.trim(),
+      textQuery: `${params.freeQuery || def.termos[0]} ${local}`.trim(),
       languageCode: "pt-BR",
       regionCode: "BR",
       maxResultCount: limite,
@@ -545,7 +560,7 @@ export async function searchViaGooglePlaces(
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.location,places.rating," +
           "places.userRatingCount,places.nationalPhoneNumber,places.websiteUri," +
-          "places.currentOpeningHours.openNow,places.primaryTypeDisplayName",
+          "places.currentOpeningHours.openNow,places.primaryTypeDisplayName,places.photos,places.googleMapsUri",
       },
       body: JSON.stringify(body),
     });
@@ -572,10 +587,22 @@ export async function searchViaGooglePlaces(
       open_24h: null, mobile_service: null, supports_ev: null, supports_hybrid: null,
       source: "google_places",
       external_id: p?.id ?? null,
+      maps_url: p?.googleMapsUri ?? null,
+      photo_url: null,
+      _foto: p?.photos?.[0]?.name || null,
     })).filter((p: RawProvider) => p.name);
 
+    // FOTOS (como no Modo Viagem): 1 por lugar, em paralelo; sem foto o card só não mostra a imagem
+    let fotos = 0;
+    if (params.fotos !== false) {
+      await Promise.all(providers.map(async (pv: any) => {
+        if (pv._foto) { pv.photo_url = await placesFotoUrl(apiKey, pv._foto); if (pv.photo_url) fotos++; }
+        delete pv._foto;
+      }));
+    } else providers.forEach((pv: any) => { delete pv._foto; });
+
     // Places cobra por requisição (SKU Text Search) — registrado pra auditoria de custo
-    return { providers, cost: CUSTO_ESTIMADO_GOOGLE_PLACES, durationMs: Date.now() - t0, error: null };
+    return { providers, cost: CUSTO_ESTIMADO_GOOGLE_PLACES + fotos * CUSTO_ESTIMADO_FOTO_PLACES, durationMs: Date.now() - t0, error: null };
   } catch (e) {
     return { providers: [], cost: 0, durationMs: Date.now() - t0, error: String(e) };
   }

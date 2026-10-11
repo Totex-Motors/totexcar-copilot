@@ -27,6 +27,7 @@ export interface RadarProvider {
   whatsapp_uri?: string | null;
   maps_uri?: string | null;
   website_uri?: string | null;
+  photo_url?: string | null;     // foto do lugar (Google Places)
   // Clube de Parceiros
   partner_id?: string | null;
   benefit?: string | null;

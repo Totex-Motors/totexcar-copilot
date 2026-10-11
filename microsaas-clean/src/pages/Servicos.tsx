@@ -137,16 +137,24 @@ export default function Servicos() {
             <div className="stack">
               {(result.providers || []).map((p, i) => (
                 <div key={p.provider_id || i} className="card pad">
+                  {/* foto do lugar (Google Places) — igual aos cards do Modo Viagem; some se não carregar */}
+                  {p.photo_url && (
+                    <img src={p.photo_url} alt={p.name} loading="lazy" referrerPolicy="no-referrer"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      style={{ width: "100%", height: 150, objectFit: "cover", borderRadius: 12, marginBottom: 10, display: "block", background: "var(--brand-soft)" }} />
+                  )}
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <div style={{ minWidth: 0 }}>
                       <div className="prov-name">{p.name} {p.provider_status === "parceiro_totex" && <span className="badge-p">{p.top ? "No topo" : "Parceiro"}</span>}</div>
+                      {p.category && p.category !== result.service_label && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{p.category}</div>}
                       {p.address && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3, display: "flex", gap: 4 }}><MapPin size={13} style={{ flex: "none", marginTop: 1 }} /> {p.address}</div>}
                     </div>
-                    {p.distance_km != null && <span style={{ color: "var(--brand)", fontWeight: 700, flex: "none" }}>{p.distance_km} km</span>}
+                    {p.distance_km != null && <span style={{ color: "var(--brand)", fontWeight: 700, flex: "none" }}>{Number(p.distance_km).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km</span>}
                   </div>
                   <div className="prov-sig">
                     {p.rating != null && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Star size={13} style={{ fill: "#F5B301", color: "#F5B301" }} /> <b style={{ color: "var(--ink)" }}>{p.rating.toFixed(1)}</b>{p.review_count != null && ` (${p.review_count})`}</span>}
-                    {p.open_now === true && <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--good)" }}><Clock size={13} /> Aberto</span>}
+                    {p.open_now === true && <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--good)" }}><Clock size={13} /> Aberto agora</span>}
+                    {p.open_now === false && <span style={{ display: "flex", alignItems: "center", gap: 4, color: "#B45309" }}><Clock size={13} /> Fechado agora</span>}
                     {p.open_24h && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={13} /> 24h</span>}
                     {p.mobile_service && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Truck size={13} /> Vai até você</span>}
                   </div>

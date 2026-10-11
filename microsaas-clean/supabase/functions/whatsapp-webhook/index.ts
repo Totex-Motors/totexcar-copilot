@@ -1722,7 +1722,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       const buscaLivre = String(args?.busca_livre || "").trim() || null;
       const usarPlaces = sCfg?.radar_search_provider === "google_places" && !!sCfg?.google_places_api_key && !buscaLivre;
       const r = usarPlaces
-        ? await searchViaGooglePlaces(sCfg.google_places_api_key, { serviceType, locationText: local, limit: limite })
+        ? await searchViaGooglePlaces(sCfg.google_places_api_key, { serviceType, locationText: local, limit: limite, fotos: false })
         : await searchViaSearchPreview(sCfg?.openai_api_key || "", { serviceType, locationText: local, vehicle: carro, limit: limite, freeQuery: buscaLivre });
 
       // lojas do ecossistema ganham selo
@@ -1777,6 +1777,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           service_attributes: {
             open_24h: prov.open_24h, mobile_service: prov.mobile_service,
             supports_ev: prov.supports_ev, supports_hybrid: prov.supports_hybrid,
+            maps_url: prov.maps_url ?? null,
           },
           last_checked_at: new Date().toISOString(),
         }, { onConflict: "external_source,external_id" }).select().single();
