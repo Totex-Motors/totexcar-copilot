@@ -176,8 +176,18 @@ export const usePostsaleConfig = (enabled: boolean, dealership?: string) =>
 
 export const usePostsaleCreate = () =>
   useMutation({
-    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string; tag_label?: string; km_entrega?: number }) =>
+    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string; tag_label?: string; km_entrega?: number; vehicle_id?: string }) =>
       callDealer("postsale_create", p),
+  });
+
+// estoque da loja (marketplace) pro pós-venda escolher o carro vendido — foto de capa obrigatória
+export interface EstoqueCarro { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null }
+export const useEstoqueLista = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["estoque-lista", dealership || null],
+    queryFn: async () => ((await callDealer("estoque_lista", dealership ? { dealership } : {})).carros || []) as EstoqueCarro[],
+    enabled,
+    staleTime: 5 * 60_000,
   });
 
 // ===== Etiquetas QR do para-brisa (car_tags) =====

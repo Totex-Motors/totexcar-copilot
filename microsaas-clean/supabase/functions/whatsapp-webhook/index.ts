@@ -28,6 +28,7 @@ const UAZAPI_URL = (Deno.env.get("UAZAPI_URL") || "").replace(/\/+$/, "");
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
+import { salvarFotoCarro } from "../_shared/car-photo.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -316,6 +317,11 @@ function paraVoz(text: string): { fala: string; links: string[]; mapas: string[]
   if (links.length) fala += `${fala ? "\n" : ""}Guardei o link pra quando você parar.`;
   return { fala, links, mapas };
 }
+
+// FOTO DO CARRO pelo WhatsApp (card "Meu carro"): legenda "foto do meu carro" na própria foto,
+// ou o pedido antes ("quero colocar a foto do meu carro") e a foto em até 20 min.
+const FOTO_CARRO_LEGENDA_RE = /\bfoto\b.{0,20}\b(meu|do|nosso)\s+carr(o|inho)\b|^\s*(meu|o meu)\s+carr(o|inho)\W*$/i;
+const FOTO_CARRO_PEDIDO_RE = /\b(colocar|coloca|coloco|botar|bota|boto|mudar|muda|mudo|trocar|troca|troco|atualizar|atualizo|mandar|mando|enviar|envio|adicionar|adiciono|por|p[ôo]r|ponho)\b.{0,25}\bfoto\b.{0,20}\bcarr(o|inho)\b/i;
 
 const MODO_CARRO_PROMPT = `
 
@@ -4382,6 +4388,29 @@ ${JSON.stringify(snapshot)}`;
         img = await downloadUazapiMedia(msg.baseUrl || creds.url, msg.token || creds.token, msg.content, msg.messageid);
         if (!img && msg.mediaUrl) img = await fetchImageBase64(msg.mediaUrl); // fallback
       }
+      if (img && vehicle?.id) {
+        let ehFotoCarro = FOTO_CARRO_LEGENDA_RE.test(String(inputText || ""));
+        if (!ehFotoCarro) {
+          const desde = new Date(Date.now() - 20 * 60_000).toISOString();
+          const { data: pend } = await supabase.from("whatsapp_events").select("id")
+            .eq("from_phone", msg.phone).eq("kind", "foto_carro_pending").eq("status", "pending").gte("created_at", desde).limit(1);
+          if (pend?.[0]) { ehFotoCarro = true; await supabase.from("whatsapp_events").update({ status: "used" }).eq("id", pend[0].id); }
+        }
+        if (ehFotoCarro) {
+          const bin = atob(img.data);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          const salvo = await salvarFotoCarro(supabase, `cliente/${vehicle.id}`, { bytes, mime: img.media_type || "image/jpeg" });
+          if (salvo) {
+            await supabase.from("accounts").update({ foto_url: salvo.url, foto_fonte: "cliente", foto_at: new Date().toISOString() }).eq("id", vehicle.id);
+            await sendText(msg.phone, `Pronto! 📸 ${salvo.recortada ? "Recortei o fundo e coloquei" : "Coloquei"} a foto do seu ${[vehicle.marca, vehicle.modelo].filter(Boolean).join(" ") || "carro"} no app, em Meu carro. Quando quiser trocar, é só mandar outra com a legenda "foto do meu carro".`);
+          } else {
+            await sendText(msg.phone, "Recebi a foto do seu carro, mas não consegui salvar agora 😕 Pode mandar de novo daqui a pouco?");
+          }
+          if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "foto_carro", ok: !!salvo }, user_id: user.id }).eq("id", eventId);
+          return new Response(JSON.stringify({ ok: true, foto_carro: !!salvo }), { headers: { ...cors, "Content-Type": "application/json" } });
+        }
+      }
       if (img) parts.push({ kind: "image", media_type: img.media_type, data: img.data });
       else {
         await sendText(msg.phone, "Recebi sua imagem 📷 mas não consegui abrir. Pode reenviar ou me mandar por texto?");
@@ -4656,6 +4685,14 @@ ${JSON.stringify(snapshot)}`;
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: `gpt_${gptProduto}`, input: inputText }, user_id: user.id }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, gpt: gptProduto }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
+    }
+
+    // FOTO DO CARRO: pediu pra colocar/trocar a foto → abre a janela de 20 min e pede a foto
+    if (msg.kind !== "image" && vehicle?.id && FOTO_CARRO_PEDIDO_RE.test(inputText)) {
+      await supabase.from("whatsapp_events").insert({ from_phone: msg.phone, user_id: user.id, kind: "foto_carro_pending", status: "pending", raw: {}, parsed: {} });
+      await sendText(msg.phone, "Manda aqui a foto do seu carro 📸 De lado ou de frente, com o carro inteiro aparecendo. Eu recorto o fundo e coloco no app, em Meu carro.");
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "foto_carro_pedido", input: inputText }, user_id: user.id }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     // Atalho: opção "Acessar o sistema" do menu (ou pedido direto) → link mágico de acesso, SEM IA.

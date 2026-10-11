@@ -95,6 +95,17 @@ export const MG_CSS = `
 .mg .veh-model{font-weight:700;font-size:15px}
 .mg .swap{margin-left:auto;font-size:12px;font-weight:700;color:var(--brand);display:inline-flex;align-items:center;gap:5px}
 .mg .status-row{display:flex;gap:9px;margin-top:13px}
+.mg .car-stage{position:relative;height:150px;margin:12px -4px 2px;border-radius:16px;overflow:hidden;background:radial-gradient(90% 85% at 50% 100%,var(--brand-soft) 0%,transparent 70%)}
+.mg .car-stage img.cut{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);max-width:92%;max-height:132px;object-fit:contain;filter:drop-shadow(0 10px 12px rgba(19,33,30,.18))}
+.mg .car-stage::after{content:"";position:absolute;left:18%;right:18%;bottom:8px;height:10px;border-radius:50%;background:rgba(19,33,30,.12);filter:blur(6px)}
+.mg .car-stage.nocut::after,.mg .car-stage.empty::after{display:none}
+.mg .car-stage img.full{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.mg .car-stage.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);background:var(--card-2,#F6F9F8);border:1.5px dashed var(--line)}
+.mg .car-stage.empty b{font-size:13.5px;color:var(--ink)}
+.mg .car-cam{position:absolute;right:8px;bottom:8px;z-index:2;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.88);color:var(--brand);display:grid;place-items:center;box-shadow:0 2px 8px rgba(19,33,30,.12);border:0;cursor:pointer}
+.mg[data-theme="dark"] .car-cam{background:rgba(20,32,29,.85)}
+.mg .car-add{font-size:13px;font-weight:700;color:var(--brand);background:var(--brand-soft);border:0;border-radius:10px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.mg .car-meta{font-size:12.5px;color:var(--muted);margin-top:2px}
 .mg .status{flex:1;border-radius:12px;padding:10px 11px;display:flex;align-items:center;gap:9px}
 .mg .status.ok{background:var(--good-soft)}
 .mg .status.warn{background:var(--gain-soft)}
