@@ -3,6 +3,13 @@
 > Documento para retomar o projeto em uma nova sessão. Leia tudo antes de continuar.
 > Última atualização: 2026-07-22.
 
+## 🚗 MODO CARRO (2026-10-11) — Co-pilot no CarPlay e no Android Auto, sem app nativo
+- **Decisão:** o caminho universal é o assistente do carro mandando WhatsApp pro Co-pilot (Siri no CarPlay, Gemini no Android Auto). Gemini NÃO serve de padrão: não tem app de CarPlay e não aceita integração de terceiros aberta. App nativo de CarPlay/Android Auto descartado por ora (nenhuma categoria serve; custo alto).
+- **Ligar:** "modo carro", "tô dirigindo", "vou pegar estrada" ou `/carro` (3h, renova a cada mensagem). **Desligar:** "parei", "estacionei", "sair do modo carro".
+- **Com o modo ligado (whatsapp-webhook):** resposta curta só em texto, sem emoji/negrito/lista/botão/flow; links e fotos de carros vão para uma FILA (`whatsapp_events` kind `modo_carro`, `parsed.fila`) entregue quando ele disser "parei" ou na 1ª mensagem após expirar. Flows (Garagem, Radar, Viagem, Recompra) viram resposta falada pela IA; Viagem pula a lista de estilos; oferta instantânea de carro não dispara.
+- **Contato:** na 1ª ativação manda o cartão de contato "Copiloto" (`waSendContact`); `/contato` reenvia. Número do bot: env `COPILOT_WA_NUMBER` (padrão 5511963786699).
+- **Botões ditados:** respostas de proativa ditadas ("Sim, quero.") agora casam com os botões (pontuação normalizada).
+
 ## 0-AAAAAA. ⭐ SESSÃO 2026-07-25 — correções Modo Viagem, repo privado, CI e cliente de shopping
 
 - **Repo GitHub agora é PRIVADO.** Consequência: o app da Vercel perdeu acesso (só OWNER da org

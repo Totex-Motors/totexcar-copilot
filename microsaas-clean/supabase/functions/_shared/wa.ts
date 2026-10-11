@@ -119,6 +119,25 @@ export async function waSendImage(s: WaSettings, phone: string, imageUrl: string
   return uazapiPost(s, "/send/media", { number: to, type: "image", file: imageUrl, text: caption || "" });
 }
 
+// ---------------- envio: CARTÃO DE CONTATO (vCard; janela de 24h) ----------------
+// Modo Carro: a Siri (CarPlay) e o Gemini (Android Auto) só acham contato SALVO na agenda —
+// mandamos o cartão do próprio Co-pilot com um nome fácil de falar ("Copiloto").
+export async function waSendContact(s: WaSettings, phone: string, contactName: string, contactPhone: string): Promise<boolean> {
+  const to = onlyDigits(phone);
+  const num = onlyDigits(contactPhone);
+  if (!to || !num) return false;
+  if (waProvider(s) === "meta") {
+    return metaPost(s, {
+      messaging_product: "whatsapp", to, type: "contacts",
+      contacts: [{
+        name: { formatted_name: contactName, first_name: contactName },
+        phones: [{ phone: `+${num}`, wa_id: num, type: "WORK" }],
+      }],
+    });
+  }
+  return uazapiPost(s, "/send/contact", { number: to, fullName: contactName, phoneNumber: num });
+}
+
 // ---------------- upload de MÍDIA (media id da Meta; vale ~30 dias) ----------------
 // Usado pela vitrine quando a foto do estoque é WebP: a Meta rejeita WebP em header de card
 // tanto por link quanto por media id — o chamador converte pra PNG e sobe os bytes aqui.
