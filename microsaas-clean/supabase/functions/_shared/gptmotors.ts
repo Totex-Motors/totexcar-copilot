@@ -34,8 +34,12 @@ function cleanErro(msg: unknown, fallback: string): string {
 }
 
 // O provedor às vezes demora minutos (Detran fora do ar). Sem limite, o app desiste antes da resposta
-// e mostra erro técnico. Limite de 50s por chamada → erro amigável "provedor_demorou".
+// e mostra erro técnico. Limite por chamada → erro amigável "provedor_demorou".
+// O Raio-X (cautelar completa) leva ~1,5 min normalmente: 120s (cabe no limite de 150s da edge).
+// Se mesmo assim estourar, o provedor termina e guarda o laudo — repetir a consulta traz o mesmo
+// laudo na hora, sem cobrar de novo.
 export const UPSTREAM_TIMEOUT_MS = 50_000;
+export const TIMEOUT_MS: Record<GptProduto, number> = { raiox: 120_000, crlv: UPSTREAM_TIMEOUT_MS, debitos: UPSTREAM_TIMEOUT_MS, cnh: UPSTREAM_TIMEOUT_MS };
 const isTimeout = (e: unknown) => /timeout|aborted|TimeoutError/i.test(String((e as any)?.name || "") + String((e as any)?.message || e));
 
 async function gptAuth(cfg: GptCfg): Promise<string> {
@@ -53,7 +57,7 @@ export async function runGptMotors(cfg: GptCfg, produto: GptProduto, placa: stri
   let origin = "https://app.gptmotors.com.br";
   try { origin = new URL(cfg.authUrl).origin; } catch { /* */ }
   const call = async (path: string) => {
-    const r = await fetch(`${origin}${path}`, { headers: { authorization: `Bearer ${bearer}`, accept: "application/json" }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+    const r = await fetch(`${origin}${path}`, { headers: { authorization: `Bearer ${bearer}`, accept: "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS[produto] ?? UPSTREAM_TIMEOUT_MS) });
     const j = await r.json().catch(() => ({}));
     return { httpOk: r.ok, j };
   };

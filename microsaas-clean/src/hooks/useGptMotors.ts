@@ -29,7 +29,7 @@ export function gptErroMsg(error?: string | null): string {
     cnh_indisponivel: "Não consegui os dados da CNH agora — o órgão pode estar indisponível. Tente de novo em instantes.",
     crlv_indisponivel: "Não consegui emitir o CRLV-e agora. Confira se o veículo está licenciado e sem débitos.",
     consulta_sem_retorno: "O provedor não retornou os dados agora (o Detran pode estar instável). Tente de novo em alguns minutos — nada foi cobrado.",
-    provedor_demorou: "O provedor demorou demais e a consulta foi interrompida. Tente de novo em alguns minutos — nada foi cobrado.",
+    provedor_demorou: "O provedor está demorando mais que o normal. Tente de novo em 1 ou 2 minutos — se a consulta já foi processada, o resultado vem na hora, sem cobrar de novo.",
     debitos_indisponivel: "Não consegui consultar os débitos agora. Tente de novo em instantes.",
     integracao_nao_configurada: "Serviço temporariamente indisponível.",
     auth_provedor_falhou: "Serviço temporariamente indisponível. Tente de novo em instantes.",

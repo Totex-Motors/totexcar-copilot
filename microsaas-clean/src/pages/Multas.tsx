@@ -46,7 +46,7 @@ export default function Multas() {
     const tick = async () => {
       const r = await fetchUltimaConsulta(userId, "debitos", placa || undefined);
       if (r) { setRes(r); setBusy(false); setParams({}, { replace: true }); return; }
-      if (++tries >= 10) { setBusy(false); setParams({}, { replace: true }); return; }
+      if (++tries >= 25) { setBusy(false); setParams({}, { replace: true }); return; }
       setTimeout(tick, 3000);
     };
     tick();

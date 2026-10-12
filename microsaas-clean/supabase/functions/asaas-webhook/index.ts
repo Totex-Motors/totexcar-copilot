@@ -109,9 +109,12 @@ Deno.serve(async (req) => {
     if (String(userId).startsWith("gpt:")) {
       const orderId = String(userId).slice(4);
       if (ACTIVATE.has(event) && isUuid(orderId)) {
-        const { data: order } = await admin.from("gpt_orders").select("*").eq("id", orderId).single();
-        if (order && order.status !== "done") {
-          await admin.from("gpt_orders").update({ status: "paid", paid_at: new Date().toISOString() }).eq("id", orderId).neq("status", "done");
+        // "Reserva" o pedido (pending → paid) — CONFIRMED e RECEIVED chegam os dois; só um processa.
+        const { data: claimed } = await admin.from("gpt_orders").update({ status: "paid", paid_at: new Date().toISOString() })
+          .eq("id", orderId).eq("status", "pending").select("*");
+        const order = claimed?.[0];
+        // O Raio-X leva ~1,5 min: roda em segundo plano e responde o Asaas na hora.
+        const job = order ? (async () => {
           const { data: cfg } = await admin.from("app_settings")
             .select("gptmotors_auth_url, gptmotors_chave, gptmotors_token").eq("id", 1).single();
           const produto = order.produto as GptProduto;
@@ -138,7 +141,9 @@ Deno.serve(async (req) => {
               if (arqUrl) { try { await waSendDocument(wa, phone, String(arqUrl), `CRLV-${order.placa}.pdf`, "📄 Seu CRLV-e"); } catch { /* */ } }
             }
           } catch (e) { console.error("entrega gpt:", e); }
-        }
+        })().catch((e) => console.error("consulta gpt paga:", e)) : null;
+        const wu = (globalThis as any).EdgeRuntime?.waitUntil;
+        if (job) { if (wu) wu(job); else await job; }
       } else if (DEACTIVATE.has(event) && isUuid(orderId)) {
         await admin.from("gpt_orders").update({ status: "error", erro: `pagamento_${event}` }).eq("id", orderId).eq("status", "pending");
       }
