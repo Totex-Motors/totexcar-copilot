@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Navigate, Link, useSearchParams } from "react-router-dom";
-import { FileCheck2, ShieldAlert, Gavel, AlertTriangle, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Search, Car } from "lucide-react";
+import { FileCheck2, ShieldAlert, Gavel, AlertTriangle, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Search, Car, FileText } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useVehicle } from "@/hooks/useAccounts";
-import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
+import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, fetchLaudoRaiox, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
+import { DocViewer } from "@/components/DocViewer";
 
 const WA = "5511963786699";
 const PRECO = 69; // preço de exibição (o valor final vem do servidor)
@@ -31,6 +32,17 @@ export default function Historico() {
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<GptResult | null>(null);
   const [params, setParams] = useSearchParams();
+  // laudo em PDF da consulta aberta (sob demanda)
+  const [laudo, setLaudo] = useState<any | null>(null);
+  const [laudoBusy, setLaudoBusy] = useState(false);
+  const [laudoErro, setLaudoErro] = useState(false);
+  useEffect(() => { setLaudo(null); setLaudoErro(false); }, [res?.id]);
+  const abrirLaudo = async () => {
+    if (!res?.id || laudoBusy) return;
+    setLaudoBusy(true); setLaudoErro(false);
+    const a = await fetchLaudoRaiox(res.id, res.placa || vehicle?.placa);
+    setLaudo(a); setLaudoErro(!a); setLaudoBusy(false);
+  };
 
   // Retorno do pagamento: o webhook roda a consulta (o Raio-X leva ~1,5 min) — busca o resultado por até 3 min.
   useEffect(() => {
@@ -151,7 +163,15 @@ export default function Historico() {
                 </div>
               ))}
             </div>
-            <a className="sbtn wa" style={{ marginTop: 12, width: "100%", justifyContent: "center" }} href={wa} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Entender o resultado com o Co-pilot</a>
+            {res.id && (laudo ? (
+              <div style={{ marginTop: 12 }}><DocViewer arquivo={laudo} filename={`RaioX-${res.placa || placa}`} /></div>
+            ) : (
+              <button className="sbtn brand" style={{ marginTop: 12, width: "100%", justifyContent: "center" }} onClick={abrirLaudo} disabled={laudoBusy}>
+                {laudoBusy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {laudoBusy ? "Gerando o laudo…" : "Ver laudo em PDF"}
+              </button>
+            ))}
+            {laudoErro && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>Não consegui abrir o laudo agora. Tente de novo em instantes.</p>}
+            <a className="sbtn wa" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} href={wa} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Entender o resultado com o Co-pilot</a>
           </section>
         )}
 

@@ -6,6 +6,8 @@
 //   • id  = gpt_consultas.id
 //   • t   = access token do usuário (ou header Authorization: Bearer <token>)
 // Confere que a consulta é DO usuário do token. Deploy com verify_jwt=false (auth manual pelo token).
+// Raio-X: o provedor não manda arquivo — o laudo em PDF é montado da consulta guardada.
+import { laudoRaioxPdf } from "../_shared/laudo-raiox.ts";
 
 const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
 const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -27,12 +29,22 @@ Deno.serve(async (req) => {
   if (!uid) return txt("nao autorizado", 401);
 
   // busca a consulta (service role) e confere o dono
-  const cres = await fetch(`${SB}/rest/v1/gpt_consultas?id=eq.${encodeURIComponent(id)}&select=user_id,produto,placa,dados&limit=1`, {
+  const cres = await fetch(`${SB}/rest/v1/gpt_consultas?id=eq.${encodeURIComponent(id)}&select=user_id,produto,placa,dados,analise_ia,gpt_id,created_at,status&limit=1`, {
     headers: { apikey: KEY, authorization: `Bearer ${KEY}` },
   });
   const rows = cres.ok ? await cres.json().catch(() => []) : [];
   const row = rows?.[0];
   if (!row || row.user_id !== uid) return txt("nao encontrado", 404);
+
+  const disp = url.searchParams.get("dl") ? "attachment" : "inline";
+  if (row.produto === "raiox" && !row?.dados?.arquivo) {
+    if (row.status !== "ok" || !row.dados) return txt("sem arquivo", 404);
+    const pdf = await laudoRaioxPdf({ dados: row.dados, analiseIA: row.analise_ia, placa: row.placa, criadoEm: row.created_at, codigo: row.gpt_id });
+    return new Response(pdf, { status: 200, headers: {
+      "content-type": "application/pdf", "content-disposition": `${disp}; filename="RaioX-${row.placa || id}.pdf"`,
+      "cache-control": "no-store", "access-control-allow-origin": "*",
+    } });
+  }
 
   // extrai o base64 do arquivo (objeto {nome,tipo,conteudo}, ou string base64/data:)
   const arq = row?.dados?.arquivo;
@@ -57,7 +69,6 @@ Deno.serve(async (req) => {
   const ext = tipo.includes("pdf") ? "pdf" : tipo.includes("png") ? "png" : tipo.includes("jpeg") || tipo.includes("jpg") ? "jpg" : (tipo.split("/")[1] || "bin");
   const filename = /\.[a-z0-9]{2,4}$/i.test(nome) ? nome : `${nome}.${ext}`;
   // ?dl=1 força download (attachment); padrão = inline (abre no leitor do aparelho)
-  const disp = url.searchParams.get("dl") ? "attachment" : "inline";
 
   return new Response(bytes, {
     status: 200,

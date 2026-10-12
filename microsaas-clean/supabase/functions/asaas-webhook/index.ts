@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { runVehicleQuery, resumoDebitos } from "../_shared/debitos.ts";
 import { loadWaSettings, waSendText, waSendDocument } from "../_shared/wa.ts";
 import { runGptMotors, resumoGpt, type GptProduto } from "../_shared/gptmotors.ts";
+import { laudoRaioxPdf } from "../_shared/laudo-raiox.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -139,6 +140,16 @@ Deno.serve(async (req) => {
               const arq = produto === "crlv" ? out.dados?.arquivo : null;
               const arqUrl = arq && (typeof arq === "string" ? (/^https?:\/\//.test(arq) ? arq : null) : arq.url);
               if (arqUrl) { try { await waSendDocument(wa, phone, String(arqUrl), `CRLV-${order.placa}.pdf`, "📄 Seu CRLV-e"); } catch { /* */ } }
+              // Raio-X: laudo em PDF (montado dos dados) num link temporário só pro WhatsApp baixar
+              if (produto === "raiox") {
+                try {
+                  const pdf = await laudoRaioxPdf({ dados: out.dados, analiseIA: out.analiseIA, placa: order.placa, criadoEm: new Date().toISOString(), codigo: out.controle?.id || null });
+                  const path = `laudos/${order.user_id}/${consultaId}.pdf`;
+                  const up = await admin.storage.from("reports").upload(path, pdf, { contentType: "application/pdf", upsert: true });
+                  const { data: sig } = up.error ? { data: null } : await admin.storage.from("reports").createSignedUrl(path, 3600);
+                  if (sig?.signedUrl) await waSendDocument(wa, phone, sig.signedUrl, `RaioX-${order.placa}.pdf`, "📄 Seu laudo do Raio-X (também fica guardado no app, em Meus documentos)");
+                } catch (e) { console.error("laudo raiox pdf:", e); }
+              }
             }
           } catch (e) { console.error("entrega gpt:", e); }
         })().catch((e) => console.error("consulta gpt paga:", e)) : null;
