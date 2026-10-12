@@ -7,7 +7,7 @@
 //   • t   = access token do usuário (ou header Authorization: Bearer <token>)
 // Confere que a consulta é DO usuário do token. Deploy com verify_jwt=false (auth manual pelo token).
 // Raio-X: o provedor não manda arquivo — o laudo em PDF é montado da consulta guardada.
-import { laudoRaioxPdf } from "../_shared/laudo-raiox.ts";
+import { laudoRaioxPdf, fipeDaPlaca } from "../_shared/laudo-raiox.ts";
 
 const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
 const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -39,7 +39,8 @@ Deno.serve(async (req) => {
   const disp = url.searchParams.get("dl") ? "attachment" : "inline";
   if (row.produto === "raiox" && !row?.dados?.arquivo) {
     if (row.status !== "ok" || !row.dados) return txt("sem arquivo", 404);
-    const pdf = await laudoRaioxPdf({ dados: row.dados, analiseIA: row.analise_ia, placa: row.placa, criadoEm: row.created_at, codigo: row.gpt_id });
+    const fipe = await fipeDaPlaca(SB, KEY, row.placa);
+    const pdf = await laudoRaioxPdf({ dados: row.dados, analiseIA: row.analise_ia, placa: row.placa, criadoEm: row.created_at, codigo: row.gpt_id, fipe });
     return new Response(pdf, { status: 200, headers: {
       "content-type": "application/pdf", "content-disposition": `${disp}; filename="RaioX-${row.placa || id}.pdf"`,
       "cache-control": "no-store", "access-control-allow-origin": "*",

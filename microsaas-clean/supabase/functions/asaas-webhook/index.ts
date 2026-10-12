@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { runVehicleQuery, resumoDebitos } from "../_shared/debitos.ts";
 import { loadWaSettings, waSendText, waSendDocument } from "../_shared/wa.ts";
 import { runGptMotors, resumoGpt, type GptProduto } from "../_shared/gptmotors.ts";
-import { laudoRaioxPdf } from "../_shared/laudo-raiox.ts";
+import { laudoRaioxPdf, fipeDaPlaca } from "../_shared/laudo-raiox.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -143,7 +143,8 @@ Deno.serve(async (req) => {
               // Raio-X: laudo em PDF (montado dos dados) num link temporário só pro WhatsApp baixar
               if (produto === "raiox") {
                 try {
-                  const pdf = await laudoRaioxPdf({ dados: out.dados, analiseIA: out.analiseIA, placa: order.placa, criadoEm: new Date().toISOString(), codigo: out.controle?.id || null });
+                  const fipe = await fipeDaPlaca(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "", order.placa);
+                  const pdf = await laudoRaioxPdf({ dados: out.dados, analiseIA: out.analiseIA, placa: order.placa, criadoEm: new Date().toISOString(), codigo: out.controle?.id || null, fipe });
                   const path = `laudos/${order.user_id}/${consultaId}.pdf`;
                   const up = await admin.storage.from("reports").upload(path, pdf, { contentType: "application/pdf", upsert: true });
                   const { data: sig } = up.error ? { data: null } : await admin.storage.from("reports").createSignedUrl(path, 3600);
