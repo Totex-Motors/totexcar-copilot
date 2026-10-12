@@ -96,6 +96,21 @@ export async function docFileUrl(consultaId: string): Promise<string | null> {
   } catch { return null; }
 }
 
+// Laudo do Raio-X em PDF (montado no servidor a partir da consulta guardada) → objeto pro DocViewer.
+// Traz os bytes (abre dentro do app e no "compartilhar" do celular) + a URL https de reserva.
+export async function fetchLaudoRaiox(consultaId: string, placa?: string | null): Promise<any | null> {
+  const url = await docFileUrl(consultaId);
+  if (!url) return null;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    return { nome: `RaioX-${placa || "laudo"}.pdf`, tipo: "application/pdf", conteudo: btoa(bin), url };
+  } catch { return null; }
+}
+
 // Reabre uma consulta salva (com os dados completos) pra rever/baixar de novo.
 export async function fetchConsultaById(id: string): Promise<GptResult | null> {
   const { data } = await supabase.from("gpt_consultas")
