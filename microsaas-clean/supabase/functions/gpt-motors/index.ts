@@ -61,8 +61,20 @@ Deno.serve(async (req) => {
     if (cached?.[0]) { const c = cached[0]; return json({ ok: true, cached: true, produto, placa: c.placa, cpf: c.cpf, dados: c.dados, analiseIA: c.analise_ia, id: c.id, preco }); }
   }
 
+  // Já pagou e o provedor falhou/demorou (ou o processamento caiu)? Esse pedido vira crédito:
+  // a nova tentativa roda sem cobrar de novo.
+  let credito: string | null = null;
+  if (!isPriv) {
+    const key = isCpf ? `cpf=eq.${cpf}` : `placa=eq.${placa}`;
+    const desde = new Date(Date.now() - 7 * 86400000).toISOString();
+    const travado = new Date(Date.now() - 5 * 60000).toISOString();
+    const ords = await sbGet(`gpt_orders?user_id=eq.${uid}&produto=eq.${produto}&${key}&created_at=gte.${desde}` +
+      `&or=(and(status.eq.error,erro.not.like.pagamento_*),and(status.eq.paid,paid_at.lt."${travado}"))&select=id&order=created_at.desc&limit=1`);
+    credito = ords?.[0]?.id || null;
+  }
+
   // gate de custo: admin/dealer liberados; demais pagam (gpt-checkout)
-  if (!isPriv) return json({ ok: false, needsPayment: true, produto, preco });
+  if (!isPriv && !credito) return json({ ok: false, needsPayment: true, produto, preco });
 
   const t0 = Date.now();
   const out = await runGptMotors({ authUrl: String(cfg.gptmotors_auth_url || ""), chave: String(cfg.gptmotors_chave || ""), token: String(cfg.gptmotors_token || "") }, produto, ident, uf);
@@ -74,6 +86,12 @@ Deno.serve(async (req) => {
     gpt_id: out.controle?.id || null, faturado: !!out.controle?.faturado, preco,
     dados: out.ok ? out.dados : null, analise_ia: out.analiseIA, erro: out.ok ? null : out.erro, duration_ms,
   });
+  if (credito) {
+    try {
+      await fetch(`${SB}/rest/v1/gpt_orders?id=eq.${credito}`, { method: "PATCH", headers: { ...H, prefer: "return=minimal" },
+        body: JSON.stringify(out.ok ? { status: "done", consulta_id: id, erro: null } : { status: "error", erro: out.erro || "falha" }) });
+    } catch { /* */ }
+  }
   if (!out.ok) return json({ ok: false, error: out.erro || "falha", produto, preco }, 502);
   return json({ ok: true, produto, placa: isCpf ? null : placa, cpf: isCpf ? cpf : null, uf: uf || null, dados: out.dados, analiseIA: out.analiseIA, id, preco });
 });

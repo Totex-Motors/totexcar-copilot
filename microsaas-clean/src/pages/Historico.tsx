@@ -32,7 +32,7 @@ export default function Historico() {
   const [res, setRes] = useState<GptResult | null>(null);
   const [params, setParams] = useSearchParams();
 
-  // Retorno do pagamento: o webhook roda a consulta em segundos — busca o resultado (poll curto).
+  // Retorno do pagamento: o webhook roda a consulta (o Raio-X leva ~1,5 min) — busca o resultado por até 3 min.
   useEffect(() => {
     if (params.get("status") !== "success" || !userId) return;
     const placa = vehicle?.placa || "";
@@ -41,7 +41,7 @@ export default function Historico() {
     const tick = async () => {
       const r = await fetchUltimaConsulta(userId, "raiox", placa || undefined);
       if (r) { setRes(r); setBusy(false); setParams({}, { replace: true }); return; }
-      if (++tries >= 10) { setBusy(false); setParams({}, { replace: true }); return; }
+      if (++tries >= 60) { setBusy(false); setParams({}, { replace: true }); return; }
       setTimeout(tick, 3000);
     };
     tick();
@@ -65,7 +65,9 @@ export default function Historico() {
   const consultar = async () => {
     if (!placa || busy) return;
     setBusy(true); setRes(null);
-    const r = await runGptConsulta("raiox", placa);
+    let r = await runGptConsulta("raiox", placa);
+    // estourou o tempo, mas o provedor termina e guarda o laudo: a 2ª chamada traz na hora (sem cobrar de novo)
+    if (!r.ok && r.error === "provedor_demorou") r = await runGptConsulta("raiox", placa);
     setRes(r); setBusy(false);
   };
 
@@ -105,7 +107,7 @@ export default function Historico() {
               <div className="lock">
                 <div className="lt">🔒 Descubra a ficha do seu carro</div>
                 <div className="ls">Leilão, sinistro, roubo/furto, gravame e procedência, em uma consulta.</div>
-                <button onClick={consultar} disabled={busy || !placa}>{busy ? "Consultando…" : `Desbloquear por R$ ${PRECO}`}</button>
+                <button onClick={consultar} disabled={busy || !placa}>{busy ? "Consultando… (até 2 min)" : `Desbloquear por R$ ${PRECO}`}</button>
               </div>
             </>
           )}
@@ -174,7 +176,7 @@ export default function Historico() {
         {placa && (
           <button className="btn-primary" onClick={consultar} disabled={busy}>
             {busy ? <Loader2 size={17} className="animate-spin" /> : <Search size={17} />}
-            {busy ? "Consultando…" : res?.ok ? "Consultar de novo" : `Consultar Raio-X · R$ ${PRECO}`}
+            {busy ? "Consultando… (até 2 min)" : res?.ok ? "Consultar de novo" : `Consultar Raio-X · R$ ${PRECO}`}
           </button>
         )}
 
