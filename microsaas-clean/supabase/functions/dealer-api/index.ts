@@ -6,6 +6,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { capaDoVeiculo, descVeiculo, fotoDeCapaNaVenda, mktDealerIdByName, mktStock } from "../_shared/car-photo.ts";
+import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario } from "../_shared/posvenda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -983,6 +984,7 @@ Deno.serve(async (req) => {
         const { data: created, error } = await admin.from("postsale_journeys").insert({
           dealership: loja, customer_name: name, customer_phone: phone, car_desc: car,
           purchase_date: purchase, coupon_code: coupon, created_by: me.id,
+          vendedor_id: p.vendedor_id ? String(p.vendedor_id) : null,
           sponsored: cortesia, sponsored_value: cortesia ? 109.90 : 0,
           sponsored_at: cortesia ? new Date().toISOString() : null,
           user_id: provisionedUserId,
@@ -1168,6 +1170,107 @@ Deno.serve(async (req) => {
           } catch { /* WhatsApp off */ }
         }
         return json({ ok: true, notificado: concluindo });
+      }
+
+      // ===== PÓS-VENDA: atendimento com handoff (equipe, grupo, casos) =====
+      case "posvenda_get": {
+        const loja = writeStore;
+        if (!loja) return json({ error: "sem_loja" }, 400);
+        const [{ data: cfg }, { data: equipe }] = await Promise.all([
+          admin.from("posvenda_config").select("*").eq("dealership", loja).maybeSingle(),
+          admin.from("posvenda_equipe").select("*").eq("dealership", loja).order("papel").order("nome"),
+        ]);
+        return json({ ok: true, loja, config: cfg || { dealership: loja, grupo_id: null, grupo_nome: null, sla_min: 15, horario: null, ativo: true },
+          horario_texto: textoHorario(cfg?.horario), equipe: equipe || [], papeis: PAPEL });
+      }
+
+      case "posvenda_config_save": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const grupo = String(p.grupo_id || "").trim();
+        if (grupo && !/^[\w.-]+@g\.us$/.test(grupo)) return json({ error: "grupo_invalido" }, 400);
+        const row: Record<string, unknown> = { dealership: writeStore, updated_at: new Date().toISOString() };
+        if (p.grupo_id !== undefined) { row.grupo_id = grupo || null; row.grupo_nome = String(p.grupo_nome || "").trim() || null; }
+        if (p.sla_min !== undefined) row.sla_min = Math.min(120, Math.max(5, Number(p.sla_min) || 15));
+        if (p.ativo !== undefined) row.ativo = !!p.ativo;
+        if (p.horario && typeof p.horario === "object") {
+          const h: Record<string, [string, string]> = {};
+          for (const [d, faixa] of Object.entries(p.horario as Record<string, any>)) {
+            if (/^[0-6]$/.test(d) && Array.isArray(faixa) && /^\d{2}:\d{2}$/.test(faixa[0]) && /^\d{2}:\d{2}$/.test(faixa[1]) && faixa[0] < faixa[1]) h[d] = [faixa[0], faixa[1]];
+          }
+          row.horario = h;
+        }
+        const { error } = await admin.from("posvenda_config").upsert(row, { onConflict: "dealership" });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      case "posvenda_membro_save": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const nome = String(p.nome || "").trim();
+        const vs = variantesTel(p.phone);
+        const phone = vs[vs.length - 1] || "";
+        if (!nome) return json({ error: "nome_obrigatorio" }, 400);
+        if (phone.length < 12) return json({ error: "telefone_invalido" }, 400);
+        const papel = ["vendedor", "gerente_manutencao", "gerente_geral"].includes(String(p.papel)) ? String(p.papel) : "vendedor";
+        const row = { dealership: writeStore, nome, phone, papel, ativo: p.ativo === undefined ? true : !!p.ativo };
+        const q = p.id
+          ? admin.from("posvenda_equipe").update(row).eq("id", String(p.id)).eq("dealership", writeStore)
+          : admin.from("posvenda_equipe").insert(row);
+        const { error } = await q;
+        if (error) return json({ error: /duplicate|unique/i.test(error.message) ? "telefone_ja_cadastrado" : error.message }, 400);
+        return json({ ok: true });
+      }
+
+      case "posvenda_membro_del": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { error } = await admin.from("posvenda_equipe").delete().eq("id", String(p.id || "")).eq("dealership", writeStore);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      case "posvenda_grupos": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        return json({ ok: true, grupos: await listarGrupos(admin) });
+      }
+
+      case "posvenda_teste": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const ok = await avisarGrupo(admin, writeStore, `✅ Teste do Co-pilot: este é o grupo de atendimento da ${writeStore}. Os avisos de pós-venda vão chegar aqui.`);
+        return json({ ok, error: ok ? undefined : "nao_enviou" });
+      }
+
+      case "posvenda_casos": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const filtro = String(p.filtro || "ativos");
+        let q = admin.from("posvenda_casos").select("*").eq("dealership", writeStore).order("created_at", { ascending: false }).limit(200);
+        if (filtro === "ativos") q = q.in("status", ["aberto", "em_atendimento"]);
+        else if (filtro === "encerrados") q = q.in("status", ["encerrado", "cancelado"]);
+        const [{ data: casos }, { data: equipe }] = await Promise.all([q, admin.from("posvenda_equipe").select("id, nome, papel").eq("dealership", writeStore)]);
+        const nome = Object.fromEntries((equipe || []).map((m: any) => [m.id, m.nome]));
+        return json({ ok: true, motivos: MOTIVO, casos: (casos || []).map((c: any) => ({ ...c, vendedor_nome: nome[c.vendedor_id] || null, agente_nome: nome[c.agente_id] || null })) });
+      }
+
+      case "posvenda_caso": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: c } = await admin.from("posvenda_casos").select("*").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
+        if (!c) return json({ error: "nao_encontrado" }, 404);
+        const { data: msgs } = await admin.from("posvenda_mensagens").select("de, autor, texto, midia, created_at").eq("caso_id", c.id).order("created_at");
+        return json({ ok: true, caso: c, mensagens: msgs || [] });
+      }
+
+      case "posvenda_caso_encerrar": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: c } = await admin.from("posvenda_casos").select("id").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
+        if (!c) return json({ error: "nao_encontrado" }, 404);
+        return json({ ok: await encerrarPeloPainel(admin, c.id, me.name || "a loja") });
+      }
+
+      case "postsale_set_vendedor": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { error } = await admin.from("postsale_journeys").update({ vendedor_id: p.vendedor_id ? String(p.vendedor_id) : null })
+          .eq("id", String(p.journey_id || "")).eq("dealership", writeStore);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
       }
 
       case "postsale_list": {

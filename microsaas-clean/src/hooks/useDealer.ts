@@ -141,6 +141,7 @@ export interface PostsaleJourney {
   nps_at: string | null; review_link_sent: boolean; anniversary_sent: boolean; created_at: string;
   transfer?: Record<string, boolean> | null;
   transfer_status?: string;
+  vendedor_id?: string | null;
   warranty_until?: string | null;
   revisao_proxima?: string | null;
   sponsored?: boolean;
@@ -176,7 +177,7 @@ export const usePostsaleConfig = (enabled: boolean, dealership?: string) =>
 
 export const usePostsaleCreate = () =>
   useMutation({
-    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string; tag_label?: string; km_entrega?: number; vehicle_id?: string }) =>
+    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string; tag_label?: string; km_entrega?: number; vehicle_id?: string; vendedor_id?: string }) =>
       callDealer("postsale_create", p),
   });
 
@@ -275,3 +276,36 @@ export const useSendCampaign = () =>
       return data as { total: number; sent: number; failed: number; results: { name: string; phone: string; ok: boolean }[] };
     },
   });
+
+// ===== Pós-venda: atendimento com handoff (equipe, grupo, casos) =====
+export type PapelEquipe = "vendedor" | "gerente_manutencao" | "gerente_geral";
+export interface MembroEquipe { id: string; dealership: string; nome: string; phone: string; papel: PapelEquipe; ativo: boolean }
+export interface PosvendaConfig { dealership: string; grupo_id: string | null; grupo_nome: string | null; sla_min: number; horario: Record<string, [string, string]> | null; ativo: boolean }
+export interface PosvendaCaso {
+  id: string; numero: number; dealership: string; customer_phone: string; customer_name: string | null; car_desc: string | null; placa: string | null;
+  motivo: string; resumo: string | null; prioridade: "baixa" | "media" | "alta" | "urgente"; status: "aberto" | "em_atendimento" | "encerrado" | "cancelado";
+  nivel: number; nivel_desde: string; assumido_at: string | null; encerrado_at: string | null; encerrado_por: string | null; nota: number | null;
+  created_at: string; vendedor_nome: string | null; agente_nome: string | null;
+}
+export const usePosvenda = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["posvenda", dealership || null],
+    queryFn: async () => (await callDealer("posvenda_get", dealership ? { dealership } : {})) as { config: PosvendaConfig; equipe: MembroEquipe[]; horario_texto: string; papeis: Record<string, string> },
+    enabled,
+  });
+export const usePosvendaCasos = (enabled: boolean, filtro: "ativos" | "encerrados" | "todos", dealership?: string) =>
+  useQuery({
+    queryKey: ["posvenda-casos", filtro, dealership || null],
+    queryFn: async () => (await callDealer("posvenda_casos", { filtro, ...(dealership ? { dealership } : {}) })) as { casos: PosvendaCaso[]; motivos: Record<string, string> },
+    enabled,
+    refetchInterval: 30_000,
+  });
+export const usePosvendaCaso = (id: string | null, dealership?: string) =>
+  useQuery({
+    queryKey: ["posvenda-caso", id, dealership || null],
+    queryFn: async () => (await callDealer("posvenda_caso", { id, ...(dealership ? { dealership } : {}) })) as { caso: PosvendaCaso; mensagens: { de: string; autor: string | null; texto: string | null; midia: string | null; created_at: string }[] },
+    enabled: !!id,
+    refetchInterval: 15_000,
+  });
+export const usePosvendaAcao = () =>
+  useMutation({ mutationFn: async (p: { action: string } & Record<string, unknown>) => { const { action, ...rest } = p; return callDealer(action, rest); } });

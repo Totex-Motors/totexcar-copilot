@@ -29,6 +29,7 @@ const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 import { salvarFotoCarro } from "../_shared/car-photo.ts";
+import { pontePosvenda, abrirCaso, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -1550,6 +1551,19 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: {} },
   },
   {
+    name: "abrir_atendimento_loja",
+    description: "Passa o cliente para uma PESSOA DA LOJA onde ele comprou o carro (vendedor → gerente de manutenção → gerente geral), que continua a conversa AQUI mesmo. Use quando: ele pedir pra falar com a loja/vendedor/alguém/uma pessoa; relatar defeito, barulho, luz no painel ou problema que precisa de oficina/garantia; fizer reclamação; ou quando a dúvida depender da loja e você não conseguir resolver. ANTES de chamar, tente ajudar e colete o essencial numa pergunta só: o que está acontecendo, desde quando, km atual e, se fizer sentido, peça foto/vídeo/áudio. Se ele insistir em falar com alguém, ou for urgente/segurança, chame na hora. NÃO é para suporte do app TotexCar (isso é abrir_chamado).",
+    parameters: {
+      type: "object",
+      properties: {
+        motivo: { type: "string", enum: ["garantia_defeito", "documentacao", "revisao", "financeiro", "troca_recompra", "reclamacao", "outro"] },
+        resumo: { type: "string", description: "Ficha pra equipe da loja, em 1–3 frases objetivas: o problema, desde quando, km, o que já foi tentado e se ele mandou foto/vídeo. Sem saudação." },
+        prioridade: { type: "string", enum: ["baixa", "media", "alta", "urgente"], description: "urgente = carro parado/segurança; alta = defeito que piora ou cliente muito insatisfeito; media = padrão; baixa = dúvida simples" },
+      },
+      required: ["motivo", "resumo"],
+    },
+  },
+  {
     name: "status_transferencia",
     description: "Status REAL da transferência de propriedade / documentação do carro comprado na loja parceira (checklist do pós-venda: vistoria, ATPV-e, taxas DETRAN, débitos, comunicação de venda, novo CRLV-e) + garantia e próxima revisão. Use SEMPRE que perguntarem sobre transferência, documentação, CRLV, 'meu documento', garantia da loja ou revisão agendada — NUNCA responda com passos genéricos de DETRAN sem consultar esta ferramenta primeiro.",
     parameters: { type: "object", properties: {} },
@@ -2451,6 +2465,24 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       } catch (e) {
         return { ok: false, error: "link_falhou", message: `Falha ao gerar o link: ${String((e as any)?.message || e)}. Oriente abrir ${base}.` };
       }
+    }
+
+    if (name === "abrir_atendimento_loja") {
+      const v = ctx.vehicle || null;
+      const r = await abrirCaso(supabase, {
+        phone: String(user.phone || ""), nome: user.name || null, userId: user.id || null,
+        motivo: String(args?.motivo || "outro"), resumo: String(args?.resumo || "").slice(0, 1200), prioridade: String(args?.prioridade || "media"),
+        dealershipHint: user.dealership || null, carro: v ? [v.marca, v.modelo, v.ano_modelo].filter(Boolean).join(" ") : null, placa: v?.placa || null,
+      });
+      if (!r.ok && r.error === "sem_loja") return { ok: false, error: "sem_loja", message: "Não há loja parceira ligada a este cliente (ele não comprou o carro numa loja do ecossistema). Ajude você mesmo; se for defeito, ofereça o Radar de Serviços (oficinas) ou o modo de emergência." };
+      if (!r.ok && r.error === "loja_sem_atendimento") return { ok: false, error: "loja_sem_atendimento", message: "A loja ainda não ativou o atendimento pelo Co-pilot. Ajude você mesmo e, se ele quiser falar com a loja, diga para ligar direto pra loja onde comprou." };
+      if (!r.ok) return { ok: false, error: r.error, message: "Não consegui abrir o atendimento agora. Peça desculpas em 1 frase e diga que vai tentar de novo em instantes." };
+      const c = r.caso;
+      if (r.jaExistia) return { ok: true, numero: c.numero, ja_existia: true, message: `Ele já tem o atendimento #${c.numero} em andamento com a loja; anotei o complemento. Diga em 1 frase que a equipe já foi avisada e responde por aqui mesmo.` };
+      return {
+        ok: true, numero: c.numero, motivo: MOTIVO_POSVENDA[c.motivo] || c.motivo, vendedor: r.vendedor, fora_do_horario: !!r.foraDoHorario, horario: r.horario,
+        message: `Atendimento #${c.numero} aberto e a equipe da ${c.dealership} avisada. Diga em 1–2 frases, natural: que ${r.vendedor ? `o ${r.vendedor.split(" ")[0]} (que vendeu o carro)` : "alguém da loja"} vai falar com ele AQUI MESMO nesta conversa${r.foraDoHorario ? `, a partir do próximo horário de atendimento (${r.horario})` : ", em instantes"}; e que, se quiser, pode ir mandando foto/vídeo/áudio do problema que já fica no atendimento. NÃO prometa prazo de conserto nem cobertura de garantia.`,
+      };
     }
 
     if (name === "status_transferencia") {
@@ -3938,6 +3970,17 @@ Deno.serve(async (req) => {
 
 async function processInbound(msg: any, eventId: any, eventAt: string) {
   try {
+    // PÓS-VENDA — PONTE vendedor ↔ cliente (antes de tudo e sem debounce: cada mensagem passa na hora).
+    // Equipe da loja: "#assumir N", "fim", "#sair", "#casos" e repasse do que escrever pro cliente.
+    // Cliente com caso assumido: o que ele mandar vai pra quem assumiu (o assistente não responde).
+    if (!msg.flowReply) {
+      try {
+        if (await pontePosvenda(supabase, msg)) {
+          if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "posvenda_ponte", input: String(msg.text || "").slice(0, 300) } }).eq("id", eventId);
+          return;
+        }
+      } catch (e) { console.error("ponte pós-venda:", e); }
+    }
     // DEBOUNCE de mensagens picadas: texto digitado (não botão/menu/flow) espera um instante;
     // se chegar mensagem mais nova do mesmo número, esta fica guardada e é AGRUPADA na resposta
     // da última — em vez de responder 2x "Como posso ajudar?" pra frases quebradas em várias linhas.
@@ -4327,6 +4370,8 @@ SEGURANÇA (vem antes de preço, sempre): se o carro estiver parado na via, em a
 MODO VIAGEM (parceiro de estrada): quando o assunto for viagem, road trip, feriado, férias, "quanto gasto pra ir até X" ou o botão "🏖️ Planejar viagem" → use planejar_viagem. Se ele só tocou no botão (sem destino), pergunte em 1 linha pra onde pensa em ir (ou ofereça sugerir destinos) ANTES de chamar a ferramenta e monte o plano com os DADOS REAIS do carro dele: combustível calculado com o consumo/custo por km REAL (mostre a conta de forma simples, ida e volta), estimativa honesta de pedágio, roteiro com paradas, e — MUITO importante — se houver manutenção vencendo, recomende resolver ANTES de pegar estrada (sugira a loja dele, se tiver; isso é cuidado, não venda). Sem destino definido? Sugira 2-3 destinos em alta conforme o perfil (família/casal/EV). Hospedagem e comida: a ferramenta traz PESQUISA AO VIVO (onde_ficar_e_comer) — indique só o que veio nela, nunca invente estabelecimento ou preço. Esse é um DIFERENCIAL nosso: nenhum app de viagem conhece o carro da pessoa — nós conhecemos.
 
 SUPORTE: você TAMBÉM é o suporte oficial. Dúvidas de uso, planos e pagamento, responda com esta base: teste grátis 7 dias (sem cartão); plano Totex Care R$ 109,90/mês; membro do ecossistema (cupom da loja) R$ 10,99/mês; plano ANUAL R$ 109,90 à vista — 12 meses pelo preço de 10 (~17% off); pagamento PIX/cartão (Asaas) em /plans; acesso bloqueado = assinar em /plans (libera na hora); consumo só aparece a partir do 2º abastecimento com foto do hodômetro; recurso de multa é MODELO (decisão é do órgão). ⚠️ NUNCA diga "sem fidelidade" ou "cancele quando quiser". O que você NÃO resolver (pagamento não liberado, reembolso/cancelamento, bug, reclamação séria, pedido de humano) → use abrir_chamado (o dono é notificado e retorna). Sugestões de melhoria → abrir_chamado com assunto "Sugestão".
+
+ATENDIMENTO DA LOJA (pós-venda humano): você resolve primeiro o que der. Quando o cliente quiser falar com a loja/vendedor/uma pessoa, relatar defeito/garantia/reclamação, ou precisar de algo que só a loja decide → abrir_atendimento_loja (colete antes, numa pergunta só, o que acontece, desde quando e km; peça foto/vídeo se ajudar). Depois de aberto, a pessoa da loja responde NESTA conversa — nunca mande o cliente ligar ou chamar outro número.
 
 TRANSFERÊNCIA / DOCUMENTAÇÃO DO CARRO: se perguntarem da transferência de propriedade, documentação, CRLV, "meu documento", garantia da loja ou revisão agendada → use status_transferencia (dados REAIS do pós-venda da loja). NUNCA responda com passo a passo genérico de DETRAN sem consultar a ferramenta — a loja é quem conduz o processo do cliente.
 

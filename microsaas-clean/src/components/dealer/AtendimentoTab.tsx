@@ -1,0 +1,265 @@
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "@/hooks/use-toast";
+import { Loader2, Headset, Users, Trash2, Plus, Search, Send, MessageCircle, Clock, Star, CheckCircle2 } from "lucide-react";
+import { usePosvenda, usePosvendaCasos, usePosvendaCaso, usePosvendaAcao, type PapelEquipe, type PosvendaCaso } from "@/hooks/useDealer";
+
+// CENTRAL DE ATENDIMENTO DO PÓS-VENDA — o Co-pilot atende primeiro; quando precisa de gente, abre um caso,
+// avisa o grupo da equipe (número do Canal, só grupo) e quem tocar no link "#assumir N" conversa com o
+// cliente pelo próprio WhatsApp, através do Co-pilot. Escada: vendedor → gerente de manutenção → gerente geral.
+const PAPEL: Record<PapelEquipe, string> = { vendedor: "Vendedor", gerente_manutencao: "Gerente de manutenção", gerente_geral: "Gerente geral" };
+const STATUS: Record<string, { label: string; cls: string }> = {
+  aberto: { label: "Esperando alguém", cls: "bg-amber-500/15 text-amber-700" },
+  em_atendimento: { label: "Em atendimento", cls: "bg-green-500/15 text-green-700" },
+  encerrado: { label: "Encerrado", cls: "bg-muted text-muted-foreground" },
+  cancelado: { label: "Cancelado", cls: "bg-muted text-muted-foreground" },
+};
+const PRIO: Record<string, string> = { urgente: "bg-red-500/15 text-red-700", alta: "bg-orange-500/15 text-orange-700", media: "bg-sky-500/15 text-sky-700", baixa: "bg-muted text-muted-foreground" };
+const DEGRAU = ["", "Vendedor", "Gerente de manutenção", "Gerente geral"];
+const fmtTel = (p: string) => String(p || "").replace(/^55(\d{2})(\d{4,5})(\d{4})$/, "($1) $2-$3");
+const tempo = (s?: string | null) => {
+  if (!s) return "";
+  const m = Math.max(0, Math.round((Date.now() - new Date(s).getTime()) / 60_000));
+  return m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / 1440)} d`;
+};
+const selCls = "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm";
+const DIAS: [string, string][] = [["1", "Seg"], ["2", "Ter"], ["3", "Qua"], ["4", "Qui"], ["5", "Sex"], ["6", "Sáb"], ["0", "Dom"]];
+const HORARIO_PADRAO: Record<string, [string, string]> = { "1": ["08:00", "18:00"], "2": ["08:00", "18:00"], "3": ["08:00", "18:00"], "4": ["08:00", "18:00"], "5": ["08:00", "18:00"], "6": ["08:00", "12:00"] };
+
+export function AtendimentoTab({ dealership }: { dealership?: string }) {
+  const qc = useQueryClient();
+  const { data, isLoading } = usePosvenda(true, dealership);
+  const [filtro, setFiltro] = useState<"ativos" | "encerrados" | "todos">("ativos");
+  const { data: casosData, isLoading: loadingCasos } = usePosvendaCasos(true, filtro, dealership);
+  const acao = usePosvendaAcao();
+  const [aberto, setAberto] = useState<string | null>(null);
+
+  const [novo, setNovo] = useState({ nome: "", phone: "", papel: "vendedor" as PapelEquipe });
+  const [grupo, setGrupo] = useState({ id: "", nome: "" });
+  const [grupos, setGrupos] = useState<{ id: string; nome: string }[] | null>(null);
+  const [sla, setSla] = useState("15");
+  const [horario, setHorario] = useState<Record<string, [string, string]>>(HORARIO_PADRAO);
+
+  const cfg = data?.config;
+  useEffect(() => {
+    if (!cfg) return;
+    setGrupo({ id: cfg.grupo_id || "", nome: cfg.grupo_nome || "" });
+    setSla(String(cfg.sla_min || 15));
+    setHorario(cfg.horario && Object.keys(cfg.horario).length ? cfg.horario : HORARIO_PADRAO);
+  }, [cfg?.grupo_id, cfg?.sla_min, JSON.stringify(cfg?.horario || null)]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const equipe = data?.equipe || [];
+  const casos = casosData?.casos || [];
+  const motivos = casosData?.motivos || {};
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["posvenda"] }); qc.invalidateQueries({ queryKey: ["posvenda-casos"] }); };
+  const base = dealership ? { dealership } : {};
+  const rodar = (action: string, payload: Record<string, unknown>, ok: string, depois?: () => void) =>
+    acao.mutate({ action, ...base, ...payload }, {
+      onSuccess: (r: any) => { if (r?.ok === false) { toast({ title: "Não deu certo", description: r?.error || "", variant: "destructive" }); return; } toast({ title: ok }); refresh(); depois?.(); },
+      onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
+    });
+
+  const resumoEscada = useMemo(() => {
+    const g = (p: PapelEquipe) => equipe.filter((m) => m.ativo && m.papel === p).map((m) => m.nome.split(" ")[0]).join(", ");
+    return { vend: equipe.filter((m) => m.ativo && m.papel === "vendedor").length, man: g("gerente_manutencao"), ger: g("gerente_geral") };
+  }, [equipe]);
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+
+  const ativos = casos.filter((c) => c.status === "aberto" || c.status === "em_atendimento");
+  const esperando = ativos.filter((c) => c.status === "aberto").length;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Esperando alguém</div><div className="text-2xl font-bold text-amber-600">{filtro === "ativos" ? esperando : "—"}</div></CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Em atendimento</div><div className="text-2xl font-bold text-green-600">{filtro === "ativos" ? ativos.length - esperando : "—"}</div></CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Equipe ativa</div><div className="text-2xl font-bold">{equipe.filter((m) => m.ativo).length}</div></CardContent></Card>
+        <Card className="border-0 shadow-premium-md"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Grupo da equipe</div><div className="text-sm font-semibold truncate mt-1">{cfg?.grupo_id ? (cfg.grupo_nome || "Configurado") : "Não configurado"}</div></CardContent></Card>
+      </div>
+
+      {/* CASOS */}
+      <Card className="border-0 shadow-premium-md">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+          <CardTitle className="text-base flex items-center gap-2"><Headset className="w-4 h-4 text-primary" /> Atendimentos</CardTitle>
+          <div className="flex gap-1">
+            {(["ativos", "encerrados", "todos"] as const).map((f) => (
+              <Button key={f} size="sm" variant={filtro === f ? "default" : "outline"} className="h-8" onClick={() => setFiltro(f)}>{f === "ativos" ? "Em andamento" : f === "encerrados" ? "Encerrados" : "Todos"}</Button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loadingCasos ? <div className="py-6 text-center"><Loader2 className="w-5 h-5 animate-spin inline" /></div> : !casos.length ? (
+            <p className="text-sm text-muted-foreground py-4">{filtro === "ativos" ? "Nenhum atendimento em andamento. Quando um cliente pedir a loja pelo Co-pilot, ele aparece aqui e no grupo." : "Nada por aqui ainda."}</p>
+          ) : (
+            <div className="divide-y">
+              {casos.map((c) => (
+                <button key={c.id} className="w-full text-left py-3 flex flex-wrap items-center gap-x-3 gap-y-1 hover:bg-muted/40 rounded px-2" onClick={() => setAberto(c.id)}>
+                  <span className="font-mono text-sm font-bold">#{c.numero}</span>
+                  <span className="font-medium">{c.customer_name || fmtTel(c.customer_phone)}</span>
+                  {c.car_desc && <span className="text-sm text-muted-foreground">{c.car_desc}</span>}
+                  <Badge className={`border-0 ${STATUS[c.status]?.cls}`}>{STATUS[c.status]?.label}</Badge>
+                  <Badge className={`border-0 ${PRIO[c.prioridade]}`}>{c.prioridade}</Badge>
+                  <span className="text-xs text-muted-foreground">{motivos[c.motivo] || c.motivo}</span>
+                  <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
+                    {c.status === "aberto" && <><Clock className="w-3 h-3" /> {DEGRAU[c.nivel] || ""} · há {tempo(c.created_at)}</>}
+                    {c.status === "em_atendimento" && <>com <b className="text-foreground">{c.agente_nome || "?"}</b> · há {tempo(c.assumido_at)}</>}
+                    {c.status === "encerrado" && <>{c.encerrado_por ? `por ${c.encerrado_por}` : ""}{c.nota ? <span className="flex items-center gap-0.5 ml-2"><Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {c.nota}</span> : null}</>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* EQUIPE */}
+        <Card className="border-0 shadow-premium-md">
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Users className="w-4 h-4 text-primary" /> Equipe e escada</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Quem pode assumir atendimentos. O caso vai primeiro pro <b>vendedor que vendeu o carro</b> (escolhido no Sucesso do Cliente);
+              sem resposta em {sla} min passa pro <b>gerente de manutenção</b>{resumoEscada.man ? ` (${resumoEscada.man})` : ""} e depois pro <b>gerente geral</b>{resumoEscada.ger ? ` (${resumoEscada.ger})` : ""}.
+              Use o WhatsApp que a pessoa usa no dia a dia.
+            </p>
+            <div className="divide-y rounded-md border">
+              {!equipe.length && <div className="p-3 text-sm text-muted-foreground">Ninguém cadastrado ainda.</div>}
+              {equipe.map((m) => (
+                <div key={m.id} className="p-2.5 flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{m.nome} {!m.ativo && <span className="text-xs text-muted-foreground">(inativo)</span>}</div>
+                    <div className="text-xs text-muted-foreground">{PAPEL[m.papel]} · {fmtTel(m.phone)}</div>
+                  </div>
+                  <Switch checked={m.ativo} onCheckedChange={(v) => rodar("posvenda_membro_save", { id: m.id, nome: m.nome, phone: m.phone, papel: m.papel, ativo: v }, v ? "Ativado" : "Desativado")} />
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (confirm(`Remover ${m.nome} da equipe?`)) rodar("posvenda_membro_del", { id: m.id }, "Removido"); }}><Trash2 className="w-4 h-4" /></Button>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1"><Label className="text-xs">Nome</Label><Input value={novo.nome} onChange={(e) => setNovo((p) => ({ ...p, nome: e.target.value }))} placeholder="Glauter" /></div>
+              <div className="space-y-1"><Label className="text-xs">WhatsApp (com DDD)</Label><Input value={novo.phone} onChange={(e) => setNovo((p) => ({ ...p, phone: e.target.value }))} placeholder="11987654321" /></div>
+              <div className="space-y-1 col-span-2"><Label className="text-xs">Papel</Label>
+                <select className={selCls} value={novo.papel} onChange={(e) => setNovo((p) => ({ ...p, papel: e.target.value as PapelEquipe }))}>
+                  {(Object.keys(PAPEL) as PapelEquipe[]).map((k) => <option key={k} value={k}>{PAPEL[k]}</option>)}
+                </select>
+              </div>
+            </div>
+            <Button size="sm" className="gap-1.5" disabled={acao.isPending || !novo.nome.trim() || novo.phone.replace(/\D/g, "").length < 10}
+              onClick={() => rodar("posvenda_membro_save", novo, `${novo.nome} adicionado`, () => setNovo({ nome: "", phone: "", papel: novo.papel }))}>
+              <Plus className="w-4 h-4" /> Adicionar
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* GRUPO + HORÁRIO */}
+        <Card className="border-0 shadow-premium-md">
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><MessageCircle className="w-4 h-4 text-primary" /> Grupo, prazo e horário</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Grupo do WhatsApp da equipe</Label>
+              <p className="text-[11px] text-muted-foreground">Coloque o número do Canal (o que só posta em grupo) dentro do grupo com vendedores e gerentes, depois toque em "Buscar grupos".</p>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={acao.isPending}
+                  onClick={() => acao.mutate({ action: "posvenda_grupos", ...base }, { onSuccess: (r: any) => { setGrupos(r?.grupos || []); if (!r?.grupos?.length) toast({ title: "Nenhum grupo encontrado", description: "Confira se o número do Canal já está no grupo." }); } })}>
+                  <Search className="w-4 h-4" /> Buscar grupos
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={acao.isPending || !cfg?.grupo_id} onClick={() => rodar("posvenda_teste", {}, "Mensagem de teste enviada ao grupo")}>
+                  <Send className="w-4 h-4" /> Testar
+                </Button>
+              </div>
+              {grupos && grupos.length > 0 && (
+                <select className={selCls} value={grupo.id} onChange={(e) => setGrupo({ id: e.target.value, nome: grupos.find((g) => g.id === e.target.value)?.nome || "" })}>
+                  <option value="">Escolha o grupo…</option>
+                  {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+                </select>
+              )}
+              <Input value={grupo.id} onChange={(e) => setGrupo((g) => ({ ...g, id: e.target.value.trim() }))} placeholder="ou cole o id: 1203630xxxxxxxx@g.us" />
+              {grupo.nome && <p className="text-xs text-muted-foreground">Grupo: <b>{grupo.nome}</b></p>}
+            </div>
+            <div className="space-y-1 max-w-[220px]">
+              <Label className="text-xs">Prazo por degrau (minutos)</Label>
+              <Input type="number" min={5} max={120} value={sla} onChange={(e) => setSla(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Horário de atendimento (o relógio da escada só corre dentro dele)</Label>
+              <div className="space-y-1.5">
+                {DIAS.map(([d, nome]) => {
+                  const f = horario[d];
+                  return (
+                    <div key={d} className="flex items-center gap-2 text-sm">
+                      <Switch checked={!!f} onCheckedChange={(v) => setHorario((h) => { const n = { ...h }; if (v) n[d] = h[d] || ["08:00", "18:00"]; else delete n[d]; return n; })} />
+                      <span className="w-9">{nome}</span>
+                      {f ? (
+                        <>
+                          <Input type="time" className="h-8 w-28" value={f[0]} onChange={(e) => setHorario((h) => ({ ...h, [d]: [e.target.value, h[d][1]] }))} />
+                          <span className="text-muted-foreground">às</span>
+                          <Input type="time" className="h-8 w-28" value={f[1]} onChange={(e) => setHorario((h) => ({ ...h, [d]: [h[d][0], e.target.value] }))} />
+                        </>
+                      ) : <span className="text-xs text-muted-foreground">fechado</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <Button size="sm" disabled={acao.isPending} onClick={() => rodar("posvenda_config_save", { grupo_id: grupo.id, grupo_nome: grupo.nome, sla_min: Number(sla) || 15, horario }, "Configuração salva")}>
+              {acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Salvar"}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-0 shadow-premium-md">
+        <CardContent className="p-4 text-sm text-muted-foreground space-y-1">
+          <div className="font-medium text-foreground">Como a equipe atende (tudo pelo WhatsApp)</div>
+          <div>1. O aviso chega no grupo com o link <b>#assumir N</b>. Quem tocar e enviar, assume.</div>
+          <div>2. Daí em diante, o que a pessoa escrever pro Co-pilot vai pro cliente, com o nome dela (foto, áudio e PDF também). O que o cliente responder chega pra ela.</div>
+          <div>3. <b>fim</b> encerra (o cliente dá nota de 1 a 5) · <b>#sair</b> devolve o caso pro grupo · <b>#casos</b> lista o que está em andamento.</div>
+        </CardContent>
+      </Card>
+
+      <CasoDialog id={aberto} dealership={dealership} onClose={() => setAberto(null)} onEncerrar={(id) => rodar("posvenda_caso_encerrar", { id }, "Atendimento encerrado", () => setAberto(null))} />
+    </div>
+  );
+}
+
+function CasoDialog({ id, dealership, onClose, onEncerrar }: { id: string | null; dealership?: string; onClose: () => void; onEncerrar: (id: string) => void }) {
+  const { data, isLoading } = usePosvendaCaso(id, dealership);
+  const c = data?.caso as PosvendaCaso | undefined;
+  return (
+    <Dialog open={!!id} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>{c ? `Atendimento #${c.numero}` : "Atendimento"}</DialogTitle></DialogHeader>
+        {isLoading || !c ? <div className="py-8 text-center"><Loader2 className="w-5 h-5 animate-spin inline" /></div> : (
+          <div className="space-y-3 text-sm">
+            <div>
+              <div className="font-medium">{c.customer_name || "Cliente"} · {fmtTel(c.customer_phone)}</div>
+              <div className="text-muted-foreground">{[c.car_desc, c.placa].filter(Boolean).join(" · ")}</div>
+            </div>
+            {c.resumo && <div className="rounded-md bg-muted/50 p-2.5">{c.resumo}</div>}
+            <div className="space-y-2">
+              {(data?.mensagens || []).map((m, i) => (
+                <div key={i} className={`rounded-md p-2 ${m.de === "cliente" ? "bg-sky-500/10" : m.de === "agente" ? "bg-green-500/10 ml-6" : "bg-muted/40 text-muted-foreground text-xs"}`}>
+                  <div className="text-[11px] text-muted-foreground">{m.autor || m.de} · {new Date(m.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                  <div className="whitespace-pre-wrap">{m.texto || (m.midia ? `(${m.midia})` : "")}</div>
+                </div>
+              ))}
+            </div>
+            {c.status !== "encerrado" && c.status !== "cancelado" && (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { if (confirm("Encerrar este atendimento? O cliente recebe o pedido de nota.")) onEncerrar(c.id); }}>
+                <CheckCircle2 className="w-4 h-4" /> Encerrar pelo painel
+              </Button>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
