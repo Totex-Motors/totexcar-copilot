@@ -407,7 +407,12 @@ export async function pontePosvenda(sb: any, m: MsgIn, opts?: { transcrever?: Tr
     const nota = Number(n[1]);
     await sb.from("posvenda_casos").update({ nota, nota_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", c.id);
     await logMsg(sb, c.id, "cliente", c.customer_name, `Nota ${nota}`);
-    await waSendText(wa, phone, nota >= 4 ? `Valeu pela nota ${nota}! ⭐ Qualquer coisa do carro, é só me chamar aqui.` : `Obrigado por avisar. Vou pedir pra gerência te dar um retorno. 🙏`);
+    let review = "";
+    if (nota >= 4) {
+      const { data: ds } = await sb.from("dealership_settings").select("google_review_url").eq("dealership", c.dealership).maybeSingle();
+      if (ds?.google_review_url) review = `\n\nSe puder, deixa uma avaliação da ${c.dealership} no Google (leva 30 segundos e ajuda muito):\n${ds.google_review_url}`;
+    }
+    await waSendText(wa, phone, nota >= 4 ? `Valeu pela nota ${nota}! ⭐ Qualquer coisa do carro, é só me chamar aqui.${review}` : `Obrigado por avisar. Vou pedir pra gerência te dar um retorno. 🙏`);
     if (nota <= 3) await avisarGrupo(sb, c.dealership, `⚠️ *#${c.numero}* recebeu nota *${nota}* de ${c.customer_name || "cliente"}. Vale a gerência ligar: ${c.customer_phone}`);
     return true;
   }
@@ -477,4 +482,80 @@ export async function encerrarPeloPainel(sb: any, casoId: string, quem: string):
   if (!c || c.status === "encerrado") return false;
   await encerrar(sb, c, quem);
   return true;
+}
+
+// ======================= FASE 3 =======================
+
+// ---------------- OPORTUNIDADES (garantia acabando, troca por FIPE em queda, 1 ano de compra…) ----------------
+export const TIPO_OPORTUNIDADE: Record<string, { titulo: string; dica: string }> = {
+  garantia_vencendo: { titulo: "Garantia acabando", dica: "Ofereça a vistoria de fim de garantia (pega defeito ainda coberto) ou a garantia estendida." },
+  troca_fipe: { titulo: "Troca: FIPE em queda", dica: "O carro está perdendo valor mês a mês. Bom momento pra oferecer avaliação na troca por um carro do estoque." },
+  aniversario: { titulo: "1 ano de compra", dica: "Parabenize, ofereça a revisão de 1 ano e pergunte se pensa em trocar ou se tem alguém pra indicar." },
+  indicacao: { titulo: "Pedir indicação", dica: "Cliente satisfeito: peça uma indicação e a avaliação no Google." },
+  outro: { titulo: "Oportunidade", dica: "" },
+};
+
+// Registra a oportunidade (1 por tipo+cliente a cada 60 dias) e avisa o grupo, endereçada ao vendedor
+// da venda. Só pra loja com o atendimento ligado. Devolve o número (O#) ou null.
+export async function registrarOportunidade(sb: any, o: {
+  phone: string; tipo: keyof typeof TIPO_OPORTUNIDADE; detalhe: string; nome?: string | null; carro?: string | null; loja?: string | null;
+}): Promise<number | null> {
+  try {
+    const vs = variantesTel(o.phone);
+    const phone = vs[vs.length - 1] || dig(o.phone);
+    if (!phone) return null;
+    let j: any = null;
+    for (const c of [phone.slice(-11), phone.slice(-10), phone.slice(-8)]) {
+      const { data } = await sb.from("postsale_journeys").select("id, dealership, customer_name, car_desc, vendedor_id")
+        .ilike("customer_phone", `%${c}`).order("created_at", { ascending: false }).limit(1);
+      if (data?.[0]) { j = data[0]; break; }
+    }
+    const loja = j?.dealership || o.loja || null;
+    if (!loja || !(await atendimentoAtivo(sb, loja))) return null;
+    const desde = new Date(Date.now() - 60 * 86400000).toISOString();
+    const { data: dup } = await sb.from("posvenda_oportunidades").select("id").in("customer_phone", vs.length ? vs : [phone])
+      .eq("tipo", o.tipo).gte("created_at", desde).limit(1);
+    if (dup?.length) return null;
+    const { data: op, error } = await sb.from("posvenda_oportunidades").insert({
+      dealership: loja, tipo: o.tipo, customer_phone: phone, customer_name: o.nome || j?.customer_name || null,
+      car_desc: o.carro || j?.car_desc || null, journey_id: j?.id || null, vendedor_id: j?.vendedor_id || null, detalhe: o.detalhe,
+    }).select("*").single();
+    if (error || !op) return null;
+    const vend = j?.vendedor_id ? (await sb.from("posvenda_equipe").select("nome").eq("id", j.vendedor_id).maybeSingle()).data : null;
+    const t = TIPO_OPORTUNIDADE[o.tipo] || TIPO_OPORTUNIDADE.outro;
+    await avisarGrupo(sb, loja, [
+      `💡 *Oportunidade O${op.numero} — ${t.titulo}*`,
+      `👤 ${op.customer_name || "Cliente"}${op.car_desc ? ` · ${op.car_desc}` : ""} · ${phone.replace(/^55(\d{2})(\d{4,5})(\d{4})$/, "($1) $2-$3")}`,
+      `🧑‍💼 Para: ${vend?.nome ? `*${vend.nome}* (vendeu o carro)` : "quem puder pegar"}`,
+      `📝 ${o.detalhe}`,
+      t.dica ? `👉 ${t.dica}` : "",
+      `Marque o andamento no painel: Atendimento → Oportunidades.`,
+    ].filter(Boolean).join("\n"));
+    return Number(op.numero);
+  } catch (e) { console.error("oportunidade:", e); return null; }
+}
+
+// ---------------- RESPOSTAS PADRÃO DA LOJA (vão no prompt do assistente) ----------------
+// Bloco de texto com as respostas oficiais da loja onde o cliente comprou. "" se não houver.
+export async function respostasDaLojaPrompt(sb: any, phone: string): Promise<string> {
+  try {
+    const vs = variantesTel(phone);
+    const d = vs[vs.length - 1] || dig(phone);
+    if (!d) return "";
+    let loja: string | null = null;
+    for (const c of [d.slice(-11), d.slice(-10)]) {
+      const { data } = await sb.from("postsale_journeys").select("dealership").ilike("customer_phone", `%${c}`).order("created_at", { ascending: false }).limit(1);
+      if (data?.[0]?.dealership) { loja = data[0].dealership; break; }
+    }
+    if (!loja) return "";
+    const { data: rs } = await sb.from("posvenda_respostas").select("pergunta, resposta").eq("dealership", loja).eq("ativo", true).order("created_at").limit(40);
+    if (!rs?.length) return "";
+    let bloco = `\n\nRESPOSTAS OFICIAIS DA ${loja.toUpperCase()} (a loja onde este cliente comprou o carro). Quando a pergunta dele bater com uma destas, responda com esta informação (com suas palavras, curto) em vez de abrir atendimento; se ele ainda precisar de alguém depois disso, aí sim use abrir_atendimento_loja. Não invente nada além disto sobre a loja:\n`;
+    for (const r of rs) {
+      const linha = `- P: ${String(r.pergunta).trim()}\n  R: ${String(r.resposta).trim()}\n`;
+      if (bloco.length + linha.length > 5000) break;
+      bloco += linha;
+    }
+    return bloco;
+  } catch { return ""; }
 }

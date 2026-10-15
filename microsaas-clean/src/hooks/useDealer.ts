@@ -311,7 +311,7 @@ export const usePosvendaAcao = () =>
   useMutation({ mutationFn: async (p: { action: string } & Record<string, unknown>) => { const { action, ...rest } = p; return callDealer(action, rest); } });
 
 export interface PosvendaStats {
-  dias: number; total: number; em_andamento: number; encerrados: number; min_ate_assumir: number | null; pct_primeiro_degrau: number | null;
+  dias: number; total: number; em_andamento: number; encerrados: number; oportunidades: number; oportunidades_ganhas: number; oportunidades_valor: number; min_ate_assumir: number | null; pct_primeiro_degrau: number | null;
   horas_ate_encerrar: number | null; nota_media: number | null; qtd_notas: number; vindos_do_nps: number;
   por_motivo: { motivo: string; n: number }[]; por_pessoa: { nome: string; casos: number; nota_media: number | null; min_ate_assumir: number | null }[];
 }
@@ -321,4 +321,24 @@ export const usePosvendaStats = (enabled: boolean, dias: number, dealership?: st
     queryFn: async () => (await callDealer("posvenda_stats", { dias, ...(dealership ? { dealership } : {}) })) as PosvendaStats,
     enabled,
     refetchInterval: 60_000,
+  });
+
+export interface Oportunidade {
+  id: string; numero: number; tipo: string; customer_phone: string; customer_name: string | null; car_desc: string | null;
+  detalhe: string | null; status: "nova" | "em_contato" | "ganha" | "perdida"; valor: number | null; obs: string | null;
+  vendedor_id: string | null; vendedor_nome: string | null; created_at: string;
+}
+export const usePosvendaOportunidades = (enabled: boolean, filtro: "abertas" | "todas", dealership?: string) =>
+  useQuery({
+    queryKey: ["posvenda-oport", filtro, dealership || null],
+    queryFn: async () => (await callDealer("posvenda_oportunidades", { filtro, ...(dealership ? { dealership } : {}) })) as { oportunidades: Oportunidade[]; tipos: Record<string, string> },
+    enabled,
+    refetchInterval: 60_000,
+  });
+export interface RespostaLoja { id: string; pergunta: string; resposta: string; ativo: boolean }
+export const usePosvendaRespostas = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["posvenda-respostas", dealership || null],
+    queryFn: async () => ((await callDealer("posvenda_respostas", dealership ? { dealership } : {})).respostas || []) as RespostaLoja[],
+    enabled,
   });

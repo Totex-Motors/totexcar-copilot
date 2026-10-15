@@ -9,7 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Headset, Users, Trash2, Plus, Search, Send, MessageCircle, Clock, Star, CheckCircle2 } from "lucide-react";
-import { usePosvenda, usePosvendaCasos, usePosvendaCaso, usePosvendaAcao, usePosvendaStats, type PapelEquipe, type PosvendaCaso } from "@/hooks/useDealer";
+import { usePosvenda, usePosvendaCasos, usePosvendaCaso, usePosvendaAcao, usePosvendaStats, usePosvendaOportunidades, usePosvendaRespostas, type PapelEquipe, type PosvendaCaso } from "@/hooks/useDealer";
+import { Textarea } from "@/components/ui/textarea";
 
 // CENTRAL DE ATENDIMENTO DO PÓS-VENDA — o Co-pilot atende primeiro; quando precisa de gente, abre um caso,
 // avisa o grupo da equipe (número do Canal, só grupo) e quem tocar no link "#assumir N" conversa com o
@@ -121,6 +122,10 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
           )}
         </CardContent>
       </Card>
+
+      <Oportunidades dealership={dealership} />
+
+      <RespostasLoja dealership={dealership} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* EQUIPE */}
@@ -307,11 +312,12 @@ function Indicadores({ dealership }: { dealership?: string }) {
           <p className="text-sm text-muted-foreground">Ainda sem atendimentos nesse período.</p>
         ) : (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
               <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Atendimentos</div><div className="text-xl font-bold">{st.total}</div><div className="text-[11px] text-muted-foreground">{st.encerrados} encerrados{st.vindos_do_nps ? ` · ${st.vindos_do_nps} de NPS baixo` : ""}</div></div>
               <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Tempo até assumir</div><div className="text-xl font-bold">{fmtMin(st.min_ate_assumir)}</div><div className="text-[11px] text-muted-foreground">média</div></div>
               <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Assumidos pelo vendedor</div><div className="text-xl font-bold">{st.pct_primeiro_degrau == null ? "—" : `${st.pct_primeiro_degrau}%`}</div><div className="text-[11px] text-muted-foreground">sem precisar subir a escada</div></div>
               <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Até encerrar</div><div className="text-xl font-bold">{st.horas_ate_encerrar == null ? "—" : `${st.horas_ate_encerrar} h`}</div><div className="text-[11px] text-muted-foreground">média</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Oportunidades ganhas</div><div className="text-xl font-bold">{st.oportunidades_ganhas}<span className="text-sm font-normal text-muted-foreground">/{st.oportunidades}</span></div><div className="text-[11px] text-muted-foreground">{st.oportunidades_valor ? st.oportunidades_valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }) : "do pós-venda"}</div></div>
               <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Nota dos clientes</div><div className="text-xl font-bold flex items-center gap-1">{st.nota_media ?? "—"}{st.nota_media != null && <Star className="w-4 h-4 fill-amber-400 text-amber-400" />}</div><div className="text-[11px] text-muted-foreground">{st.qtd_notas} avaliações</div></div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -339,6 +345,126 @@ function Indicadores({ dealership }: { dealership?: string }) {
             </div>
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// OPORTUNIDADES — nascem do pós-venda (garantia acabando, FIPE em queda, 1 ano de compra) e vão pro vendedor
+const ST_OP: Record<string, { label: string; cls: string }> = {
+  nova: { label: "Nova", cls: "bg-amber-500/15 text-amber-700" }, em_contato: { label: "Em contato", cls: "bg-sky-500/15 text-sky-700" },
+  ganha: { label: "Ganha", cls: "bg-green-500/15 text-green-700" }, perdida: { label: "Perdida", cls: "bg-muted text-muted-foreground" },
+};
+function Oportunidades({ dealership }: { dealership?: string }) {
+  const qc = useQueryClient();
+  const [filtro, setFiltro] = useState<"abertas" | "todas">("abertas");
+  const { data, isLoading } = usePosvendaOportunidades(true, filtro, dealership);
+  const acao = usePosvendaAcao();
+  const salvar = (id: string, campos: Record<string, unknown>) =>
+    acao.mutate({ action: "posvenda_oportunidade_save", id, ...campos, ...(dealership ? { dealership } : {}) }, {
+      onSuccess: () => { qc.invalidateQueries({ queryKey: ["posvenda-oport"] }); qc.invalidateQueries({ queryKey: ["posvenda-stats"] }); },
+      onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
+    });
+  const ops = data?.oportunidades || [];
+  return (
+    <Card className="border-0 shadow-premium-md">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base flex items-center gap-2">💡 Oportunidades do pós-venda</CardTitle>
+        <div className="flex gap-1">
+          {(["abertas", "todas"] as const).map((f) => <Button key={f} size="sm" variant={filtro === f ? "default" : "outline"} className="h-8" onClick={() => setFiltro(f)}>{f === "abertas" ? "Abertas" : "Todas"}</Button>)}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-muted-foreground mb-3">O Co-pilot cria sozinho e avisa o grupo, endereçado ao vendedor da venda: garantia acabando (vistoria / garantia estendida), FIPE caindo 2 meses seguidos (troca) e 1 ano de compra. Marque aqui o andamento.</p>
+        {isLoading ? <div className="py-4 text-center"><Loader2 className="w-5 h-5 animate-spin inline" /></div> : !ops.length ? (
+          <p className="text-sm text-muted-foreground">{filtro === "abertas" ? "Nenhuma oportunidade aberta agora." : "Nenhuma oportunidade ainda."}</p>
+        ) : (
+          <div className="divide-y">
+            {ops.map((o) => (
+              <div key={o.id} className="py-3 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-mono text-sm font-bold">O{o.numero}</span>
+                  <span className="font-medium">{o.customer_name || fmtTel(o.customer_phone)}</span>
+                  {o.car_desc && <span className="text-sm text-muted-foreground">{o.car_desc}</span>}
+                  <Badge className="border-0 bg-primary/10 text-primary">{data?.tipos?.[o.tipo] || o.tipo}</Badge>
+                  <Badge className={`border-0 ${ST_OP[o.status]?.cls}`}>{ST_OP[o.status]?.label}</Badge>
+                  <span className="ml-auto text-xs text-muted-foreground">{o.vendedor_nome ? `para ${o.vendedor_nome} · ` : ""}{new Date(o.created_at).toLocaleDateString("pt-BR")} · <a className="underline" href={`tel:+${o.customer_phone}`}>{fmtTel(o.customer_phone)}</a></span>
+                </div>
+                {o.detalhe && <div className="text-sm text-muted-foreground">{o.detalhe}</div>}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={o.status} onChange={(e) => salvar(o.id, { status: e.target.value })}>
+                    {Object.entries(ST_OP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                  {o.status === "ganha" && (
+                    <Input className="h-8 w-36 text-xs" type="number" placeholder="Valor (R$)" defaultValue={o.valor ?? ""} onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (o.valor || 0)) salvar(o.id, { valor: v }); }} />
+                  )}
+                  <Input className="h-8 flex-1 min-w-[180px] text-xs" placeholder="Anotação (ex.: ligou, vem sábado)" defaultValue={o.obs ?? ""} onBlur={(e) => { if (e.target.value !== (o.obs || "")) salvar(o.id, { obs: e.target.value }); }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// RESPOSTAS DA LOJA — perguntas que se repetem, com a resposta oficial; o Co-pilot responde sozinho
+function RespostasLoja({ dealership }: { dealership?: string }) {
+  const qc = useQueryClient();
+  const { data: rs, isLoading } = usePosvendaRespostas(true, dealership);
+  const acao = usePosvendaAcao();
+  const [nova, setNova] = useState({ pergunta: "", resposta: "" });
+  const [edit, setEdit] = useState<string | null>(null);
+  const [ed, setEd] = useState({ pergunta: "", resposta: "" });
+  const base = dealership ? { dealership } : {};
+  const rodar = (action: string, payload: Record<string, unknown>, ok: string, depois?: () => void) =>
+    acao.mutate({ action, ...base, ...payload }, {
+      onSuccess: () => { toast({ title: ok }); qc.invalidateQueries({ queryKey: ["posvenda-respostas"] }); depois?.(); },
+      onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
+    });
+  const exemplos = [
+    ["Qual o horário da oficina?", "Segunda a sexta das 8h às 18h e sábado das 8h às 12h, na Rua …"],
+    ["O que a garantia cobre?", "Motor e câmbio por 3 meses ou 3.000 km, o que vier primeiro. Não cobre itens de desgaste (pneus, freios, bateria)."],
+    ["Quais documentos preciso pra transferência?", "RG e CPF, comprovante de residência e … A loja cuida da vistoria e do ATPV-e."],
+  ];
+  return (
+    <Card className="border-0 shadow-premium-md">
+      <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><MessageCircle className="w-4 h-4 text-primary" /> Respostas da loja (o Co-pilot responde sozinho)</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">Cadastre as perguntas que os clientes sempre fazem, com a resposta oficial da loja. O Co-pilot responde com elas na hora e só chama a equipe se o cliente ainda precisar de alguém. Vale só para os clientes que compraram na loja.</p>
+        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+          <div className="divide-y rounded-md border">
+            {!rs?.length && <div className="p-3 text-sm text-muted-foreground">Nenhuma resposta cadastrada ainda. Exemplos: {exemplos.map((e) => `"${e[0]}"`).join(", ")}.</div>}
+            {(rs || []).map((r) => edit === r.id ? (
+              <div key={r.id} className="p-3 space-y-2">
+                <Input value={ed.pergunta} onChange={(e) => setEd((x) => ({ ...x, pergunta: e.target.value }))} />
+                <Textarea rows={3} value={ed.resposta} onChange={(e) => setEd((x) => ({ ...x, resposta: e.target.value }))} />
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={acao.isPending} onClick={() => rodar("posvenda_resposta_save", { id: r.id, ...ed, ativo: r.ativo }, "Resposta atualizada", () => setEdit(null))}>Salvar</Button>
+                  <Button size="sm" variant="outline" onClick={() => setEdit(null)}>Cancelar</Button>
+                </div>
+              </div>
+            ) : (
+              <div key={r.id} className="p-3 flex items-start gap-2">
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setEdit(r.id); setEd({ pergunta: r.pergunta, resposta: r.resposta }); }}>
+                  <div className={`text-sm font-medium ${r.ativo ? "" : "text-muted-foreground line-through"}`}>{r.pergunta}</div>
+                  <div className="text-sm text-muted-foreground whitespace-pre-wrap">{r.resposta}</div>
+                </div>
+                <Switch checked={r.ativo} onCheckedChange={(v) => rodar("posvenda_resposta_save", { id: r.id, pergunta: r.pergunta, resposta: r.resposta, ativo: v }, v ? "Ativada" : "Desativada")} />
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (confirm("Apagar esta resposta?")) rodar("posvenda_resposta_del", { id: r.id }, "Apagada"); }}><Trash2 className="w-4 h-4" /></Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="space-y-2 rounded-md border border-dashed p-3">
+          <Input value={nova.pergunta} onChange={(e) => setNova((x) => ({ ...x, pergunta: e.target.value }))} placeholder={`Pergunta (ex.: ${exemplos[0][0]})`} />
+          <Textarea rows={3} value={nova.resposta} onChange={(e) => setNova((x) => ({ ...x, resposta: e.target.value }))} placeholder={`Resposta oficial (ex.: ${exemplos[0][1]})`} />
+          <Button size="sm" className="gap-1.5" disabled={acao.isPending || !nova.pergunta.trim() || !nova.resposta.trim()}
+            onClick={() => rodar("posvenda_resposta_save", nova, "Resposta adicionada", () => setNova({ pergunta: "", resposta: "" }))}>
+            <Plus className="w-4 h-4" /> Adicionar resposta
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

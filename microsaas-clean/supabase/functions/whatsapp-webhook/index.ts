@@ -29,7 +29,7 @@ const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 import { salvarFotoCarro } from "../_shared/car-photo.ts";
-import { pontePosvenda, abrirCaso, atendimentoAtivo, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
+import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -4779,7 +4779,9 @@ ${JSON.stringify(snapshot)}`;
     const ctx: ToolCtx = { user, vehicle, today, inputText, carMode, nav: carMode ? await navPref(msg.phone) : undefined };
     let replyText = "";
     try {
-      replyText = await runAgent(aiConfig, carMode ? system + MODO_CARRO_PROMPT : system, parts, ctx);
+      // respostas oficiais da loja onde o cliente comprou (pós-venda): resolve sem chamar a equipe
+      const faqLoja = await respostasDaLojaPrompt(supabase, String(user.phone || msg.phone || ""));
+      replyText = await runAgent(aiConfig, (carMode ? system + MODO_CARRO_PROMPT : system) + faqLoja, parts, ctx);
     } catch (e) {
       console.error("runAgent erro:", e);
     }

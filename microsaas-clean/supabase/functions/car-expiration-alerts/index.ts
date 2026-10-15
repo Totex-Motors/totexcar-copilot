@@ -14,6 +14,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { calcTendencia, tendenciaDaConta, textoAlerta } from "../_shared/fipe-tendencia.ts";
+import { registrarOportunidade } from "../_shared/posvenda.ts";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
@@ -533,6 +534,9 @@ async function runPostsale(): Promise<number> {
       if (d >= 0 && d <= 15) {
         await sendTpl(phone, "garantia_vencendo", [carroTpl, j.dealership, d === 0 ? "HOJE" : `em ${d} dia(s)`, fmt(String(j.warranty_until).split("T")[0])]);
         await supabase.from("postsale_journeys").update({ warranty_reminded: true }).eq("id", j.id);
+        // oportunidade pro vendedor: vistoria de fim de garantia / garantia estendida (loja com atendimento ligado)
+        await registrarOportunidade(supabase, { phone, tipo: "garantia_vencendo", nome: j.customer_name, carro: j.car_desc, loja: j.dealership,
+          detalhe: `A garantia acaba ${d === 0 ? "HOJE" : `em ${d} dia(s)`} (${fmt(String(j.warranty_until).split("T")[0])}). O cliente já foi avisado pelo Co-pilot.` });
         sent++; continue;
       }
     }
@@ -551,6 +555,8 @@ async function runPostsale(): Promise<number> {
     if (!j.anniversary_sent && daysSince(j.purchase_date) >= 365) {
       await sendTpl(phone, "aniversario_compra", [carroTpl, j.dealership]);
       await supabase.from("postsale_journeys").update({ anniversary_sent: true }).eq("id", j.id);
+      await registrarOportunidade(supabase, { phone, tipo: "aniversario", nome: j.customer_name, carro: j.car_desc, loja: j.dealership,
+        detalhe: `Faz 1 ano que comprou o ${carroTpl} (${fmt(String(j.purchase_date).split("T")[0])}). O cliente recebeu a mensagem de aniversário.` });
       sent++;
     }
   }
@@ -807,6 +813,11 @@ async function runFipeTendencia(teste?: string | null): Promise<{ enviados: numb
       parsed: { assunto: "fipe_tendencia", texto: `Seu ${carro} agora vale ${brl(r.valor_atual || 0)} na FIPE — ${textoAlerta(t)}`, nivel: t.nivel },
     });
     out.enviados++;
+    // 2+ quedas seguidas: oportunidade de TROCA pro vendedor (se o cliente comprou numa loja com atendimento ligado)
+    if (!teste && t.nivel === "queda_seguida") {
+      await registrarOportunidade(supabase, { phone, tipo: "troca_fipe", nome: u.name || null, carro,
+        detalhe: `A FIPE do ${carro} caiu ${t.quedas_seguidas} meses seguidos: agora ${brl(r.valor_atual || t.atual || 0)}${t.variacao_periodo_pct != null ? ` (${t.variacao_periodo_pct}% desde ${t.desde})` : ""}. O cliente recebeu o alerta de valor e a sugestão de avaliar a troca.` });
+    }
   }
   return out;
 }
