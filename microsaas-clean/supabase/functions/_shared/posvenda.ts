@@ -212,7 +212,47 @@ export async function abrirCaso(sb: any, o: {
 }
 
 // ---------------- ESCADA (cron a cada 5 min) ----------------
-export async function escadaTick(sb: any): Promise<{ subiram: number; verificados: number }> {
+// loja com atendimento ligado (config ativa + grupo configurado)?
+export async function atendimentoAtivo(sb: any, loja?: string | null): Promise<boolean> {
+  if (!loja) return false;
+  const c = await configDaLoja(sb, loja);
+  return !!(c?.ativo && /@g\.us$/.test(String(c?.grupo_id || "")));
+}
+
+// CLIENTE ESPERANDO: caso já assumido, o cliente escreveu e quem assumiu não respondeu em
+// max(30, 4×SLA) min de expediente → lembra a pessoa (se der) e avisa o grupo. Uma vez por mensagem.
+async function esperaTick(sb: any, cfgs: Map<string, any>): Promise<number> {
+  const { data: casos } = await sb.from("posvenda_casos").select("*").eq("status", "em_atendimento").limit(200);
+  let lembrados = 0;
+  for (const c of casos || []) {
+    if (!cfgs.has(c.dealership)) cfgs.set(c.dealership, await configDaLoja(sb, c.dealership));
+    const cfg = cfgs.get(c.dealership);
+    if (!cfg?.ativo) continue;
+    const ini = inicioDoExpediente(cfg.horario);
+    if (!ini) continue;
+    const { data: ms } = await sb.from("posvenda_mensagens").select("de, texto, created_at").eq("caso_id", c.id).order("created_at", { ascending: false }).limit(15);
+    const ult = (ms || [])[0];
+    if (!ult || ult.de !== "cliente") {
+      // a última não é do cliente: só segue se a última for um lembrete nosso (aí já foi avisado)
+      continue;
+    }
+    const tCli = new Date(ult.created_at).getTime();
+    const espera = Math.max(30, 4 * (Number(cfg.sla_min) || 15)) * 60_000;
+    if (Date.now() - Math.max(tCli, ini.getTime()) < espera) continue;
+    const { data: ag } = await sb.from("posvenda_equipe").select("*").eq("id", c.agente_id).maybeSingle();
+    const min = Math.round((Date.now() - tCli) / 60_000);
+    await logMsg(sb, c.id, "sistema", null, `Lembrete: cliente esperando resposta há ${min} min.`);
+    if (ag && await janelaAberta(sb, ag.phone)) {
+      const wa = await loadWaSettings(sb);
+      await waSendText(wa, ag.phone, `⏰ ${nomeCurto(c.customer_name)} (#${c.numero}) está esperando sua resposta há ${min} min:\n"${String(ult.texto || "(mídia)").slice(0, 300)}"\n\nResponda aqui mesmo. Se não for com você, envie *#sair* que eu devolvo pro grupo.`);
+    }
+    await avisarGrupo(sb, c.dealership, `⏰ *#${c.numero}*: ${c.customer_name || "o cliente"} está esperando resposta de *${ag?.nome || "quem assumiu"}* há ${min} min.\n"${String(ult.texto || "(mídia)").slice(0, 200)}"`, cfg);
+    lembrados++;
+  }
+  return lembrados;
+}
+
+export async function escadaTick(sb: any): Promise<{ subiram: number; verificados: number; lembrados: number }> {
   const { data: casos } = await sb.from("posvenda_casos").select("*").eq("status", "aberto").limit(200);
   let subiram = 0;
   const cfgs = new Map<string, any>(), equipes = new Map<string, any[]>();
@@ -248,7 +288,8 @@ export async function escadaTick(sb: any): Promise<{ subiram: number; verificado
     await avisarIndividual(sb, alvo, `⏰ Atendimento #${c.numero} sem resposta há ${min} min e passou pra você:\n${fichaDoCaso(c)}\n\nResponda *#assumir ${c.numero}* para assumir.`);
     subiram++;
   }
-  return { subiram, verificados: (casos || []).length };
+  const lembrados = await esperaTick(sb, cfgs);
+  return { subiram, verificados: (casos || []).length, lembrados };
 }
 
 // ---------------- PONTE (chamada no início de cada mensagem recebida) ----------------
