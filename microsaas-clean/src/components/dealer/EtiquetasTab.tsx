@@ -31,8 +31,10 @@ const rel = (s?: string | null) => {
 //   página 2 = FRENTE (lado do vidro, visto de fora): logo da loja + frase da marca, mesma posição de cada adesivo.
 // modo "grafica": 1 etiqueta por página de 50 × 65 mm (frente, verso, frente, verso…) — é o que a gráfica pede
 // quando cada adesivo tem código próprio. modo "a4": 12 por folha, pra impressora comum / conferência.
+// modo "verso15": SÓ o verso, com o logo da loja junto, A4 PAISAGEM com 15 por folha (5 × 3) — pra impressora
+// comum enquanto a frente e verso não está acertada.
 const NAVY = "#000080";
-type ModoImpressao = "a4" | "grafica";
+type ModoImpressao = "a4" | "grafica" | "verso15";
 async function imprimirFolha(tags: { label: string; token: string }[], loja: string, appUrl: string, logoUrl?: string | null, modo: ModoImpressao = "grafica") {
   const logo = logoUrl ? (/^https?:\/\//i.test(logoUrl) ? logoUrl : `${window.location.origin}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`) : "";
   const versos = await Promise.all(tags.map(async (t) => {
@@ -41,6 +43,7 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
     return `
       <div class="pg"><div class="st verso">
         <div class="topo">MANUTENÇÃO DO SEU CARRO</div>
+        ${modo === "verso15" && logo ? `<img class="logov" src="${esc(logo)}" />` : ""}
         <div class="qrbox"><img class="qr" src="${qr}" /></div>
         <div class="num">${esc(t.label)}</div>
         <div class="cta">Aponte a câmera e acompanhe<br/>a manutenção do seu carro</div>
@@ -53,18 +56,25 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
         <div class="slogan">Nós ajudamos você<br/>a cuidar do seu carro.</div>
         <div class="numf">${esc(t.label)}</div>
       </div></div>`);
-  const grafica = modo === "grafica";
+  const grafica = modo === "grafica", v15 = modo === "verso15";
+  const folhas15: string[] = [];
+  for (let i = 0; i < versos.length; i += 15) folhas15.push(`<div class="grid15">${versos.slice(i, i + 15).join("")}</div>`);
   const corpo = grafica
     // gráfica: frente e verso de cada etiqueta em páginas consecutivas, sem margem nem linha de corte
     ? tags.map((_, i) => frentes[i] + versos[i]).join("")
+    : v15 ? folhas15.join("")
     : `<div class="grid">${versos.join("")}</div><div class="grid pg2">${frentes.join("")}</div>`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas ${esc(tags[0]?.label || "")} – ${esc(tags[tags.length - 1]?.label || "")} — ${esc(loja)}</title>
   <style>
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    @page { size: ${grafica ? "50mm 65mm" : "A4"}; margin: ${grafica ? "0" : "8mm"}; }
+    @page { size: ${grafica ? "50mm 65mm" : v15 ? "A4 landscape" : "A4"}; margin: ${grafica || v15 ? "0" : "8mm"}; }
     html, body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; color: ${NAVY}; background: #fff; }
     .grid { display: grid; grid-template-columns: repeat(3, 50mm); grid-auto-rows: 65mm; gap: 6mm 8mm; justify-content: center; padding-top: 2mm; }
     .pg2 { page-break-before: always; break-before: page; }
+    /* verso15: A4 paisagem, 5 colunas × 3 linhas de 50 × 65 mm, centralizado */
+    .grid15 { width: 297mm; height: 210mm; display: grid; grid-template-columns: repeat(5, 50mm); grid-auto-rows: 65mm; gap: 3mm 6mm; justify-content: center; align-content: center; page-break-after: always; break-after: page; }
+    .grid15:last-child { page-break-after: auto; break-after: auto; }
+    .logov { max-width: 34mm; max-height: 8mm; object-fit: contain; }
     /* .pg = área de corte (50 × 65 mm); .st = a arte, com moldura azul fina e cantos arredondados, 1 mm pra dentro do corte */
     .pg { width: 50mm; height: 65mm; padding: 1mm; background: #fff; page-break-inside: avoid; break-inside: avoid; ${grafica ? "page-break-after: always; break-after: page;" : "outline: 0.2mm dashed #bbb; border-radius: 3.5mm;"} }
     .pg:last-child { page-break-after: auto; break-after: auto; }
@@ -73,7 +83,7 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
     .verso { justify-content: space-between; padding: 0 2.5mm 2.5mm; }
     .topo { width: 100%; background: ${NAVY}; color: #fff; font-size: 6.2pt; font-weight: 800; letter-spacing: .12em; padding: 1.8mm 0; white-space: nowrap; }
     .qrbox { border: 0.5mm solid ${NAVY}; border-radius: 2.5mm; padding: 2mm; margin-top: 1mm; }
-    .qr { width: 30mm; height: 30mm; display: block; }
+    .qr { width: ${v15 ? 26 : 30}mm; height: ${v15 ? 26 : 30}mm; display: block; }
     .num { font-family: "Courier New", monospace; font-weight: 700; font-size: 11pt; letter-spacing: .12em; color: ${NAVY}; }
     .cta { font-size: 8pt; line-height: 1.3; font-weight: 700; color: ${NAVY}; }
     .marca { font-size: 6.5pt; color: #8a8fa8; letter-spacing: .06em; }
@@ -110,6 +120,7 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
   const [bind, setBind] = useState({ label: "", journey_id: "", customer_name: "", customer_phone: "", car_desc: "", placa: "", km_entrega: "" });
   const [filtro, setFiltro] = useState("");
   const [printing, setPrinting] = useState(false);
+  const [faixa, setFaixa] = useState({ de: "", ate: "" });
 
   const tags = data?.tags || [];
   const resumo = data?.resumo;
@@ -145,6 +156,17 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
   const imprimirLote = async (lote: CarTag[]) => {
     setPrinting(true);
     try { await imprimirFolha(lote, loja, appUrl(), logoAtual, modo); } finally { setPrinting(false); }
+  };
+
+  // imprime um intervalo por número (ex.: CV-0016 até CV-0030), em qualquer formato
+  const numDe = (l: string) => Number(String(l).replace(/\D/g, "")) || 0;
+  const imprimirFaixa = async () => {
+    const a = numDe(faixa.de), b = numDe(faixa.ate) || a;
+    const pre = (faixa.de.match(/^[A-Z]+/i)?.[0] || "").toUpperCase();
+    const sel = tags.filter((t) => { const n = numDe(t.label); return n >= Math.min(a, b) && n <= Math.max(a, b) && (!pre || t.label.toUpperCase().startsWith(pre)); })
+      .sort((x, y) => numDe(x.label) - numDe(y.label));
+    if (!sel.length) { toast({ title: "Nenhuma etiqueta nesse intervalo", description: "Confira os números (ex.: CV-0016 até CV-0030). Se ainda não existem, gere um lote antes.", variant: "destructive" }); return; }
+    await imprimirLote(sel);
   };
 
   const apagar = (nome: string, ts: CarTag[]) => {
@@ -232,8 +254,9 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
                 <div className="flex gap-2">
                   <Button type="button" size="sm" variant={modo === "grafica" ? "default" : "outline"} className="flex-1" onClick={() => setModo("grafica")}>Gráfica: 1 por página (50×65 mm)</Button>
                   <Button type="button" size="sm" variant={modo === "a4" ? "default" : "outline"} className="flex-1" onClick={() => setModo("a4")}>Folha A4: 12 por página</Button>
+                  <Button type="button" size="sm" variant={modo === "verso15" ? "default" : "outline"} className="flex-1" onClick={() => setModo("verso15")}>Só verso + logo: A4 paisagem, 15</Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">{modo === "grafica" ? "Páginas de 50×65 mm, frente e verso de cada etiqueta em sequência (frente, verso, frente, verso…). É o formato que a gráfica pede quando cada adesivo tem código próprio." : "Página 1 = verso (QR, lado do motorista), página 2 = frente (logo, lado do vidro), com linha de corte. Bom pra impressora comum e conferência."}</p>
+                <p className="text-[11px] text-muted-foreground">{modo === "grafica" ? "Páginas de 50×65 mm, frente e verso de cada etiqueta em sequência (frente, verso, frente, verso…). É o formato que a gráfica pede quando cada adesivo tem código próprio." : modo === "verso15" ? "Só o lado do QR, com o logo da loja junto. A4 deitado (paisagem), 15 por folha (5 × 3), 50×65 mm, com linha de corte. Na impressão, escolha Paisagem e escala 100% (sem \"ajustar à página\")." : "Página 1 = verso (QR, lado do motorista), página 2 = frente (logo, lado do vidro), com linha de corte. Bom pra impressora comum e conferência."}</p>
               </div>
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs">Logo da loja (frente da etiqueta)</Label>
@@ -247,6 +270,17 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
             <Button onClick={gerarLote} disabled={criar.isPending} className="gap-1.5">
               {criar.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Gerar e imprimir
             </Button>
+            {tags.length > 0 && (
+              <div className="pt-2 border-t space-y-1">
+                <Label className="text-xs text-muted-foreground">Imprimir intervalo (no formato escolhido acima)</Label>
+                <div className="flex gap-2 items-center">
+                  <Input className="h-8" value={faixa.de} onChange={(e) => setFaixa((f) => ({ ...f, de: e.target.value.toUpperCase() }))} placeholder="CV-0016" />
+                  <span className="text-xs text-muted-foreground">até</span>
+                  <Input className="h-8" value={faixa.ate} onChange={(e) => setFaixa((f) => ({ ...f, ate: e.target.value.toUpperCase() }))} placeholder="CV-0030" />
+                  <Button size="sm" className="h-8 gap-1.5" disabled={printing || !faixa.de} onClick={imprimirFaixa}><Printer className="w-3.5 h-3.5" /> Imprimir</Button>
+                </div>
+              </div>
+            )}
             {lotes.length > 0 && (
               <div className="pt-2 border-t space-y-1">
                 <Label className="text-xs text-muted-foreground">Lotes (reimprimir / apagar)</Label>
