@@ -31,8 +31,9 @@ const rel = (s?: string | null) => {
 //   página 2 = FRENTE (lado do vidro, visto de fora): logo da loja + frase da marca, mesma posição de cada adesivo.
 // modo "grafica": 1 etiqueta por página de 50 × 65 mm (frente, verso, frente, verso…) — é o que a gráfica pede
 // quando cada adesivo tem código próprio. modo "a4": 12 por folha, pra impressora comum / conferência.
-// modo "verso15": SÓ o verso, com o logo da loja junto, A4 PAISAGEM com 15 por folha (5 × 3) — pra impressora
-// comum enquanto a frente e verso não está acertada.
+// modo "verso15": SÓ o verso, com o logo da loja junto, 15 por folha (5 × 3 de 50 × 65 mm) — pra impressora
+// comum enquanto a frente e verso não está acertada. A página é A4 EM PÉ (o padrão de toda impressora: em
+// paisagem ela encolhia tudo pra caber) e a grade vai deitada dentro, girada 90°, com ~6 mm de margem.
 const NAVY = "#000080";
 type ModoImpressao = "a4" | "grafica" | "verso15";
 async function imprimirFolha(tags: { label: string; token: string }[], loja: string, appUrl: string, logoUrl?: string | null, modo: ModoImpressao = "grafica") {
@@ -58,7 +59,7 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
       </div></div>`);
   const grafica = modo === "grafica", v15 = modo === "verso15";
   const folhas15: string[] = [];
-  for (let i = 0; i < versos.length; i += 15) folhas15.push(`<div class="grid15">${versos.slice(i, i + 15).join("")}</div>`);
+  for (let i = 0; i < versos.length; i += 15) folhas15.push(`<div class="folha15"><div class="grid15">${versos.slice(i, i + 15).join("")}</div></div>`);
   const corpo = grafica
     // gráfica: frente e verso de cada etiqueta em páginas consecutivas, sem margem nem linha de corte
     ? tags.map((_, i) => frentes[i] + versos[i]).join("")
@@ -67,13 +68,15 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas ${esc(tags[0]?.label || "")} – ${esc(tags[tags.length - 1]?.label || "")} — ${esc(loja)}</title>
   <style>
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    @page { size: ${grafica ? "50mm 65mm" : v15 ? "A4 landscape" : "A4"}; margin: ${grafica || v15 ? "0" : "8mm"}; }
+    @page { size: ${grafica ? "50mm 65mm" : "A4"}; margin: ${grafica || v15 ? "0" : "8mm"}; }
     html, body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; color: ${NAVY}; background: #fff; }
     .grid { display: grid; grid-template-columns: repeat(3, 50mm); grid-auto-rows: 65mm; gap: 6mm 8mm; justify-content: center; padding-top: 2mm; }
     .pg2 { page-break-before: always; break-before: page; }
-    /* verso15: A4 paisagem, 5 colunas × 3 linhas de 50 × 65 mm, centralizado */
-    .grid15 { width: 297mm; height: 210mm; display: grid; grid-template-columns: repeat(5, 50mm); grid-auto-rows: 65mm; gap: 3mm 6mm; justify-content: center; align-content: center; page-break-after: always; break-after: page; }
-    .grid15:last-child { page-break-after: auto; break-after: auto; }
+    /* verso15: folha A4 em pé; a grade 5 × 3 (50 × 65 mm) vai deitada dentro, girada 90° */
+    .folha15 { width: 210mm; height: 297mm; position: relative; overflow: hidden; page-break-after: always; break-after: page; }
+    .folha15:last-child { page-break-after: auto; break-after: auto; }
+    .grid15 { position: absolute; top: 0; left: 0; width: 297mm; height: 210mm; transform-origin: 0 0; transform: translateX(210mm) rotate(90deg); display: grid; grid-template-columns: repeat(5, 50mm); grid-auto-rows: 65mm; gap: 1.5mm 5mm; justify-content: center; align-content: center; }
+    .folha15 .pg { page-break-after: auto; break-after: auto; }
     .logov { max-width: 34mm; max-height: 8mm; object-fit: contain; }
     /* .pg = área de corte (50 × 65 mm); .st = a arte, com moldura azul fina e cantos arredondados, 1 mm pra dentro do corte */
     .pg { width: 50mm; height: 65mm; padding: 1mm; background: #fff; page-break-inside: avoid; break-inside: avoid; ${grafica ? "page-break-after: always; break-after: page;" : "outline: 0.2mm dashed #bbb; border-radius: 3.5mm;"} }
@@ -254,9 +257,9 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
                 <div className="flex gap-2">
                   <Button type="button" size="sm" variant={modo === "grafica" ? "default" : "outline"} className="flex-1" onClick={() => setModo("grafica")}>Gráfica: 1 por página (50×65 mm)</Button>
                   <Button type="button" size="sm" variant={modo === "a4" ? "default" : "outline"} className="flex-1" onClick={() => setModo("a4")}>Folha A4: 12 por página</Button>
-                  <Button type="button" size="sm" variant={modo === "verso15" ? "default" : "outline"} className="flex-1" onClick={() => setModo("verso15")}>Só verso + logo: A4 paisagem, 15</Button>
+                  <Button type="button" size="sm" variant={modo === "verso15" ? "default" : "outline"} className="flex-1" onClick={() => setModo("verso15")}>Só verso + logo: 15 por folha A4</Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">{modo === "grafica" ? "Páginas de 50×65 mm, frente e verso de cada etiqueta em sequência (frente, verso, frente, verso…). É o formato que a gráfica pede quando cada adesivo tem código próprio." : modo === "verso15" ? "Só o lado do QR, com o logo da loja junto. A4 deitado (paisagem), 15 por folha (5 × 3), 50×65 mm, com linha de corte. Na impressão, escolha Paisagem e escala 100% (sem \"ajustar à página\")." : "Página 1 = verso (QR, lado do motorista), página 2 = frente (logo, lado do vidro), com linha de corte. Bom pra impressora comum e conferência."}</p>
+                <p className="text-[11px] text-muted-foreground">{modo === "grafica" ? "Páginas de 50×65 mm, frente e verso de cada etiqueta em sequência (frente, verso, frente, verso…). É o formato que a gráfica pede quando cada adesivo tem código próprio." : modo === "verso15" ? "Só o lado do QR, com o logo da loja junto. 15 por folha A4 (etiquetas deitadas, 50×65 mm), com linha de corte. Na impressão: papel A4, orientação Retrato, escala 100% / tamanho real (nunca \"ajustar à página\") e margens Nenhuma." : "Página 1 = verso (QR, lado do motorista), página 2 = frente (logo, lado do vidro), com linha de corte. Bom pra impressora comum e conferência."}</p>
               </div>
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs">Logo da loja (frente da etiqueta)</Label>
