@@ -6,7 +6,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { capaDoVeiculo, descVeiculo, fotoDeCapaNaVenda, mktDealerIdByName, mktStock } from "../_shared/car-photo.ts";
-import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario } from "../_shared/posvenda.ts";
+import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1260,6 +1260,8 @@ Deno.serve(async (req) => {
           admin.from("posvenda_equipe").select("id, nome").eq("dealership", writeStore),
         ]);
         const casos = cs || [];
+        const { data: opsSt } = await admin.from("posvenda_oportunidades").select("status, valor").eq("dealership", writeStore).gte("created_at", desde).limit(2000);
+        const ops = opsSt || [];
         const nomeDe = Object.fromEntries((equipe || []).map((m: any) => [m.id, m.nome]));
         const med = (xs: number[]) => xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
         const mins = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 60000;
@@ -1286,11 +1288,62 @@ Deno.serve(async (req) => {
           nota_media: notas.length ? Math.round(10 * notas.reduce((a: number, b: number) => a + b, 0) / notas.length) / 10 : null,
           qtd_notas: notas.length,
           vindos_do_nps: casos.filter((c: any) => c.origem === "nps").length,
+          oportunidades: ops.length,
+          oportunidades_ganhas: ops.filter((o: any) => o.status === "ganha").length,
+          oportunidades_valor: ops.filter((o: any) => o.status === "ganha").reduce((a: number, o: any) => a + (Number(o.valor) || 0), 0),
           por_motivo: Object.entries(porMotivo).sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ motivo: MOTIVO[k] || k, n })),
           por_pessoa: Object.values(porPessoa).sort((a, b) => b.casos - a.casos).map((x) => ({
             nome: x.nome, casos: x.casos, nota_media: x.notas.length ? Math.round(10 * x.notas.reduce((a, b) => a + b, 0) / x.notas.length) / 10 : null, min_ate_assumir: med(x.assumir),
           })),
         });
+      }
+
+      // ===== Fase 3: oportunidades do pós-venda e respostas padrão da loja =====
+      case "posvenda_oportunidades": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        let q = admin.from("posvenda_oportunidades").select("*").eq("dealership", writeStore).order("created_at", { ascending: false }).limit(300);
+        if (String(p.filtro || "abertas") === "abertas") q = q.in("status", ["nova", "em_contato"]);
+        const [{ data: ops }, { data: equipe }] = await Promise.all([q, admin.from("posvenda_equipe").select("id, nome").eq("dealership", writeStore)]);
+        const nome = Object.fromEntries((equipe || []).map((m: any) => [m.id, m.nome]));
+        return json({ ok: true, tipos: Object.fromEntries(Object.entries(TIPO_OPORTUNIDADE).map(([k, v]) => [k, v.titulo])),
+          oportunidades: (ops || []).map((o: any) => ({ ...o, vendedor_nome: nome[o.vendedor_id] || null })) });
+      }
+
+      case "posvenda_oportunidade_save": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const upd: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (p.status !== undefined) { if (!["nova", "em_contato", "ganha", "perdida"].includes(String(p.status))) return json({ error: "status_invalido" }, 400); upd.status = String(p.status); }
+        if (p.obs !== undefined) upd.obs = String(p.obs || "").slice(0, 1000) || null;
+        if (p.valor !== undefined) upd.valor = Number(p.valor) > 0 ? Number(p.valor) : null;
+        if (p.vendedor_id !== undefined) upd.vendedor_id = p.vendedor_id ? String(p.vendedor_id) : null;
+        const { error } = await admin.from("posvenda_oportunidades").update(upd).eq("id", String(p.id || "")).eq("dealership", writeStore);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      case "posvenda_respostas": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data } = await admin.from("posvenda_respostas").select("*").eq("dealership", writeStore).order("created_at");
+        return json({ ok: true, respostas: data || [] });
+      }
+
+      case "posvenda_resposta_save": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const pergunta = String(p.pergunta || "").trim().slice(0, 300), resposta = String(p.resposta || "").trim().slice(0, 1500);
+        if (!pergunta || !resposta) return json({ error: "pergunta_e_resposta_obrigatorias" }, 400);
+        const row = { dealership: writeStore, pergunta, resposta, ativo: p.ativo === undefined ? true : !!p.ativo, updated_at: new Date().toISOString() };
+        const { error } = p.id
+          ? await admin.from("posvenda_respostas").update(row).eq("id", String(p.id)).eq("dealership", writeStore)
+          : await admin.from("posvenda_respostas").insert(row);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      case "posvenda_resposta_del": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { error } = await admin.from("posvenda_respostas").delete().eq("id", String(p.id || "")).eq("dealership", writeStore);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
       }
 
       case "posvenda_caso": {
