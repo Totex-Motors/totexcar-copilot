@@ -303,7 +303,7 @@ export const usePosvendaCasos = (enabled: boolean, filtro: "ativos" | "encerrado
 export const usePosvendaCaso = (id: string | null, dealership?: string) =>
   useQuery({
     queryKey: ["posvenda-caso", id, dealership || null],
-    queryFn: async () => (await callDealer("posvenda_caso", { id, ...(dealership ? { dealership } : {}) })) as { caso: PosvendaCaso; mensagens: { de: string; autor: string | null; texto: string | null; midia: string | null; created_at: string }[] },
+    queryFn: async () => (await callDealer("posvenda_caso", { id, ...(dealership ? { dealership } : {}) })) as { caso: PosvendaCaso; mensagens: { de: string; autor: string | null; texto: string | null; midia: string | null; midia_tipo: string | null; midia_url: string | null; created_at: string }[] },
     enabled: !!id,
     refetchInterval: 15_000,
   });
