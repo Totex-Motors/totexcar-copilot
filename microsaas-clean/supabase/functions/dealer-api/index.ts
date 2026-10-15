@@ -1250,6 +1250,49 @@ Deno.serve(async (req) => {
         return json({ ok: true, motivos: MOTIVO, casos: (casos || []).map((c: any) => ({ ...c, vendedor_nome: nome[c.vendedor_id] || null, agente_nome: nome[c.agente_id] || null })) });
       }
 
+      // indicadores do atendimento (janela de N dias): tempo até assumir, 1º degrau, nota, motivos, por pessoa
+      case "posvenda_stats": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const dias = Math.min(365, Math.max(7, Number(p.dias) || 30));
+        const desde = new Date(Date.now() - dias * 86400000).toISOString();
+        const [{ data: cs }, { data: equipe }] = await Promise.all([
+          admin.from("posvenda_casos").select("status, nivel, motivo, origem, nota, created_at, assumido_at, encerrado_at, agente_id").eq("dealership", writeStore).gte("created_at", desde).limit(2000),
+          admin.from("posvenda_equipe").select("id, nome").eq("dealership", writeStore),
+        ]);
+        const casos = cs || [];
+        const nomeDe = Object.fromEntries((equipe || []).map((m: any) => [m.id, m.nome]));
+        const med = (xs: number[]) => xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
+        const mins = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 60000;
+        const assumidos = casos.filter((c: any) => c.assumido_at);
+        const notas = casos.filter((c: any) => c.nota != null).map((c: any) => c.nota);
+        const porMotivo: Record<string, number> = {};
+        for (const c of casos) porMotivo[c.motivo] = (porMotivo[c.motivo] || 0) + 1;
+        const porPessoa: Record<string, { nome: string; casos: number; notas: number[]; assumir: number[] }> = {};
+        for (const c of assumidos) {
+          const k = c.agente_id || "?";
+          porPessoa[k] ??= { nome: nomeDe[k] || "(removido)", casos: 0, notas: [], assumir: [] };
+          porPessoa[k].casos++;
+          if (c.nota != null) porPessoa[k].notas.push(c.nota);
+          porPessoa[k].assumir.push(mins(c.created_at, c.assumido_at));
+        }
+        return json({
+          ok: true, dias,
+          total: casos.length,
+          em_andamento: casos.filter((c: any) => c.status === "aberto" || c.status === "em_atendimento").length,
+          encerrados: casos.filter((c: any) => c.status === "encerrado").length,
+          min_ate_assumir: med(assumidos.map((c: any) => mins(c.created_at, c.assumido_at))),
+          pct_primeiro_degrau: assumidos.length ? Math.round(100 * assumidos.filter((c: any) => c.nivel <= 1).length / assumidos.length) : null,
+          horas_ate_encerrar: (() => { const xs = casos.filter((c: any) => c.encerrado_at).map((c: any) => mins(c.created_at, c.encerrado_at) / 60); return xs.length ? Math.round(10 * xs.reduce((a: number, b: number) => a + b, 0) / xs.length) / 10 : null; })(),
+          nota_media: notas.length ? Math.round(10 * notas.reduce((a: number, b: number) => a + b, 0) / notas.length) / 10 : null,
+          qtd_notas: notas.length,
+          vindos_do_nps: casos.filter((c: any) => c.origem === "nps").length,
+          por_motivo: Object.entries(porMotivo).sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ motivo: MOTIVO[k] || k, n })),
+          por_pessoa: Object.values(porPessoa).sort((a, b) => b.casos - a.casos).map((x) => ({
+            nome: x.nome, casos: x.casos, nota_media: x.notas.length ? Math.round(10 * x.notas.reduce((a, b) => a + b, 0) / x.notas.length) / 10 : null, min_ate_assumir: med(x.assumir),
+          })),
+        });
+      }
+
       case "posvenda_caso": {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
         const { data: c } = await admin.from("posvenda_casos").select("*").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();

@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Headset, Users, Trash2, Plus, Search, Send, MessageCircle, Clock, Star, CheckCircle2 } from "lucide-react";
-import { usePosvenda, usePosvendaCasos, usePosvendaCaso, usePosvendaAcao, type PapelEquipe, type PosvendaCaso } from "@/hooks/useDealer";
+import { usePosvenda, usePosvendaCasos, usePosvendaCaso, usePosvendaAcao, usePosvendaStats, type PapelEquipe, type PosvendaCaso } from "@/hooks/useDealer";
 
 // CENTRAL DE ATENDIMENTO DO PÓS-VENDA — o Co-pilot atende primeiro; quando precisa de gente, abre um caso,
 // avisa o grupo da equipe (número do Canal, só grupo) e quem tocar no link "#assumir N" conversa com o
@@ -84,6 +84,8 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
         <Card className="border-0 shadow-premium-md"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Equipe ativa</div><div className="text-2xl font-bold">{equipe.filter((m) => m.ativo).length}</div></CardContent></Card>
         <Card className="border-0 shadow-premium-md"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Grupo da equipe</div><div className="text-sm font-semibold truncate mt-1">{cfg?.grupo_id ? (cfg.grupo_nome || "Configurado") : "Não configurado"}</div></CardContent></Card>
       </div>
+
+      <Indicadores dealership={dealership} />
 
       {/* CASOS */}
       <Card className="border-0 shadow-premium-md">
@@ -285,4 +287,59 @@ function Midia({ tipo, url }: { tipo: string | null; url: string | null }) {
   if (tipo === "audio") return <audio controls src={url} className="mt-1 mb-1 w-full" />;
   if (tipo === "video") return <video controls src={url} className="mt-1 mb-1 max-h-72 w-full rounded-md" />;
   return <a href={url} target="_blank" rel="noreferrer" className="inline-block mt-1 mb-1 text-primary underline">📄 Abrir arquivo</a>;
+}
+
+// INDICADORES — quanto a equipe demora pra assumir, quanto resolve no 1º degrau, nota e o que mais aparece
+const fmtMin = (m: number | null) => m == null ? "—" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+function Indicadores({ dealership }: { dealership?: string }) {
+  const [dias, setDias] = useState(30);
+  const { data: st, isLoading } = usePosvendaStats(true, dias, dealership);
+  return (
+    <Card className="border-0 shadow-premium-md">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base flex items-center gap-2"><Star className="w-4 h-4 text-primary" /> Indicadores do atendimento</CardTitle>
+        <div className="flex gap-1">
+          {[30, 90].map((d) => <Button key={d} size="sm" variant={dias === d ? "default" : "outline"} className="h-8" onClick={() => setDias(d)}>{d} dias</Button>)}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading || !st ? <div className="py-4 text-center"><Loader2 className="w-5 h-5 animate-spin inline" /></div> : !st.total ? (
+          <p className="text-sm text-muted-foreground">Ainda sem atendimentos nesse período.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Atendimentos</div><div className="text-xl font-bold">{st.total}</div><div className="text-[11px] text-muted-foreground">{st.encerrados} encerrados{st.vindos_do_nps ? ` · ${st.vindos_do_nps} de NPS baixo` : ""}</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Tempo até assumir</div><div className="text-xl font-bold">{fmtMin(st.min_ate_assumir)}</div><div className="text-[11px] text-muted-foreground">média</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Assumidos pelo vendedor</div><div className="text-xl font-bold">{st.pct_primeiro_degrau == null ? "—" : `${st.pct_primeiro_degrau}%`}</div><div className="text-[11px] text-muted-foreground">sem precisar subir a escada</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Até encerrar</div><div className="text-xl font-bold">{st.horas_ate_encerrar == null ? "—" : `${st.horas_ate_encerrar} h`}</div><div className="text-[11px] text-muted-foreground">média</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Nota dos clientes</div><div className="text-xl font-bold flex items-center gap-1">{st.nota_media ?? "—"}{st.nota_media != null && <Star className="w-4 h-4 fill-amber-400 text-amber-400" />}</div><div className="text-[11px] text-muted-foreground">{st.qtd_notas} avaliações</div></div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-1.5">Por pessoa</div>
+                {!st.por_pessoa.length ? <p className="text-sm text-muted-foreground">Ninguém assumiu ainda.</p> : (
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-[11px] text-muted-foreground text-left"><th className="font-medium">Quem</th><th className="font-medium">Casos</th><th className="font-medium">Assumiu em</th><th className="font-medium">Nota</th></tr></thead>
+                    <tbody>{st.por_pessoa.map((p) => <tr key={p.nome} className="border-t"><td className="py-1">{p.nome}</td><td>{p.casos}</td><td>{fmtMin(p.min_ate_assumir)}</td><td>{p.nota_media ?? "—"}</td></tr>)}</tbody>
+                  </table>
+                )}
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-1.5">O que os clientes mais pedem</div>
+                <div className="space-y-1">
+                  {st.por_motivo.map((m) => (
+                    <div key={m.motivo} className="flex items-center gap-2 text-sm">
+                      <span className="w-44 truncate">{m.motivo}</span>
+                      <div className="flex-1 h-2 rounded bg-muted"><div className="h-2 rounded bg-primary" style={{ width: `${Math.round(100 * m.n / st.total)}%` }} /></div>
+                      <span className="w-6 text-right text-muted-foreground">{m.n}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

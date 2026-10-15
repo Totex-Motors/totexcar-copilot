@@ -309,3 +309,16 @@ export const usePosvendaCaso = (id: string | null, dealership?: string) =>
   });
 export const usePosvendaAcao = () =>
   useMutation({ mutationFn: async (p: { action: string } & Record<string, unknown>) => { const { action, ...rest } = p; return callDealer(action, rest); } });
+
+export interface PosvendaStats {
+  dias: number; total: number; em_andamento: number; encerrados: number; min_ate_assumir: number | null; pct_primeiro_degrau: number | null;
+  horas_ate_encerrar: number | null; nota_media: number | null; qtd_notas: number; vindos_do_nps: number;
+  por_motivo: { motivo: string; n: number }[]; por_pessoa: { nome: string; casos: number; nota_media: number | null; min_ate_assumir: number | null }[];
+}
+export const usePosvendaStats = (enabled: boolean, dias: number, dealership?: string) =>
+  useQuery({
+    queryKey: ["posvenda-stats", dias, dealership || null],
+    queryFn: async () => (await callDealer("posvenda_stats", { dias, ...(dealership ? { dealership } : {}) })) as PosvendaStats,
+    enabled,
+    refetchInterval: 60_000,
+  });

@@ -29,7 +29,7 @@ const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 import { salvarFotoCarro } from "../_shared/car-photo.ts";
-import { pontePosvenda, abrirCaso, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
+import { pontePosvenda, abrirCaso, atendimentoAtivo, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -179,6 +179,8 @@ const PAINEL_LABEL = "🔑 Acessar o sistema";
 // usamos uma LISTA (type:"list"). A 4ª opção (Garagem Totex) abre a janela de carros do marketplace.
 const VIAGEM_LABEL = "🏖️ Planejar viagem";
 const RADAR_LABEL = "🔎 Achar oficina/serviço";
+// "Falar com a loja" — só aparece no menu do SELO quando a loja do carro tem o atendimento ligado
+const FALAR_LOJA_LABEL = "🧑‍💼 Falar com a loja";
 const QUICK_ACTIONS = ["📊 Gastos do mês", "⛽ Meu consumo", "🔧 Manutenção (km)", RADAR_LABEL, GARAGEM_LABEL, VIAGEM_LABEL, PAINEL_LABEL];
 
 // Envia a resposta com o menu de ações (lista interativa nos dois providers).
@@ -734,6 +736,19 @@ async function applyNpsScore(j: any, phone: string, score: number, comentario?: 
   const nome = j.customer_name ? " " + String(j.customer_name).split(" ")[0] : "";
 
   if (seg === "detrator") {
+    // loja com atendimento do pós-venda ligado: a nota baixa vira CASO (grupo da equipe avisado,
+    // escada de responsáveis) e a conversa com a loja acontece aqui mesmo
+    if (await atendimentoAtivo(supabase, j.dealership)) {
+      const r = await abrirCaso(supabase, {
+        phone, nome: j.customer_name || null, motivo: "reclamacao", prioridade: score <= 4 ? "alta" : "media", origem: "nps",
+        resumo: `Nota ${score}/10 na pesquisa de satisfação${comentario ? `: "${String(comentario).slice(0, 300)}"` : " (sem comentário)"}. Ligar/escrever pra entender e resolver.`,
+        dealershipHint: j.dealership, carro: j.car_desc || null,
+      }).catch(() => null);
+      if (r?.ok) {
+        await sendText(phone, `Poxa${nome}, sentimos muito que não tenha sido uma nota 10. 🙏 Já avisei a equipe da ${j.dealership}: alguém de lá vai falar com você *aqui mesmo*${r.foraDoHorario ? ` no próximo horário de atendimento (${r.horario})` : ", em instantes"}. Se quiser, já me conta o que aconteceu.`);
+        return;
+      }
+    }
     await sendText(phone, `Poxa${nome}, sentimos muito que não tenha sido uma nota 10. 🙏 O que a gente poderia ter feito melhor? Pode escrever aqui — vai direto pro responsável da ${j.dealership} pra resolver.`);
     const { data: dealers } = await supabase.from("users")
       .select("phone").eq("role", "dealer").eq("dealership", j.dealership).not("phone", "is", null);
@@ -3275,7 +3290,8 @@ async function handleEtiqueta(phone: string, text: string, contactName?: string)
     if (tag.activated_at) {
       const acc = tag.account_id ? (await supabase.from("accounts").select("hodometro").eq("id", tag.account_id).maybeSingle()).data : null;
       const km = kmTxt(acc?.hodometro) || (tag.km_entrega ? `${kmTxt(tag.km_entrega)} na entrega` : "");
-      await sendMenu(phone, `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Esse é o seu *${carro}*${km ? ` · ${km}` : ""}.\n\nO que você quer fazer agora? Pode mandar foto de nota, do painel com o km, ou escolher aqui embaixo 👇`, QUICK_ACTIONS);
+      const menuSelo = (await atendimentoAtivo(supabase, tag.dealership)) ? [FALAR_LOJA_LABEL, ...QUICK_ACTIONS] : QUICK_ACTIONS;
+      await sendMenu(phone, `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Esse é o seu *${carro}*${km ? ` · ${km}` : ""}.\n\nO que você quer fazer agora? Pode mandar foto de nota, do painel com o km, falar com a ${loja} ou escolher aqui embaixo 👇`, menuSelo);
       return true;
     }
     // 1ª vez do dono: ATIVA NA HORA (sem perguntar) — a etiqueta é a porta de entrada; o carro já
@@ -3285,7 +3301,7 @@ async function handleEtiqueta(phone: string, text: string, contactName?: string)
     await supabase.from("car_tags").update({ status: "ativa", activated_at: new Date().toISOString(), user_id: r.userId, account_id: r.accountId, customer_phone: digits }).eq("id", tag.id);
     await sendMenu(phone,
       `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Essa etiqueta é do seu *${carro}*${tag.km_entrega ? `, ${kmTxt(tag.km_entrega)} na entrega` : ""}, da ${loja}.\n\n✅ Pronto: a partir de agora eu cuido dele por aqui. Aviso de troca de óleo, revisão, IPVA, licenciamento e multa, e guardo todo o histórico do carro.\n\nPode mandar foto da nota da oficina ou do painel com o km, ou escolher aqui embaixo 👇`,
-      QUICK_ACTIONS);
+      (await atendimentoAtivo(supabase, tag.dealership)) ? [FALAR_LOJA_LABEL, ...QUICK_ACTIONS] : QUICK_ACTIONS);
     return true;
   }
 
@@ -4405,6 +4421,10 @@ ${JSON.stringify(snapshot)}`;
     };
     const cmdKey = inputText.trim().toLowerCase().split(/\s/)[0];
     if (CMD_MAP[cmdKey]) inputText = CMD_MAP[cmdKey];
+    // tocou em "Falar com a loja" (menu do selo): o assistente coleta o essencial e abre o atendimento
+    if (inputText.trim() === FALAR_LOJA_LABEL || cmdKey === "/loja") {
+      inputText = "[O cliente tocou em \"Falar com a loja\".] Se ele já contou nesta conversa o que precisa, chame abrir_atendimento_loja agora. Se não, pergunte numa mensagem curta e acolhedora o que está acontecendo, desde quando e o km atual, e diga que pode mandar foto, vídeo ou áudio; assim que ele responder, chame abrir_atendimento_loja.";
+    }
 
     // BOTÕES DAS PROATIVAS (quick replies dos templates copilot_msg*): o rótulo é fixo
     // ("Sim, quero" etc.) e sozinho não diz do que se trata — embrulha com o contexto da
