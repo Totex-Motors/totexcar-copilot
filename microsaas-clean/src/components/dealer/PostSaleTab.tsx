@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Loader2, UserPlus, Star, Settings2, Smile, Meh, Frown, Send, FileCheck, ShieldCheck, Gift } from "lucide-react";
 import {
   usePostsaleList, usePostsaleStats, usePostsaleConfig, usePostsaleCreate, usePostsaleConfigSave, usePostsaleTransferSave,
-  useEstoqueLista, type PostsaleJourney, type EstoqueCarro,
+  useEstoqueLista, usePosvenda, usePosvendaAcao, type PostsaleJourney, type EstoqueCarro,
 } from "@/hooks/useDealer";
 import { SeloLojaCard } from "./SeloLojaCard";
 import { SorteioFeiraoCard } from "./SorteioFeiraoCard";
@@ -53,6 +53,16 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
   const [reviewUrl, setReviewUrl] = useState("");
   const [delay, setDelay] = useState("");
   const [editing, setEditing] = useState<PostsaleJourney | null>(null);
+  // VENDEDOR da venda (equipe da aba Atendimento): é quem recebe primeiro quando o cliente pede a loja
+  const { data: pv } = usePosvenda(enabled, dealership);
+  const vendedores = (pv?.equipe || []).filter((m) => m.ativo && m.papel === "vendedor");
+  const [vendedorId, setVendedorId] = useState("");
+  const setVend = usePosvendaAcao();
+  const trocarVendedor = (journeyId: string, vid: string) =>
+    setVend.mutate({ action: "postsale_set_vendedor", journey_id: journeyId, vendedor_id: vid || null, ...(dealership ? { dealership } : {}) }, {
+      onSuccess: () => { toast({ title: "Vendedor atualizado" }); qc.invalidateQueries({ queryKey: ["postsale-list"] }); },
+      onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
+    });
 
   // sincroniza os campos de config quando carregam
   const cfg = cfgData?.config;
@@ -81,6 +91,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
       customer_phone: form.customer_phone,
       car_desc: form.car_desc || (carroEstoque ? [carroEstoque.desc, carroEstoque.cor].filter(Boolean).join(" ") : undefined),
       vehicle_id: carroEstoque?.id || undefined,
+      vendedor_id: vendedorId || undefined,
       purchase_date: form.purchase_date || undefined,
       cortesia: cortesia || undefined,
       placa: form.placa || undefined,
@@ -100,7 +111,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
         });
         setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
         setCortesia(false);
-        setCarroEstoque(null); setForaEstoque(false); setBuscaEstoque("");
+        setCarroEstoque(null); setForaEstoque(false); setBuscaEstoque(""); setVendedorId("");
         refresh();
         qc.invalidateQueries({ queryKey: ["car-tags"] });
       },
@@ -198,6 +209,13 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
               <div className="space-y-1"><Label className="text-xs">WhatsApp (com DDD)</Label><Input value={form.customer_phone} onChange={(e) => setForm((p) => ({ ...p, customer_phone: e.target.value }))} placeholder="11987654321" /></div>
               <div className="space-y-1"><Label className="text-xs">Carro</Label><Input value={form.car_desc} onChange={(e) => setForm((p) => ({ ...p, car_desc: e.target.value }))} placeholder="Ex.: Onix 2020" /></div>
               <div className="space-y-1"><Label className="text-xs">Data da compra</Label><Input type="date" value={form.purchase_date} onChange={(e) => setForm((p) => ({ ...p, purchase_date: e.target.value }))} /></div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Vendedor (recebe primeiro quando o cliente chamar a loja)</Label>
+                <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={vendedorId} onChange={(e) => setVendedorId(e.target.value)}>
+                  <option value="">{vendedores.length ? "Escolha o vendedor…" : "Cadastre a equipe na aba Atendimento"}</option>
+                  {vendedores.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                </select>
+              </div>
             </div>
 
             {/* Etiqueta QR do para-brisa colada na entrega (opcional): vincula ao cliente na hora */}
@@ -276,6 +294,13 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {vendedores.length > 0 && (
+                        <select title="Vendedor da venda" className="h-8 rounded-md border border-input bg-background px-2 text-xs max-w-[130px]"
+                          value={j.vendedor_id || ""} onChange={(e) => trocarVendedor(j.id, e.target.value)}>
+                          <option value="">Sem vendedor</option>
+                          {vendedores.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                        </select>
+                      )}
                       {j.sponsored && <Badge className="gap-1 bg-primary/15 text-primary"><Gift className="w-3 h-3" /> {j.sponsor_settled ? "Cortesia (quitada)" : "Cortesia"}</Badge>}
                       {j.nps_score != null && <span className="text-sm font-bold">{j.nps_score}<span className="text-muted-foreground text-xs">/10</span></span>}
                       <Badge className={`gap-1 ${st.cls}`}><st.Icon className="w-3 h-3" /> {st.label}</Badge>

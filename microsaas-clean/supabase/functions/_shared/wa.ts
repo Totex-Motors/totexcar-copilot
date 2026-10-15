@@ -173,6 +173,18 @@ export async function waUploadMedia(s: WaSettings, bytes: Uint8Array, mime: stri
   } catch (e) { console.error("waUploadMedia:", e); return null; }
 }
 
+// ---------------- envio: MÍDIA já hospedada na Meta (media id) ----------------
+// Usado pela ponte do pós-venda: a mídia recebida é baixada (metaDownloadMedia), sobe de novo
+// (waUploadMedia) e sai pro outro lado por id. Só Cloud API; no uazapi devolve false.
+export async function waSendMediaId(s: WaSettings, phone: string, tipo: "image" | "audio" | "document" | "video", mediaId: string, caption?: string, filename?: string): Promise<boolean> {
+  const to = onlyDigits(phone);
+  if (!to || !mediaId || waProvider(s) !== "meta") return false;
+  const obj: Record<string, unknown> = { id: mediaId };
+  if (caption && tipo !== "audio") obj.caption = caption.slice(0, 1024);
+  if (tipo === "document") obj.filename = (filename || "arquivo.pdf").slice(0, 240);
+  return metaPost(s, { messaging_product: "whatsapp", to, type: tipo, [tipo]: obj });
+}
+
 // ---------------- envio: CARROSSEL de cards (vitrine deslizável; template aprovado) ----------------
 // UMA mensagem com 2 a 10 cards (foto + legenda + botão "Ver carro"). Regra da Meta: o template
 // de carrossel é aprovado com um número FIXO de cards e o envio deve ter EXATAMENTE essa
@@ -339,7 +351,11 @@ export function parseMetaInbound(body: any): {
   else if (type === "audio") { kind = "audio"; mediaId = m.audio?.id || ""; mimetype = m.audio?.mime_type || "audio/ogg"; }
   else if (type === "document") {
     mimetype = m.document?.mime_type || "";
-    if (/pdf/i.test(mimetype)) { kind = "pdf"; mediaId = m.document?.id || ""; text = m.document?.caption || ""; }
+    mediaId = m.document?.id || ""; text = m.document?.caption || "";
+    if (/pdf/i.test(mimetype)) kind = "pdf";               // outros documentos: kind "other" (só a ponte do pós-venda usa)
+  } else if (type === "video") {
+    // vídeo: kind "other" (o assistente não lê vídeo) — mediaId pra ponte do pós-venda repassar
+    mediaId = m.video?.id || ""; mimetype = m.video?.mime_type || "video/mp4"; text = m.video?.caption || "";
   } else if (type === "interactive") {
     kind = "text";
     text = m.interactive?.list_reply?.title || m.interactive?.button_reply?.title || "";

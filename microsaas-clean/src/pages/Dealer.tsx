@@ -22,10 +22,12 @@ import {
   Phone, Mail, Gauge, AlertTriangle, ShieldCheck, BadgeCheck, Fuel,
   Megaphone, Sparkles, Send, Loader2, MessageCircle, Banknote, HeartHandshake,
   ExternalLink, KanbanSquare, MessagesSquare, Bot, UserRound, XCircle, Gift, Star, QrCode, Tag,
+  Headset,
 } from "lucide-react";
 import { MgPanelShell } from "@/components/mg/MgPanelShell";
 import { PostSaleTab } from "@/components/dealer/PostSaleTab";
 import { EtiquetasTab } from "@/components/dealer/EtiquetasTab";
+import { AtendimentoTab } from "@/components/dealer/AtendimentoTab";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useSearchParams } from "react-router-dom";
 import { useCurrentUser, useAuth } from "@/hooks/useAuth";
@@ -230,6 +232,7 @@ export default function Dealer() {
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="w-4 h-4" /> Campanhas</TabsTrigger>
             <TabsTrigger value="recompras" className="gap-2"><Banknote className="w-4 h-4" /> Recompras</TabsTrigger>
             <TabsTrigger value="posvenda" className="gap-2"><HeartHandshake className="w-4 h-4" /> Sucesso do Cliente</TabsTrigger>
+            <TabsTrigger value="atendimento" className="gap-2"><Headset className="w-4 h-4" /> Atendimento</TabsTrigger>
             <TabsTrigger value="stand" className="gap-2"><QrCode className="w-4 h-4" /> Stand</TabsTrigger>
             <TabsTrigger value="etiquetas" className="gap-2"><Tag className="w-4 h-4" /> Etiquetas</TabsTrigger>
             <TabsTrigger value="indicacoes" className="gap-2"><Gift className="w-4 h-4" /> Indicações</TabsTrigger>
@@ -306,6 +309,10 @@ export default function Dealer() {
 
           <TabsContent value="posvenda" className="mt-6">
             <PostSaleTab dealership={viewStore} />
+          </TabsContent>
+
+          <TabsContent value="atendimento" className="mt-6">
+            <AtendimentoTab dealership={viewStore} />
           </TabsContent>
 
           <TabsContent value="stand" className="mt-6">
