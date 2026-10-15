@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Printer, Tag, Link2, Unlink, QrCode, Smartphone, Trash2 } from "lucide-react";
+import { gerarPdfVersoLogo } from "@/lib/etiquetaPdf";
 import { useTagsList, useTagsCreate, useTagsBind, useTagsUnbind, useTagsLogoSave, useTagsDeleteBatch, usePostsaleList, type CarTag } from "@/hooks/useDealer";
 
 // ETIQUETAS QR DO PARA-BRISA — o adesivo "de troca de óleo" com QR. Cada etiqueta tem um número (CV-0001)
@@ -106,6 +107,26 @@ async function imprimirFolha(tags: { label: string; token: string }[], loja: str
   w.document.write(html); w.document.close();
 }
 
+// "Só verso + logo": baixa um PDF de verdade (mm exatos, QR vetorial) em vez de imprimir pelo navegador —
+// a impressão de HTML encolhia/cortava conforme a impressora. Abrir no leitor de PDF e imprimir em "Tamanho real".
+async function baixarPdfVerso(tags: { label: string; token: string }[], appUrl: string, logoUrl?: string | null) {
+  let logo: { bytes: Uint8Array; png: boolean } | null = null;
+  if (logoUrl) {
+    try {
+      const url = /^https?:\/\//i.test(logoUrl) ? logoUrl : `${window.location.origin}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
+      const r = await fetch(url);
+      if (r.ok) { const b = new Uint8Array(await r.arrayBuffer()); logo = { bytes: b, png: b[0] === 0x89 && b[1] === 0x50 }; }
+    } catch { /* sem logo */ }
+  }
+  const pdf = await gerarPdfVersoLogo(tags, appUrl, logo);
+  const nome = `etiquetas-${tags[0]?.label || ""}-a-${tags[tags.length - 1]?.label || ""}.pdf`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([pdf.slice(0)], { type: "application/pdf" }));
+  a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+  toast({ title: "PDF baixado", description: `${nome} — abra no leitor de PDF e imprima em A4, Retrato, "Tamanho real" (100%).` });
+}
+
 export function EtiquetasTab({ dealership }: { dealership?: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useTagsList(true, dealership);
@@ -150,7 +171,8 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
       onSuccess: async (r) => {
         toast({ title: `Lote gerado: ${r.tags.length} etiquetas`, description: `${r.tags[0]?.label} a ${r.tags[r.tags.length - 1]?.label}. Abrindo a folha de impressão…` });
         refresh();
-        await imprimirFolha(r.tags, r.loja || loja, r.app_url || appUrl(), logoAtual, modo);
+        if (modo === "verso15") await baixarPdfVerso(r.tags, r.app_url || appUrl(), logoAtual);
+        else await imprimirFolha(r.tags, r.loja || loja, r.app_url || appUrl(), logoAtual, modo);
       },
       onError: (e: any) => toast({ title: "Não consegui gerar o lote", description: String(e?.message || e), variant: "destructive" }),
     });
@@ -158,7 +180,12 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
 
   const imprimirLote = async (lote: CarTag[]) => {
     setPrinting(true);
-    try { await imprimirFolha(lote, loja, appUrl(), logoAtual, modo); } finally { setPrinting(false); }
+    try {
+      if (modo === "verso15") await baixarPdfVerso(lote, appUrl(), logoAtual);
+      else await imprimirFolha(lote, loja, appUrl(), logoAtual, modo);
+    } catch (e: any) {
+      toast({ title: "Não consegui gerar o arquivo", description: String(e?.message || e), variant: "destructive" });
+    } finally { setPrinting(false); }
   };
 
   // imprime um intervalo por número (ex.: CV-0016 até CV-0030), em qualquer formato
@@ -259,7 +286,7 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
                   <Button type="button" size="sm" variant={modo === "a4" ? "default" : "outline"} className="flex-1" onClick={() => setModo("a4")}>Folha A4: 12 por página</Button>
                   <Button type="button" size="sm" variant={modo === "verso15" ? "default" : "outline"} className="flex-1" onClick={() => setModo("verso15")}>Só verso + logo: 15 por folha A4</Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">{modo === "grafica" ? "Páginas de 50×65 mm, frente e verso de cada etiqueta em sequência (frente, verso, frente, verso…). É o formato que a gráfica pede quando cada adesivo tem código próprio." : modo === "verso15" ? "Só o lado do QR, com o logo da loja junto. 15 por folha A4 (etiquetas deitadas, 50×65 mm), com linha de corte. Na impressão: papel A4, orientação Retrato, escala 100% / tamanho real (nunca \"ajustar à página\") e margens Nenhuma." : "Página 1 = verso (QR, lado do motorista), página 2 = frente (logo, lado do vidro), com linha de corte. Bom pra impressora comum e conferência."}</p>
+                <p className="text-[11px] text-muted-foreground">{modo === "grafica" ? "Páginas de 50×65 mm, frente e verso de cada etiqueta em sequência (frente, verso, frente, verso…). É o formato que a gráfica pede quando cada adesivo tem código próprio." : modo === "verso15" ? "Baixa um ARQUIVO PDF (não abre a impressão do navegador): só o lado do QR, com o logo da loja junto, 15 por folha A4 (etiquetas deitadas, 50×65 mm exatos), com linha de corte. Abra o PDF no leitor e imprima: papel A4, Retrato, \"Tamanho real\" / 100% (nunca \"Ajustar\")." : "Página 1 = verso (QR, lado do motorista), página 2 = frente (logo, lado do vidro), com linha de corte. Bom pra impressora comum e conferência."}</p>
               </div>
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs">Logo da loja (frente da etiqueta)</Label>
@@ -280,7 +307,7 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
                   <Input className="h-8" value={faixa.de} onChange={(e) => setFaixa((f) => ({ ...f, de: e.target.value.toUpperCase() }))} placeholder="CV-0016" />
                   <span className="text-xs text-muted-foreground">até</span>
                   <Input className="h-8" value={faixa.ate} onChange={(e) => setFaixa((f) => ({ ...f, ate: e.target.value.toUpperCase() }))} placeholder="CV-0030" />
-                  <Button size="sm" className="h-8 gap-1.5" disabled={printing || !faixa.de} onClick={imprimirFaixa}><Printer className="w-3.5 h-3.5" /> Imprimir</Button>
+                  <Button size="sm" className="h-8 gap-1.5" disabled={printing || !faixa.de} onClick={imprimirFaixa}><Printer className="w-3.5 h-3.5" /> {modo === "verso15" ? "Baixar PDF" : "Imprimir"}</Button>
                 </div>
               </div>
             )}
