@@ -255,19 +255,45 @@ export async function escadaTick(sb: any): Promise<{ subiram: number; verificado
 // Devolve true quando a mensagem foi tratada aqui (o assistente NÃO responde).
 type MsgIn = { phone: string; kind: string; text?: string; transcription?: string; mediaId?: string; mimetype?: string; contactName?: string };
 
-async function repassar(sb: any, para: string, prefixo: string, m: MsgIn): Promise<boolean> {
+// Mídia que passa pela ponte: baixa UMA vez da Meta, GUARDA no Storage (bucket privado arquivozap,
+// pasta posvenda/<caso>) pra loja ver no painel, e transcreve áudio. Volta os bytes pra repassar.
+type Midia = { bytes: Uint8Array; mime: string; ext: string; tipo: "image" | "audio" | "video" | "document"; ref: string; transcricao: string };
+type Transcrever = (b64: string, mime: string) => Promise<string>;
+async function prepararMidia(sb: any, m: MsgIn, casoId: string, transcrever?: Transcrever): Promise<Midia | null> {
+  if (!m.mediaId) return null;
+  const tipo = m.kind === "image" ? "image" : m.kind === "audio" ? "audio" : /^video\//.test(m.mimetype || "") ? "video" : "document";
+  try {
+    const wa = await loadWaSettings(sb);
+    const bin = await metaDownloadMedia(wa, m.mediaId);
+    if (!bin) return null;
+    const bytes = Uint8Array.from(atob(bin.data), (ch) => ch.charCodeAt(0));
+    const mime = bin.media_type || m.mimetype || "application/octet-stream";
+    const ext = ((mime.split("/")[1] || "bin").split(";")[0].replace("jpeg", "jpg").replace("quicktime", "mov")).slice(0, 5);
+    const path = `posvenda/${casoId}/${crypto.randomUUID()}.${ext}`;
+    const up = await sb.storage.from("arquivozap").upload(path, bytes, { contentType: mime, upsert: false });
+    if (up?.error) console.error("posvenda mídia:", up.error.message);
+    let transcricao = "";
+    if (tipo === "audio" && transcrever) { try { transcricao = (await transcrever(bin.data, mime)).trim(); } catch (e) { console.error("posvenda transcrição:", e); } }
+    return { bytes, mime, ext, tipo, ref: up?.error ? tipo : `${tipo}:${path}`, transcricao };
+  } catch (e) { console.error("posvenda mídia:", e); return null; }
+}
+const ROTULO_MIDIA: Record<string, string> = { image: "📷 foto", audio: "🎤 áudio", video: "🎬 vídeo", document: "📄 arquivo", pdf: "📄 PDF" };
+export const rotuloMidia = (ref?: string | null) => ROTULO_MIDIA[String(ref || "").split(":")[0]] || "mídia";
+const textoDoLog = (texto: string, md: Midia | null) => [texto, md?.transcricao ? `🎤 "${md.transcricao}"` : ""].filter(Boolean).join("\n") || null;
+
+async function repassar(sb: any, para: string, prefixo: string, m: MsgIn, md: Midia | null): Promise<boolean> {
   const wa = await loadWaSettings(sb);
   const texto = String(m.text || "").trim();
   if (m.mediaId) {
-    const tipo = m.kind === "image" ? "image" : m.kind === "audio" ? "audio" : /^video\//.test(m.mimetype || "") ? "video" : "document";
-    const bin = await metaDownloadMedia(wa, m.mediaId);
-    if (bin) {
-      const bytes = Uint8Array.from(atob(bin.data), (ch) => ch.charCodeAt(0));
-      const ext = (bin.media_type.split("/")[1] || "bin").split(";")[0];
-      const id = await waUploadMedia(wa, bytes, bin.media_type, `arquivo.${ext}`);
+    if (md) {
+      const id = await waUploadMedia(wa, md.bytes, md.mime, `arquivo.${md.ext}`);
       if (id) {
-        if (tipo === "audio") { const ok = await waSendMediaId(wa, para, "audio", id); if (ok) await waSendText(wa, para, `${prefixo} 🎤 (áudio acima)${m.transcription ? `\n"${m.transcription}"` : ""}`); return ok; }
-        return await waSendMediaId(wa, para, tipo, id, `${prefixo}${texto ? ` ${texto}` : ""}`, `arquivo.${ext}`);
+        if (md.tipo === "audio") {
+          const ok = await waSendMediaId(wa, para, "audio", id);
+          if (ok) await waSendText(wa, para, `${prefixo} 🎤 (áudio acima)${md.transcricao ? `\n"${md.transcricao}"` : ""}`);
+          return ok;
+        }
+        return await waSendMediaId(wa, para, md.tipo, id, `${prefixo}${texto ? ` ${texto}` : ""}`, `arquivo.${md.ext}`);
       }
     }
     return await waSendText(wa, para, `${prefixo} (enviou um arquivo que não consegui repassar${texto ? `: ${texto}` : ""})`);
@@ -276,7 +302,7 @@ async function repassar(sb: any, para: string, prefixo: string, m: MsgIn): Promi
   return await waSendText(wa, para, `${prefixo} ${texto || `🎤 "${m.transcription}"`}`);
 }
 
-export async function pontePosvenda(sb: any, m: MsgIn): Promise<boolean> {
+export async function pontePosvenda(sb: any, m: MsgIn, opts?: { transcrever?: Transcrever }): Promise<boolean> {
   const phone = dig(m.phone);
   if (!phone) return false;
   const texto = String(m.text || m.transcription || "").trim();
@@ -305,8 +331,9 @@ export async function pontePosvenda(sb: any, m: MsgIn): Promise<boolean> {
       await waSendText(wa, phone, `⚠️ ${nomeCurto(caso.customer_name)} está há mais de 24h sem escrever, e a Meta não deixa o Co-pilot mandar mensagem livre agora. Ligue para ele: ${caso.customer_phone}. Quando ele responder, a conversa volta a passar por aqui.`);
       return true;
     }
-    const ok = await repassar(sb, caso.customer_phone, `*${nomeCurto(membro.nome)} (${caso.dealership}):*`, m);
-    await logMsg(sb, caso.id, "agente", membro.nome, texto || null, m.mediaId ? m.kind : null);
+    const md = await prepararMidia(sb, m, caso.id, opts?.transcrever);
+    const ok = await repassar(sb, caso.customer_phone, `*${nomeCurto(membro.nome)} (${caso.dealership}):*`, m, md);
+    await logMsg(sb, caso.id, "agente", membro.nome, textoDoLog(texto, md), md?.ref || (m.mediaId ? m.kind : null));
     if (!ok) await waSendText(wa, phone, "⚠️ Não consegui entregar essa mensagem ao cliente. Tente de novo ou ligue para ele.");
     return true;
   }
@@ -318,15 +345,18 @@ export async function pontePosvenda(sb: any, m: MsgIn): Promise<boolean> {
   if (!c) return false;
   if (c.status === "em_atendimento" && c.agente_id) {
     const { data: ag } = await sb.from("posvenda_equipe").select("*").eq("id", c.agente_id).maybeSingle();
-    await logMsg(sb, c.id, "cliente", c.customer_name, texto || null, m.mediaId ? m.kind : null);
+    const md = await prepararMidia(sb, m, c.id, opts?.transcrever);
+    await logMsg(sb, c.id, "cliente", c.customer_name, textoDoLog(texto, md), md?.ref || (m.mediaId ? m.kind : null));
     let ok = false;
-    if (ag && await janelaAberta(sb, ag.phone)) ok = await repassar(sb, ag.phone, `💬 *${nomeCurto(c.customer_name)}* (#${c.numero}):`, m);
+    if (ag && await janelaAberta(sb, ag.phone)) ok = await repassar(sb, ag.phone, `💬 *${nomeCurto(c.customer_name)}* (#${c.numero}):`, m, md);
     if (!ok) await avisarGrupo(sb, c.dealership, `💬 *#${c.numero}* — ${c.customer_name || "o cliente"} mandou mensagem e não consegui avisar ${ag?.nome || "quem assumiu"} no WhatsApp:\n"${(texto || "(mídia)").slice(0, 500)}"\n${ag?.nome || "Responsável"}, mande qualquer mensagem pro Co-pilot para reabrir a conversa.`);
     return true;
   }
   if (c.status === "aberto") {
-    // ainda sem dono: guarda no caso (a equipe vê no painel) e deixa o assistente seguir ajudando
-    await logMsg(sb, c.id, "cliente", c.customer_name, texto || null, m.mediaId ? m.kind : null);
+    // ainda sem dono: guarda no caso (texto, foto, áudio transcrito — a equipe vê no painel) e deixa o
+    // assistente seguir ajudando
+    const md = await prepararMidia(sb, m, c.id, opts?.transcrever);
+    await logMsg(sb, c.id, "cliente", c.customer_name, textoDoLog(texto, md), md?.ref || (m.mediaId ? m.kind : null));
     return false;
   }
   // encerrado: captura a NOTA (1–5) pedida no fechamento
@@ -361,7 +391,7 @@ async function assumir(sb: any, membro: any, numero: number) {
   await logMsg(sb, c.id, "sistema", null, `Assumido por ${membro.nome}.`);
   const { data: ult } = await sb.from("posvenda_mensagens").select("de, autor, texto, midia").eq("caso_id", c.id).eq("de", "cliente")
     .order("created_at", { ascending: false }).limit(3);
-  const recentes = (ult || []).reverse().map((x: any) => `• ${x.texto || `(${x.midia || "mídia"})`}`).join("\n");
+  const recentes = (ult || []).reverse().map((x: any) => `• ${x.texto || ""}${x.midia ? ` (${rotuloMidia(x.midia)})` : ""}`).join("\n");
   await waSendText(wa, membro.phone, [
     `✅ Você assumiu o *atendimento #${c.numero}*.`,
     fichaDoCaso(c),

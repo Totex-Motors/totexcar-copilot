@@ -235,7 +235,7 @@ function CasoDialog({ id, dealership, onClose, onEncerrar }: { id: string | null
   const c = data?.caso as PosvendaCaso | undefined;
   return (
     <Dialog open={!!id} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[88vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{c ? `Atendimento #${c.numero}` : "Atendimento"}</DialogTitle></DialogHeader>
         {isLoading || !c ? <div className="py-8 text-center"><Loader2 className="w-5 h-5 animate-spin inline" /></div> : (
           <div className="space-y-3 text-sm">
@@ -243,12 +243,26 @@ function CasoDialog({ id, dealership, onClose, onEncerrar }: { id: string | null
               <div className="font-medium">{c.customer_name || "Cliente"} · {fmtTel(c.customer_phone)}</div>
               <div className="text-muted-foreground">{[c.car_desc, c.placa].filter(Boolean).join(" · ")}</div>
             </div>
-            {c.resumo && <div className="rounded-md bg-muted/50 p-2.5">{c.resumo}</div>}
+            {c.resumo && (
+              <div className="rounded-md bg-amber-500/10 p-2.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 mb-0.5">O que o cliente precisa</div>
+                {c.resumo}
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground">
+              {c.status === "em_atendimento" ? <>Com <b className="text-foreground">{c.agente_nome || "?"}</b> desde {c.assumido_at ? new Date(c.assumido_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "?"}</>
+                : c.status === "aberto" ? <>Esperando alguém assumir · degrau: {DEGRAU[c.nivel] || c.nivel}</>
+                : <>Encerrado{c.encerrado_por ? ` por ${c.encerrado_por}` : ""}{c.nota ? ` · nota ${c.nota}/5` : ""}</>}
+              {" · "}a conversa atualiza sozinha
+            </div>
             <div className="space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Conversa completa</div>
               {(data?.mensagens || []).map((m, i) => (
-                <div key={i} className={`rounded-md p-2 ${m.de === "cliente" ? "bg-sky-500/10" : m.de === "agente" ? "bg-green-500/10 ml-6" : "bg-muted/40 text-muted-foreground text-xs"}`}>
-                  <div className="text-[11px] text-muted-foreground">{m.autor || m.de} · {new Date(m.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
-                  <div className="whitespace-pre-wrap">{m.texto || (m.midia ? `(${m.midia})` : "")}</div>
+                <div key={i} className={`rounded-md p-2 ${m.de === "cliente" ? "bg-sky-500/10 mr-6" : m.de === "agente" ? "bg-green-500/10 ml-6" : "bg-muted/40 text-muted-foreground text-xs"}`}>
+                  <div className="text-[11px] text-muted-foreground">{m.de === "cliente" ? "👤 " : m.de === "agente" ? "🧑‍💼 " : ""}{m.autor || m.de} · {new Date(m.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                  <Midia tipo={m.midia_tipo} url={m.midia_url} />
+                  {m.texto && <div className="whitespace-pre-wrap">{m.texto}</div>}
+                  {!m.texto && !m.midia_url && m.midia_tipo && <div className="text-muted-foreground">({m.midia_tipo})</div>}
                 </div>
               ))}
             </div>
@@ -262,4 +276,13 @@ function CasoDialog({ id, dealership, onClose, onEncerrar }: { id: string | null
       </DialogContent>
     </Dialog>
   );
+}
+
+// foto / áudio / vídeo / PDF guardados do atendimento (link temporário do servidor)
+function Midia({ tipo, url }: { tipo: string | null; url: string | null }) {
+  if (!url) return null;
+  if (tipo === "image") return <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="foto" className="mt-1 mb-1 max-h-60 rounded-md border" /></a>;
+  if (tipo === "audio") return <audio controls src={url} className="mt-1 mb-1 w-full" />;
+  if (tipo === "video") return <video controls src={url} className="mt-1 mb-1 max-h-72 w-full rounded-md" />;
+  return <a href={url} target="_blank" rel="noreferrer" className="inline-block mt-1 mb-1 text-primary underline">📄 Abrir arquivo</a>;
 }

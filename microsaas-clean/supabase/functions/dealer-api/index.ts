@@ -1255,7 +1255,15 @@ Deno.serve(async (req) => {
         const { data: c } = await admin.from("posvenda_casos").select("*").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
         if (!c) return json({ error: "nao_encontrado" }, 404);
         const { data: msgs } = await admin.from("posvenda_mensagens").select("de, autor, texto, midia, created_at").eq("caso_id", c.id).order("created_at");
-        return json({ ok: true, caso: c, mensagens: msgs || [] });
+        // mídia guardada no Storage (bucket privado) → link temporário (1 h) pra ver/ouvir no painel
+        const mensagens = await Promise.all((msgs || []).map(async (m: any) => {
+          const [tipo, ...resto] = String(m.midia || "").split(":");
+          const path = resto.join(":");
+          if (!path) return { ...m, midia_tipo: m.midia || null, midia_url: null };
+          const { data: sig } = await admin.storage.from("arquivozap").createSignedUrl(path, 3600);
+          return { ...m, midia_tipo: tipo, midia_url: sig?.signedUrl || null };
+        }));
+        return json({ ok: true, caso: c, mensagens });
       }
 
       case "posvenda_caso_encerrar": {

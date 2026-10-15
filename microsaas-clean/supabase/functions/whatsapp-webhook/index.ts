@@ -3975,7 +3975,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     // Cliente com caso assumido: o que ele mandar vai pra quem assumiu (o assistente não responde).
     if (!msg.flowReply) {
       try {
-        if (await pontePosvenda(supabase, msg)) {
+        if (await pontePosvenda(supabase, msg, { transcrever: transcribeAudio })) {
           if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "posvenda_ponte", input: String(msg.text || "").slice(0, 300) } }).eq("id", eventId);
           return;
         }
