@@ -25,6 +25,14 @@ const STATUS_OLEO: Record<TrocaOleoCliente["status"], { label: string; cls: stri
   sem_carro: { label: "Sem carro no app", cls: "bg-muted text-muted-foreground" },
 };
 
+// Rotina de km (a cada 10 dias): o cliente está registrando ou ignorando os pedidos?
+function KmControle({ k, dias }: { k?: TrocaOleoCliente["km_controle"]; dias?: number | null }) {
+  if (k && k.ignorados_seguidos >= 2) return <div className="text-[11px] font-medium text-red-700">⚠️ Não registra o km: ignorou {k.ignorados_seguidos} pedidos seguidos ({k.respondidos}/{k.pedidos} respondidos em 90 dias)</div>;
+  if (k?.pendente_desde) return <div className="text-[11px] font-medium text-amber-700">📸 Pedido de km aberto desde {dataBR(k.pendente_desde.slice(0, 10))}{k.reforco ? " · reforço com imagem enviado" : ""}</div>;
+  if (dias != null && dias <= 10) return <div className="text-[11px] font-medium text-sky-700">📸 Km em dia (leitura há {dias} {dias === 1 ? "dia" : "dias"}){k?.pedidos ? ` · ${k.respondidos}/${k.pedidos} pedidos respondidos` : ""}</div>;
+  return null;
+}
+
 // Agenda da oficina: próximas trocas de óleo dos clientes que compraram na loja, com o km de hoje
 // estimado pelo ritmo de cada um (o Co-pilot cobra o cliente; a loja liga pra agendar).
 function TrocasClientes({ dealership }: { dealership?: string }) {
@@ -52,6 +60,8 @@ function TrocasClientes({ dealership }: { dealership?: string }) {
           {(["atrasada", "vencida", "proxima", "em_dia", "sem_ancora"] as const).map((k) => (
             <span key={k} className={`px-2 py-0.5 rounded-full ${STATUS_OLEO[k].cls}`}>{STATUS_OLEO[k].label}: <b>{r[k] || 0}</b></span>
           ))}
+          <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">📸 Km em dia: <b>{r.km_em_dia || 0}</b></span>
+          <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800">Não registra km: <b>{r.nao_registra || 0}</b></span>
         </div>
         {isLoading ? <div className="py-6 text-center"><Loader2 className="w-5 h-5 animate-spin inline" /></div> : !mostrar.length ? (
           <p className="text-sm text-muted-foreground py-3">{todos ? "Nenhum cliente com o Co-pilot ainda." : "Nenhuma troca vencida ou chegando agora. 👏"}</p>
@@ -73,6 +83,7 @@ function TrocasClientes({ dealership }: { dealership?: string }) {
                     <div className="text-xs text-muted-foreground">{l.status === "sem_carro" ? "Ainda não ativou o carro no Co-pilot." : "O Co-pilot vai perguntar ao cliente quando foi a última troca."}</div>
                   )}
                   {l.km_estimado && l.leitura_dias != null && <div className="text-[11px] text-muted-foreground">km estimado · última leitura há {l.leitura_dias} dias · ~{Math.round(l.ritmo_km_dia || 0)} km/dia</div>}
+                  <KmControle k={l.km_controle} dias={l.leitura_dias} />
                 </div>
                 {l.telefone && <a href={`tel:${String(l.telefone).replace(/\D/g, "")}`} className="text-xs text-primary whitespace-nowrap shrink-0">{l.telefone}</a>}
               </div>

@@ -76,7 +76,7 @@ export async function waSendMenu(s: WaSettings, phone: string, text: string, cho
 // No meta envia o template aprovado; no uazapi renderiza o texto equivalente (registry abaixo).
 export async function waSendTemplate(
   s: WaSettings, phone: string, name: string, params: any[],
-  opts?: { documentUrl?: string; documentFilename?: string },
+  opts?: { documentUrl?: string; documentFilename?: string; imageUrl?: string },
 ): Promise<boolean> {
   const to = onlyDigits(phone);
   if (!to) return false;
@@ -92,12 +92,15 @@ export async function waSendTemplate(
         parameters: [{ type: "document", document: { link: opts.documentUrl, filename: (opts.documentFilename || "documento.pdf").slice(0, 240) } }],
       });
     }
+    // template com header IMAGE (ex.: copilot_km_registro)
+    if (opts?.imageUrl) components.push({ type: "header", parameters: [{ type: "image", image: { link: opts.imageUrl } }] });
     if (clean.length) components.push({ type: "body", parameters: clean.map((t) => ({ type: "text", text: t })) });
     return metaPost(s, {
       messaging_product: "whatsapp", to, type: "template",
       template: { name, language: { code: "pt_BR" }, components },
     });
   }
+  if (opts?.imageUrl) return uazapiPost(s, "/send/media", { number: to, type: "image", file: opts.imageUrl, text: tpl.render(clean) });
   const ok = await uazapiPost(s, "/send/text", { number: to, text: tpl.render(clean) });
   if (ok && opts?.documentUrl) {
     await uazapiPost(s, "/send/media", { number: to, type: "document", file: opts.documentUrl, docName: opts.documentFilename || "documento.pdf", text: "" });
@@ -385,7 +388,7 @@ export function metaVerifyChallenge(url: URL, s: WaSettings): Response | null {
 // Fonte da verdade dos templates do BM. O corpo com {{n}} é o que se cadastra no gerenciador;
 // render() é o fallback em texto pro provider uazapi (mesmos parâmetros, mesma ordem).
 // Categorias: UTILITY (transacional) e MARKETING — separadas conforme regra do Meta.
-type WaTemplate = { category: "UTILITY" | "MARKETING"; body: string; render: (p: string[]) => string; buttons?: string[] };
+type WaTemplate = { category: "UTILITY" | "MARKETING"; body: string; render: (p: string[]) => string; buttons?: string[]; headerImage?: boolean; example?: string[] };
 
 export const WA_TEMPLATES: Record<string, WaTemplate> = {
   // ============ TEMPLATE-CURINGA do proativo composto por IA (MODULO-PROATIVO §6) ============
@@ -414,6 +417,17 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
     body: "Olá! {{1}} Toque abaixo pra escolher. — TotexCar Co-pilot 🚗",
     buttons: ["Ver agora", "Depois"],
     render: (p) => `Olá! ${p[0]}\n\n(Responda: *Ver agora* ou *Depois*)`,
+  },
+  // REGISTRO DE KM (controle de manutenção): HEADER IMAGE com a peça "registro obrigatório de km".
+  // Vai quando o cliente não respondeu ao pedido de km do ciclo de 10 dias. Criado sozinho na WABA
+  // pelo cron (garantirTemplateImagem) — enquanto não estiver APPROVED, cai no copilot_msg de texto.
+  copilot_km_registro: {
+    category: "UTILITY",
+    headerImage: true,
+    body: "⚠️ Registro de km pendente: {{1}} Registrar o km faz parte do controle de manutenção do seu carro. Toque abaixo ou mande a foto do painel. — TotexCar Co-pilot 🚗",
+    buttons: ["Mandar foto do painel", "Digitar o km"],
+    example: ["seu Onix está sem atualização de quilometragem há 12 dias e a troca de óleo está chegando."],
+    render: (p) => `⚠️ *Registro de km pendente*\n\n${p[0]}\n\nRegistrar o km faz parte do *controle de manutenção* do seu carro. Mande a *foto do painel* (ou digite o km) aqui mesmo.`,
   },
   // ===================== MARKETING (opt-in) =====================
   // "Valor Vivo": aviso mensal, SÓ pra quem pediu, quando o valor FIPE do carro mudou.
@@ -548,3 +562,41 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
     render: (p) => `Olá ${p[0]}! Mensagem da ${p[1]}:\n\n${p[2]}`,
   },
 };
+
+// Garante que um template com HEADER IMAGE do registry exista na WABA (cria se faltar). Barato: 1 GET por
+// chamada; só cria quando não existe. Devolve o status atual (APPROVED/PENDING/REJECTED/criado/erro).
+export async function garantirTemplateImagem(s: WaSettings, name: string, imageUrl: string): Promise<string> {
+  const tpl = WA_TEMPLATES[name];
+  const token = s.meta_wa_token || "", waba = s.meta_waba_id || "";
+  if (!tpl?.headerImage || waProvider(s) !== "meta" || !token || !waba) return "sem_meta";
+  try {
+    const auth = { Authorization: `Bearer ${token}` };
+    const lr = await fetch(`${GRAPH}/${waba}/message_templates?name=${encodeURIComponent(name)}&fields=name,status&limit=5`, { headers: auth });
+    const lj = await lr.json().catch(() => ({}));
+    const atual = (lj?.data || []).find((t: any) => t.name === name);
+    if (atual) return String(atual.status || "existe");
+    // header de exemplo: Resumable Upload API (o "app" é resolvido pelo token do system user)
+    const img = await fetch(imageUrl);
+    if (!img.ok) return `erro_imagem_${img.status}`;
+    const bytes = new Uint8Array(await img.arrayBuffer());
+    const mime = (img.headers.get("content-type") || "image/jpeg").split(";")[0];
+    const st = await fetch(`${GRAPH}/app/uploads?file_length=${bytes.length}&file_type=${encodeURIComponent(mime)}&access_token=${encodeURIComponent(token)}`, { method: "POST" });
+    const sj = await st.json().catch(() => ({}));
+    if (!sj?.id) return "erro_upload_sessao";
+    const up = await fetch(`${GRAPH}/${sj.id}`, { method: "POST", headers: { Authorization: `OAuth ${token}`, file_offset: "0", "Content-Type": "application/octet-stream" }, body: bytes });
+    const uj = await up.json().catch(() => ({}));
+    if (!uj?.h) return "erro_upload";
+    const components: any[] = [
+      { type: "HEADER", format: "IMAGE", example: { header_handle: [uj.h] } },
+      { type: "BODY", text: tpl.body, ...(tpl.example ? { example: { body_text: [tpl.example] } } : {}) },
+    ];
+    if (tpl.buttons?.length) components.push({ type: "BUTTONS", buttons: tpl.buttons.map((t) => ({ type: "QUICK_REPLY", text: t })) });
+    const cr = await fetch(`${GRAPH}/${waba}/message_templates`, {
+      method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, language: "pt_BR", category: tpl.category, components }),
+    });
+    const cj = await cr.json().catch(() => ({}));
+    if (!cr.ok) { console.error("garantirTemplateImagem:", JSON.stringify(cj?.error || cj).slice(0, 300)); return "erro_criar"; }
+    return `criado_${cj.status || "PENDING"}`;
+  } catch (e) { console.error("garantirTemplateImagem:", e); return "erro"; }
+}

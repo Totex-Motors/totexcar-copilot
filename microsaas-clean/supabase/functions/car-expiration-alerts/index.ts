@@ -5,7 +5,7 @@
 // v8: + RADAR da Garagem Totex — avisa quando um carro do desejo aparece no estoque do marketplace.
 // v9: TODO alerta é iniciado pelo negócio → na API oficial sai por TEMPLATE aprovado (ver _shared/wa.ts).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { loadWaSettings, waSendTemplate, waSendMenu, waProvider, type WaSettings } from "../_shared/wa.ts";
+import { loadWaSettings, waSendTemplate, waSendMenu, waSendImage, waProvider, garantirTemplateImagem, type WaSettings } from "../_shared/wa.ts";
 import { composeProactive, loadDossier, pickAngle, type AIConfig } from "../_shared/proactive.ts";
 import { careStreak, careDecay, careStatement, lojasAderidas } from "../_shared/care-score.ts";
 import { kmMedioDia, syncCalendar, projectRevisions } from "../_shared/calendar.ts";
@@ -14,7 +14,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { calcTendencia, tendenciaDaConta, textoAlerta } from "../_shared/fipe-tendencia.ts";
-import { registrarOportunidade } from "../_shared/posvenda.ts";
+import { registrarOportunidade, variantesTel } from "../_shared/posvenda.ts";
+import { kmTick, insightKm, abrirPedidoKm, IMAGEM_REGISTRO_KM, type AcaoKm } from "../_shared/km.ts";
 import { aplicarPreparacaoDaJornada } from "../_shared/preparacao.ts";
 import { oleoTick, insightOleo, RE_OLEO } from "../_shared/oleo.ts";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
@@ -97,6 +98,34 @@ async function sendProactiveIA(u: any, phone: string, insight: any, opts: {
     try { await opts.fallback(); } catch { /* */ }
     return false;
   }
+}
+
+// janela de 24h aberta? (o cliente mandou mensagem nas últimas ~23h → dá pra mandar imagem livre, sem template)
+async function janelaAberta(phone: string): Promise<boolean> {
+  try {
+    const desde = new Date(Date.now() - 23 * 3600_000).toISOString();
+    const { data } = await supabase.from("whatsapp_events").select("id").in("from_phone", variantesTel(phone))
+      .neq("status", "sent").gte("created_at", desde).limit(1);
+    return !!data?.length;
+  } catch { return false; }
+}
+
+// REFORÇO DO REGISTRO DE KM: a peça visual "registro de km pendente". Na janela de 24h vai como imagem
+// livre; fora dela, pelo template copilot_km_registro (header imagem); sem template aprovado, texto.
+async function enviarReforcoKm(u: any, phone: string, k: AcaoKm): Promise<boolean> {
+  const legenda = `⚠️ *Registro de km pendente*\n\n${k.texto.charAt(0).toUpperCase()}${k.texto.slice(1)}\n\nRegistrar o km faz parte do *controle de manutenção* do seu carro: é com ele que eu aviso a troca de óleo e as revisões na hora certa. Mande a *foto do painel* (ou digite o km) aqui mesmo. 📸`;
+  const wa = await waS();
+  let ok = false;
+  if (await janelaAberta(phone)) ok = await waSendImage(wa, phone, IMAGEM_REGISTRO_KM, legenda);
+  if (!ok) ok = await waSendTemplate(wa, phone, "copilot_km_registro", [k.texto], { imageUrl: IMAGEM_REGISTRO_KM });
+  if (!ok) ok = await waSendTemplate(wa, phone, "copilot_msg", [`⚠️ Registro de km pendente: ${k.texto} Registrar o km faz parte do controle de manutenção do seu carro — mande a foto do painel (ou digite o km) aqui mesmo.`]);
+  if (ok) {
+    await supabase.from("whatsapp_events").insert({
+      from_phone: phone, user_id: u.id, kind: "proativo", status: "sent",
+      raw: { proativo: true, km_reforco: true }, parsed: { assunto: "km_registro", texto: `Registro de km pendente: ${k.texto} Mande a foto do painel ou digite o km.`, variante: "copilot_km_registro" },
+    });
+  }
+  return ok;
 }
 
 function daysUntil(dateStr: string): number {
@@ -889,6 +918,9 @@ Deno.serve(async (req) => {
     let aderidas = new Set<string>();
     try { aderidas = await lojasAderidas(supabase); } catch (e) { console.error("erro lojas aderidas:", e); }
 
+    // template com imagem do registro de km: cria na WABA se ainda não existir (1 GET por rodada)
+    try { console.log("template copilot_km_registro:", await garantirTemplateImagem(await waS(), "copilot_km_registro", IMAGEM_REGISTRO_KM)); } catch (e) { console.error("template km:", e); }
+
     const { data: users } = await supabase
       .from("users")
       .select("id, name, phone, cnh_vencimento, driver_mode, referral_code, plan, plan_expires_at, subscription_status, dealership, proactive_unanswered, last_proactive_angle, care_score, care_tier, care_tier_at, care_last_activity")
@@ -1015,6 +1047,8 @@ Deno.serve(async (req) => {
             carro: v?.name || "", assuntoDefault: "oleo", forceSend: forca || a.acao === "aviso", variante: a.variante, fallback,
           });
           sent++;
+          // pedido de foto do painel do óleo também entra no controle de km (reforço em 48h se ignorar)
+          if (a.acao === "confirmar_km") await abrirPedidoKm(supabase, u.id, v.id);
           if (a.acao === "vencida" || a.acao === "atrasada") {
             const e = a.estado;
             await registrarOportunidade(supabase, {
@@ -1023,7 +1057,31 @@ Deno.serve(async (req) => {
             }).catch(() => null);
           }
         }
-      } catch (e) { console.error("erro oleo:", e); }
+        // ROTINA DE KM (a cada 10 dias): só no dia em que o óleo não falou nada — no máximo 1 mensagem
+        // de km/óleo por dia. Pedido → reforço com imagem em 48h → ignorado no fim do ciclo.
+        if (!a && v) {
+          const k = await kmTick(supabase, u, v);
+          if (k?.acao === "pedido") {
+            const fallback = async () => {
+              await sendTpl(phone, "copilot_msg", [k.texto]);
+              await supabase.from("whatsapp_events").insert({
+                from_phone: phone, user_id: u.id, kind: "proativo", status: "sent",
+                raw: { proativo: true, fallback: true }, parsed: { assunto: "km_atualizacao", texto: k.texto, variante: "copilot_msg" },
+              });
+            };
+            await sendProactiveIA(u, phone, insightKm(k), { carro: v?.name || "", assuntoDefault: "km_atualizacao", forceSend: true, variante: "copilot_msg", fallback });
+            sent++;
+            if (k.avisarLoja) {
+              await registrarOportunidade(supabase, {
+                phone, tipo: "km_sem_registro", nome: u.name || null, carro: v?.name || null, loja: u.dealership || null,
+                detalhe: `O cliente ignorou ${k.ignoradosSeguidos} pedidos seguidos de atualização de km (a cada ${10} dias)${k.diasSemLeitura != null ? `; última leitura há ${k.diasSemLeitura} dias` : ""}. Sem o km, o aviso da troca de óleo fica estimado.`,
+              }).catch(() => null);
+            }
+          } else if (k?.acao === "reforco") {
+            if (await enviarReforcoKm(u, phone, k)) sent++;
+          }
+        }
+      } catch (e) { console.error("erro oleo/km:", e); }
 
       // Score de Cuidado (fase SILENCIOSA): streak nos primeiros dias do mês + decay de inatividade.
       // Nenhuma mensagem é enviada — só acumula/decai pontos (dedup interno no próprio motor).
