@@ -34,7 +34,9 @@ export async function registrarLeitura(sb: any, o: { userId: string; accountId?:
   try { await sb.from("odometro_leituras").insert({ user_id: o.userId, account_id: o.accountId || null, km, lido_em: quando, fonte: o.fonte }); } catch { /* tabela ainda não criada */ }
   if (!o.accountId) return;
   try {
-    const { data: acc } = await sb.from("accounts").select("hodometro, hodometro_em").eq("id", o.accountId).maybeSingle();
+    let { data: acc, error: e1 } = await sb.from("accounts").select("hodometro, hodometro_em").eq("id", o.accountId).maybeSingle();
+    if (e1) acc = (await sb.from("accounts").select("hodometro").eq("id", o.accountId).maybeSingle()).data; // sem a coluna nova ainda
+    if (!acc) return;
     const atual = Number(acc?.hodometro) || 0;
     if (km >= atual) {
       const upd: Record<string, unknown> = { hodometro: km };
