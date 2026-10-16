@@ -34,6 +34,8 @@ const STATUS: Record<string, { label: string; cls: string; Icon: any }> = {
   encerrado: { label: "Encerrado", cls: "bg-muted text-muted-foreground", Icon: Send },
 };
 
+const fmtPrep = (p: { data: string; km: number }) => `${String(p.data).split("-").reverse().join("/")} · ${Number(p.km).toLocaleString("pt-BR")} km`;
+
 export function PostSaleTab({ dealership }: { dealership?: string }) {
   const qc = useQueryClient();
   const enabled = true;
@@ -107,7 +109,8 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
             ? `Cortesia de 1 ano ativada — conta premium criada${r?.vehicle_created ? " e veículo cadastrado" : ""}.`
             : r?.welcome_sent ? "Mensagem de boas-vindas enviada no WhatsApp." : "Jornada criada (WhatsApp não enviou — confira as credenciais).")
             + (r?.tag ? ` Etiqueta ${r.tag.label} vinculada.` : r?.tag_error ? ` Etiqueta NÃO vinculada (${r.tag_error}).` : "")
-            + (r?.foto_estoque?.fotoUrl ? " Foto do carro enviada pro app do cliente." : ""),
+            + (r?.foto_estoque?.fotoUrl ? " Foto do carro enviada pro app do cliente." : "")
+            + (r?.revisado ? " Troca de óleo da preparação ligada ao Co-pilot do cliente." : ""),
         });
         setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
         setCortesia(false);
@@ -174,6 +177,9 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{carroEstoque.desc}</div>
                     <div className="text-[12px] text-muted-foreground truncate">{[carroEstoque.versao, carroEstoque.cor].filter(Boolean).join(" · ")}</div>
+                    {carroEstoque.preparacao
+                      ? <div className="text-[12px] text-green-700 font-medium">🛠️ Revisado: óleo e filtro em {fmtPrep(carroEstoque.preparacao)}</div>
+                      : <div className="text-[12px] text-amber-700 font-medium">⚠️ Sem registro de troca de óleo. Peça pro gerente de manutenção registrar na aba Preparação antes da entrega.</div>}
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => setCarroEstoque(null)}>Trocar</Button>
                 </div>
@@ -191,6 +197,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                           <span className="min-w-0">
                             <span className="block text-sm truncate">{c.desc}</span>
                             <span className="block text-[11.5px] text-muted-foreground truncate">{[c.versao, c.cor, c.preco ? `R$ ${Number(c.preco).toLocaleString("pt-BR")}` : null].filter(Boolean).join(" · ")}</span>
+                            <span className={`block text-[11px] font-medium ${c.preparacao ? "text-green-700" : "text-amber-700"}`}>{c.preparacao ? `🛠️ Revisado ${fmtPrep(c.preparacao)}` : "⚠️ Sem troca de óleo registrada"}</span>
                           </span>
                         </button>
                       ))}

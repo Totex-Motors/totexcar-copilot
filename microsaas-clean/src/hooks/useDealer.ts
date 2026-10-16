@@ -182,7 +182,8 @@ export const usePostsaleCreate = () =>
   });
 
 // estoque da loja (marketplace) pro pós-venda escolher o carro vendido — foto de capa obrigatória
-export interface EstoqueCarro { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null }
+export interface PrepResumo { id: string; data: string; km: number; intervalo_km: number; feito_por: string | null }
+export interface EstoqueCarro { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: PrepResumo | null }
 export const useEstoqueLista = (enabled: boolean, dealership?: string) =>
   useQuery({
     queryKey: ["estoque-lista", dealership || null],
@@ -340,5 +341,18 @@ export const usePosvendaRespostas = (enabled: boolean, dealership?: string) =>
   useQuery({
     queryKey: ["posvenda-respostas", dealership || null],
     queryFn: async () => ((await callDealer("posvenda_respostas", dealership ? { dealership } : {})).respostas || []) as RespostaLoja[],
+    enabled,
+  });
+
+// ===== Preparação do carro antes da venda (troca de óleo/filtro + km) =====
+export interface Preparacao {
+  id: string; vehicle_id: string | null; car_desc: string | null; placa: string | null; data: string; km: number;
+  oleo: boolean; oleo_tipo: string | null; filtro_oleo: boolean; filtro_ar: boolean; filtro_combustivel: boolean; filtro_cabine: boolean;
+  intervalo_km: number; obs: string | null; feito_por: string | null; created_at: string;
+}
+export const usePreparacoes = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["preparacoes", dealership || null],
+    queryFn: async () => ((await callDealer("preparacao_lista", dealership ? { dealership } : {})).preparacoes || []) as Preparacao[],
     enabled,
   });

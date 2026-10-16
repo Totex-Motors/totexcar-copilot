@@ -6,6 +6,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { capaDoVeiculo, descVeiculo, fotoDeCapaNaVenda, mktDealerIdByName, mktStock } from "../_shared/car-photo.ts";
+import { preparacaoDoCarro, aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -991,6 +992,17 @@ Deno.serve(async (req) => {
         }).select("id").single();
         if (error) return json({ error: error.message }, 400);
 
+        // PREPARAÇÃO (troca de óleo/filtro feita pela oficina antes da venda) → ponto zero da manutenção
+        let revisado: { data: string; km: number; texto: string } | null = null;
+        try {
+          const prep = await preparacaoDoCarro(admin, loja, { vehicleId: p.vehicle_id ? String(p.vehicle_id) : null, placa });
+          if (prep) {
+            await admin.from("postsale_journeys").update({ preparacao_id: prep.id }).eq("id", created.id);
+            revisado = { data: prep.data, km: prep.km, texto: textoPreparacao(prep, loja) };
+            if (provisionedUserId) await aplicarPreparacaoDaJornada(admin, { id: created.id, preparacao_id: prep.id, prep_aplicada: false }, provisionedUserId);
+          }
+        } catch (e) { console.error("preparação na venda:", e); }
+
         // Boas-vindas + convite pra ativar o Co-pilot com o bônus da loja (semi-automático).
         // Iniciado pelo negócio → TEMPLATE na API oficial (cortesia = utilidade; convite bônus = marketing).
         const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
@@ -1045,7 +1057,7 @@ Deno.serve(async (req) => {
             carDesc: car, userId: provisionedUserId,
           });
         } catch (e) { console.error("foto de capa:", e); }
-        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError, foto_estoque: foto });
+        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError, foto_estoque: foto, revisado });
       }
 
       // estoque da loja pro pós-venda escolher o carro vendido (foto de capa obrigatória)
@@ -1053,11 +1065,54 @@ Deno.serve(async (req) => {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
         const did = await mktDealerIdByName(writeStore);
         if (!did) return json({ ok: true, carros: [], aviso: "loja_sem_estoque_no_marketplace" });
+        const { data: preps } = await admin.from("preparacao_veiculos").select("*").eq("dealership", writeStore).not("vehicle_id", "is", null)
+          .order("data", { ascending: false }).order("created_at", { ascending: false }).limit(2000);
+        const prepDe: Record<string, any> = {};
+        for (const pr of preps || []) if (!prepDe[pr.vehicle_id]) prepDe[pr.vehicle_id] = pr;
         const carros = (await mktStock(did)).map((v: any) => ({
           id: v.id, desc: descVeiculo(v), versao: v.version || null, cor: v.color || null,
           preco: v.price || null, km: v.mileage || null, capa: capaDoVeiculo(v),
+          preparacao: prepDe[v.id] ? { id: prepDe[v.id].id, data: prepDe[v.id].data, km: prepDe[v.id].km, intervalo_km: prepDe[v.id].intervalo_km, feito_por: prepDe[v.id].feito_por } : null,
         }));
         return json({ ok: true, carros });
+      }
+
+      // ===== PREPARAÇÃO DO CARRO (oficina, antes da venda) =====
+      case "preparacao_lista": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data } = await admin.from("preparacao_veiculos").select("*").eq("dealership", writeStore)
+          .order("data", { ascending: false }).order("created_at", { ascending: false }).limit(300);
+        return json({ ok: true, preparacoes: data || [] });
+      }
+
+      case "preparacao_save": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const kmP = Math.round(Number(p.km) || 0);
+        if (kmP <= 0 || kmP > 2_000_000) return json({ error: "km_invalido" }, 400);
+        const data = /^\d{4}-\d{2}-\d{2}$/.test(String(p.data)) ? String(p.data) : new Date().toISOString().slice(0, 10);
+        if (data > new Date(Date.now() + 86400000).toISOString().slice(0, 10)) return json({ error: "data_no_futuro" }, 400);
+        const desc = String(p.car_desc || "").trim().slice(0, 120);
+        if (!p.vehicle_id && !desc) return json({ error: "informe_o_carro" }, 400);
+        const row = {
+          dealership: writeStore, vehicle_id: p.vehicle_id ? String(p.vehicle_id) : null, car_desc: desc || null,
+          placa: String(p.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7) || null,
+          data, km: kmP, oleo: p.oleo !== false, oleo_tipo: String(p.oleo_tipo || "").trim().slice(0, 60) || null,
+          filtro_oleo: p.filtro_oleo !== false, filtro_ar: !!p.filtro_ar, filtro_combustivel: !!p.filtro_combustivel, filtro_cabine: !!p.filtro_cabine,
+          intervalo_km: Math.min(30000, Math.max(1000, Math.round(Number(p.intervalo_km) || 10000))),
+          obs: String(p.obs || "").trim().slice(0, 500) || null, feito_por: me.name || null, updated_at: new Date().toISOString(),
+        };
+        const { error } = p.id
+          ? await admin.from("preparacao_veiculos").update(row).eq("id", String(p.id)).eq("dealership", writeStore)
+          : await admin.from("preparacao_veiculos").insert(row);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      case "preparacao_del": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { error } = await admin.from("preparacao_veiculos").delete().eq("id", String(p.id || "")).eq("dealership", writeStore);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
       }
 
       // ===== ETIQUETAS QR DO PARA-BRISA =====
