@@ -7,7 +7,7 @@ import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { capaDoVeiculo, descVeiculo, fotoDeCapaNaVenda, mktDealerIdByName, mktStock } from "../_shared/car-photo.ts";
 import { preparacaoDoCarro, aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
-import { estadoOleo } from "../_shared/oleo.ts";
+import { estadoOleo, registrarTrocaOleo } from "../_shared/oleo.ts";
 import { controleKm } from "../_shared/km.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 
@@ -1165,6 +1165,25 @@ Deno.serve(async (req) => {
         resumo.km_em_dia = lista.filter((l) => l.leitura_dias != null && l.leitura_dias <= 10).length;
         resumo.nao_registra = lista.filter((l) => (l.km_controle?.ignorados_seguidos || 0) >= 2).length;
         return json({ ok: true, resumo, lista });
+      }
+
+      // troca de óleo feita NA OFICINA DA LOJA pro cliente: zera o ciclo dele no Co-pilot
+      case "oficina_troca_registrar": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const uid = String(p.user_id || "");
+        const kmT = Math.round(Number(p.km) || 0);
+        if (!uid || kmT <= 0 || kmT > 2_000_000) return json({ error: "km_invalido" }, 400);
+        const dataT = /^\d{4}-\d{2}-\d{2}$/.test(String(p.data)) ? String(p.data) : new Date().toISOString().slice(0, 10);
+        // só cliente desta loja (jornada com o user_id ou com o telefone dele)
+        const { data: uu } = await admin.from("users").select("id, phone").eq("id", uid).maybeSingle();
+        if (!uu) return json({ error: "cliente_nao_encontrado" }, 404);
+        let { data: jj } = await admin.from("postsale_journeys").select("id").eq("dealership", writeStore).eq("user_id", uid).limit(1);
+        if (!jj?.length && uu.phone) jj = (await admin.from("postsale_journeys").select("id").eq("dealership", writeStore).in("customer_phone", variantesTel(uu.phone)).limit(1)).data;
+        if (!jj?.length) return json({ error: "nao_e_cliente_da_loja" }, 403);
+        const { data: acc } = await admin.from("accounts").select("id").eq("user_id", uid).eq("is_active", true).limit(1);
+        const r = await registrarTrocaOleo(admin, { userId: uid, accountId: acc?.[0]?.id || null, km: kmT, data: dataT, intervaloKm: Number(p.intervalo_km) || null, fonte: "oficina" });
+        if (!r.ok) return json({ error: "falha_registro" }, 400);
+        return json({ ok: true, proxima_km: r.proximaKm, proxima_data: r.proximaData });
       }
 
       // ===== ETIQUETAS QR DO PARA-BRISA =====

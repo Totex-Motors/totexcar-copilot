@@ -36,8 +36,18 @@ function KmControle({ k, dias }: { k?: TrocaOleoCliente["km_controle"]; dias?: n
 // Agenda da oficina: próximas trocas de óleo dos clientes que compraram na loja, com o km de hoje
 // estimado pelo ritmo de cada um (o Co-pilot cobra o cliente; a loja liga pra agendar).
 function TrocasClientes({ dealership }: { dealership?: string }) {
+  const qc = useQueryClient();
   const { data, isLoading } = useOficinaTrocas(true, dealership);
+  const acao = usePosvendaAcao();
   const [todos, setTodos] = useState(false);
+  const [reg, setReg] = useState<{ c: TrocaOleoCliente; km: string; data: string } | null>(null);
+  const registrar = () => {
+    if (!reg || !(Number(reg.km) > 0)) { toast({ title: "Informe o km do carro na troca", variant: "destructive" }); return; }
+    acao.mutate({ action: "oficina_troca_registrar", user_id: reg.c.user_id, km: Number(reg.km), data: reg.data, ...(dealership ? { dealership } : {}) }, {
+      onSuccess: (r: any) => { toast({ title: "Troca registrada ✅", description: `Próxima: ${kmBR(r?.proxima_km)} ou até ${dataBR(r?.proxima_data)}. O Co-pilot avisa o cliente antes.` }); setReg(null); qc.invalidateQueries({ queryKey: ["oficina-trocas"] }); },
+      onError: (e: any) => toast({ title: "Não consegui registrar", description: String(e?.message || e), variant: "destructive" }),
+    });
+  };
   const lista = data?.lista || [];
   const urgentes = lista.filter((l) => ["atrasada", "vencida", "proxima"].includes(l.status));
   const mostrar = todos ? lista : urgentes;
@@ -85,12 +95,31 @@ function TrocasClientes({ dealership }: { dealership?: string }) {
                   {l.km_estimado && l.leitura_dias != null && <div className="text-[11px] text-muted-foreground">km estimado · última leitura há {l.leitura_dias} dias · ~{Math.round(l.ritmo_km_dia || 0)} km/dia</div>}
                   <KmControle k={l.km_controle} dias={l.leitura_dias} />
                 </div>
-                {l.telefone && <a href={`tel:${String(l.telefone).replace(/\D/g, "")}`} className="text-xs text-primary whitespace-nowrap shrink-0">{l.telefone}</a>}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {l.telefone && <a href={`tel:${String(l.telefone).replace(/\D/g, "")}`} className="text-xs text-primary whitespace-nowrap">{l.telefone}</a>}
+                  {l.status !== "sem_carro" && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setReg({ c: l, km: l.km_hoje && !l.km_estimado ? String(l.km_hoje) : "", data: hoje() })}>Troca feita</Button>}
+                </div>
               </div>
             ))}
           </div>
         )}
       </CardContent>
+      <Dialog open={!!reg} onOpenChange={(o) => { if (!o) setReg(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Troca de óleo feita na oficina</DialogTitle></DialogHeader>
+          {reg && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{reg.c.nome || "Cliente"}{reg.c.carro ? ` · ${reg.c.carro}` : ""}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1"><Label className="text-xs">Data</Label><Input type="date" value={reg.data} max={hoje()} onChange={(e) => setReg({ ...reg, data: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Km do carro</Label><Input type="number" inputMode="numeric" value={reg.km} onChange={(e) => setReg({ ...reg, km: e.target.value })} placeholder={reg.c.km_hoje ? String(reg.c.km_hoje) : "57340"} /></div>
+              </div>
+              <p className="text-xs text-muted-foreground">Zera a contagem do cliente no Co-pilot: a próxima troca passa a contar deste km.</p>
+              <Button className="w-full" disabled={acao.isPending} onClick={registrar}>{acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Registrar troca"}</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
