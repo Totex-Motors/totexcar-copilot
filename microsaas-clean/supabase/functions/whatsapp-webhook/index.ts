@@ -722,6 +722,24 @@ async function findJourneysByPhone(phone: string): Promise<any[]> {
   return [];
 }
 
+// Pede a avaliação da loja no Google no 1º scan da etiqueta (entrega). Pra TODOS os clientes (o Google não
+// permite pedir só pra quem está satisfeito). Sem link cadastrado ou já pedido → não faz nada.
+async function pedirAvaliacaoNaEntrega(phone: string, tag: any, primeiro: string): Promise<void> {
+  try {
+    const loja = tag?.dealership;
+    if (!loja) return;
+    const { data: ds } = await supabase.from("dealership_settings").select("google_review_url").eq("dealership", loja).maybeSingle();
+    const url = ds?.google_review_url;
+    if (!url) return;
+    const j = tag.journey_id
+      ? (await supabase.from("postsale_journeys").select("id, review_link_sent").eq("id", tag.journey_id).maybeSingle()).data
+      : (await findJourneysByPhone(phone))[0] || null;
+    if (j?.review_link_sent) return;
+    await sendText(phone, `⭐ E um pedido rapidinho${primeiro ? `, ${primeiro}` : ""}: como foi comprar seu carro na ${loja}? Deixa sua avaliação no Google agora, leva 30 segundos e ajuda muito a loja 🙏\n${url}`);
+    if (j?.id) await supabase.from("postsale_journeys").update({ review_link_sent: true }).eq("id", j.id);
+  } catch (e) { console.error("avaliação na entrega:", e); }
+}
+
 // Aplica a nota do NPS numa jornada e roteia (detrator → alerta a loja; promotor/passivo → avaliação
 // no Google). Usado tanto pela resposta em NÚMERO (texto) quanto pelo formulário nativo (WhatsApp Flow).
 async function applyNpsScore(j: any, phone: string, score: number, comentario?: string | null) {
@@ -760,11 +778,14 @@ async function applyNpsScore(j: any, phone: string, score: number, comentario?: 
       if (dp) await waSendTemplate(sTpl, dp, "alerta_nps_loja", [j.dealership, j.customer_name || j.customer_phone, notaLoja, j.customer_phone]);
     }
   } else if (seg === "promotor") {
-    const rev = reviewUrl ? `\n\n⭐ Já que curtiu, deixa uma avaliação no Google (leva 30s e ajuda demais a ${j.dealership}):\n${reviewUrl}` : "";
+    // o link já foi pedido na entrega? então é só um lembrete gentil
+    const rev = !reviewUrl ? "" : j.review_link_sent
+      ? `\n\n⭐ Se ainda não deixou sua avaliação da ${j.dealership} no Google, é por aqui (30s):\n${reviewUrl}`
+      : `\n\n⭐ Já que curtiu, deixa uma avaliação no Google (leva 30s e ajuda demais a ${j.dealership}):\n${reviewUrl}`;
     await sendText(phone, `Que alegria${nome}! 🎉 Muito obrigado pela nota ${score}!${rev}\n\nE se indicar um amigo que comprar, todo mundo ganha. 😉`);
     if (reviewUrl) await supabase.from("postsale_journeys").update({ review_link_sent: true }).eq("id", j.id);
   } else {
-    const rev = reviewUrl ? `\n\nSe puder, deixa uma avaliação rápida — ajuda muito a loja:\n${reviewUrl}` : "";
+    const rev = reviewUrl && !j.review_link_sent ? `\n\nSe puder, deixa uma avaliação rápida — ajuda muito a loja:\n${reviewUrl}` : "";
     await sendText(phone, `Obrigado pela nota ${score}${nome}! 🙌 Vamos trabalhar pra ser 10 na próxima.${rev}`);
     if (reviewUrl) await supabase.from("postsale_journeys").update({ review_link_sent: true }).eq("id", j.id);
   }
@@ -3302,6 +3323,9 @@ async function handleEtiqueta(phone: string, text: string, contactName?: string)
     await sendMenu(phone,
       `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Essa etiqueta é do seu *${carro}*${tag.km_entrega ? `, ${kmTxt(tag.km_entrega)} na entrega` : ""}, da ${loja}.\n\n✅ Pronto: a partir de agora eu cuido dele por aqui. Aviso de troca de óleo, revisão, IPVA, licenciamento e multa, e guardo todo o histórico do carro.\n\nPode mandar foto da nota da oficina ou do painel com o km, ou escolher aqui embaixo 👇`,
       (await atendimentoAtivo(supabase, tag.dealership)) ? [FALAR_LOJA_LABEL, ...QUICK_ACTIONS] : QUICK_ACTIONS);
+    // AVALIAÇÃO NO GOOGLE NA ENTREGA: o 1º scan acontece com o carro recém-entregue e o vendedor do lado —
+    // é o momento mais quente pra pedir. Uma vez por cliente (postsale_journeys.review_link_sent).
+    await pedirAvaliacaoNaEntrega(phone, tag, primeiro);
     return true;
   }
 

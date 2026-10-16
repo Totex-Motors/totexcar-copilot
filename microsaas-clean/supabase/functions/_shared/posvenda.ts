@@ -408,8 +408,11 @@ export async function pontePosvenda(sb: any, m: MsgIn, opts?: { transcrever?: Tr
     await sb.from("posvenda_casos").update({ nota, nota_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", c.id);
     await logMsg(sb, c.id, "cliente", c.customer_name, `Nota ${nota}`);
     let review = "";
-    if (nota >= 4) {
+    // link do Google só se ainda não foi pedido (normalmente já vai na entrega, no 1º scan da etiqueta)
+    const jaPedido = c.journey_id ? !!(await sb.from("postsale_journeys").select("review_link_sent").eq("id", c.journey_id).maybeSingle()).data?.review_link_sent : false;
+    if (nota >= 4 && !jaPedido) {
       const { data: ds } = await sb.from("dealership_settings").select("google_review_url").eq("dealership", c.dealership).maybeSingle();
+      if (ds?.google_review_url && c.journey_id) await sb.from("postsale_journeys").update({ review_link_sent: true }).eq("id", c.journey_id);
       if (ds?.google_review_url) review = `\n\nSe puder, deixa uma avaliação da ${c.dealership} no Google (leva 30 segundos e ajuda muito):\n${ds.google_review_url}`;
     }
     await waSendText(wa, phone, nota >= 4 ? `Valeu pela nota ${nota}! ⭐ Qualquer coisa do carro, é só me chamar aqui.${review}` : `Obrigado por avisar. Vou pedir pra gerência te dar um retorno. 🙏`);
