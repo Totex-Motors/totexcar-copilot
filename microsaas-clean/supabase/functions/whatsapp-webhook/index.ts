@@ -4445,6 +4445,8 @@ FINANCIAMENTO/BOLETO: cada parcela tem um boleto PRÓPRIO emitido pelo banco —
 
 REGRA DE OURO DO REGISTRO: se a mensagem JÁ TEM o valor em R$ (ex.: "500 de diesel no posto Shell"), chame registrar_gasto IMEDIATAMENTE com esse valor — NUNCA pergunte litros/km antes de registrar. Litros e km que faltarem: peça DEPOIS e complete com corrigir_ultimo_gasto quando o usuário responder. NUNCA chame registrar_gasto com amount=0 — se não souber o valor, pergunte primeiro. Recupere valores ditos em mensagens anteriores pela CONVERSA RECENTE.
 
+ROTINA DE KM (a cada 10 dias você pede a atualização do km — faz parte do controle de manutenção do carro): se o cliente responder com o NÚMERO do km digitado ("57340", "57.340 km", "tá com 57 mil e 340") ou com a FOTO DO PAINEL → atualizar_hodometro com o km completo. Se ele mandar um número curto/ambíguo ("57 mil"), confirme o número exato antes. Depois de registrar: agradeça em 1 linha e, se a ferramenta trouxer troca_oleo, diga quanto falta. Nunca dê bronca; o registro é rotina, não cobrança.
+
 TROCA DE ÓLEO (motor do Co-pilot — os números SEMPRE vêm das ferramentas): o km de hoje é ESTIMADO pela última leitura + o ritmo real do dono; a troca vence por KM ou por TEMPO (10.000 km / 12 meses; uso severo de aplicativo: metade), o que vier primeiro. (1) "Troquei o óleo", nota/adesivo da oficina com km, ou o km pedido depois de "Já resolvi" → registrar_troca_oleo (sem o km, pergunte ou peça foto do painel antes). Gasto de troca de óleo vai em registrar_gasto (ele já fecha o ciclo se tiver km; se voltar troca_oleo.registrada=false, peça o km). (2) Resposta a aviso de óleo: "Sim, quero" / "Me ajuda" → ajude a agendar: se o carro veio de loja parceira, abrir_atendimento_loja (motivo revisao, resumo com km estimado e a troca vencendo); se não der (sem_loja), buscar_servico (oficina/troca de óleo). "Já resolvi" → pergunte o km da troca (ou foto do painel/adesivo) e registre. "Agora não" → confirme em 1 linha e lembre que óleo vencido desgasta o motor, sem insistir. (3) "Quando troco o óleo?" → status_manutencao. Km estimado = diga "pela minha conta"; nunca invente km ou data.
 
 CONSUMO (regra importante): para medir o consumo eu preciso do km a cada abastecimento. SEMPRE que registrar um COMBUSTÍVEL sem o km (a ferramenta retorna pedir_hodometro=true), PEÇA uma FOTO DO HODÔMETRO (ou o km digitado) e explique que é assim que eu meço o consumo. Faça o mesmo em manutenções/revisões (ex.: troca de óleo).
@@ -4538,6 +4540,12 @@ ${JSON.stringify(snapshot)}`;
     // última proativa enviada (≤72h) pra IA saber o que o usuário está aceitando/recusando.
     // Normaliza pontuação: resposta DITADA pela Siri/Gemini chega como "Sim, quero." / "sim quero"
     const normBtn = (t: string) => t.toLowerCase().replace(/[.,!?;:]+/g, " ").replace(/\s+/g, " ").trim();
+    // botões da peça "Registro de km pendente" (template copilot_km_registro)
+    if (normBtn(inputText) === "mandar foto do painel") {
+      inputText = "[O cliente tocou em \"Mandar foto do painel\" no lembrete de registro de km.] Responda em 1 linha curta: pode mandar a foto do painel mostrando a quilometragem aqui mesmo (com o carro ligado o número aparece). Não chame ferramenta agora.";
+    } else if (normBtn(inputText) === "digitar o km") {
+      inputText = "[O cliente tocou em \"Digitar o km\" no lembrete de registro de km.] Peça em 1 linha curta pra ele digitar o km que aparece no painel agora (todos os dígitos). Não chame ferramenta agora.";
+    }
     const PROATIVE_BTNS = ["sim, quero", "agora não", "já resolvi", "me ajuda", "ver agora", "depois"].map(normBtn);
     if (PROATIVE_BTNS.includes(normBtn(inputText))) {
       try {

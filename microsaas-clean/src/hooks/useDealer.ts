@@ -356,6 +356,7 @@ export type TrocaOleoCliente = {
   ultima_troca?: { km: number; data: string } | null; km_hoje?: number; km_estimado?: boolean; leitura_dias?: number | null;
   proxima_km?: number | null; faltam_km?: number | null; data_limite?: string | null; vence_por?: "km" | "tempo" | null;
   ritmo_km_dia?: number; uso_severo?: boolean;
+  km_controle?: { pedidos: number; respondidos: number; ignorados_seguidos: number; pendente_desde: string | null; reforco: boolean } | null;
 };
 export const useOficinaTrocas = (enabled: boolean, dealership?: string) =>
   useQuery({

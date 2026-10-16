@@ -8,6 +8,7 @@ import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { capaDoVeiculo, descVeiculo, fotoDeCapaNaVenda, mktDealerIdByName, mktStock } from "../_shared/car-photo.ts";
 import { preparacaoDoCarro, aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
 import { estadoOleo } from "../_shared/oleo.ts";
+import { controleKm } from "../_shared/km.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1140,23 +1141,29 @@ Deno.serve(async (req) => {
         const accDe: Record<string, any> = {};
         for (const a of accs || []) if (!accDe[a.user_id]) accDe[a.user_id] = a;
         const ordem: Record<string, number> = { atrasada: 0, vencida: 1, proxima: 2, em_dia: 3, sem_ancora: 4 };
+        const ctl = await controleKm(admin, ids); // rotina de km: quem registra e quem ignora
         const fone = (t: string) => String(t || "").replace(/\D/g, "").replace(/^55/, "").replace(/^(\d{2})(\d{4,5})(\d{4})$/, "($1) $2-$3");
         const lista: any[] = [];
         for (const u of us || []) {
           const acc = accDe[u.id];
           const j = alvo.get(u.id);
-          if (!acc) { lista.push({ user_id: u.id, nome: u.name || j?.customer_name, telefone: fone(u.phone || j?.customer_phone), carro: j?.car_desc, status: "sem_carro" }); continue; }
+          const km = ctl[u.id] || null;
+          if (!acc) { lista.push({ user_id: u.id, nome: u.name || j?.customer_name, telefone: fone(u.phone || j?.customer_phone), carro: j?.car_desc, status: "sem_carro", km_controle: km }); continue; }
           const e = await estadoOleo(admin, u, acc).catch(() => null);
           if (!e) continue;
           lista.push({
             user_id: u.id, nome: u.name || j?.customer_name, telefone: fone(u.phone || j?.customer_phone), carro: acc.name || j?.car_desc, placa: acc.placa,
             status: e.status, ultima_troca: e.ultimaTroca, km_hoje: e.kmHoje, km_estimado: (e.leitura.diasAtras ?? 0) > 1, leitura_dias: e.leitura.diasAtras,
             proxima_km: e.proximaKm, faltam_km: e.faltamKm, data_limite: e.proximaData, vence_por: e.vencePor, ritmo_km_dia: e.ritmo.kmDia, uso_severo: e.severo,
+            km_controle: km,
           });
         }
         lista.sort((a, b) => (ordem[a.status] ?? 9) - (ordem[b.status] ?? 9) || String(a.data_limite || "9").localeCompare(String(b.data_limite || "9")));
         const resumo = { clientes: lista.length, atrasada: 0, vencida: 0, proxima: 0, em_dia: 0, sem_ancora: 0, sem_carro: 0 } as Record<string, number>;
         for (const l of lista) resumo[l.status] = (resumo[l.status] || 0) + 1;
+        // registro de km: em dia = leitura nos últimos 10 dias; não registra = 2+ pedidos ignorados seguidos
+        resumo.km_em_dia = lista.filter((l) => l.leitura_dias != null && l.leitura_dias <= 10).length;
+        resumo.nao_registra = lista.filter((l) => (l.km_controle?.ignorados_seguidos || 0) >= 2).length;
         return json({ ok: true, resumo, lista });
       }
 

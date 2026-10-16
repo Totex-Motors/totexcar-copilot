@@ -32,6 +32,7 @@ export async function registrarLeitura(sb: any, o: { userId: string; accountId?:
   if (!o.userId || km <= 0 || km > 2_000_000) return;
   const quando = o.quando ? new Date(String(o.quando).length <= 10 ? `${o.quando}T12:00:00Z` : o.quando).toISOString() : new Date().toISOString();
   try { await sb.from("odometro_leituras").insert({ user_id: o.userId, account_id: o.accountId || null, km, lido_em: quando, fonte: o.fonte }); } catch { /* tabela ainda não criada */ }
+  if (o.fonte !== "preparacao") await fecharPedidoKm(sb, o.userId, km, quando);
   if (!o.accountId) return;
   try {
     let { data: acc, error: e1 } = await sb.from("accounts").select("hodometro, hodometro_em").eq("id", o.accountId).maybeSingle();
@@ -45,6 +46,17 @@ export async function registrarLeitura(sb: any, o: { userId: string; accountId?:
       if (error) await sb.from("accounts").update({ hodometro: km }).eq("id", o.accountId); // sem a coluna nova ainda
     }
   } catch { /* */ }
+}
+
+// Rotina de km (km.ts): leitura que chega fecha o pedido de km pendente como RESPONDIDO.
+export async function fecharPedidoKm(sb: any, userId: string, km: number, quando: string): Promise<void> {
+  try {
+    const { data } = await sb.from("km_pedidos").select("id, pedido_em").eq("user_id", userId).eq("status", "pendente").limit(1);
+    const p = data?.[0];
+    // leitura antiga lançada agora (gasto com data de semanas atrás) não conta como resposta
+    if (!p || new Date(quando).getTime() < new Date(p.pedido_em).getTime() - DIA) return;
+    await sb.from("km_pedidos").update({ status: "respondido", respondido_em: new Date().toISOString(), km_resposta: Math.round(km) }).eq("id", p.id);
+  } catch { /* tabela ainda não criada */ }
 }
 
 // pontos (km, data) dos últimos 365 dias: leituras + km dos gastos (inclusive os lançados pelo app)
@@ -206,7 +218,7 @@ export function resumoOleo(e: EstadoOleo): string {
 }
 
 // ---------------- decisão diária (cron) ----------------
-export type AcaoOleo = { acao: "ancora" | "checkin_km" | "confirmar_km" | "aviso" | "vencida" | "atrasada"; variante: string; estado: EstadoOleo; fallback: string };
+export type AcaoOleo = { acao: "ancora" | "confirmar_km" | "aviso" | "vencida" | "atrasada"; variante: string; estado: EstadoOleo; fallback: string };
 
 // Decide se hoje tem mensagem de óleo pra este cliente e já grava o dedup (notification_log).
 export async function oleoTick(sb: any, u: any, v: any): Promise<AcaoOleo | null> {
@@ -216,7 +228,6 @@ export async function oleoTick(sb: any, u: any, v: any): Promise<AcaoOleo | null
     const { error } = await sb.from("notification_log").insert({ user_id: u.id, kind, due_date: due, channel: "whatsapp" });
     return !error;
   };
-  const mes = `${hojeIso().slice(0, 7)}-01`;
   const seg = (() => { const d = new Date(); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return iso(d); })();
   const carro = v?.name || "seu carro";
 
@@ -244,14 +255,7 @@ export async function oleoTick(sb: any, u: any, v: any): Promise<AcaoOleo | null
     const quando = pc?.[0]?.created_at || pc?.[0]?.sent_at;
     if (quando && Date.now() - new Date(quando).getTime() < 3 * DIA) return null;
   }
-  if (e.status === "em_dia") {
-    // check-in de km: faz tempo sem leitura e a troca não está longe
-    if (!cansado && (e.leitura.diasAtras ?? 999) > 45 && (e.faltamKm ?? 99999) <= 4000) {
-      if (!(await dedup(`oleo:checkin:${c}`, mes))) return null;
-      return { acao: "checkin_km", variante: "copilot_msg", estado: e, fallback: `Me manda uma foto do painel do ${carro} com o km? Faz um tempo que não atualizo, e é com ele que eu acerto a próxima troca de óleo.` };
-    }
-    return null;
-  }
+  if (e.status === "em_dia") return null; // a leitura de rotina é da km.ts (a cada 10 dias)
   if (e.status === "proxima") {
     if (!(await dedup(`oleo:aviso:${c}`, due))) return null;
     return { acao: "aviso", variante: "copilot_msg_sim", estado: e, fallback: `A troca de óleo do ${carro} está chegando: ${e.vencePor === "tempo" ? `vence em ${dataBR(e.proximaData!)}` : `faltam ~${kmBR(Math.max(0, e.faltamKm!))} (aos ${kmBR(e.proximaKm!)})`}. Quer que eu já agende?` };
@@ -272,7 +276,6 @@ export function insightOleo(a: AcaoOleo, loja?: string | null): Record<string, u
   const e = a.estado;
   const instrucao: Record<string, string> = {
     ancora: "Pergunte, numa mensagem curta, com quantos km (ou em que mês) foi a última troca de óleo. Ofereça mandar foto do adesivo da oficina ou da nota. Diga que com isso você avisa a próxima na hora certa.",
-    checkin_km: "Peça uma FOTO DO PAINEL com o km. Explique em 1 frase que faz tempo sem atualizar e que é com o km que você acerta a troca de óleo.",
     confirmar_km: "A troca de óleo está chegando pela ESTIMATIVA. Peça uma FOTO DO PAINEL com o km pra confirmar antes de marcar. Deixe claro que o número é estimado.",
     aviso: `Avise que a troca de óleo está chegando (${e.vencePor === "tempo" ? "pelo tempo" : "pelo km"}) e ofereça agendar${loja ? ` na oficina da ${loja}` : ""}. Use a variante copilot_msg_sim.`,
     vencida: `Diga que chegou a hora da troca de óleo e pergunte se já trocou; se não, ofereça agendar${loja ? ` na oficina da ${loja}` : ""}. Use a variante copilot_msg_feito.`,
