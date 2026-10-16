@@ -9,6 +9,7 @@ import { capaDoVeiculo, descVeiculo, fotoDeCapaNaVenda, mktDealerIdByName, mktSt
 import { preparacaoDoCarro, aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
 import { estadoOleo, registrarTrocaOleo } from "../_shared/oleo.ts";
 import { controleKm } from "../_shared/km.ts";
+import { listarChecklists, ITENS_ENTREGA } from "../_shared/entrega.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1165,6 +1166,23 @@ Deno.serve(async (req) => {
         resumo.km_em_dia = lista.filter((l) => l.leitura_dias != null && l.leitura_dias <= 10).length;
         resumo.nao_registra = lista.filter((l) => (l.km_controle?.ignorados_seguidos || 0) >= 2).length;
         return json({ ok: true, resumo, lista });
+      }
+
+      // CHECKLISTS DE ENTREGA: o que o cliente conferiu e confirmou na entrega (foto do painel, km, hora)
+      case "entregas_lista": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const rows = await listarChecklists(admin, writeStore, 80).catch(() => []);
+        const ids = [...new Set(rows.map((r: any) => r.vendedor_id).filter(Boolean))];
+        const { data: eq } = ids.length ? await admin.from("posvenda_equipe").select("id, nome").in("id", ids) : { data: [] };
+        const nome: Record<string, string> = Object.fromEntries((eq || []).map((e: any) => [e.id, e.nome]));
+        const entregas = [];
+        for (const r of rows) {
+          let foto_url: string | null = null;
+          if (r.foto_path) foto_url = (await admin.storage.from("arquivozap").createSignedUrl(r.foto_path, 3600)).data?.signedUrl || null;
+          entregas.push({ ...r, vendedor_nome: r.vendedor_id ? nome[r.vendedor_id] || null : null, foto_url });
+        }
+        const resumo = { total: rows.length, ok: rows.filter((r: any) => r.status === "ok").length, problema: rows.filter((r: any) => r.status === "problema").length, pendente: rows.filter((r: any) => r.status === "aguardando_foto" || r.status === "aguardando_confirmacao").length };
+        return json({ ok: true, entregas, resumo, itens: ITENS_ENTREGA });
       }
 
       // troca de óleo feita NA OFICINA DA LOJA pro cliente: zera o ciclo dele no Co-pilot

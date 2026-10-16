@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Printer, Tag, Link2, Unlink, QrCode, Smartphone, Trash2 } from "lucide-react";
 import { gerarPdfVersoLogo } from "@/lib/etiquetaPdf";
+import { EntregasChecklist } from "./EntregasChecklist";
 import { useTagsList, useTagsCreate, useTagsBind, useTagsUnbind, useTagsLogoSave, useTagsDeleteBatch, usePostsaleList, type CarTag } from "@/hooks/useDealer";
 
 // ETIQUETAS QR DO PARA-BRISA — o adesivo "de troca de óleo" com QR. Cada etiqueta tem um número (CV-0001)
@@ -360,6 +361,8 @@ export function EtiquetasTab({ dealership }: { dealership?: string }) {
       </div>
 
       {/* Lista */}
+      <EntregasChecklist dealership={dealership} />
+
       <Card className="border-0 shadow-premium-md">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-3 flex-wrap">

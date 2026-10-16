@@ -358,6 +358,22 @@ export type TrocaOleoCliente = {
   ritmo_km_dia?: number; uso_severo?: boolean;
   km_controle?: { pedidos: number; respondidos: number; ignorados_seguidos: number; pendente_desde: string | null; reforco: boolean } | null;
 };
+export type EntregaChecklist = {
+  id: string; customer_name: string | null; customer_phone: string; car_desc: string | null; placa: string | null;
+  status: "aguardando_foto" | "aguardando_confirmacao" | "ok" | "problema"; km: number | null; luz_alerta: boolean | null;
+  painel_obs: string | null; problema_texto: string | null; foto_url: string | null; vendedor_nome: string | null;
+  iniciado_em: string; foto_em: string | null; confirmado_em: string | null;
+};
+export const useEntregas = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["entregas", dealership || null],
+    queryFn: async () => {
+      const r = await callDealer("entregas_lista", dealership ? { dealership } : {});
+      return { entregas: (r.entregas || []) as EntregaChecklist[], resumo: (r.resumo || {}) as Record<string, number>, itens: (r.itens || []) as string[] };
+    },
+    enabled,
+    staleTime: 60_000,
+  });
 export const useOficinaTrocas = (enabled: boolean, dealership?: string) =>
   useQuery({
     queryKey: ["oficina-trocas", dealership || null],

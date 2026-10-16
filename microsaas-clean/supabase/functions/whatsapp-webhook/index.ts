@@ -31,6 +31,7 @@ import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 import { salvarFotoCarro } from "../_shared/car-photo.ts";
 import { aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
 import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_TROCA_OLEO } from "../_shared/oleo.ts";
+import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
 import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -1344,6 +1345,19 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: {} },
   },
   {
+    name: "registrar_painel_entrega",
+    description: "CHECKLIST DE ENTREGA: registra a foto do PAINEL que o cliente mandou na entrega do carro (só quando o contexto diz que há checklist de entrega em andamento). Leia o km (todos os dígitos) e veja se há ALGUMA luz de alerta acesa (injeção/motor, óleo, bateria, freio, airbag, temperatura, ABS). Se ele só digitou o km, sem foto, chame com o km e luz_alerta_acesa=false.",
+    parameters: {
+      type: "object",
+      properties: {
+        km: { type: "number", description: "Km lido no painel (0 se não der pra ler)" },
+        luz_alerta_acesa: { type: "boolean", description: "true se houver qualquer luz de alerta acesa no painel" },
+        observacao: { type: "string", description: "Quais luzes acesas, ou outra observação do painel (curto)" },
+      },
+      required: ["km", "luz_alerta_acesa"],
+    },
+  },
+  {
     name: "registrar_troca_oleo",
     description: "Registra que a TROCA DE ÓLEO (e filtro) FOI FEITA e zera o ciclo: a próxima passa a contar deste km. Use quando o cliente disser que trocou o óleo ('troquei o óleo com 52.300', 'fiz a troca ontem'), mandar a nota/adesivo da oficina com o km, ou responder com o km depois de dizer 'Já resolvi' num aviso de troca de óleo. Também quando ele informar com quantos km foi a ÚLTIMA troca. Se ele não disse o km, pergunte (ou peça foto do painel) ANTES de chamar.",
     parameters: {
@@ -1622,7 +1636,7 @@ const TOOL_SPECS = [
   },
 ];
 
-type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[]; mapas?: string[]; nav?: NavApp };
+type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[]; mapas?: string[]; nav?: NavApp; entrega?: { id: string; luz: boolean; checklist: any }; temImagem?: boolean };
 
 // ArquivoZap: sobe os bytes do documento pro Storage e grava a ficha (o arquivamento é automático —
 // dispara em background depois do turno, com a classificação que a IA já fez na foto/PDF).
@@ -1781,6 +1795,18 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
     }
 
     if (name === "resumo_financeiro") return await buildSnapshot(user.id, vehicle);
+
+    if (name === "registrar_painel_entrega") {
+      const c = await checklistAberto(supabase, String(user?.phone || ""));
+      if (!c || c.status === "ok") return { ok: false, error: "sem_checklist", message: "Não há checklist de entrega em andamento. Se for foto do painel comum, use atualizar_hodometro." };
+      const km = Math.round(Number(args?.km) || 0);
+      const luz = !!args?.luz_alerta_acesa;
+      const atualizado = await registrarPainel(supabase, c, { km: km > 0 ? km : null, luzAlerta: luz, obs: args?.observacao || null, comFoto: !!ctx.temImagem });
+      if (km > 0 && vehicle?.id) await registrarLeitura(supabase, { userId: user.id, accountId: vehicle.id, km, fonte: "entrega" });
+      ctx.entrega = { id: c.id, luz, checklist: atualizado };
+      if (luz) return { ok: true, luz_alerta: true, message: `Diga em 1–2 frases, com calma: que apareceu luz de alerta no painel (${args?.observacao || "luz de alerta"}), que ele deve mostrar ao vendedor AGORA e não sair com o carro antes de verificar, e que a equipe da loja já foi avisada. Não liste os itens do checklist.` };
+      return { ok: true, km, message: `Confirme em 1 linha curta: km ${km > 0 ? km.toLocaleString("pt-BR") : "registrado"} e painel sem luz de alerta ✅. NÃO liste os itens do checklist nem peça confirmação: eu mando os itens com os botões logo em seguida.` };
+    }
 
     if (name === "registrar_troca_oleo") {
       if (!vehicle) return { ok: false, error: "sem_veiculo" };
@@ -2577,6 +2603,10 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
 
     if (name === "abrir_atendimento_loja") {
       const v = ctx.vehicle || null;
+      try {
+        const ck = await checklistAberto(supabase, String(user.phone || ""));
+        if (ck?.status === "problema") await supabase.from("entrega_checklists").update({ problema_texto: String(args?.resumo || "").slice(0, 1000) }).eq("id", ck.id);
+      } catch { /* */ }
       const r = await abrirCaso(supabase, {
         phone: String(user.phone || ""), nome: user.name || null, userId: user.id || null,
         motivo: String(args?.motivo || "outro"), resumo: String(args?.resumo || "").slice(0, 1200), prioridade: String(args?.prioridade || "media"),
@@ -3404,9 +3434,12 @@ async function handleEtiqueta(phone: string, text: string, contactName?: string)
     await sendMenu(phone,
       `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Essa etiqueta é do seu *${carro}*${tag.km_entrega ? `, ${kmTxt(tag.km_entrega)} na entrega` : ""}, da ${loja}.\n\n✅ Pronto: a partir de agora eu cuido dele por aqui. Aviso de troca de óleo, revisão, IPVA, licenciamento e multa, e guardo todo o histórico do carro.${prepTxt}\n\nPode mandar foto da nota da oficina ou do painel com o km, ou escolher aqui embaixo 👇`,
       (await atendimentoAtivo(supabase, tag.dealership)) ? [FALAR_LOJA_LABEL, ...QUICK_ACTIONS] : QUICK_ACTIONS);
-    // AVALIAÇÃO NO GOOGLE NA ENTREGA: o 1º scan acontece com o carro recém-entregue e o vendedor do lado —
-    // é o momento mais quente pra pedir. Uma vez por cliente (postsale_journeys.review_link_sent).
-    await pedirAvaliacaoNaEntrega(phone, tag, primeiro);
+    // CHECKLIST DE ENTREGA: o 1º scan acontece com o vendedor do lado — o Co-pilot conduz a conferência
+    // (foto do painel + itens com 1 toque). A avaliação no Google vem DEPOIS do "Tudo certo" do cliente.
+    // Sem a tabela do checklist (migração não aplicada), pede a avaliação como antes.
+    const ck = await iniciarChecklist(supabase, { phone, tag, userId: r.userId, accountId: r.accountId, nome: tag.customer_name || contactName || null });
+    if (ck) await sendText(phone, textoPedidoFoto(carro));
+    else await pedirAvaliacaoNaEntrega(phone, tag, primeiro);
     return true;
   }
 
@@ -3415,6 +3448,25 @@ async function handleEtiqueta(phone: string, text: string, contactName?: string)
   await etiquetaPergunta(phone,
     `Essa etiqueta está vinculada a um *${tag.car_desc || "carro"}* da ${loja}. 🚗\n\nEsse carro agora é seu? Se for, eu passo ele pro seu WhatsApp e começo a cuidar dele com você: óleo, revisão, IPVA, multa, histórico.`,
     ["Sim, é meu agora", "Não, foi engano"]);
+  return true;
+}
+
+// botões do CHECKLIST DE ENTREGA ("✅ Tudo certo" / "⚠️ Tem problema") — só com checklist aberto deste telefone
+async function handleChecklistReply(phone: string, text: string): Promise<boolean> {
+  const norm = (t: string) => String(t || "").toLowerCase().replace(/[^a-zà-ú ]/g, "").replace(/\s+/g, " ").trim();
+  const t = norm(text);
+  const ok = t === norm(BTN_ENTREGA_OK), prob = t === norm(BTN_ENTREGA_PROBLEMA);
+  if (!ok && !prob) return false;
+  const c = await checklistAberto(supabase, phone);
+  if (!c) return false;
+  const r = await responderChecklist(supabase, c, ok);
+  if (!r) return false;
+  await sendText(phone, r.texto);
+  if (r.confirmou) {
+    // carro conferido e cliente satisfeito → agora sim, a avaliação no Google
+    const primeiro = String(c.customer_name || "").split(" ")[0] || "";
+    await pedirAvaliacaoNaEntrega(phone, { dealership: c.dealership, journey_id: c.journey_id }, primeiro);
+  }
   return true;
 }
 
@@ -4164,6 +4216,10 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "etiqueta_scan" } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, etiqueta: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
+      if (await handleChecklistReply(msg.phone, psText)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "checklist_entrega", input: psText } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, checklist_entrega: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       if (await handleEtiquetaReply(msg.phone, psText)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "etiqueta_reply", input: psText } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, etiqueta_reply: true }), { headers: { ...cors, "Content-Type": "application/json" } });
@@ -4422,6 +4478,15 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       }
     } catch { /* sem selo no prompt em caso de erro */ }
 
+    // CHECKLIST DE ENTREGA em andamento (o cliente acabou de ativar a etiqueta na entrega)
+    let checklistPrompt = "";
+    try {
+      const ck = await checklistAberto(supabase, msg.phone);
+      if (ck?.status === "aguardando_foto") checklistPrompt = `\nCHECKLIST DE ENTREGA EM ANDAMENTO (${ck.car_desc || "carro"}): o cliente está recebendo o carro agora, com o vendedor. Se ele mandar FOTO DO PAINEL (ou digitar o km), chame registrar_painel_entrega (km + se há luz de alerta) — NÃO use atualizar_hodometro neste caso. Se perguntar outra coisa, responda e lembre em 1 linha de mandar a foto do painel com o carro ligado.\n`;
+      else if (ck?.status === "aguardando_confirmacao") checklistPrompt = `\nCHECKLIST DE ENTREGA (${ck.car_desc || "carro"}): os itens já foram enviados com os botões "${BTN_ENTREGA_OK}" / "${BTN_ENTREGA_PROBLEMA}". Se ele disser que está tudo ok, peça pra tocar em "${BTN_ENTREGA_OK}" (é o registro oficial). Se relatar problema, trate como no caso de problema abaixo.\n`;
+      else if (ck?.status === "problema") checklistPrompt = `\nCHECKLIST DE ENTREGA COM PROBLEMA (${ck.car_desc || "carro"}): o cliente apontou problema na entrega${ck.painel_obs ? ` (painel: ${ck.painel_obs})` : ""}. Assim que ele descrever o problema, chame abrir_atendimento_loja (motivo garantia_defeito, prioridade alta, resumo começando com "Problema na entrega:"). O vendedor está com ele; quando resolverem, ele toca em "${BTN_ENTREGA_OK}".\n`;
+    } catch { /* */ }
+
     const today = new Date().toISOString().split("T")[0];
     const { data: appCfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
     const appUrl = (appCfg?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
@@ -4472,7 +4537,7 @@ Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.j
 
 CALENDÁRIO DO CARRO: para "o que vence?", "tá tudo em dia?", "próxima revisão", "o que tenho pra pagar?" → use meu_calendario. Apresente em ordem de data, com dias restantes ("IPVA em 12 dias — R$ 1.850"). Revisões projetadas por km: deixe claro que é projeção pelo ritmo de uso DELE ("mantendo seus ~40 km/dia, o óleo vence ~12/09"). Se estiver tudo em dia por 60+ dias, diga isso de forma leve e ofereça no máximo 1 cuidado preventivo. NUNCA invente data nem valor — veio da ferramenta ou não existe.
 
-${seloPrompt}
+${seloPrompt}${checklistPrompt}
 MODO INDICADOR (motorista PRO como indicador da loja): se o motorista pedir carro/estoque PARA OUTRA PESSOA — "meu passageiro quer um Argo", "tem SUV até 80 mil? é pra um cliente", "manda o Onix pra eu mostrar pra um amigo" — use buscar_carros normalmente (por voz ou texto). As fotos que você envia JÁ saem com o link rastreado DELE (Indique e Ganhe). Depois de enviar, oriente em 1 linha: "é só tocar em ENCAMINHAR na foto e mandar pro seu passageiro — se rolar negócio pelo link, sua indicação fica registrada e você ganha a comissão". Se ele pedir pra VOCÊ mandar mensagem direto pro número do passageiro, explique com naturalidade que não fazemos contato com quem não falou com a gente primeiro (proteção do canal) — encaminhar a foto é mais rápido e, vindo dele, o passageiro confia mais. Incentive sem exagero: motorista PRO é um parceiro de vendas das lojas do ecossistema.
 
 RELATÓRIO FISCAL (PRO): para "relatório", "IR", "imposto de renda", "MEI", "carnê-leão", "extrato pra contador" → use relatorio_fiscal (default: mês anterior fechado; "do ano"/"declaração" → anual). O PDF é enviado automaticamente na conversa; você só resume (lucro + R$/km) e diz que serve de base pro contador. NUNCA dê conselho fiscal definitivo — "sou seu copiloto, não seu contador; ele confirma os enquadramentos".
@@ -4891,7 +4956,7 @@ ${JSON.stringify(snapshot)}`;
     const aiConfig = await getAIConfig();
     // ctx nomeado: os handlers marcam ctx.shownCars quando mostram a vitrine, e o motor de
     // intenção lê isso depois pra não mandar oferta repetida.
-    const ctx: ToolCtx = { user, vehicle, today, inputText, carMode, nav: carMode ? await navPref(msg.phone) : undefined };
+    const ctx: ToolCtx = { user, vehicle, today, inputText, carMode, nav: carMode ? await navPref(msg.phone) : undefined, temImagem: parts.some((p: any) => p.kind === "image") };
     let replyText = "";
     try {
       // respostas oficiais da loja onde o cliente comprou (pós-venda): resolve sem chamar a equipe
@@ -4909,6 +4974,27 @@ ${JSON.stringify(snapshot)}`;
     if (ctx.fila?.length) await modoCarroGuardar(msg.phone, ctx.fila);
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
     if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText }, user_id: user.id }).eq("id", eventId);
+
+    // CHECKLIST DE ENTREGA: guarda a foto do painel (prova) e manda os itens com os botões
+    if (ctx.entrega) {
+      try {
+        const mp: any = parts.find((p: any) => p.kind === "image");
+        if (mp?.data) {
+          const path = `entrega/${ctx.entrega.id}.jpg`;
+          const bytes = Uint8Array.from(atob(mp.data), (ch) => ch.charCodeAt(0));
+          const up = await supabase.storage.from("arquivozap").upload(path, bytes, { contentType: mp.media_type || "image/jpeg", upsert: true });
+          if (!up.error) {
+            await supabase.from("entrega_checklists").update({ foto_path: path, foto_em: new Date().toISOString() }).eq("id", ctx.entrega.id);
+            await supabase.from("arquivozap_docs").insert({
+              user_id: user.id, phone: onlyDigits(msg.phone), tipo: "entrega", nome: "Checklist de entrega · painel",
+              resumo: `Foto do painel na entrega${ctx.entrega.checklist?.km ? ` · ${Number(ctx.entrega.checklist.km).toLocaleString("pt-BR")} km` : ""}`,
+              meta: { checklist_id: ctx.entrega.id }, storage_path: path, mime: mp.media_type || "image/jpeg", size: bytes.length,
+            });
+          }
+        }
+        if (!ctx.entrega.luz) await sendMenu(msg.phone, textoItens(ctx.entrega.checklist), [BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA]);
+      } catch (e) { console.error("checklist entrega:", e); }
+    }
 
     // ARQUIVOZAP: se a IA marcou a mídia como documento (arquivar_documento / registrar_multa),
     // guarda o original em background — sem atrasar a resposta que o usuário já recebeu.
