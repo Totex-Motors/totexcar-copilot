@@ -15,6 +15,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { calcTendencia, tendenciaDaConta, textoAlerta } from "../_shared/fipe-tendencia.ts";
 import { registrarOportunidade } from "../_shared/posvenda.ts";
+import { aplicarPreparacaoDaJornada } from "../_shared/preparacao.ts";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
@@ -504,6 +505,19 @@ async function runPostsale(): Promise<number> {
     const phone = onlyDigits(j.customer_phone || "");
     if (!phone) continue;
     const nome = j.customer_name ? String(j.customer_name).split(" ")[0] : "";
+
+    // PREPARAÇÃO da oficina ainda não virou lembrete (cliente entrou por outro caminho que não a
+    // etiqueta/cortesia): acha a conta pelo telefone e aplica. Silencioso — não conta como envio.
+    if (j.preparacao_id && !j.prep_aplicada) {
+      try {
+        let uid = j.user_id || null;
+        if (!uid) {
+          const { data: us } = await supabase.from("users").select("id").ilike("phone", `%${phone.slice(-8)}`).limit(2);
+          if (us?.length === 1) uid = us[0].id;
+        }
+        if (uid) await aplicarPreparacaoDaJornada(supabase, j, uid);
+      } catch (e) { console.error("preparação (cron):", e); }
+    }
 
     const carroTpl = j.car_desc ? String(j.car_desc) : "carro";
 

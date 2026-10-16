@@ -29,6 +29,7 @@ const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 import { salvarFotoCarro } from "../_shared/car-photo.ts";
+import { aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
 import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -3320,8 +3321,15 @@ async function handleEtiqueta(phone: string, text: string, contactName?: string)
     const r = await etiquetaGarantirConta(phone, tag, Number(tag.km_entrega) || null);
     if (!r.userId) { await sendText(phone, "Tive um probleminha pra ativar agora 😕 Tenta escanear de novo em instantes, por favor."); return true; }
     await supabase.from("car_tags").update({ status: "ativa", activated_at: new Date().toISOString(), user_id: r.userId, account_id: r.accountId, customer_phone: digits }).eq("id", tag.id);
+    // PREPARAÇÃO da oficina (troca de óleo/filtro antes da venda) → vira o lembrete de óleo do cliente
+    let prepTxt = "";
+    try {
+      const jPrep = tag.journey_id ? (await supabase.from("postsale_journeys").select("id, preparacao_id, prep_aplicada").eq("id", tag.journey_id).maybeSingle()).data : null;
+      const prep = jPrep ? await aplicarPreparacaoDaJornada(supabase, jPrep, r.userId, r.accountId) : null;
+      if (prep) prepTxt = `\n\n${textoPreparacao(prep, loja)}`;
+    } catch (e) { console.error("preparação na ativação:", e); }
     await sendMenu(phone,
-      `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Essa etiqueta é do seu *${carro}*${tag.km_entrega ? `, ${kmTxt(tag.km_entrega)} na entrega` : ""}, da ${loja}.\n\n✅ Pronto: a partir de agora eu cuido dele por aqui. Aviso de troca de óleo, revisão, IPVA, licenciamento e multa, e guardo todo o histórico do carro.\n\nPode mandar foto da nota da oficina ou do painel com o km, ou escolher aqui embaixo 👇`,
+      `Oi${primeiro ? `, ${primeiro}` : ""}! 👋 Essa etiqueta é do seu *${carro}*${tag.km_entrega ? `, ${kmTxt(tag.km_entrega)} na entrega` : ""}, da ${loja}.\n\n✅ Pronto: a partir de agora eu cuido dele por aqui. Aviso de troca de óleo, revisão, IPVA, licenciamento e multa, e guardo todo o histórico do carro.${prepTxt}\n\nPode mandar foto da nota da oficina ou do painel com o km, ou escolher aqui embaixo 👇`,
       (await atendimentoAtivo(supabase, tag.dealership)) ? [FALAR_LOJA_LABEL, ...QUICK_ACTIONS] : QUICK_ACTIONS);
     // AVALIAÇÃO NO GOOGLE NA ENTREGA: o 1º scan acontece com o carro recém-entregue e o vendedor do lado —
     // é o momento mais quente pra pedir. Uma vez por cliente (postsale_journeys.review_link_sent).
