@@ -19,6 +19,22 @@ import { useCurrentUser } from '@/hooks/useAuth';
 import { useCategories } from '@/hooks/useCategories';
 import { useVehicle, useUpdateAccount } from '@/hooks/useAccounts';
 import { useCreateTransaction, useUpdateTransaction, type Transaction } from '@/hooks/useTransactions';
+import { supabase } from '@/integrations/supabase/client';
+
+const RE_TROCA_OLEO = /troca\s+de\s+(ó|o)leo|(ó|o)leo\s+(do\s+)?motor|lubrifica(ç|c)(ã|a)o|(ó|o)leo\s+e\s+filtro|filtro\s+de\s+(ó|o)leo/i;
+// zera o lembrete de óleo do carro a partir deste km/data (cria se não existir; nunca volta o ciclo)
+async function registrarTrocaOleoWeb(userId: string, accountId: string, km: number, data: string) {
+  const sb = supabase as any;
+  const { data: rems } = await sb.from('maintenance_reminders').select('id, title, account_id, last_km').eq('user_id', userId).eq('active', true);
+  const oleo = (rems || []).filter((r: any) => /(ó|o)leo/i.test(String(r.title || '')));
+  const rem = oleo.find((r: any) => r.account_id === accountId) || oleo.find((r: any) => !r.account_id);
+  if (rem) {
+    if (Number(rem.last_km || 0) > km) return;
+    await sb.from('maintenance_reminders').update({ last_km: km, last_date: data, updated_at: new Date().toISOString() }).eq('id', rem.id);
+  } else {
+    await sb.from('maintenance_reminders').insert({ user_id: userId, account_id: accountId, title: 'Troca de óleo e filtro', interval_km: 10000, last_km: km, last_date: data, active: true });
+  }
+}
 
 const transactionSchema = z.object({
   description: z.string().min(1, 'Descrição é obrigatória'),
@@ -132,6 +148,10 @@ export function TransactionForm({ isOpen, onClose, transaction }: TransactionFor
       const odo = transactionData.odometer;
       if (odo && vehicle && (!vehicle.hodometro || odo > Number(vehicle.hodometro))) {
         await updateAccount.mutateAsync({ id: vehicle.id, updates: { hodometro: odo } });
+      }
+      // Gasto de TROCA DE ÓLEO com km fecha o ciclo do lembrete (mesma regra do WhatsApp)
+      if (odo && data.type === 'expense' && RE_TROCA_OLEO.test(data.description) && !/complet|n[ií]vel|aditivo/i.test(data.description)) {
+        await registrarTrocaOleoWeb(userId, vehicle.id, odo, transactionData.transaction_date).catch(() => {});
       }
 
       handleClose();

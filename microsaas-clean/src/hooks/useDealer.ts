@@ -350,6 +350,23 @@ export interface Preparacao {
   oleo: boolean; oleo_tipo: string | null; filtro_oleo: boolean; filtro_ar: boolean; filtro_combustivel: boolean; filtro_cabine: boolean;
   intervalo_km: number; obs: string | null; feito_por: string | null; created_at: string;
 }
+export type TrocaOleoCliente = {
+  user_id: string; nome: string | null; telefone: string | null; carro: string | null; placa?: string | null;
+  status: "atrasada" | "vencida" | "proxima" | "em_dia" | "sem_ancora" | "sem_carro";
+  ultima_troca?: { km: number; data: string } | null; km_hoje?: number; km_estimado?: boolean; leitura_dias?: number | null;
+  proxima_km?: number | null; faltam_km?: number | null; data_limite?: string | null; vence_por?: "km" | "tempo" | null;
+  ritmo_km_dia?: number; uso_severo?: boolean;
+};
+export const useOficinaTrocas = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["oficina-trocas", dealership || null],
+    queryFn: async () => {
+      const r = await callDealer("oficina_trocas", dealership ? { dealership } : {});
+      return { resumo: (r.resumo || {}) as Record<string, number>, lista: (r.lista || []) as TrocaOleoCliente[] };
+    },
+    enabled,
+    staleTime: 5 * 60_000,
+  });
 export const usePreparacoes = (enabled: boolean, dealership?: string) =>
   useQuery({
     queryKey: ["preparacoes", dealership || null],

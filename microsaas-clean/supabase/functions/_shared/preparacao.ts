@@ -4,7 +4,8 @@
 // tem conta/carro no Co-pilot, vira o lembrete "Troca de óleo e filtro" com última troca = km da
 // preparação. Daí em diante o Co-pilot projeta a próxima troca pelo ritmo de uso do cliente.
 
-export const TITULO_OLEO = "Troca de óleo e filtro";
+import { TITULO_OLEO, lembreteOleo, registrarLeitura } from "./oleo.ts";
+export { TITULO_OLEO };
 const dataBR = (s: unknown) => { const m = String(s ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(s ?? ""); };
 const km = (n: number) => `${Math.round(n).toLocaleString("pt-BR")} km`;
 
@@ -38,21 +39,18 @@ export async function aplicarPreparacao(sb: any, o: { userId: string; accountId?
   const p = o.prep;
   if (!o.userId || !p?.km) return false;
   try {
-    const { data: rems } = await sb.from("maintenance_reminders").select("id, last_km, title").eq("user_id", o.userId).eq("active", true);
-    const oleo = (rems || []).find((r: any) => /[oó]leo/i.test(String(r.title || "")));
+    const { data: rems } = await sb.from("maintenance_reminders").select("id, last_km, title, account_id").eq("user_id", o.userId).eq("active", true);
+    const oleo = lembreteOleo(rems, o.accountId);
+    const row = { interval_km: Number(p.intervalo_km) || 10000, last_km: Number(p.km), last_date: p.data };
     if (!oleo) {
-      await sb.from("maintenance_reminders").insert({
-        user_id: o.userId, account_id: o.accountId || null, title: TITULO_OLEO,
-        interval_km: Number(p.intervalo_km) || 10000, last_km: Number(p.km), last_date: p.data, active: true,
-      });
+      const ins = { user_id: o.userId, account_id: o.accountId || null, title: TITULO_OLEO, active: true, ...row };
+      const { error } = await sb.from("maintenance_reminders").insert({ ...ins, interval_meses: 12 });
+      if (error) await sb.from("maintenance_reminders").insert(ins); // banco sem interval_meses ainda
     } else if (Number(oleo.last_km || 0) < Number(p.km)) {
-      await sb.from("maintenance_reminders").update({ last_km: Number(p.km), last_date: p.data, interval_km: Number(p.intervalo_km) || 10000, updated_at: new Date().toISOString() }).eq("id", oleo.id);
+      await sb.from("maintenance_reminders").update({ ...row, updated_at: new Date().toISOString() }).eq("id", oleo.id);
     }
-    // hodômetro do carro do cliente nunca abaixo do km da preparação
-    if (o.accountId) {
-      const { data: acc } = await sb.from("accounts").select("hodometro").eq("id", o.accountId).maybeSingle();
-      if (acc && !(Number(acc.hodometro) >= Number(p.km))) await sb.from("accounts").update({ hodometro: Number(p.km) }).eq("id", o.accountId);
-    }
+    // leitura do hodômetro na data da preparação (sobe o km do carro, nunca desce) → base da estimativa
+    await registrarLeitura(sb, { userId: o.userId, accountId: o.accountId, km: Number(p.km), fonte: "preparacao", quando: p.data });
     if (o.journeyId) await sb.from("postsale_journeys").update({ prep_aplicada: true }).eq("id", o.journeyId);
     return true;
   } catch (e) { console.error("aplicarPreparacao:", e); return false; }

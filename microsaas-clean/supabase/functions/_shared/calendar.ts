@@ -5,6 +5,8 @@
 // multas, assinatura). A tabela ipva_calendario (UF × final de placa) existe mas o seed é
 // manual/futuro — dados oficiais mudam por ano.
 
+import { estadoOleo } from "./oleo.ts";
+
 const todayStr = () => new Date().toISOString().split("T")[0];
 const addDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().split("T")[0]; };
 
@@ -30,14 +32,21 @@ export async function kmMedioDia(supabase: any, userId: string, isPro: boolean):
 
 // projeta a data de cada revisão ativa pelo ritmo de uso e grava em maintenance_reminders +
 // car_calendar (kind=revisao, projected=true). Retorna as revisões com a projeção calculada.
-export async function projectRevisions(supabase: any, userId: string, vehicle: any, kmDia: number): Promise<Array<{ id: string; title: string; km_restante: number; projected_date: string }>> {
+export async function projectRevisions(supabase: any, userId: string, vehicle: any, kmDia: number, user?: any): Promise<Array<{ id: string; title: string; km_restante: number; projected_date: string }>> {
   const out: Array<{ id: string; title: string; km_restante: number; projected_date: string }> = [];
   try {
-    const hod = Number(vehicle?.hodometro) || 0;
+    // km de HOJE estimado (última leitura + ritmo) e o óleo pelo motor do óleo (km OU tempo)
+    const oleo = await estadoOleo(supabase, user || { id: userId, driver_mode: kmDia >= 150 }, vehicle).catch(() => null);
+    const hod = oleo?.kmHoje || Number(vehicle?.hodometro) || 0;
     if (!hod) return out;
     const { data: rems } = await supabase.from("maintenance_reminders")
       .select("id, title, interval_km, last_km").eq("user_id", userId).eq("active", true);
     for (const r of (rems || [])) {
+      if (oleo?.ativo && r.id === oleo.lembreteId && oleo.proximaData) {
+        await supabase.from("maintenance_reminders").update({ projected_date: oleo.proximaData }).eq("id", r.id);
+        out.push({ id: r.id, title: r.title, km_restante: Number(oleo.faltamKm), projected_date: oleo.proximaData });
+        continue;
+      }
       const intervalo = Number(r.interval_km) || 0;
       if (!intervalo) continue;
       const base = Number(r.last_km) || 0;

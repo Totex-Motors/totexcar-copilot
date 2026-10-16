@@ -495,6 +495,7 @@ export const TIPO_OPORTUNIDADE: Record<string, { titulo: string; dica: string }>
   troca_fipe: { titulo: "Troca: FIPE em queda", dica: "O carro está perdendo valor mês a mês. Bom momento pra oferecer avaliação na troca por um carro do estoque." },
   aniversario: { titulo: "1 ano de compra", dica: "Parabenize, ofereça a revisão de 1 ano e pergunte se pensa em trocar ou se tem alguém pra indicar." },
   indicacao: { titulo: "Pedir indicação", dica: "Cliente satisfeito: peça uma indicação e a avaliação no Google." },
+  troca_oleo: { titulo: "Troca de óleo vencida", dica: "O Co-pilot já cobrou o cliente. Ligue/chame oferecendo agendar a troca de óleo e filtro na oficina da loja (e aproveite pra checar o carro)." },
   outro: { titulo: "Oportunidade", dica: "" },
 };
 
