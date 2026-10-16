@@ -7,6 +7,7 @@ import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { capaDoVeiculo, descVeiculo, fotoDeCapaNaVenda, mktDealerIdByName, mktStock } from "../_shared/car-photo.ts";
 import { preparacaoDoCarro, aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
+import { estadoOleo } from "../_shared/oleo.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1113,6 +1114,50 @@ Deno.serve(async (req) => {
         const { error } = await admin.from("preparacao_veiculos").delete().eq("id", String(p.id || "")).eq("dealership", writeStore);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
+      }
+
+      // PRÓXIMAS TROCAS DE ÓLEO dos clientes da loja (motor do óleo): quem está vencido/chegando, com
+      // o km de hoje estimado pelo ritmo de cada um. É a agenda da oficina — a loja liga antes do concorrente.
+      case "oficina_trocas": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: js } = await admin.from("postsale_journeys").select("id, customer_name, customer_phone, car_desc, user_id, created_at")
+          .eq("dealership", writeStore).order("created_at", { ascending: false }).limit(200);
+        const semUser = (js || []).filter((j: any) => !j.user_id && j.customer_phone);
+        const vars = [...new Set(semUser.flatMap((j: any) => variantesTel(j.customer_phone)))];
+        const porFone: Record<string, any> = {};
+        if (vars.length) {
+          const { data: us } = await admin.from("users").select("id, phone").in("phone", vars.slice(0, 900));
+          for (const u of us || []) porFone[String(u.phone)] = u.id;
+        }
+        const alvo = new Map<string, any>(); // user_id → jornada mais recente
+        for (const j of js || []) {
+          const uid = j.user_id || variantesTel(j.customer_phone || "").map((v: string) => porFone[v]).find(Boolean);
+          if (uid && !alvo.has(uid)) alvo.set(uid, j);
+        }
+        const ids = [...alvo.keys()];
+        const { data: us } = ids.length ? await admin.from("users").select("id, name, phone, driver_mode").in("id", ids) : { data: [] };
+        const { data: accs } = ids.length ? await admin.from("accounts").select("id, user_id, name, placa, hodometro, created_at").in("user_id", ids).eq("is_active", true) : { data: [] };
+        const accDe: Record<string, any> = {};
+        for (const a of accs || []) if (!accDe[a.user_id]) accDe[a.user_id] = a;
+        const ordem: Record<string, number> = { atrasada: 0, vencida: 1, proxima: 2, em_dia: 3, sem_ancora: 4 };
+        const fone = (t: string) => String(t || "").replace(/\D/g, "").replace(/^55/, "").replace(/^(\d{2})(\d{4,5})(\d{4})$/, "($1) $2-$3");
+        const lista: any[] = [];
+        for (const u of us || []) {
+          const acc = accDe[u.id];
+          const j = alvo.get(u.id);
+          if (!acc) { lista.push({ user_id: u.id, nome: u.name || j?.customer_name, telefone: fone(u.phone || j?.customer_phone), carro: j?.car_desc, status: "sem_carro" }); continue; }
+          const e = await estadoOleo(admin, u, acc).catch(() => null);
+          if (!e) continue;
+          lista.push({
+            user_id: u.id, nome: u.name || j?.customer_name, telefone: fone(u.phone || j?.customer_phone), carro: acc.name || j?.car_desc, placa: acc.placa,
+            status: e.status, ultima_troca: e.ultimaTroca, km_hoje: e.kmHoje, km_estimado: (e.leitura.diasAtras ?? 0) > 1, leitura_dias: e.leitura.diasAtras,
+            proxima_km: e.proximaKm, faltam_km: e.faltamKm, data_limite: e.proximaData, vence_por: e.vencePor, ritmo_km_dia: e.ritmo.kmDia, uso_severo: e.severo,
+          });
+        }
+        lista.sort((a, b) => (ordem[a.status] ?? 9) - (ordem[b.status] ?? 9) || String(a.data_limite || "9").localeCompare(String(b.data_limite || "9")));
+        const resumo = { clientes: lista.length, atrasada: 0, vencida: 0, proxima: 0, em_dia: 0, sem_ancora: 0, sem_carro: 0 } as Record<string, number>;
+        for (const l of lista) resumo[l.status] = (resumo[l.status] || 0) + 1;
+        return json({ ok: true, resumo, lista });
       }
 
       // ===== ETIQUETAS QR DO PARA-BRISA =====

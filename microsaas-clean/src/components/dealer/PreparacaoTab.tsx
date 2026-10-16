@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Wrench, Plus, Trash2, Search } from "lucide-react";
-import { useEstoqueLista, usePreparacoes, usePosvendaAcao, type EstoqueCarro, type Preparacao } from "@/hooks/useDealer";
+import { Loader2, Wrench, Plus, Trash2, Search, Droplet } from "lucide-react";
+import { useEstoqueLista, usePreparacoes, usePosvendaAcao, useOficinaTrocas, type EstoqueCarro, type Preparacao, type TrocaOleoCliente } from "@/hooks/useDealer";
 
 // PREPARAÇÃO DO CARRO ANTES DA VENDA — o gerente de manutenção registra a troca de óleo + filtro e o km.
 // É o PONTO ZERO do motor de manutenção do Co-pilot: na venda, vira o lembrete de troca de óleo do cliente
@@ -16,6 +16,74 @@ import { useEstoqueLista, usePreparacoes, usePosvendaAcao, type EstoqueCarro, ty
 const hoje = () => new Date().toISOString().slice(0, 10);
 const dataBR = (s?: string | null) => (s ? String(s).split("-").reverse().join("/") : "");
 const kmBR = (n?: number | null) => (n ? `${Number(n).toLocaleString("pt-BR")} km` : "");
+const STATUS_OLEO: Record<TrocaOleoCliente["status"], { label: string; cls: string }> = {
+  atrasada: { label: "Atrasada", cls: "bg-red-100 text-red-800" },
+  vencida: { label: "Venceu", cls: "bg-orange-100 text-orange-800" },
+  proxima: { label: "Chegando", cls: "bg-amber-100 text-amber-800" },
+  em_dia: { label: "Em dia", cls: "bg-green-100 text-green-800" },
+  sem_ancora: { label: "Sem registro", cls: "bg-muted text-muted-foreground" },
+  sem_carro: { label: "Sem carro no app", cls: "bg-muted text-muted-foreground" },
+};
+
+// Agenda da oficina: próximas trocas de óleo dos clientes que compraram na loja, com o km de hoje
+// estimado pelo ritmo de cada um (o Co-pilot cobra o cliente; a loja liga pra agendar).
+function TrocasClientes({ dealership }: { dealership?: string }) {
+  const { data, isLoading } = useOficinaTrocas(true, dealership);
+  const [todos, setTodos] = useState(false);
+  const lista = data?.lista || [];
+  const urgentes = lista.filter((l) => ["atrasada", "vencida", "proxima"].includes(l.status));
+  const mostrar = todos ? lista : urgentes;
+  const r = data?.resumo || {};
+  return (
+    <Card className="border-0 shadow-premium-md">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
+        <CardTitle className="text-base flex items-center gap-2"><Droplet className="w-4 h-4 text-primary" /> Trocas de óleo dos clientes</CardTitle>
+        <div className="flex gap-1">
+          <Button size="sm" variant={!todos ? "default" : "outline"} className="h-8" onClick={() => setTodos(false)}>Para agendar ({urgentes.length})</Button>
+          <Button size="sm" variant={todos ? "default" : "outline"} className="h-8" onClick={() => setTodos(true)}>Todos ({lista.length})</Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          O Co-pilot estima o km de hoje de cada cliente pelo ritmo de uso, pede foto do painel quando a troca se aproxima e cobra por km <b>ou</b> 12 meses, o que vier primeiro.
+          Quando vence, o cliente recebe o aviso e a oportunidade cai no grupo da loja.
+        </p>
+        <div className="flex flex-wrap gap-1.5 text-xs">
+          {(["atrasada", "vencida", "proxima", "em_dia", "sem_ancora"] as const).map((k) => (
+            <span key={k} className={`px-2 py-0.5 rounded-full ${STATUS_OLEO[k].cls}`}>{STATUS_OLEO[k].label}: <b>{r[k] || 0}</b></span>
+          ))}
+        </div>
+        {isLoading ? <div className="py-6 text-center"><Loader2 className="w-5 h-5 animate-spin inline" /></div> : !mostrar.length ? (
+          <p className="text-sm text-muted-foreground py-3">{todos ? "Nenhum cliente com o Co-pilot ainda." : "Nenhuma troca vencida ou chegando agora. 👏"}</p>
+        ) : (
+          <div className="divide-y">
+            {mostrar.map((l) => (
+              <div key={l.user_id} className="py-2.5 flex items-start gap-3 text-sm">
+                <span className={`mt-0.5 px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0 ${STATUS_OLEO[l.status].cls}`}>{STATUS_OLEO[l.status].label}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{l.nome || "Cliente"}{l.carro ? ` · ${l.carro}` : ""}{l.placa ? ` · ${l.placa}` : ""}</div>
+                  {l.ultima_troca ? (
+                    <div className="text-xs text-muted-foreground">
+                      Última: {kmBR(l.ultima_troca.km)} em {dataBR(l.ultima_troca.data)} · hoje {l.km_estimado ? "≈" : ""}{kmBR(l.km_hoje)}
+                      {" · "}próxima: <b>{kmBR(l.proxima_km)}</b> ou até <b>{dataBR(l.data_limite)}</b>
+                      {l.faltam_km != null && (l.faltam_km > 0 ? ` · faltam ${kmBR(l.faltam_km)}` : ` · passou ${kmBR(-l.faltam_km) || "0 km"}`)}
+                      {l.uso_severo ? " · uso severo (app)" : ""}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">{l.status === "sem_carro" ? "Ainda não ativou o carro no Co-pilot." : "O Co-pilot vai perguntar ao cliente quando foi a última troca."}</div>
+                  )}
+                  {l.km_estimado && l.leitura_dias != null && <div className="text-[11px] text-muted-foreground">km estimado · última leitura há {l.leitura_dias} dias · ~{Math.round(l.ritmo_km_dia || 0)} km/dia</div>}
+                </div>
+                {l.telefone && <a href={`tel:${String(l.telefone).replace(/\D/g, "")}`} className="text-xs text-primary whitespace-nowrap shrink-0">{l.telefone}</a>}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 type Form = {
   id?: string; vehicle_id?: string | null; car_desc: string; placa: string; data: string; km: string; oleo: boolean; oleo_tipo: string;
   filtro_oleo: boolean; filtro_ar: boolean; filtro_combustivel: boolean; filtro_cabine: boolean; intervalo_km: string; obs: string;
@@ -68,6 +136,8 @@ export function PreparacaoTab({ dealership }: { dealership?: string }) {
           ele já sabe quando avisar a próxima troca, e o cliente recebe na entrega “seu carro saiu revisado: óleo e filtro trocados em … com … km”.
         </CardContent>
       </Card>
+
+      <TrocasClientes dealership={dealership} />
 
       <div className="grid grid-cols-3 gap-3">
         <Card className="border-0 shadow-premium-md"><CardContent className="p-4"><div className="text-xs text-muted-foreground">No estoque</div><div className="text-2xl font-bold">{carros.length}</div></CardContent></Card>

@@ -30,6 +30,7 @@ import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 import { salvarFotoCarro } from "../_shared/car-photo.ts";
 import { aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
+import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_TROCA_OLEO } from "../_shared/oleo.ts";
 import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -1339,8 +1340,22 @@ const TOOL_SPECS = [
   },
   {
     name: "status_manutencao",
-    description: "Itens de manutenção por km e quantos km faltam, com base no hodômetro atual.",
+    description: "Itens de manutenção e, principalmente, a TROCA DE ÓLEO: última troca, km estimado de hoje, km e data da próxima troca (vence por km OU por tempo, o que vier primeiro) e quanto falta.",
     parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "registrar_troca_oleo",
+    description: "Registra que a TROCA DE ÓLEO (e filtro) FOI FEITA e zera o ciclo: a próxima passa a contar deste km. Use quando o cliente disser que trocou o óleo ('troquei o óleo com 52.300', 'fiz a troca ontem'), mandar a nota/adesivo da oficina com o km, ou responder com o km depois de dizer 'Já resolvi' num aviso de troca de óleo. Também quando ele informar com quantos km foi a ÚLTIMA troca. Se ele não disse o km, pergunte (ou peça foto do painel) ANTES de chamar.",
+    parameters: {
+      type: "object",
+      properties: {
+        km: { type: "number", description: "Km do carro NA TROCA (todos os dígitos)" },
+        data: { type: "string", description: "Data da troca yyyy-mm-dd (hoje se ele não disse)" },
+        intervalo_km: { type: "number", description: "Só se ele/oficina disser o intervalo (ex.: adesivo 'próxima troca 5.000 km' → 5000). Senão omita." },
+        intervalo_meses: { type: "number", description: "Só se informado (ex.: 'trocar em 6 meses'). Senão omita." },
+      },
+      required: ["km"],
+    },
   },
   {
     name: "registrar_multa",
@@ -1653,7 +1668,18 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         await supabase.from("accounts").update({ hodometro: odometer }).eq("id", vehicle.id);
         vehicle.hodometro = odometer;
       }
+      if (odometer && !ins.error) await registrarLeitura(supabase, { userId: user.id, accountId: vehicle.id, km: odometer, fonte: "gasto", quando: date });
       const isFuel = /combust/i.test(String(exp.category || "")) || litros != null;
+      // gasto de TROCA DE ÓLEO fecha o ciclo do lembrete (com km); sem km, pede o km pra fechar
+      const descOleo = `${exp.description || ""} ${exp.category || ""}`;
+      const isTrocaOleo = tipo === "expense" && !ins.error && !isFuel && RE_GASTO_TROCA_OLEO.test(descOleo) && !/complet|n[ií]vel|aditivo/i.test(descOleo);
+      let trocaOleo: any = null;
+      if (isTrocaOleo && odometer) {
+        const r = await registrarTrocaOleo(supabase, { userId: user.id, accountId: vehicle.id, km: odometer, data: date, fonte: "gasto" });
+        if (r.ok) trocaOleo = { registrada: true, proxima_troca_km: r.proximaKm, proxima_troca_ate: r.proximaData, instrucao: "Confirme que registrou a troca de óleo e diga quando é a próxima (km e data limite) — você avisa antes." };
+      } else if (isTrocaOleo) {
+        trocaOleo = { registrada: false, instrucao: "É uma TROCA DE ÓLEO: peça o km do carro na troca (ou foto do painel/adesivo da oficina) e, com a resposta, chame registrar_troca_oleo. É isso que zera a contagem da próxima troca." };
+      }
       // Score de Cuidado (fase SILENCIOSA — GAMIFICACAO-SCORE-CUIDADO.md): pontua em background,
       // sem mencionar nada ao usuário até o lançamento do Selo (Fase 4).
       if (isFuel && tipo === "expense" && !ins.error) {
@@ -1664,6 +1690,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         ok: true,
         registrado: { descricao: exp.description, valor: Math.abs(Number(exp.amount)), tipo, categoria: exp.category, data: date, litros },
         pedir_hodometro: (isFuel && !odometer) ? true : false,
+        ...(trocaOleo ? { troca_oleo: trocaOleo } : {}),
       };
     }
 
@@ -1683,6 +1710,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         await supabase.from("accounts").update({ hodometro: km }).eq("id", vehicle.id);
         vehicle.hodometro = km;
       }
+      await registrarLeitura(supabase, { userId: user.id, accountId: vehicle.id, km, fonte: "painel" });
       // back-fill: completa o último abastecimento sem km (últimos 3 dias)
       try {
         const { data: fuelCats } = await supabase.from("categories").select("id").ilike("name", "%combust%");
@@ -1701,7 +1729,15 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         const p = careOdometer(supabase, user.id, vehicle.id, km);
         (globalThis as any).EdgeRuntime?.waitUntil?.(p) ?? p.catch(() => {});
       }
-      return { ok: true, hodometro: km, consumo };
+      // com o km confirmado, a troca de óleo deixa de ser estimativa: devolve o status pra IA comentar
+      let oleo: any = null;
+      try {
+        const e = await estadoOleo(supabase, user, vehicle);
+        if (e.ativo) oleo = { resumo: resumoOleo(e), status: e.status, faltam_km: e.faltamKm, proxima_troca_km: e.proximaKm, data_limite: e.proximaData,
+          instrucao: e.status === "em_dia" ? "Se fizer sentido, mencione em 1 linha quanto falta pra troca de óleo." : "A troca de óleo está próxima/vencida com este km: avise em 1 linha e ofereça ajudar a agendar (cliente de loja → abrir_atendimento_loja motivo revisao; senão buscar_servico)." };
+        else oleo = { resumo: "Sem registro da última troca de óleo.", instrucao: "Pergunte em 1 linha com quantos km (ou em que mês) foi a última troca de óleo, pra você avisar a próxima na hora certa." };
+      } catch { /* */ }
+      return { ok: true, hodometro: km, consumo, troca_oleo: oleo };
     }
 
     if (name === "consumo_medio") {
@@ -1712,7 +1748,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
 
     if (name === "corrigir_ultimo_gasto") {
       const { data: lastTx } = await supabase.from("transactions")
-        .select("id, type, amount")
+        .select("id, type, amount, description, transaction_date, account_id")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (!lastTx) return { ok: false, error: "sem_lancamentos" };
@@ -1732,19 +1768,54 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         await supabase.from("accounts").update({ hodometro: upd.odometer }).eq("id", vehicle.id);
         vehicle.hodometro = upd.odometer;
       }
-      return { ok: true, corrigido: upd };
+      let trocaOleo: any = null;
+      if (upd.odometer) {
+        await registrarLeitura(supabase, { userId: user.id, accountId: lastTx.account_id || vehicle?.id, km: upd.odometer, fonte: "gasto", quando: lastTx.transaction_date });
+        // km chegou depois do gasto de troca de óleo → fecha o ciclo agora
+        if (lastTx.type === "expense" && RE_GASTO_TROCA_OLEO.test(String(upd.description || lastTx.description || ""))) {
+          const r = await registrarTrocaOleo(supabase, { userId: user.id, accountId: lastTx.account_id || vehicle?.id, km: upd.odometer, data: lastTx.transaction_date, fonte: "gasto" });
+          if (r.ok) trocaOleo = { registrada: true, proxima_troca_km: r.proximaKm, proxima_troca_ate: r.proximaData };
+        }
+      }
+      return { ok: true, corrigido: upd, ...(trocaOleo ? { troca_oleo: trocaOleo } : {}) };
     }
 
     if (name === "resumo_financeiro") return await buildSnapshot(user.id, vehicle);
 
+    if (name === "registrar_troca_oleo") {
+      if (!vehicle) return { ok: false, error: "sem_veiculo" };
+      const km = Math.round(Number(args?.km) || 0);
+      if (!(km > 0)) return { ok: false, error: "km_ausente", message: "Pergunte o km do carro na troca (ou peça foto do painel/adesivo da oficina) antes de registrar." };
+      const kmHoje = Number(vehicle.hodometro || 0);
+      if (kmHoje > 0 && km > kmHoje + 20000) return { ok: false, error: "km_suspeito", message: `O km informado (${km}) está muito acima do registrado (${kmHoje}). Confirme o número com o cliente (todos os dígitos).` };
+      const r = await registrarTrocaOleo(supabase, {
+        userId: user.id, accountId: vehicle.id, km, data: args?.data || today,
+        intervaloKm: Number(args?.intervalo_km) > 0 ? Number(args.intervalo_km) : null,
+        intervaloMeses: Number(args?.intervalo_meses) > 0 ? Number(args.intervalo_meses) : null, fonte: "cliente",
+      });
+      if (!r.ok) return { ok: false, error: "falha", message: "Não consegui registrar agora; peça desculpas em 1 frase e diga que tenta de novo." };
+      const e = await estadoOleo(supabase, user, vehicle);
+      return { ok: true, troca_km: km, proxima_troca_km: e.proximaKm, data_limite: e.proximaData, resumo: resumoOleo(e),
+        message: "Confirme em 1–2 frases: troca registrada, a próxima é aos X km ou até a data limite (o que vier primeiro) e que você avisa antes. Sem pedir mais nada." };
+    }
+
     if (name === "status_manutencao") {
       const { data: rem } = await supabase.from("maintenance_reminders").select("*").eq("user_id", user.id).eq("active", true);
-      const km = Number(vehicle?.hodometro || 0);
-      const itens = (rem || []).map((r: any) => {
+      const e = await estadoOleo(supabase, user, vehicle);
+      // km de HOJE estimado pelo ritmo real do dono (a última leitura pode ter semanas)
+      const km = e.kmHoje || Number(vehicle?.hodometro || 0);
+      const itens = (rem || []).filter((r: any) => r.id !== e.lembreteId).map((r: any) => {
         const faltam = Number(r.interval_km) - (km - Number(r.last_km || 0));
         return { item: r.title, intervalo_km: r.interval_km, faltam_km: faltam, status: faltam <= 0 ? "vencida" : faltam <= 500 ? "proxima" : "em_dia" };
       });
-      return { hodometro_atual: km, itens, total: itens.length };
+      return {
+        km_hoje: km, km_estimado: (e.leitura.diasAtras ?? 0) > 1, ultima_leitura: e.leitura, ritmo_km_dia: e.ritmo.kmDia,
+        troca_oleo: e.ativo
+          ? { resumo: resumoOleo(e), status: e.status, ultima_troca: e.ultimaTroca, proxima_troca_km: e.proximaKm, faltam_km: e.faltamKm, data_limite: e.proximaData, vence_por: e.vencePor, intervalo: `${e.intervaloKm} km ou ${e.intervaloMeses} meses${e.severo ? " (uso severo)" : ""}`, confirmar_km_com_foto: e.precisaConfirmarKm }
+          : { resumo: "Sem registro da última troca de óleo — pergunte com quantos km (ou quando) foi e registre com registrar_troca_oleo." },
+        itens, total: itens.length + (e.ativo ? 1 : 0),
+        instrucao: "Km estimado: diga 'pela minha conta'. Se confirmar_km_com_foto, peça foto do painel.",
+      };
     }
 
     if (name === "buscar_servico") {
@@ -3278,6 +3349,8 @@ async function etiquetaGarantirConta(phone: string, tag: any, kmInicial: number 
     user_id: user.id, name: tag.car_desc || "Meu carro", type: "carro", is_active: true,
     placa: tag.placa || null, hodometro: kmInicial && kmInicial > 0 ? kmInicial : null,
   }).select("id").single();
+  // km da entrega = 1ª leitura do hodômetro (base da estimativa do km de hoje e da troca de óleo)
+  if (novo?.id && kmInicial && kmInicial > 0) await registrarLeitura(supabase, { userId: user.id, accountId: novo.id, km: kmInicial, fonte: "entrega" });
   return { userId: user.id, accountId: novo?.id || null };
 }
 
@@ -4371,6 +4444,8 @@ TIPOS DE MENSAGEM (identifique pela foto/texto):
 FINANCIAMENTO/BOLETO: cada parcela tem um boleto PRÓPRIO emitido pelo banco — NUNCA invente, derive ou "calcule" código de barras/linha digitável (seria um boleto inválido). Pedirem o boleto/código de barras → use boleto_parcela e envie a linha digitável salva em bloco copiável, dizendo de qual parcela é. Se não houver linha salva (ou for de parcela anterior), explique com naturalidade e peça a FOTO do boleto do mês (ou o número), que você salva com salvar_boleto — e avise que a linha vai junto no lembrete de vencimento.
 
 REGRA DE OURO DO REGISTRO: se a mensagem JÁ TEM o valor em R$ (ex.: "500 de diesel no posto Shell"), chame registrar_gasto IMEDIATAMENTE com esse valor — NUNCA pergunte litros/km antes de registrar. Litros e km que faltarem: peça DEPOIS e complete com corrigir_ultimo_gasto quando o usuário responder. NUNCA chame registrar_gasto com amount=0 — se não souber o valor, pergunte primeiro. Recupere valores ditos em mensagens anteriores pela CONVERSA RECENTE.
+
+TROCA DE ÓLEO (motor do Co-pilot — os números SEMPRE vêm das ferramentas): o km de hoje é ESTIMADO pela última leitura + o ritmo real do dono; a troca vence por KM ou por TEMPO (10.000 km / 12 meses; uso severo de aplicativo: metade), o que vier primeiro. (1) "Troquei o óleo", nota/adesivo da oficina com km, ou o km pedido depois de "Já resolvi" → registrar_troca_oleo (sem o km, pergunte ou peça foto do painel antes). Gasto de troca de óleo vai em registrar_gasto (ele já fecha o ciclo se tiver km; se voltar troca_oleo.registrada=false, peça o km). (2) Resposta a aviso de óleo: "Sim, quero" / "Me ajuda" → ajude a agendar: se o carro veio de loja parceira, abrir_atendimento_loja (motivo revisao, resumo com km estimado e a troca vencendo); se não der (sem_loja), buscar_servico (oficina/troca de óleo). "Já resolvi" → pergunte o km da troca (ou foto do painel/adesivo) e registre. "Agora não" → confirme em 1 linha e lembre que óleo vencido desgasta o motor, sem insistir. (3) "Quando troco o óleo?" → status_manutencao. Km estimado = diga "pela minha conta"; nunca invente km ou data.
 
 CONSUMO (regra importante): para medir o consumo eu preciso do km a cada abastecimento. SEMPRE que registrar um COMBUSTÍVEL sem o km (a ferramenta retorna pedir_hodometro=true), PEÇA uma FOTO DO HODÔMETRO (ou o km digitado) e explique que é assim que eu meço o consumo. Faça o mesmo em manutenções/revisões (ex.: troca de óleo).
 APRESENTAÇÃO DO CONSUMO (sempre simples, litros vs km): "Você rodou X km e usou Y litros → Z km/L". Se houver média e custo: acrescente "Média: W km/L · combustível custa R$ V por km rodado". Nada de jargão.

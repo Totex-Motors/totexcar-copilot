@@ -16,6 +16,7 @@ import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { calcTendencia, tendenciaDaConta, textoAlerta } from "../_shared/fipe-tendencia.ts";
 import { registrarOportunidade } from "../_shared/posvenda.ts";
 import { aplicarPreparacaoDaJornada } from "../_shared/preparacao.ts";
+import { oleoTick, insightOleo, RE_OLEO } from "../_shared/oleo.ts";
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
@@ -56,7 +57,7 @@ async function aiCfg(): Promise<AIConfig> {
 // a IA falha; quando a IA decide PULAR: com forceSend=true cai no fallback (prazo legal nunca
 // se perde), sem forceSend a mensagem é simplesmente não enviada nesta rodada.
 async function sendProactiveIA(u: any, phone: string, insight: any, opts: {
-  carro?: string; forceSend?: boolean; assuntoDefault: string; fallback: () => Promise<void>;
+  carro?: string; forceSend?: boolean; assuntoDefault: string; fallback: () => Promise<void>; variante?: string;
 }): Promise<boolean> {
   try {
     const cfg = await aiCfg();
@@ -78,6 +79,7 @@ async function sendProactiveIA(u: any, phone: string, insight: any, opts: {
       return false;
     }
     if (!out) { await opts.fallback(); return false; }
+    if (opts.variante) out.variante = opts.variante; // botões certos pro fluxo (ex.: óleo vencido → Já resolvi | Me ajuda)
     const ok = await waSendTemplate(await waS(), phone, out.variante, [out.texto]);
     if (!ok) { await opts.fallback(); return false; } // template ainda não aprovado, etc.
     await supabase.from("users").update({
@@ -897,7 +899,7 @@ Deno.serve(async (req) => {
       if (!phone) continue;
 
       const { data: vehicles } = await supabase
-        .from("accounts").select("id, name, hodometro, licenciamento_vencimento, ipva_vencimento, seguro_vencimento")
+        .from("accounts").select("id, name, hodometro, licenciamento_vencimento, ipva_vencimento, seguro_vencimento, created_at")
         .eq("user_id", u.id).eq("is_active", true).limit(1);
       const v = vehicles && vehicles.length ? vehicles[0] : null;
 
@@ -961,9 +963,10 @@ Deno.serve(async (req) => {
         if (!calDup) {
           const kmDia = await kmMedioDia(supabase, u.id, !!(u as any).driver_mode);
           await syncCalendar(supabase, u, v, fins || [], (f: any) => addMonthsStr(f.primeira_parcela, Number(f.parcelas_pagas)));
-          const revs = await projectRevisions(supabase, u.id, v, kmDia);
+          const revs = await projectRevisions(supabase, u.id, v, kmDia, u);
           // revisão mais urgente dentro da janela → 1 proativa no máximo por rodada
-          const emJanela = revs
+          // (a troca de óleo tem o motor próprio, diário, logo abaixo — não entra aqui)
+          const emJanela = revs.filter((r) => !RE_OLEO.test(String(r.title || "")))
             .filter((r) => r.km_restante <= 1000 || r.projected_date <= new Date(Date.now() + 15 * 86400000).toISOString().split("T")[0])
             .sort((a, b) => a.km_restante - b.km_restante);
           const alvo = emJanela[0];
@@ -992,6 +995,35 @@ Deno.serve(async (req) => {
           }
         }
       } catch (e) { console.error("erro calendario:", e); }
+
+      // MOTOR DO ÓLEO (diário): estima o km de hoje pelo ritmo real, pede foto do painel quando a
+      // troca se aproxima com leitura velha, cobra por km OU tempo (aviso → venceu → atrasada) e, se
+      // venceu e o carro é de loja parceira, vira oportunidade pra oficina da loja. Dedup no próprio motor.
+      try {
+        const a = v ? await oleoTick(supabase, u, v) : null;
+        if (a) {
+          const loja = u.dealership || null;
+          const forca = a.acao === "vencida" || a.acao === "atrasada";
+          const fallback = async () => {
+            await sendTpl(phone, a.variante, [a.fallback]);
+            await supabase.from("whatsapp_events").insert({
+              from_phone: phone, user_id: u.id, kind: "proativo", status: "sent",
+              raw: { proativo: true, fallback: true }, parsed: { assunto: "oleo", texto: a.fallback, variante: a.variante },
+            });
+          };
+          await sendProactiveIA(u, phone, insightOleo(a, loja), {
+            carro: v?.name || "", assuntoDefault: "oleo", forceSend: forca || a.acao === "aviso", variante: a.variante, fallback,
+          });
+          sent++;
+          if (a.acao === "vencida" || a.acao === "atrasada") {
+            const e = a.estado;
+            await registrarOportunidade(supabase, {
+              phone, tipo: "troca_oleo", nome: u.name || null, carro: v?.name || null, loja,
+              detalhe: `Troca de óleo ${a.acao === "atrasada" ? "ATRASADA" : "vencida"}: última em ${e.ultimaTroca ? `${e.ultimaTroca.km.toLocaleString("pt-BR")} km (${e.ultimaTroca.data.split("-").reverse().join("/")})` : "?"}; próxima era aos ${Number(e.proximaKm).toLocaleString("pt-BR")} km ou até ${String(e.proximaData).split("-").reverse().join("/")}. Km de hoje ≈ ${e.kmHoje.toLocaleString("pt-BR")}${(e.leitura.diasAtras ?? 0) > 1 ? " (estimado)" : ""}. O Co-pilot já avisou o cliente.`,
+            }).catch(() => null);
+          }
+        }
+      } catch (e) { console.error("erro oleo:", e); }
 
       // Score de Cuidado (fase SILENCIOSA): streak nos primeiros dias do mês + decay de inatividade.
       // Nenhuma mensagem é enviada — só acumula/decai pontos (dedup interno no próprio motor).
