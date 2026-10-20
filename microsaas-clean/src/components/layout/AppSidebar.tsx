@@ -44,7 +44,7 @@ const navigation = [
   { title: "Relatórios", url: "/reports", icon: FileText },
   { title: "Categorias", url: "/categories", icon: Tag },
   { title: "Meu Veículo", url: "/settings", icon: Car },
-  { title: "Garagem Totex", url: "/garagem", icon: Warehouse },
+  { title: "Totex Motors", url: "/garagem", icon: Warehouse },
   { title: "Modo Viagem", url: "/viagem", icon: Plane },
   { title: "Radar de Serviços", url: "/servicos", icon: Radar },
   { title: "Manutenção", url: "/manutencao", icon: Wrench },

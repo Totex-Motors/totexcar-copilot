@@ -9,7 +9,7 @@
   "screens": [
     {
       "id": "GBUSCA",
-      "title": "Garagem Totex",
+      "title": "Totex Motors",
       "data": {
         "marcas": {
           "type": "array",

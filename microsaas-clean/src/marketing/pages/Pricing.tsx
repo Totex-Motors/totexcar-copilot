@@ -11,7 +11,7 @@ const INCLUIDO: [string, string][] = [
   ["Manutenção por km", "Óleo, pastilhas, pneus e revisões com a próxima data prevista pelo seu uso."],
   ["Gastos e consumo", "Combustível, peças, serviços: quanto o carro custa por mês e por quilômetro."],
   ["Curadoria pra decidir", "Esse orçamento está caro? Vale consertar ou trocar? O Co‑pilot responde com os seus dados."],
-  ["Valor do carro e Garagem", "FIPE na hora, pedido de recompra e o estoque real da Totex quando pensar em trocar."],
+  ["Valor do carro e Totex Motors", "FIPE na hora, pedido de recompra e o estoque real da Totex quando pensar em trocar."],
   ["Indique e Ganhe", "Comissão no PIX a cada venda que vier da sua indicação."],
 ];
 

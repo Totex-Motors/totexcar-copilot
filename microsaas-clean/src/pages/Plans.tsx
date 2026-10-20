@@ -14,7 +14,7 @@ const FEATURES = [
   "Alertas de vencimento (IPVA, licenciamento, seguro, CNH)",
   "Manutenção por km e Modo Viagem",
   "Histórico completo do veículo + hodômetro",
-  "Relatórios, análises e Garagem (vitrine)",
+  "Relatórios, análises e Totex Motors (vitrine)",
 ];
 
 export default function Plans() {
