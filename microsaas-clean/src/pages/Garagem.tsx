@@ -188,11 +188,11 @@ export default function Garagem() {
   const carroAtual = vehicle ? [vehicle.marca, vehicle.modelo, vehicle.ano_modelo].filter(Boolean).join(" ") : null;
 
   return (
-    <MgShell title="Garagem Totex" back="/">
+    <MgShell title="Totex Motors" back="/">
       <div className="stack">
         {/* intro */}
         <section className="hero">
-          <div className="eyebrow" style={{ display: "flex", alignItems: "center", gap: 6 }}><Warehouse size={13} /> Garagem Totex</div>
+          <div className="eyebrow" style={{ display: "flex", alignItems: "center", gap: 6 }}><Warehouse size={13} /> Totex Motors</div>
           <div style={{ fontSize: 19, fontWeight: 800, margin: "6px 0 6px", letterSpacing: "-.01em" }}>Seu carro atual e o caminho pro próximo.</div>
           <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.85)", lineHeight: 1.4 }}>Ache o próximo carro, avalie o atual e receba oportunidades do seu Co-pilot.</p>
           {(carroAtual || scope) && (

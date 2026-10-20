@@ -13,7 +13,7 @@ const MOVE: [string, string][] = [
 const HISTORIA: [string, string][] = [
   ["A Totex Motors", "Nasceu no dia a dia de quem vive de carro: a loja, o balcão, o cliente que chega com o porta-luvas cheio de papel e sem saber a última troca de óleo."],
   ["A ideia", "Se a gente conhece a dor de quem compra, vende e cuida, por que não dar a essa pessoa um co-piloto? Um assistente no WhatsApp que guarda tudo e avisa antes."],
-  ["Hoje", "O Co‑pilot cuida de documentos, manutenção, multas e vencimentos, consulta FIPE, fala com oficinas parceiras e conecta o dono à Garagem Totex quando é hora de trocar."],
+  ["Hoje", "O Co‑pilot cuida de documentos, manutenção, multas e vencimentos, consulta FIPE, fala com oficinas parceiras e conecta o dono à Totex Motors quando é hora de trocar."],
 ];
 
 export const AboutUs = () => (

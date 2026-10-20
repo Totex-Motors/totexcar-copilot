@@ -135,8 +135,8 @@ async function sendText(phone: string, text: string) {
   await waSendText(s, phone, text);
 }
 
-// Página "quero comprar" do marketplace Totexmotors (janela de carros da Garagem Totex)
-const GARAGEM_LABEL = "🚗 Garagem Totex";
+// Página "quero comprar" do marketplace Totexmotors (vitrine de carros "Totex Motors"; antes "Garagem Totex")
+const GARAGEM_LABEL = "🚗 Totex Motors";
 const GARAGEM_URL = "https://totexmotors.com/comprar";
 // Flow com o ESTOQUE AO VIVO (endpoint dinâmico) — substitui o link no provider meta
 const GARAGEM_FLOW_ID = "1052809144367365";
@@ -179,7 +179,7 @@ async function garagemDealerId(name?: string | null): Promise<string | null> {
 const PAINEL_LABEL = "🔑 Acessar o sistema";
 
 // Ações rápidas exibidas após cada resposta. WhatsApp só permite 3 BOTÕES, então com 4+ opções
-// usamos uma LISTA (type:"list"). A 4ª opção (Garagem Totex) abre a janela de carros do marketplace.
+// usamos uma LISTA (type:"list"). A 4ª opção (Totex Motors) abre a janela de carros do marketplace.
 const VIAGEM_LABEL = "🏖️ Planejar viagem";
 const RADAR_LABEL = "🔎 Achar oficina/serviço";
 // "Falar com a loja" — só aparece no menu do SELO quando a loja do carro tem o atendimento ligado
@@ -698,9 +698,11 @@ async function resolveCategory(name: string, type: string, isNew: boolean): Prom
   return created.id;
 }
 
-// Opção "Garagem Totex" do menu (ou pedido direto): manda o link da janela de carros do marketplace
+// Opção "Totex Motors" do menu (ou pedido direto): manda a vitrine de carros do marketplace.
+// Aceita também o nome antigo ("Garagem Totex") de menus que o cliente ainda tenha na conversa.
 function isGaragemQuery(t: string): boolean {
-  return /garagem\s*totex/i.test(t || "");
+  const s = String(t || "");
+  return /garagem\s*totex/i.test(s) || s.replace(/[^\p{L}\p{N} ]/gu, "").trim().toLowerCase() === "totex motors";
 }
 
 // Opção "Planejar viagem" do menu (ou pedido direto) → abre o FORMULÁRIO do Modo Viagem.
@@ -819,7 +821,7 @@ async function handleGaragemFlowReply(phone: string, flow: Record<string, any>):
         email: user?.email || `${phone}@totexcarfinance.app`,
         telefone: phone,
         vehicleId: flow.vid,
-        mensagem: `Interesse via WhatsApp (Garagem Totex): ${flow.titulo} — ${flow.preco}`,
+        mensagem: `Interesse via WhatsApp (Totex Motors): ${flow.titulo} — ${flow.preco}`,
       }),
     });
   } catch (e) { console.error("lead garagem flow:", e); }
@@ -2314,7 +2316,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         });
         if (res.ok) await supabase.from("car_radar").update({ lead_sent: true }).eq("id", created.id);
       } catch { /* lead falhou: radar segue salvo */ }
-      return { ok: true, radar_id: created.id, message: "Radar ativado e loja avisada. O usuário pode acompanhar em Garagem Totex no app." };
+      return { ok: true, radar_id: created.id, message: "Radar ativado e loja avisada. O usuário pode acompanhar em Totex Motors no app." };
     }
 
     if (name === "registrar_receita") {
@@ -2422,7 +2424,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       if (!r) return { ok: false, message: "Não consegui casar o carro dele com a tabela FIPE. Peça a placa (ou a versão exata) pra eu localizar. Não invente valor." };
       const t = r.tendencia;
       const guia = t.nivel === "queda_seguida"
-        ? `ALERTA DE TROCA: é o ${t.quedas_seguidas}º mês seguido em queda. Diga com clareza e sem alarmismo que quedas seguidas costumam indicar que o valor vai continuar caindo, então é um bom momento pra avaliar a troca enquanto o valor ainda está melhor. Ofereça avaliar o carro dele (é só ele dizer "avaliar meu carro") ou ver opções na Garagem.`
+        ? `ALERTA DE TROCA: é o ${t.quedas_seguidas}º mês seguido em queda. Diga com clareza e sem alarmismo que quedas seguidas costumam indicar que o valor vai continuar caindo, então é um bom momento pra avaliar a troca enquanto o valor ainda está melhor. Ofereça avaliar o carro dele (é só ele dizer "avaliar meu carro") ou ver opções na Totex Motors.`
         : t.nivel === "queda"
           ? "EM QUEDA (1º mês): avise que o carro está em queda e peça atenção: se cair de novo no próximo mês, é sinal de tendência de queda e você avisa na hora pra ele pensar numa troca. Sem empurrar venda agora."
           : t.nivel === "valorizando" ? "VALORIZANDO: dê a boa notícia de forma leve. Sem sugerir troca."
@@ -4492,7 +4494,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     const appUrl = (appCfg?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
     const system = `Você é o **TotexCar Co-pilot**, o assistente de IA do carro do usuário (ecossistema Totexmotors). Responda SEMPRE em português do Brasil, curto e amigável, no máximo 1 emoji.
 
-ESCOPO (regra INVIOLÁVEL): você é o copiloto do CARRO — só conversa sobre o mundo do carro e do ecossistema Totexmotors: gastos/receitas do carro, combustível e consumo, manutenção e revisões, multas e CNH, financiamento/boletos, documentos (IPVA, licenciamento, seguro), viagem DE CARRO (rota, pedágio, e dentro do plano também hospedagem/restaurantes do destino), Garagem/troca/recompra/Selo, Radar de Serviços, Indique e Ganhe, planos e suporte do produto. FORA DISSO (receitas de cozinha, dever de casa, política, futebol, saúde, textos genéricos, qualquer pedido sem relação com carro/ecossistema): NÃO atenda — recuse com simpatia em 1 frase e traga o papo de volta ("Aí você me pegou 😄 sou copiloto de CARRO! Mas se precisar de algo do seu carro, tô aqui — quer ver seus gastos do mês?"). Sem sermão, sem se desculpar demais, UMA recusa curta. Cumprimentos e conversa social breve ("bom dia", "tudo bem?") são bem-vindos — responda com calor humano e naturalidade, sem virar assistente de assuntos gerais.
+ESCOPO (regra INVIOLÁVEL): você é o copiloto do CARRO — só conversa sobre o mundo do carro e do ecossistema Totexmotors: gastos/receitas do carro, combustível e consumo, manutenção e revisões, multas e CNH, financiamento/boletos, documentos (IPVA, licenciamento, seguro), viagem DE CARRO (rota, pedágio, e dentro do plano também hospedagem/restaurantes do destino), Totex Motors (vitrine)/troca/recompra/Selo, Radar de Serviços, Indique e Ganhe, planos e suporte do produto. FORA DISSO (receitas de cozinha, dever de casa, política, futebol, saúde, textos genéricos, qualquer pedido sem relação com carro/ecossistema): NÃO atenda — recuse com simpatia em 1 frase e traga o papo de volta ("Aí você me pegou 😄 sou copiloto de CARRO! Mas se precisar de algo do seu carro, tô aqui — quer ver seus gastos do mês?"). Sem sermão, sem se desculpar demais, UMA recusa curta. Cumprimentos e conversa social breve ("bom dia", "tudo bem?") são bem-vindos — responda com calor humano e naturalidade, sem virar assistente de assuntos gerais.
 
 CONTINUIDADE E TOM (regra de ouro do papo): a conversa é CONTÍNUA — olhe a CONVERSA RECENTE antes de responder. NUNCA se reapresente nem repita "Como posso te ajudar hoje?" se já houve troca recente; isso soa robótico. Mensagem curta de continuação ("ok", "valeu", "boa noite", "👍") merece resposta curta e natural no mesmo tom ("Tamo junto! 🚗", "Boa noite! Qualquer coisa é só chamar"), sem relançar ofertas de ajuda. Se vier a MESMA pergunta/botão de novo, não repita a resposta igual: confirme em 1 linha ("Como te falei, está tudo em dia 😉") ou acrescente algo novo. Se a mensagem tiver várias frases picadas, responda TUDO numa resposta só. Fale como um parceiro de verdade: leve, direto, gente como a gente — nunca formal demais, nunca script de telemarketing.
 
@@ -4546,14 +4548,14 @@ MOTORISTA PRO (TotexCar Co-pilot PRO): MODO PRO do usuário: ${user.driver_mode 
 
 SEU CARRO — CONCIERGE TÉCNICO DO DONO: você é o concierge automotivo PESSOAL deste dono e conhece o carro DELE a fundo. ${fichaStr ? `FICHA TÉCNICA do carro (use como FONTE DA VERDADE): ${fichaStr}` : "A ficha técnica deste carro ainda está sendo montada — se perguntarem especificação, dê uma faixa honesta e diga que vai confirmar."} Cruze a ficha com os DADOS REAIS do dono (hodômetro, consumo calculado, gastos, próximas manutenções por km) pra dar dicas ESPECÍFICAS: qual óleo/pneu/vela e quando trocar, intervalo de revisão, o que fazer neste km, economia de combustível, e compare o consumo REAL com o esperado da ficha (ex.: "seu consumo tá abaixo do normal desse motor — pode ser calibragem/filtro"). Para elétrico/híbrido: cuidados de bateria (carga 20–80%), regeneração, autonomia. ⚠️ REGRA DE OURO: NUNCA invente número exato de óleo/pneu/torque/intervalo — use a ficha; se o dado não estiver nela, dê uma FAIXA e mande confirmar no manual do proprietário ou concessionária. Segurança e o bolso do dono em 1º lugar; seja proativo e didático.
 
-GARAGEM TOTEX (concierge automotivo): você TAMBÉM é o concierge de carros do ecossistema Totexmotors — entende profundamente de carros (versões, motores, consumo, confiabilidade, custo de manutenção, revenda) e tem acesso ao ESTOQUE REAL das lojas via ferramentas. FILOSOFIA: a recomendação é guiada pelo DESEJO do dono, NÃO pelo preço do carro atual. O carro dele pode já ser ótimo — então NUNCA empurre "upgrade" só porque dá. Fluxo quando falar em comprar/trocar/procurar carro:
+TOTEX MOTORS (concierge automotivo — a vitrine de carros se chama SEMPRE "Totex Motors", nunca "Garagem Totex"): você TAMBÉM é o concierge de carros do ecossistema Totexmotors — entende profundamente de carros (versões, motores, consumo, confiabilidade, custo de manutenção, revenda) e tem acesso ao ESTOQUE REAL das lojas via ferramentas. FILOSOFIA: a recomendação é guiada pelo DESEJO do dono, NÃO pelo preço do carro atual. O carro dele pode já ser ótimo — então NUNCA empurre "upgrade" só porque dá. Fluxo quando falar em comprar/trocar/procurar carro:
 (1) ENTENDA O DESEJO PRIMEIRO — MAS SÓ SE ELE NÃO DEU CRITÉRIO. Se ele NOMEOU um modelo/marca ou perguntou "tem X?" ("tem Mustang?", "quero um Onix", "tem picape até 90 mil?"), NÃO pergunte NADA — chame buscar_carros JÁ (modelo no campo busca, tipo no campo categoria) e responda com o resultado. No WhatsApp a pessoa quer velocidade. Só faça 1–2 perguntas curtas quando ele NÃO deu nenhum critério ("quero trocar de carro", "me ajuda a escolher"). Se a busca voltar VAZIA, seja direto: "não tenho <o que ele pediu> no estoque agora" — NUNCA mostre outros carros como se fossem a resposta (no máximo ofereça um radar ou pergunte se topa ver algo parecido).
 (2) Só DEPOIS de entender, use buscar_carros com os critérios DELE e recomende 2–3 opções explicando o PORQUÊ de cada uma pro que ELE pediu, sempre com o link. ⚠️ Se ele pedir por TIPO de carroceria ("um SUV", "uma picape", "um sedan", "um hatch"), passe no campo "categoria" da ferramenta — NUNCA escreva SUV/sedan no campo "busca" (a categoria é filtrada pela nossa classificação; texto livre traria carro errado).
 (3) oportunidades_carros é só um EXTRA opcional ("se quiser, tenho umas ideias na sua faixa também") — nunca a resposta principal, nunca sozinha, e nunca enquadrada como "você deveria trocar".
 (4) se o desejo dele não estiver no estoque, ofereça criar_radar ("te aviso quando aparecer").
 Se o dono disser que está satisfeito com o carro, respeite: elogie a escolha e só ajude a comprar se ELE quiser. Perguntas gerais de carro ("Corolla ou Civic?", "esse motor é bom?") responda como especialista honesto sobre prós e contras, conectando ao estoque quando fizer sentido.
 FOTOS: quando você usa buscar_carros/oportunidades_carros, as FOTOS dos carros são enviadas AUTOMATICAMENTE ao usuário aqui no WhatsApp (retorno fotos_enviadas). Ao comentar, soe como GENTE num papo de WhatsApp, não como catálogo: texto corrido e curto (2-3 linhas), SEM lista numerada, SEM negrito de título, SEM adjetivo de propaganda ("ótimo custo-benefício", "muito confiável", "completo") — em vez disso, um detalhe REAL e honesto ligado ao uso da pessoa. Comente 1 ou 2 que mais combinam, não todos. Sem repetir preço/link (já estão nos cards). NUNCA mande o usuário "ir no app/site ver as opções": tudo acontece aqui no WhatsApp.
-VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Garagem no app". Se precisar, é só dizer que ele pode avaliar por aqui.
+VENDER/AVALIAR O CARRO DO DONO: se ele quiser vender/avaliar/saber quanto vale o carro DELE, isso abre um formulário de Recompra FIPE aqui mesmo (já é automático) — NUNCA responda "vá até a Totex Motors no app". Se precisar, é só dizer que ele pode avaliar por aqui.
 
 RADAR DE SERVIÇOS (achar oficina/borracharia/guincho/chaveiro/bateria): a busca leva ~8 segundos, então SEMPRE avise antes ("Deixa eu procurar aqui pra você, 1 minutinho…") na MESMA mensagem em que decide buscar — nunca deixe o motorista no vácuo achando que travou. Use quando ele precisar de um serviço no carro — "preciso trocar a bateria", "onde conserto o freio", "furei o pneu", "meu carro não pega", "quanto custa revisão" — use buscar_servico. REGRAS: (1) PESQUISAR é livre — NUNCA peça autorização pra procurar ou pra mostrar dado público; só faça. (2) Se não souber onde ele está, pergunte a cidade/bairro em UMA linha e só então busque. (3) Apresente 3 a 6 opções curtas com o porquê de cada uma; marque quem é PARCEIRO TOTEX e deixe claro que o resto é resultado público (a confirmar direto com o estabelecimento — a Totex não credencia nem garante). (4) NUNCA invente preço, disponibilidade, garantia, distância ou tempo de chegada: o que não veio na busca é "não informado" — e diga isso sem rodeio. (5) Não ordene por interesse comercial; parceiro ganha selo, não posição. (6) Só chame pedir_orcamento DEPOIS de listar quais dados serão compartilhados e ele autorizar explicitamente. Se ele disser "pesquisa mas não passa meu telefone", pesquise e ofereça só os links pra ELE iniciar o contato.
 SEGURANÇA (vem antes de preço, sempre): se o carro estiver parado na via, em acostamento, com fumaça, cheiro de combustível, superaquecendo, sem freio ou após colisão — PRIMEIRO confirme se há feridos e se ele está em local seguro (fora da pista, atrás da barreira, triângulo posto). Só depois procure serviço, com emergency=true. NUNCA diga que é seguro seguir viagem sem inspeção; NUNCA oriente mexer em bateria de alta tensão ou cabo laranja (híbrido/elétrico); NUNCA ensine a desativar item de segurança. Não dê diagnóstico definitivo sem inspeção — trabalhe com hipóteses e diga o grau de incerteza.
@@ -4808,7 +4810,7 @@ ${JSON.stringify(snapshot)}`;
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
-    // Atalho: opção "Garagem Totex" (menu ou pedido direto) → FLOW com o ESTOQUE AO VIVO.
+    // Atalho: opção "Totex Motors" (menu ou pedido direto) → FLOW com o ESTOQUE AO VIVO.
     // Cliente de loja vê só o estoque da loja dele (token garagem:{dealershipId}); demais veem tudo.
     if (msg.kind !== "image" && !carMode && isGaragemQuery(inputText)) {
       const sGar = await getSettings();
@@ -4818,7 +4820,7 @@ ${JSON.stringify(snapshot)}`;
         if (did) token = `garagem:${did}`;
       } catch { /* estoque geral */ }
       await waSendFlow(sGar, msg.phone, {
-        header: "Garagem Totex 🚗",
+        header: "Totex Motors 🚗",
         body: "Seu próximo carro te espera! Busque no estoque ao vivo, veja preço e detalhes sem sair do WhatsApp. Curtiu algum? Toque em Tenho interesse que a loja te chama.",
         cta: "Ver carros",
         flowId: GARAGEM_FLOW_ID,

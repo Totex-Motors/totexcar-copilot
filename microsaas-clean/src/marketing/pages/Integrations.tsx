@@ -12,7 +12,7 @@ const RECURSOS: [string, string][] = [
   ["Curadoria pra decidir", "Esse orçamento está caro? Vale consertar ou trocar? Vender agora ou esperar? Resposta com os seus dados."],
   ["Radar de serviços", "Oficina, pneu, guincho, lavagem perto de você — parceiros com benefício aparecem primeiro."],
   ["Modo Viagem", "Rota, custo previsto e paradas do seu carro antes de pegar a estrada."],
-  ["Valor do carro e Garagem Totex", "FIPE na hora, pedido de recompra e o estoque real quando começar a pensar em trocar."],
+  ["Valor do carro e Totex Motors", "FIPE na hora, pedido de recompra e o estoque real quando começar a pensar em trocar."],
   ["Indique e Ganhe", "Comissão no PIX a cada venda que vier da sua indicação."],
 ];
 

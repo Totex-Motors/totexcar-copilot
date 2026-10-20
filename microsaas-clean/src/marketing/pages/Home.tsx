@@ -35,7 +35,7 @@ const SERVICOS: [string, string][] = [
   ["Consulta de CNH", "Pontos, situação e validade da habilitação — útil quando chega uma multa com pontos."],
   ["Oficinas parceiras", "Perto de você, com um benefício exclusivo pra quem chega pelo Co‑pilot."],
   ["Seguro", "Cotação comparada antes de renovar no automático."],
-  ["Garagem Totex", "Quanto o seu carro vale hoje e o estoque real, quando começar a pensar em trocar."],
+  ["Totex Motors", "Quanto o seu carro vale hoje e o estoque real, quando começar a pensar em trocar."],
 ];
 
 const MARQUEE = ["Nota da oficina → guardada no histórico", "CRLV → no bolso", "Foto da multa → recurso pronto", "IPVA vencendo → aviso no WhatsApp", "Revisão por km → lembrete", "Cupom → gasto registrado"];
