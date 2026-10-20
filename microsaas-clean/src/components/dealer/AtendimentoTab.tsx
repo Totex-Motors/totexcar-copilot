@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Headset, Users, Trash2, Plus, Search, Send, MessageCircle, Clock, Star, CheckCircle2 } from "lucide-react";
+import { Loader2, Headset, Users, Trash2, Plus, Search, Send, MessageCircle, Clock, Star, CheckCircle2, Link2, Copy } from "lucide-react";
 import { usePosvenda, usePosvendaCasos, usePosvendaCaso, usePosvendaAcao, usePosvendaStats, usePosvendaOportunidades, usePosvendaRespostas, type PapelEquipe, type PosvendaCaso } from "@/hooks/useDealer";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -43,6 +43,8 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
   const [aberto, setAberto] = useState<string | null>(null);
 
   const [novo, setNovo] = useState({ nome: "", phone: "", papel: "vendedor" as PapelEquipe });
+  // link pessoal do vendedor: abre só o cadastro da venda, sem login (a venda já sai no nome dele)
+  const [linkDlg, setLinkDlg] = useState<{ nome: string; phone: string; link: string } | null>(null);
   const [grupo, setGrupo] = useState({ id: "", nome: "" });
   const [grupos, setGrupos] = useState<{ id: string; nome: string }[] | null>(null);
   const [sla, setSla] = useState("15");
@@ -66,6 +68,13 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
       onSuccess: (r: any) => { if (r?.ok === false) { toast({ title: "Não deu certo", description: r?.error || "", variant: "destructive" }); return; } toast({ title: ok }); refresh(); depois?.(); },
       onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
     });
+
+  const abrirLink = (id: string, trocar = false) =>
+    acao.mutate({ action: "posvenda_membro_link", id, trocar, ...base }, {
+      onSuccess: (r: any) => { if (!r?.link) { toast({ title: "Não deu certo", description: r?.error || "", variant: "destructive" }); return; } setLinkDlg({ nome: r.nome, phone: r.phone, link: r.link }); if (trocar) toast({ title: "Link trocado", description: "O link anterior parou de funcionar." }); },
+      onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
+    });
+  const copiar = (t: string) => { navigator.clipboard?.writeText(t).then(() => toast({ title: "Link copiado ✅" })).catch(() => toast({ title: "Copie o link manualmente", variant: "destructive" })); };
 
   const resumoEscada = useMemo(() => {
     const g = (p: PapelEquipe) => equipe.filter((m) => m.ativo && m.papel === p).map((m) => m.nome.split(" ")[0]).join(", ");
@@ -145,6 +154,7 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
                     <div className="text-sm font-medium truncate">{m.nome} {!m.ativo && <span className="text-xs text-muted-foreground">(inativo)</span>}</div>
                     <div className="text-xs text-muted-foreground">{PAPEL[m.papel]} · {fmtTel(m.phone)}</div>
                   </div>
+                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => abrirLink(m.id)} disabled={acao.isPending}><Link2 className="w-3.5 h-3.5" /> Link de venda</Button>
                   <Switch checked={m.ativo} onCheckedChange={(v) => rodar("posvenda_membro_save", { id: m.id, nome: m.nome, phone: m.phone, papel: m.papel, ativo: v }, v ? "Ativado" : "Desativado")} />
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (confirm(`Remover ${m.nome} da equipe?`)) rodar("posvenda_membro_del", { id: m.id }, "Removido"); }}><Trash2 className="w-4 h-4" /></Button>
                 </div>
@@ -233,6 +243,22 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
       </Card>
 
       <CasoDialog id={aberto} dealership={dealership} onClose={() => setAberto(null)} onEncerrar={(id) => rodar("posvenda_caso_encerrar", { id }, "Atendimento encerrado", () => setAberto(null))} />
+      <Dialog open={!!linkDlg} onOpenChange={(o) => { if (!o) setLinkDlg(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Link de venda · {linkDlg?.nome}</DialogTitle></DialogHeader>
+          {linkDlg && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">Abre no celular <b>só o cadastro da venda</b>, sem login. A venda já sai no nome de {linkDlg.nome.split(" ")[0]} como vendedor. É pessoal: não compartilhe com outra pessoa.</p>
+              <div className="flex gap-2"><Input readOnly value={linkDlg.link} className="text-xs" onFocus={(e) => e.target.select()} /><Button size="sm" variant="outline" onClick={() => copiar(linkDlg.link)}><Copy className="w-4 h-4" /></Button></div>
+              <a className="block" target="_blank" rel="noreferrer"
+                href={`https://wa.me/${String(linkDlg.phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(`Oi ${linkDlg.nome.split(" ")[0]}! Esse é o seu link pra cadastrar as vendas no Co-pilot (é só seu, salva nos favoritos ou na tela inicial do celular): ${linkDlg.link}`)}`}>
+                <Button className="w-full gap-2"><MessageCircle className="w-4 h-4" /> Enviar pelo WhatsApp</Button>
+              </a>
+              <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => { const id = equipe.find((m) => m.nome === linkDlg.nome)?.id; if (id && confirm("Gerar um link novo? O atual para de funcionar.")) abrirLink(id, true); }}>Trocar o link (se ele vazou ou a pessoa saiu)</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
