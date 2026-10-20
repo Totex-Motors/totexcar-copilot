@@ -1030,7 +1030,7 @@ Deno.serve(async (req) => {
 
       // MOTOR DO ÓLEO (diário): estima o km de hoje pelo ritmo real, pede foto do painel quando a
       // troca se aproxima com leitura velha, cobra por km OU tempo (aviso → venceu → atrasada) e, se
-      // venceu e o carro é de loja parceira, vira oportunidade pra oficina da loja. Dedup no próprio motor.
+      // venceu e o carro é de loja parceira, vira oportunidade pro vendedor (indicar oficina parceira). Dedup no próprio motor.
       try {
         const a = v ? await oleoTick(supabase, u, v) : null;
         if (a) {

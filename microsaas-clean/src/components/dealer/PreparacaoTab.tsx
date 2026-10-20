@@ -34,7 +34,7 @@ function KmControle({ k, dias }: { k?: TrocaOleoCliente["km_controle"]; dias?: n
 }
 
 // Agenda da oficina: próximas trocas de óleo dos clientes que compraram na loja, com o km de hoje
-// estimado pelo ritmo de cada um (o Co-pilot cobra o cliente; a loja liga pra agendar).
+// estimado pelo ritmo de cada um (o Co-pilot cobra o cliente; a loja indica oficina parceira a quem precisar).
 function TrocasClientes({ dealership }: { dealership?: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useOficinaTrocas(true, dealership);
@@ -106,7 +106,7 @@ function TrocasClientes({ dealership }: { dealership?: string }) {
       </CardContent>
       <Dialog open={!!reg} onOpenChange={(o) => { if (!o) setReg(null); }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Troca de óleo feita na oficina</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Troca de óleo do cliente feita</DialogTitle></DialogHeader>
           {reg && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">{reg.c.nome || "Cliente"}{reg.c.carro ? ` · ${reg.c.carro}` : ""}</p>
