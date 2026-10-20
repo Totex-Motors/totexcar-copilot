@@ -327,10 +327,21 @@ async function bindTag(label: string, loja: string, by: string | null, data: {
   return { ok: true, tag: saved };
 }
 
+// CPF válido pelos dígitos verificadores (rejeita 000.000.000-00 e afins)
+function cpfValido(v: unknown): string | null {
+  const d = String(v ?? "").replace(/\D/g, "");
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return null;
+  const dv = (n: number) => { let s = 0; for (let i = 0; i < n; i++) s += Number(d[i]) * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r; };
+  return dv(9) === Number(d[9]) && dv(10) === Number(d[10]) ? d : null;
+}
+
 // Cadastro da venda (jornada de pós-venda): painel do lojista (postsale_create) e link do vendedor (venda_registrar).
 async function criarVenda(loja: string, me: { id: string | null }, p: any): Promise<Response> {
   const phone = String(p.customer_phone || "").replace(/\D/g, "");
   if (phone.length < 10) return json({ error: "telefone_invalido" }, 400);
+  // CPF do cliente é obrigatório no cadastro da venda (exceto prêmio do sorteio do Feirão, que não é venda)
+  const cpf = cpfValido(p.customer_cpf);
+  if (!cpf && !(p.origem === "sorteio" && p.cortesia)) return json({ error: "cpf_invalido" }, 400);
   const name = String(p.customer_name || "").trim() || null;
   const car = String(p.car_desc || "").trim() || null;
   const purchase = /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date)) ? p.purchase_date : new Date().toISOString().split("T")[0];
@@ -352,15 +363,20 @@ async function criarVenda(loja: string, me: { id: string | null }, p: any): Prom
     catch (e) { console.error("provisionVehicle falhou:", e); }
   }
 
-  const { data: created, error } = await admin.from("postsale_journeys").insert({
-    dealership: loja, customer_name: name, customer_phone: phone, car_desc: car,
+  const jornada: Record<string, unknown> = {
+    dealership: loja, customer_name: name, customer_phone: phone, customer_cpf: cpf, car_desc: car,
     purchase_date: purchase, coupon_code: coupon, created_by: me.id,
     vendedor_id: p.vendedor_id ? String(p.vendedor_id) : null,
     sponsored: cortesia, sponsored_value: cortesia ? 109.90 : 0,
     sponsored_at: cortesia ? new Date().toISOString() : null,
     user_id: provisionedUserId,
-  }).select("id").single();
-  if (error) return json({ error: error.message }, 400);
+  };
+  let { data: created, error } = await admin.from("postsale_journeys").insert(jornada).select("id").single();
+  if (error && /customer_cpf/.test(error.message || "")) { // banco ainda sem a coluna: não trava a venda
+    delete jornada.customer_cpf;
+    ({ data: created, error } = await admin.from("postsale_journeys").insert(jornada).select("id").single());
+  }
+  if (error || !created) return json({ error: error?.message || "falha_ao_criar" }, 400);
 
   // PREPARAÇÃO (troca de óleo/filtro feita pela oficina antes da venda) → ponto zero da manutenção
   let revisado: { data: string; km: number; texto: string } | null = null;
@@ -471,7 +487,7 @@ async function vendaRapida(p: any): Promise<Response> {
   if (p.action === "venda_registrar") {
     // created_by = um usuário lojista da loja (a jornada exige um criador); o vendedor fica em vendedor_id
     const { data: dono } = await admin.from("users").select("id").eq("dealership", loja).in("role", ["dealer", "admin"]).limit(1);
-    const payload = { ...p, vendedor_id: membro.id, cortesia: false, valor_compra: undefined };
+    const payload = { ...p, vendedor_id: membro.id, cortesia: false, valor_compra: undefined, origem: undefined };
     return await criarVenda(loja, { id: dono?.[0]?.id || null }, payload);
   }
   return json({ error: "acao_invalida" }, 400);

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, CheckCircle2, Search, Car, Tag, ChevronLeft } from "lucide-react";
+import { maskCpf, cpfValido } from "@/lib/cpf";
 
 // LINK DO VENDEDOR: /venda/{token}. Tela única, pensada pro celular, SÓ com o cadastro da venda — sem login
 // e sem o resto do painel. O token é pessoal (gerado no painel, aba Atendimento → Equipe) e já identifica
@@ -19,6 +20,7 @@ const dataBR = (s?: string | null) => (s ? String(s).slice(0, 10).split("-").rev
 const kmBR = (n?: number | null) => (n ? `${Number(n).toLocaleString("pt-BR")} km` : "");
 const ERROS: Record<string, string> = {
   telefone_invalido: "Confira o WhatsApp do cliente (com DDD).",
+  cpf_invalido: "Confira o CPF do cliente: o número não é válido.",
   link_invalido: "Este link não vale mais. Peça um novo ao gerente.",
 };
 const ERRO_ETIQUETA: Record<string, string> = {
@@ -45,7 +47,7 @@ export default function VendaRapida() {
   const [carro, setCarro] = useState<Carro | null>(null);
   const [fora, setFora] = useState(false);
   const [busca, setBusca] = useState("");
-  const [f, setF] = useState({ nome: "", whats: "", carro: "", placa: "", etiqueta: "", km: "" });
+  const [f, setF] = useState({ nome: "", whats: "", cpf: "", carro: "", placa: "", etiqueta: "", km: "" });
   const [enviando, setEnviando] = useState(false);
   const [falha, setFalha] = useState<string | null>(null);
   const [ok, setOk] = useState<any>(null);
@@ -62,18 +64,19 @@ export default function VendaRapida() {
   }, [info, busca]);
 
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
-  const novo = () => { setOk(null); setCarro(null); setFora(false); setBusca(""); setF({ nome: "", whats: "", carro: "", placa: "", etiqueta: "", km: "" }); carregar(); window.scrollTo(0, 0); };
+  const novo = () => { setOk(null); setCarro(null); setFora(false); setBusca(""); setF({ nome: "", whats: "", cpf: "", carro: "", placa: "", etiqueta: "", km: "" }); carregar(); window.scrollTo(0, 0); };
 
   const registrar = async () => {
     setFalha(null);
     if (!carro && !(fora && f.carro.trim())) { setFalha("Escolha o carro do estoque (ou marque que está fora do estoque e escreva o modelo)."); return; }
     if (!f.nome.trim()) { setFalha("Informe o nome do cliente."); return; }
     if (f.whats.replace(/\D/g, "").length < 10) { setFalha(ERROS.telefone_invalido); return; }
+    if (!cpfValido(f.cpf)) { setFalha(ERROS.cpf_invalido); return; }
     setEnviando(true);
     try {
       const r = await chamar({
         action: "venda_registrar", t: token,
-        customer_name: f.nome.trim(), customer_phone: f.whats,
+        customer_name: f.nome.trim(), customer_phone: f.whats, customer_cpf: f.cpf.replace(/\D/g, ""),
         car_desc: fora ? f.carro.trim() : [carro!.desc, carro!.cor].filter(Boolean).join(" "),
         vehicle_id: carro?.id || undefined,
         placa: f.placa.trim() || undefined,
@@ -174,6 +177,11 @@ export default function VendaRapida() {
                 <div className="font-semibold">2. Cliente</div>
                 <div className="space-y-1"><Label className="text-xs">Nome</Label><Input className="h-10" value={f.nome} onChange={(e) => set("nome", e.target.value)} placeholder="Nome completo" autoComplete="off" /></div>
                 <div className="space-y-1"><Label className="text-xs">WhatsApp com DDD</Label><Input className="h-10" type="tel" inputMode="tel" value={f.whats} onChange={(e) => set("whats", e.target.value)} placeholder="11 98765-4321" /></div>
+                <div className="space-y-1">
+                  <Label className="text-xs">CPF do cliente (obrigatório)</Label>
+                  <Input className={`h-10 ${f.cpf.replace(/\D/g, "").length === 11 && !cpfValido(f.cpf) ? "border-red-400" : ""}`} inputMode="numeric" value={f.cpf} onChange={(e) => set("cpf", maskCpf(e.target.value))} placeholder="000.000.000-00" autoComplete="off" />
+                  {f.cpf.replace(/\D/g, "").length === 11 && !cpfValido(f.cpf) && <div className="text-xs text-red-700">CPF inválido. Confira os números com o cliente.</div>}
+                </div>
               </CardContent>
             </Card>
 

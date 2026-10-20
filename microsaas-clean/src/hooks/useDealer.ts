@@ -177,7 +177,7 @@ export const usePostsaleConfig = (enabled: boolean, dealership?: string) =>
 
 export const usePostsaleCreate = () =>
   useMutation({
-    mutationFn: async (p: { customer_name?: string; customer_phone: string; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string; tag_label?: string; km_entrega?: number; vehicle_id?: string; vendedor_id?: string }) =>
+    mutationFn: async (p: { customer_name?: string; customer_phone: string; customer_cpf?: string; origem?: "sorteio"; car_desc?: string; purchase_date?: string; cortesia?: boolean; placa?: string; valor_compra?: number; dealership?: string; tag_label?: string; km_entrega?: number; vehicle_id?: string; vendedor_id?: string }) =>
       callDealer("postsale_create", p),
   });
 
