@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { maskCpf, cpfValido } from "@/lib/cpf";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
   const create = usePostsaleCreate();
   const saveCfg = usePostsaleConfigSave();
 
-  const [form, setForm] = useState({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
+  const [form, setForm] = useState({ customer_name: "", customer_phone: "", customer_cpf: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
   const [cortesia, setCortesia] = useState(false);
   // carro do ESTOQUE (obrigatório escolher, ou marcar que está fora do estoque): a foto de capa vai pro app do cliente
   const { data: estoque, isLoading: loadingEstoque } = useEstoqueLista(enabled, dealership);
@@ -84,6 +85,10 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
       toast({ title: "Telefone inválido", description: "Informe o WhatsApp com DDD.", variant: "destructive" });
       return;
     }
+    if (!cpfValido(form.customer_cpf)) {
+      toast({ title: "CPF do cliente", description: "O CPF é obrigatório e precisa ser válido.", variant: "destructive" });
+      return;
+    }
     if (!carroEstoque && !foraEstoque) {
       toast({ title: "Escolha o carro do estoque", description: "A foto de capa do anúncio vai pro app do cliente. Se o carro não está no estoque, marque essa opção.", variant: "destructive" });
       return;
@@ -91,6 +96,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
     create.mutate({
       customer_name: form.customer_name || undefined,
       customer_phone: form.customer_phone,
+      customer_cpf: form.customer_cpf.replace(/\D/g, ""),
       car_desc: form.car_desc || (carroEstoque ? [carroEstoque.desc, carroEstoque.cor].filter(Boolean).join(" ") : undefined),
       vehicle_id: carroEstoque?.id || undefined,
       vendedor_id: vendedorId || undefined,
@@ -112,7 +118,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
             + (r?.foto_estoque?.fotoUrl ? " Foto do carro enviada pro app do cliente." : "")
             + (r?.revisado ? " Troca de óleo da preparação ligada ao Co-pilot do cliente." : ""),
         });
-        setForm({ customer_name: "", customer_phone: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
+        setForm({ customer_name: "", customer_phone: "", customer_cpf: "", car_desc: "", purchase_date: "", placa: "", valor_compra: "", tag_label: "", km_entrega: "" });
         setCortesia(false);
         setCarroEstoque(null); setForaEstoque(false); setBuscaEstoque(""); setVendedorId("");
         refresh();
@@ -214,6 +220,12 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><Label className="text-xs">Nome</Label><Input value={form.customer_name} onChange={(e) => setForm((p) => ({ ...p, customer_name: e.target.value }))} placeholder="Nome do cliente" /></div>
               <div className="space-y-1"><Label className="text-xs">WhatsApp (com DDD)</Label><Input value={form.customer_phone} onChange={(e) => setForm((p) => ({ ...p, customer_phone: e.target.value }))} placeholder="11987654321" /></div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">CPF do cliente (obrigatório)</Label>
+                <Input value={form.customer_cpf} inputMode="numeric" onChange={(e) => setForm((p) => ({ ...p, customer_cpf: maskCpf(e.target.value) }))} placeholder="000.000.000-00"
+                  className={form.customer_cpf.replace(/\D/g, "").length === 11 && !cpfValido(form.customer_cpf) ? "border-red-400" : ""} />
+                {form.customer_cpf.replace(/\D/g, "").length === 11 && !cpfValido(form.customer_cpf) && <div className="text-[11px] text-red-700">CPF inválido. Confira os números.</div>}
+              </div>
               <div className="space-y-1"><Label className="text-xs">Carro</Label><Input value={form.car_desc} onChange={(e) => setForm((p) => ({ ...p, car_desc: e.target.value }))} placeholder="Ex.: Onix 2020" /></div>
               <div className="space-y-1"><Label className="text-xs">Data da compra</Label><Input type="date" value={form.purchase_date} onChange={(e) => setForm((p) => ({ ...p, purchase_date: e.target.value }))} /></div>
               <div className="space-y-1 col-span-2">

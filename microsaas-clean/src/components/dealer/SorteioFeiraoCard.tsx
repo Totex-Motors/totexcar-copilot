@@ -145,6 +145,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
         customer_phone: fone(g.zap),
         car_desc: undefined,
         cortesia: true,
+        origem: "sorteio", // prêmio, não venda: dispensa o CPF
         dealership: dealership || undefined,
       });
       toast({
