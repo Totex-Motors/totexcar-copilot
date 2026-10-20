@@ -36,6 +36,7 @@ import Suporte from "./pages/Suporte";
 import Parceiro from "./pages/Parceiro";
 import AccessLink from "./pages/AccessLink";
 import Etiqueta from "./pages/Etiqueta";
+import VendaRapida from "./pages/VendaRapida";
 import NotFound from "./pages/NotFound";
 import { PendingCouponApplier } from "./components/PendingCouponApplier";
 import { InstallPrompt } from "./components/InstallPrompt";
@@ -103,6 +104,7 @@ const App = () => (
           <Route path="/a/:code" element={<AccessLink />} />
           {/* Etiqueta QR do para-brisa (conta o scan e abre o WhatsApp do Co-pilot) */}
           <Route path="/q/:token" element={<Etiqueta />} />
+          <Route path="/venda/:token" element={<VendaRapida />} />
 
           {/* Site público (marketing) — fundo escuro + navbar + footer */}
           <Route element={<MarketingLayout />}>

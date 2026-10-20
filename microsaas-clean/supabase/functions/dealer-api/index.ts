@@ -290,7 +290,7 @@ async function provisionSponsoredOwner(phone: string, name: string | null, deale
 // Vincula uma etiqueta impressa (label, ex.: CV-0001) a um cliente/carro da loja. Idempotente: revincular
 // sobrescreve (carro revendido pela própria loja, etiqueta reaproveitada). Devolve a etiqueta atualizada.
 const normLabel = (s: unknown) => String(s || "").toUpperCase().replace(/\s+/g, "").replace(/^([A-Z]+)-?(\d+)$/, (_m, p, n) => `${p}-${n.padStart(4, "0")}`);
-async function bindTag(label: string, loja: string, by: string, data: {
+async function bindTag(label: string, loja: string, by: string | null, data: {
   journey_id?: string | null; customer_phone?: string | null; customer_name?: string | null;
   car_desc?: string | null; placa?: string | null; km_entrega?: number | null; user_id?: string | null;
 }): Promise<{ ok: boolean; error?: string; tag?: any }> {
@@ -327,8 +327,164 @@ async function bindTag(label: string, loja: string, by: string, data: {
   return { ok: true, tag: saved };
 }
 
+// Cadastro da venda (jornada de pós-venda): painel do lojista (postsale_create) e link do vendedor (venda_registrar).
+async function criarVenda(loja: string, me: { id: string | null }, p: any): Promise<Response> {
+  const phone = String(p.customer_phone || "").replace(/\D/g, "");
+  if (phone.length < 10) return json({ error: "telefone_invalido" }, 400);
+  const name = String(p.customer_name || "").trim() || null;
+  const car = String(p.car_desc || "").trim() || null;
+  const purchase = /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date)) ? p.purchase_date : new Date().toISOString().split("T")[0];
+  const cortesia = p.cortesia === true || p.cortesia === "true";
+  const placa = String(p.placa || "").trim() || null;
+  const valorCompra = Number(p.valor_compra) > 0 ? Number(p.valor_compra) : null;
+
+  const { data: cps } = await admin.from("coupons").select("code").eq("dealership", loja).eq("active", true).limit(1);
+  const coupon = cps?.[0]?.code || null;
+
+  // Cortesia da loja (assinatura patrocinada): PROVISIONA a conta premium por 1 ano por conta da loja (pós-pago).
+  let provisionedUserId: string | null = null;
+  let vehicleCreated = false;
+  if (cortesia) {
+    try { provisionedUserId = await provisionSponsoredOwner(phone, name, loja, coupon); }
+    catch (e) { return json({ error: "provisionamento_falhou", detail: String((e as any)?.message || e) }, 400); }
+    // Já deixa o veículo cadastrado (autopreenche pela placa quando houver) — mais prático pra loja/admin.
+    try { vehicleCreated = await provisionVehicle(provisionedUserId, { car, placa, valor: valorCompra, dataCompra: purchase }); }
+    catch (e) { console.error("provisionVehicle falhou:", e); }
+  }
+
+  const { data: created, error } = await admin.from("postsale_journeys").insert({
+    dealership: loja, customer_name: name, customer_phone: phone, car_desc: car,
+    purchase_date: purchase, coupon_code: coupon, created_by: me.id,
+    vendedor_id: p.vendedor_id ? String(p.vendedor_id) : null,
+    sponsored: cortesia, sponsored_value: cortesia ? 109.90 : 0,
+    sponsored_at: cortesia ? new Date().toISOString() : null,
+    user_id: provisionedUserId,
+  }).select("id").single();
+  if (error) return json({ error: error.message }, 400);
+
+  // PREPARAÇÃO (troca de óleo/filtro feita pela oficina antes da venda) → ponto zero da manutenção
+  let revisado: { data: string; km: number; texto: string } | null = null;
+  try {
+    const prep = await preparacaoDoCarro(admin, loja, { vehicleId: p.vehicle_id ? String(p.vehicle_id) : null, placa });
+    if (prep) {
+      await admin.from("postsale_journeys").update({ preparacao_id: prep.id }).eq("id", created.id);
+      revisado = { data: prep.data, km: prep.km, texto: textoPreparacao(prep, loja) };
+      if (provisionedUserId) await aplicarPreparacaoDaJornada(admin, { id: created.id, preparacao_id: prep.id, prep_aplicada: false }, provisionedUserId);
+    }
+  } catch (e) { console.error("preparação na venda:", e); }
+
+  // Boas-vindas + convite pra ativar o Co-pilot com o bônus da loja (semi-automático).
+  // Iniciado pelo negócio → TEMPLATE na API oficial (cortesia = utilidade; convite bônus = marketing).
+  const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
+  const appUrl = (st?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
+  const link = `${appUrl}/entrar?tab=register${coupon ? `&coupon=${encodeURIComponent(coupon)}` : ""}`;
+  const primeiro = name ? name.split(" ")[0] : "tudo bem";
+  const wa = await loadWaSettings(admin);
+  let welcome = false;
+  let kitEnviado = false;
+  try {
+    if (cortesia) {
+      // 1º tenta a boas-vindas com o KIT em PDF anexado (header DOCUMENT); se o template
+      // ainda não estiver aprovado (ou falhar), cai na versão texto — nada quebra.
+      const kitUrl = await kitUrlFor(appUrl, loja); // personalizado da loja, ou o genérico
+      welcome = await waSendTemplate(wa, phone, "boas_vindas_cortesia_pdf", [primeiro, car || "carro", loja],
+        { documentUrl: kitUrl, documentFilename: KIT_FILENAME });
+      kitEnviado = welcome;
+      if (!welcome) welcome = await waSendTemplate(wa, phone, "boas_vindas_cortesia", [primeiro, car || "carro", loja]);
+    } else {
+      welcome = await waSendTemplate(wa, phone, "convite_copilot_loja", [primeiro, car ? `seu ${car}` : "seu carro", loja, link]);
+    }
+  } catch { /* WhatsApp off: cria a jornada mesmo assim */ }
+  if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
+  await admin.from("whatsapp_events").insert({ // alimenta a aba Conversas
+    from_phone: phone, user_id: provisionedUserId, kind: "boas_vindas",
+    status: welcome ? "sent" : "error",
+    raw: { postsale_journey: created.id, loja },
+    parsed: { cortesia, template: cortesia ? (kitEnviado ? "boas_vindas_cortesia_pdf" : "boas_vindas_cortesia") : "convite_copilot_loja", carro: car },
+  });
+  // se o kit PDF já foi junto, registra pro webhook não reenviar na 1ª resposta
+  if (kitEnviado) {
+    await admin.from("whatsapp_events").insert({
+      from_phone: phone, user_id: provisionedUserId, kind: "kit_pdf", status: "sent",
+      raw: { via: "postsale_create" }, parsed: { template: "boas_vindas_cortesia_pdf" },
+    });
+  }
+  // etiqueta QR do para-brisa informada na entrega → vincula ao cliente recém-registrado
+  let tagBound: any = null, tagError: string | null = null;
+  if (p.tag_label) {
+    const r = await bindTag(String(p.tag_label), loja, me.id, {
+      journey_id: created.id, customer_phone: phone, customer_name: name, car_desc: car, placa,
+      km_entrega: Number(p.km_entrega) || null, user_id: provisionedUserId,
+    });
+    if (r.ok) tagBound = r.tag; else tagError = r.error || "falha";
+  }
+  // FOTO DE CAPA DO ESTOQUE (obrigatória quando o carro é do estoque): carro escolhido na lista
+  // ou casado pelo texto com o estoque da loja → capa recortada vai pra jornada e pro card "Meu carro".
+  let foto: any = null;
+  try {
+    foto = await fotoDeCapaNaVenda(admin, {
+      journeyId: created.id, dealership: loja, vehicleId: p.vehicle_id ? String(p.vehicle_id) : null,
+      carDesc: car, userId: provisionedUserId,
+    });
+  } catch (e) { console.error("foto de capa:", e); }
+  return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError, foto_estoque: foto, revisado });
+}
+
+// Estoque da loja (marketplace) com o status da preparação de cada carro.
+async function estoqueDaLoja(loja: string): Promise<{ carros: any[]; aviso?: string }> {
+  const did = await mktDealerIdByName(loja);
+  if (!did) return { carros: [], aviso: "loja_sem_estoque_no_marketplace" };
+  const { data: preps } = await admin.from("preparacao_veiculos").select("*").eq("dealership", loja).not("vehicle_id", "is", null)
+    .order("data", { ascending: false }).order("created_at", { ascending: false }).limit(2000);
+  const prepDe: Record<string, any> = {};
+  for (const pr of preps || []) if (!prepDe[pr.vehicle_id]) prepDe[pr.vehicle_id] = pr;
+  const carros = (await mktStock(did)).map((v: any) => ({
+    id: v.id, desc: descVeiculo(v), versao: v.version || null, cor: v.color || null,
+    preco: v.price || null, km: v.mileage || null, capa: capaDoVeiculo(v),
+    preparacao: prepDe[v.id] ? { id: prepDe[v.id].id, data: prepDe[v.id].data, km: prepDe[v.id].km, intervalo_km: prepDe[v.id].intervalo_km, feito_por: prepDe[v.id].feito_por } : null,
+  }));
+  return { carros };
+}
+
+// LINK DO VENDEDOR (/venda/<token>): cada vendedor da equipe tem um link pessoal que abre SÓ o cadastro da
+// venda, sem login. O token identifica o vendedor (a venda já sai no nome dele) e a loja; trocar o link
+// (ou tirar a pessoa da equipe) invalida o anterior. Cortesia não aparece aqui: é decisão da gerência.
+async function vendaRapida(p: any): Promise<Response> {
+  const t = String(p.t || "");
+  if (t.length < 20) return json({ error: "link_invalido" }, 403);
+  const { data: membro } = await admin.from("posvenda_equipe").select("id, nome, dealership, papel, ativo").eq("link_token", t).maybeSingle();
+  if (!membro || membro.ativo === false) return json({ error: "link_invalido" }, 403);
+  const loja = membro.dealership;
+  if (p.action === "venda_info") {
+    const est = await estoqueDaLoja(loja).catch(() => ({ carros: [] as any[] }));
+    const { data: js } = await admin.from("postsale_journeys").select("id, customer_name, car_desc, purchase_date, created_at")
+      .eq("dealership", loja).eq("vendedor_id", membro.id).order("created_at", { ascending: false }).limit(10);
+    const ids = (js || []).map((j: any) => j.id);
+    const { data: tags } = ids.length ? await admin.from("car_tags").select("journey_id, label, status, activated_at").in("journey_id", ids) : { data: [] };
+    const tagDe: Record<string, any> = Object.fromEntries((tags || []).map((x: any) => [x.journey_id, x]));
+    const vendas = (js || []).map((j: any) => ({
+      id: j.id, cliente: String(j.customer_name || "Cliente").split(" ")[0], carro: j.car_desc, data: j.purchase_date || String(j.created_at).slice(0, 10),
+      etiqueta: tagDe[j.id]?.label || null, ativou: !!tagDe[j.id]?.activated_at,
+    }));
+    return json({ ok: true, loja, vendedor: { nome: membro.nome }, carros: est.carros, aviso: (est as any).aviso || null, vendas });
+  }
+  if (p.action === "venda_registrar") {
+    // created_by = um usuário lojista da loja (a jornada exige um criador); o vendedor fica em vendedor_id
+    const { data: dono } = await admin.from("users").select("id").eq("dealership", loja).in("role", ["dealer", "admin"]).limit(1);
+    const payload = { ...p, vendedor_id: membro.id, cortesia: false, valor_compra: undefined };
+    return await criarVenda(loja, { id: dono?.[0]?.id || null }, payload);
+  }
+  return json({ error: "acao_invalida" }, 400);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+
+  // link pessoal do vendedor (sem login): só as ações venda_*
+  try {
+    const pv = await req.clone().json();
+    if (typeof pv?.action === "string" && pv.action.startsWith("venda_")) return await vendaRapida(pv);
+  } catch { /* corpo vazio ou não-JSON: segue o fluxo normal */ }
 
   // identifica o chamador pelo JWT
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -961,123 +1117,13 @@ Deno.serve(async (req) => {
 
       case "postsale_create": {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
-        const loja = writeStore;
-        const phone = String(p.customer_phone || "").replace(/\D/g, "");
-        if (phone.length < 10) return json({ error: "telefone_invalido" }, 400);
-        const name = String(p.customer_name || "").trim() || null;
-        const car = String(p.car_desc || "").trim() || null;
-        const purchase = /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date)) ? p.purchase_date : new Date().toISOString().split("T")[0];
-        const cortesia = p.cortesia === true || p.cortesia === "true";
-        const placa = String(p.placa || "").trim() || null;
-        const valorCompra = Number(p.valor_compra) > 0 ? Number(p.valor_compra) : null;
-
-        const { data: cps } = await admin.from("coupons").select("code").eq("dealership", loja).eq("active", true).limit(1);
-        const coupon = cps?.[0]?.code || null;
-
-        // Cortesia da loja (assinatura patrocinada): PROVISIONA a conta premium por 1 ano por conta da loja (pós-pago).
-        let provisionedUserId: string | null = null;
-        let vehicleCreated = false;
-        if (cortesia) {
-          try { provisionedUserId = await provisionSponsoredOwner(phone, name, loja, coupon); }
-          catch (e) { return json({ error: "provisionamento_falhou", detail: String((e as any)?.message || e) }, 400); }
-          // Já deixa o veículo cadastrado (autopreenche pela placa quando houver) — mais prático pra loja/admin.
-          try { vehicleCreated = await provisionVehicle(provisionedUserId, { car, placa, valor: valorCompra, dataCompra: purchase }); }
-          catch (e) { console.error("provisionVehicle falhou:", e); }
-        }
-
-        const { data: created, error } = await admin.from("postsale_journeys").insert({
-          dealership: loja, customer_name: name, customer_phone: phone, car_desc: car,
-          purchase_date: purchase, coupon_code: coupon, created_by: me.id,
-          vendedor_id: p.vendedor_id ? String(p.vendedor_id) : null,
-          sponsored: cortesia, sponsored_value: cortesia ? 109.90 : 0,
-          sponsored_at: cortesia ? new Date().toISOString() : null,
-          user_id: provisionedUserId,
-        }).select("id").single();
-        if (error) return json({ error: error.message }, 400);
-
-        // PREPARAÇÃO (troca de óleo/filtro feita pela oficina antes da venda) → ponto zero da manutenção
-        let revisado: { data: string; km: number; texto: string } | null = null;
-        try {
-          const prep = await preparacaoDoCarro(admin, loja, { vehicleId: p.vehicle_id ? String(p.vehicle_id) : null, placa });
-          if (prep) {
-            await admin.from("postsale_journeys").update({ preparacao_id: prep.id }).eq("id", created.id);
-            revisado = { data: prep.data, km: prep.km, texto: textoPreparacao(prep, loja) };
-            if (provisionedUserId) await aplicarPreparacaoDaJornada(admin, { id: created.id, preparacao_id: prep.id, prep_aplicada: false }, provisionedUserId);
-          }
-        } catch (e) { console.error("preparação na venda:", e); }
-
-        // Boas-vindas + convite pra ativar o Co-pilot com o bônus da loja (semi-automático).
-        // Iniciado pelo negócio → TEMPLATE na API oficial (cortesia = utilidade; convite bônus = marketing).
-        const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
-        const appUrl = (st?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
-        const link = `${appUrl}/entrar?tab=register${coupon ? `&coupon=${encodeURIComponent(coupon)}` : ""}`;
-        const primeiro = name ? name.split(" ")[0] : "tudo bem";
-        const wa = await loadWaSettings(admin);
-        let welcome = false;
-        let kitEnviado = false;
-        try {
-          if (cortesia) {
-            // 1º tenta a boas-vindas com o KIT em PDF anexado (header DOCUMENT); se o template
-            // ainda não estiver aprovado (ou falhar), cai na versão texto — nada quebra.
-            const kitUrl = await kitUrlFor(appUrl, loja); // personalizado da loja, ou o genérico
-            welcome = await waSendTemplate(wa, phone, "boas_vindas_cortesia_pdf", [primeiro, car || "carro", loja],
-              { documentUrl: kitUrl, documentFilename: KIT_FILENAME });
-            kitEnviado = welcome;
-            if (!welcome) welcome = await waSendTemplate(wa, phone, "boas_vindas_cortesia", [primeiro, car || "carro", loja]);
-          } else {
-            welcome = await waSendTemplate(wa, phone, "convite_copilot_loja", [primeiro, car ? `seu ${car}` : "seu carro", loja, link]);
-          }
-        } catch { /* WhatsApp off: cria a jornada mesmo assim */ }
-        if (welcome) await admin.from("postsale_journeys").update({ welcome_sent: true }).eq("id", created.id);
-        await admin.from("whatsapp_events").insert({ // alimenta a aba Conversas
-          from_phone: phone, user_id: provisionedUserId, kind: "boas_vindas",
-          status: welcome ? "sent" : "error",
-          raw: { postsale_journey: created.id, loja },
-          parsed: { cortesia, template: cortesia ? (kitEnviado ? "boas_vindas_cortesia_pdf" : "boas_vindas_cortesia") : "convite_copilot_loja", carro: car },
-        });
-        // se o kit PDF já foi junto, registra pro webhook não reenviar na 1ª resposta
-        if (kitEnviado) {
-          await admin.from("whatsapp_events").insert({
-            from_phone: phone, user_id: provisionedUserId, kind: "kit_pdf", status: "sent",
-            raw: { via: "postsale_create" }, parsed: { template: "boas_vindas_cortesia_pdf" },
-          });
-        }
-        // etiqueta QR do para-brisa informada na entrega → vincula ao cliente recém-registrado
-        let tagBound: any = null, tagError: string | null = null;
-        if (p.tag_label) {
-          const r = await bindTag(String(p.tag_label), loja, me.id, {
-            journey_id: created.id, customer_phone: phone, customer_name: name, car_desc: car, placa,
-            km_entrega: Number(p.km_entrega) || null, user_id: provisionedUserId,
-          });
-          if (r.ok) tagBound = r.tag; else tagError = r.error || "falha";
-        }
-        // FOTO DE CAPA DO ESTOQUE (obrigatória quando o carro é do estoque): carro escolhido na lista
-        // ou casado pelo texto com o estoque da loja → capa recortada vai pra jornada e pro card "Meu carro".
-        let foto: any = null;
-        try {
-          foto = await fotoDeCapaNaVenda(admin, {
-            journeyId: created.id, dealership: loja, vehicleId: p.vehicle_id ? String(p.vehicle_id) : null,
-            carDesc: car, userId: provisionedUserId,
-          });
-        } catch (e) { console.error("foto de capa:", e); }
-        return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError, foto_estoque: foto, revisado });
+        return await criarVenda(writeStore, me, p);
       }
 
       // estoque da loja pro pós-venda escolher o carro vendido (foto de capa obrigatória)
       case "estoque_lista": {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
-        const did = await mktDealerIdByName(writeStore);
-        if (!did) return json({ ok: true, carros: [], aviso: "loja_sem_estoque_no_marketplace" });
-        const { data: preps } = await admin.from("preparacao_veiculos").select("*").eq("dealership", writeStore).not("vehicle_id", "is", null)
-          .order("data", { ascending: false }).order("created_at", { ascending: false }).limit(2000);
-        const prepDe: Record<string, any> = {};
-        for (const pr of preps || []) if (!prepDe[pr.vehicle_id]) prepDe[pr.vehicle_id] = pr;
-        const carros = (await mktStock(did)).map((v: any) => ({
-          id: v.id, desc: descVeiculo(v), versao: v.version || null, cor: v.color || null,
-          preco: v.price || null, km: v.mileage || null, capa: capaDoVeiculo(v),
-          preparacao: prepDe[v.id] ? { id: prepDe[v.id].id, data: prepDe[v.id].data, km: prepDe[v.id].km, intervalo_km: prepDe[v.id].intervalo_km, feito_por: prepDe[v.id].feito_por } : null,
-        }));
-        return json({ ok: true, carros });
+        return json({ ok: true, ...(await estoqueDaLoja(writeStore)) });
       }
 
       // ===== PREPARAÇÃO DO CARRO (oficina, antes da venda) =====
@@ -1363,6 +1409,22 @@ Deno.serve(async (req) => {
         const { error } = await q;
         if (error) return json({ error: /duplicate|unique/i.test(error.message) ? "telefone_ja_cadastrado" : error.message }, 400);
         return json({ ok: true });
+      }
+
+      case "posvenda_membro_link": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: m } = await admin.from("posvenda_equipe").select("id, nome, phone, link_token").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
+        if (!m) return json({ error: "membro_nao_encontrado" }, 404);
+        let tk = m.link_token as string | null;
+        if (!tk || p.trocar) {
+          const b = crypto.getRandomValues(new Uint8Array(18));
+          tk = btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+          const { error } = await admin.from("posvenda_equipe").update({ link_token: tk }).eq("id", m.id);
+          if (error) return json({ error: "rode_o_sql_do_link_do_vendedor" }, 400);
+        }
+        const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
+        const appUrl = (st?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
+        return json({ ok: true, link: `${appUrl}/venda/${tk}`, nome: m.nome, phone: m.phone });
       }
 
       case "posvenda_membro_del": {
