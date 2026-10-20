@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
  "hospedagem": [{ "faixa": "economica|intermediaria|charme", "nome": "...", "regiao": "...", "motivo": "reputação/por quê", "diaria": 450.00 (ou null se não encontrado) }],
  "comida": [{ "nome": "...", "especialidade": "prato/experiência" }],
  "passeios": ["..."],
- "antes_de_viajar": ["recomendações de manutenção pré-viagem, citando a loja do cliente se houver — ou lista vazia"],
+ "antes_de_viajar": ["recomendações de manutenção pré-viagem: resolver ANTES, na oficina de confiança do cliente (se ele não tiver, a loja onde comprou indica oficinas parceiras) — nunca diga que a loja faz o serviço — ou lista vazia"],
  "checklist": ${JSON.stringify(CHECKLIST)}
 }
 REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_km: km ida+volta × custo/km; senão (km ÷ km/L) × preço do litro; se faltar dado, explique na "conta" o que falta medir e use null no total). ${pesquisa || lugares ? "Use as PESQUISAS EM TEMPO REAL como FONTE DA VERDADE de rota, pedágios, balsa, hospedagens e restaurantes — NÃO chute valores nem invente estabelecimentos; onde a pesquisa não encontrou, use null. PEDÁGIOS: copie pra \"pedagios.itens\" TODAS as praças que a PESQUISA — ROTA listou, cada uma com seu valor, e some ida+volta em total_ida_volta; só deixe a lista vazia se a pesquisa não trouxe NENHUMA praça." : "Sem pesquisa ao vivo: valores aproximados e diga isso nas obs."} NUNCA invente diária de hospedagem (null se não veio na pesquisa). Sem destino → "titulo": "Sugestões pra sua próxima viagem" e preencha "roteiro" com 2-3 destinos destes conforme o perfil: ${DESTINOS_2026.join("; ")}. Números como number (sem "R$"). Tudo em português do Brasil.`;

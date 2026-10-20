@@ -1185,7 +1185,7 @@ Deno.serve(async (req) => {
         return json({ ok: true, entregas, resumo, itens: ITENS_ENTREGA });
       }
 
-      // troca de óleo feita NA OFICINA DA LOJA pro cliente: zera o ciclo dele no Co-pilot
+      // troca de óleo do cliente feita em oficina parceira e registrada pela loja: zera o ciclo dele no Co-pilot
       case "oficina_troca_registrar": {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
         const uid = String(p.user_id || "");

@@ -9,7 +9,8 @@
 //               cobrar; com a foto, o km deixa de ser estimado.
 //  4. COBRA   — troca vence por KM ou por TEMPO, o que vier primeiro (10.000 km / 12 meses; uso severo de
 //               aplicativo: metade do km / 6 meses). Escada: aviso (≤1.000 km ou ≤15 dias) → venceu →
-//               atrasada (semanal, até 3x). Venceu e é cliente de loja → oportunidade pra oficina da loja.
+//               atrasada (semanal, até 3x). Venceu e é cliente de loja → oportunidade pro vendedor (a loja indica
+//               oficina parceira; ela não tem oficina própria).
 //  E FECHA O CICLO: troca registrada (pelo cliente ou por um gasto de troca de óleo) zera o lembrete.
 
 export const TITULO_OLEO = "Troca de óleo e filtro";
@@ -258,17 +259,17 @@ export async function oleoTick(sb: any, u: any, v: any): Promise<AcaoOleo | null
   if (e.status === "em_dia") return null; // a leitura de rotina é da km.ts (a cada 10 dias)
   if (e.status === "proxima") {
     if (!(await dedup(`oleo:aviso:${c}`, due))) return null;
-    return { acao: "aviso", variante: "copilot_msg_sim", estado: e, fallback: `A troca de óleo do ${carro} está chegando: ${e.vencePor === "tempo" ? `vence em ${dataBR(e.proximaData!)}` : `faltam ~${kmBR(Math.max(0, e.faltamKm!))} (aos ${kmBR(e.proximaKm!)})`}. Quer que eu já agende?` };
+    return { acao: "aviso", variante: "copilot_msg_sim", estado: e, fallback: `A troca de óleo do ${carro} está chegando: ${e.vencePor === "tempo" ? `vence em ${dataBR(e.proximaData!)}` : `faltam ~${kmBR(Math.max(0, e.faltamKm!))} (aos ${kmBR(e.proximaKm!)})`}. Quer ajuda pra resolver?` };
   }
   if (e.status === "vencida") {
     if (!(await dedup(`oleo:vencida:${c}`, due))) return null;
-    return { acao: "vencida", variante: "copilot_msg_feito", estado: e, fallback: `Chegou a hora da troca de óleo do ${carro} (${e.vencePor === "tempo" ? `12 meses desde ${dataBR(e.ultimaTroca!.data)}` : `aos ${kmBR(e.proximaKm!)}`}). Já trocou? Se não, eu te ajudo a agendar.` };
+    return { acao: "vencida", variante: "copilot_msg_feito", estado: e, fallback: `Chegou a hora da troca de óleo do ${carro} (${e.vencePor === "tempo" ? `12 meses desde ${dataBR(e.ultimaTroca!.data)}` : `aos ${kmBR(e.proximaKm!)}`}). Já trocou? Se não, eu te ajudo a resolver.` };
   }
   // atrasada: 1x por semana, no máximo 3 vezes no ciclo
   const { data: ja } = await sb.from("notification_log").select("id").eq("user_id", u.id).like("kind", `oleo:atrasada:${c}%`).limit(5);
   if ((ja || []).length >= 3) return null;
   if (!(await dedup(`oleo:atrasada:${c}:${seg}`, seg))) return null;
-  return { acao: "atrasada", variante: "copilot_msg_feito", estado: e, fallback: `A troca de óleo do ${carro} está atrasada (passou de ${kmBR(e.proximaKm!)}${e.vencePor === "tempo" ? ` / ${dataBR(e.proximaData!)}` : ""}). Óleo vencido desgasta o motor. Já trocou? Se não, eu agendo pra você.` };
+  return { acao: "atrasada", variante: "copilot_msg_feito", estado: e, fallback: `A troca de óleo do ${carro} está atrasada (passou de ${kmBR(e.proximaKm!)}${e.vencePor === "tempo" ? ` / ${dataBR(e.proximaData!)}` : ""}). Óleo vencido desgasta o motor. Já trocou? Se não, eu te ajudo a resolver.` };
 }
 
 // insight pro compositor proativo (a IA escreve; os números vêm daqui)
@@ -277,15 +278,15 @@ export function insightOleo(a: AcaoOleo, loja?: string | null): Record<string, u
   const instrucao: Record<string, string> = {
     ancora: "Pergunte, numa mensagem curta, com quantos km (ou em que mês) foi a última troca de óleo. Ofereça mandar foto do adesivo da oficina ou da nota. Diga que com isso você avisa a próxima na hora certa.",
     confirmar_km: "A troca de óleo está chegando pela ESTIMATIVA. Peça uma FOTO DO PAINEL com o km pra confirmar antes de marcar. Deixe claro que o número é estimado.",
-    aviso: `Avise que a troca de óleo está chegando (${e.vencePor === "tempo" ? "pelo tempo" : "pelo km"}) e ofereça agendar${loja ? ` na oficina da ${loja}` : ""}. Use a variante copilot_msg_sim.`,
-    vencida: `Diga que chegou a hora da troca de óleo e pergunte se já trocou; se não, ofereça agendar${loja ? ` na oficina da ${loja}` : ""}. Use a variante copilot_msg_feito.`,
-    atrasada: `A troca está atrasada. Seja direto e cuidadoso (óleo vencido desgasta o motor), pergunte se já trocou e ofereça agendar${loja ? ` na ${loja}` : ""}. Use a variante copilot_msg_feito.`,
+    aviso: `Avise que a troca de óleo está chegando (${e.vencePor === "tempo" ? "pelo tempo" : "pelo km"}) e ofereça ajuda pra fazer na oficina de confiança dele${loja ? ` (se ele não tiver, a ${loja} indica oficinas parceiras)` : ""}. Nunca diga que a loja faz a troca. Use a variante copilot_msg_sim.`,
+    vencida: `Diga que chegou a hora da troca de óleo e pergunte se já trocou; se não, ofereça ajuda pra fazer na oficina de confiança dele${loja ? ` (sem oficina, a ${loja} indica uma parceira)` : ""}. Nunca diga que a loja faz a troca. Use a variante copilot_msg_feito.`,
+    atrasada: `A troca está atrasada. Seja direto e cuidadoso (óleo vencido desgasta o motor), pergunte se já trocou e ofereça ajuda${loja ? ` (a ${loja} indica oficinas parceiras, se ele precisar)` : ""}. Nunca diga que a loja faz a troca. Use a variante copilot_msg_feito.`,
   };
   return {
     tipo: "troca_oleo", estagio: a.acao, variante_sugerida: a.variante, instrucao: instrucao[a.acao],
     ultima_troca: e.ultimaTroca, proxima_troca_km: e.proximaKm, data_prevista: e.proximaData, vence_por: e.vencePor,
     faltam_km: e.faltamKm, km_estimado_hoje: e.kmHoje, ultima_leitura: e.leitura, ritmo_km_dia: e.ritmo.kmDia, fonte_ritmo: e.ritmo.fonte,
-    uso_severo: e.severo, intervalo: `${e.intervaloKm} km ou ${e.intervaloMeses} meses`, oficina_da_loja: loja || null,
+    uso_severo: e.severo, intervalo: `${e.intervaloKm} km ou ${e.intervaloMeses} meses`, loja_indica_oficinas_parceiras: loja || null, loja_tem_oficina_propria: false,
     observacao: "Números calculados em código. Quando o km for estimado, diga 'pela minha conta'/'aproximadamente'.",
   };
 }
