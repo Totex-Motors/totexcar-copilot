@@ -799,11 +799,15 @@ async function applyNpsScore(j: any, phone: string, score: number, comentario?: 
 // Pós-venda (Sucesso do Cliente): se há um NPS pendente p/ este telefone e a resposta é um número 0–10,
 // registra a nota e roteia. Funciona mesmo p/ quem NÃO é usuário do app.
 async function handlePostsaleNps(phone: string, text: string): Promise<boolean> {
-  const js = (await findJourneysByPhone(phone)).filter((x: any) => x.nps_asked_at && x.nps_score == null);
+  // só vale a pesquisa feita nos últimos 14 dias (resposta a uma pergunta antiga não é nota)
+  const limite = Date.now() - 14 * 86400000;
+  const js = (await findJourneysByPhone(phone)).filter((x: any) => x.nps_asked_at && x.nps_score == null && new Date(x.nps_asked_at).getTime() >= limite);
   const j = js?.[0];
   if (!j) return false;
-  const m = String(text || "").trim().match(/\b(10|[0-9])\b/);
-  if (!m) return false; // tem NPS pendente mas não veio número — deixa o fluxo normal seguir
+  // a mensagem tem que ser SÓ a nota ("8", "nota 8", "10!") — um número no meio de uma frase
+  // ("Sandero 1.6 16v") não é resposta de pesquisa
+  const m = String(text || "").trim().match(/^(?:nota\s*:?\s*)?(10|[0-9])\s*[!.]*$/i);
+  if (!m) return false; // tem NPS pendente mas não veio só a nota — deixa o fluxo normal seguir
   await applyNpsScore(j, phone, Number(m[1]));
   return true;
 }
@@ -1361,7 +1365,7 @@ const TOOL_SPECS = [
   },
   {
     name: "registrar_troca_oleo",
-    description: "Registra que a TROCA DE ÓLEO (e filtro) FOI FEITA e zera o ciclo: a próxima passa a contar deste km. Use quando o cliente disser que trocou o óleo ('troquei o óleo com 52.300', 'fiz a troca ontem'), mandar a nota/adesivo da oficina com o km, ou responder com o km depois de dizer 'Já resolvi' num aviso de troca de óleo. Também quando ele informar com quantos km foi a ÚLTIMA troca. Se ele não disse o km, pergunte (ou peça foto do painel) ANTES de chamar.",
+    description: "Registra que a TROCA DE ÓLEO (e filtro) FOI FEITA e zera o ciclo: a próxima passa a contar deste km. Use quando o cliente disser que trocou o óleo ('troquei o óleo com 52.300', 'fiz a troca ontem'), mandar a nota da oficina com o km, ou responder com o km depois de dizer 'Já resolvi' num aviso de troca de óleo. Também quando ele informar com quantos km foi a ÚLTIMA troca. ⚠️ O ADESIVO da oficina no para-brisa normalmente mostra a PRÓXIMA troca ('próxima troca: 72.665 km'): nesse caso a última foi = próxima − intervalo (ex.: 62.665) — nunca registre o km da próxima como troca feita. O km da troca nunca é maior que o km atual do carro. Se ele disser que NÃO trocou ainda, não chame esta ferramenta. Se ele não disse o km, pergunte (ou peça foto do painel) ANTES de chamar.",
     parameters: {
       type: "object",
       properties: {
@@ -1815,7 +1819,10 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       const km = Math.round(Number(args?.km) || 0);
       if (!(km > 0)) return { ok: false, error: "km_ausente", message: "Pergunte o km do carro na troca (ou peça foto do painel/adesivo da oficina) antes de registrar." };
       const kmHoje = Number(vehicle.hodometro || 0);
-      if (kmHoje > 0 && km > kmHoje + 20000) return { ok: false, error: "km_suspeito", message: `O km informado (${km}) está muito acima do registrado (${kmHoje}). Confirme o número com o cliente (todos os dígitos).` };
+      // troca FEITA não pode ter km maior que o carro tem hoje: quase sempre é o km da PRÓXIMA troca
+      // (o adesivo da oficina mostra "próxima troca: X km") — nunca registrar assim
+      if (kmHoje > 0 && km > kmHoje + 300) return { ok: false, error: "km_acima_do_atual", km_informado: km, km_atual: kmHoje,
+        message: `NÃO registrado: ${km} km é maior que o km atual do carro (${kmHoje}). Isso costuma ser o km da PRÓXIMA troca (adesivo da oficina). Pergunte em 1 linha com quantos km foi feita a ÚLTIMA troca (ou confirme: se a próxima é aos ${km} km com intervalo de 10.000, a última foi aos ${km - 10000} km). Nunca diga que registrou.` };
       const r = await registrarTrocaOleo(supabase, {
         userId: user.id, accountId: vehicle.id, km, data: args?.data || today,
         intervaloKm: Number(args?.intervalo_km) > 0 ? Number(args.intervalo_km) : null,
@@ -3687,6 +3694,14 @@ async function handleQuantoVale(phone: string, text: string, contactName?: strin
   if (placa && !pediuValor) {
     const resto = t.replace(PLACA_RE, " ").replace(/[^a-zA-ZÀ-ÿ]/g, "");
     if (resto.length > 12) return false;
+    // é a placa do carro que ele JÁ tem no Co-pilot (respondendo uma pergunta) → não é consulta de valor
+    try {
+      const u = await findUserByPhone(phone);
+      if (u?.id) {
+        const { data: acc } = await supabase.from("accounts").select("placa").eq("user_id", u.id).eq("is_active", true);
+        if ((acc || []).some((a: any) => String(a.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "") === placa)) return false;
+      }
+    } catch { /* */ }
   }
   const primeiro = contactName ? `, ${contactName.split(" ")[0]}` : "";
 

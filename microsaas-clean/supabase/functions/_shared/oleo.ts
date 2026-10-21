@@ -64,11 +64,28 @@ export async function fecharPedidoKm(sb: any, userId: string, km: number, quando
 // + a última troca de óleo (km e data conhecidos = ponto confiável)
 function limpar(out: { km: number; t: number }[]): { km: number; t: number }[] {
   out.sort((a, b) => a.t - b.t || a.km - b.km);
-  // descarta leitura que "volta" o km (erro de digitação) — o odômetro só cresce
+  // 1) o odômetro só cresce: fica a MAIOR sequência coerente de leituras (crescente no tempo) e o que
+  //    destoa sai — tanto um dígito a mais (600.050 com o carro em 5.065) quanto um dígito a menos
+  const n = out.length;
+  const len = new Array(n).fill(1), prev = new Array(n).fill(-1);
+  for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) {
+    if (out[j].km <= out[i].km && len[j] + 1 > len[i]) { len[i] = len[j] + 1; prev[i] = j; }
+  }
+  let fim = -1;
+  for (let i = 0; i < n; i++) if (fim < 0 || len[i] >= len[fim]) fim = i;
+  const seq: { km: number; t: number }[] = [];
+  for (let i = fim; i >= 0; i = prev[i]) seq.push(out[i]);
+  seq.reverse();
+  // 2) salto impossível (> 1.500 km/dia desde a leitura anterior) também é erro
   const limpo: { km: number; t: number }[] = [];
-  for (const p of out) if (!limpo.length || p.km >= limpo[limpo.length - 1].km) limpo.push(p);
+  for (const p of seq) {
+    const ant = limpo[limpo.length - 1];
+    if (ant) { const dias = Math.max(1, (p.t - ant.t) / DIA); if ((p.km - ant.km) / dias > 1500) continue; }
+    limpo.push(p);
+  }
   return limpo;
 }
+
 async function pontos(sb: any, userId: string): Promise<{ km: number; t: number }[]> {
   const desde = new Date(Date.now() - 365 * DIA);
   const out: { km: number; t: number }[] = [];
@@ -168,7 +185,9 @@ export async function estadoOleo(sb: any, user: any, vehicle: any): Promise<Esta
   kmHoje = Math.max(kmHoje, ultKm);
   const proximaKm = ultKm + intervaloKm;
   const faltamKm = Math.round(proximaKm - kmHoje);
-  const dataKm = addDias(Math.round(faltamKm / Math.max(1, ritmo.kmDia)));
+  // data em que o km da troca é (ou foi) atingido no ritmo dele — nunca antes da última troca
+  let dataKm = addDias(Math.round(faltamKm / Math.max(1, ritmo.kmDia)));
+  if (dataKm < ultData) dataKm = ultData;
   const dataTempo = addMeses(ultData, intervaloMeses);
   const vencePor: "km" | "tempo" = dataTempo < dataKm ? "tempo" : "km";
   const proximaData = vencePor === "tempo" ? dataTempo : dataKm;
