@@ -44,7 +44,7 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
 
   const [novo, setNovo] = useState({ nome: "", phone: "", papel: "vendedor" as PapelEquipe });
   // link pessoal do vendedor: abre só o cadastro da venda, sem login (a venda já sai no nome dele)
-  const [linkDlg, setLinkDlg] = useState<{ nome: string; phone: string; link: string } | null>(null);
+  const [linkDlg, setLinkDlg] = useState<{ nome: string; phone: string; link: string; papel?: string } | null>(null);
   const [grupo, setGrupo] = useState({ id: "", nome: "" });
   const [grupos, setGrupos] = useState<{ id: string; nome: string }[] | null>(null);
   const [sla, setSla] = useState("15");
@@ -71,7 +71,7 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
 
   const abrirLink = (id: string, trocar = false) =>
     acao.mutate({ action: "posvenda_membro_link", id, trocar, ...base }, {
-      onSuccess: (r: any) => { if (!r?.link) { toast({ title: "Não deu certo", description: r?.error || "", variant: "destructive" }); return; } setLinkDlg({ nome: r.nome, phone: r.phone, link: r.link }); if (trocar) toast({ title: "Link trocado", description: "O link anterior parou de funcionar." }); },
+      onSuccess: (r: any) => { if (!r?.link) { toast({ title: "Não deu certo", description: r?.error || "", variant: "destructive" }); return; } setLinkDlg({ nome: r.nome, phone: r.phone, link: r.link, papel: r.papel }); if (trocar) toast({ title: "Link trocado", description: "O link anterior parou de funcionar." }); },
       onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
     });
   const copiar = (t: string) => { navigator.clipboard?.writeText(t).then(() => toast({ title: "Link copiado ✅" })).catch(() => toast({ title: "Copie o link manualmente", variant: "destructive" })); };
@@ -154,7 +154,7 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
                     <div className="text-sm font-medium truncate">{m.nome} {!m.ativo && <span className="text-xs text-muted-foreground">(inativo)</span>}</div>
                     <div className="text-xs text-muted-foreground">{PAPEL[m.papel]} · {fmtTel(m.phone)}</div>
                   </div>
-                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => abrirLink(m.id)} disabled={acao.isPending}><Link2 className="w-3.5 h-3.5" /> Link de venda</Button>
+                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => abrirLink(m.id)} disabled={acao.isPending}><Link2 className="w-3.5 h-3.5" /> {m.papel === "vendedor" ? "Link de venda" : "Link pessoal"}</Button>
                   <Switch checked={m.ativo} onCheckedChange={(v) => rodar("posvenda_membro_save", { id: m.id, nome: m.nome, phone: m.phone, papel: m.papel, ativo: v }, v ? "Ativado" : "Desativado")} />
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (confirm(`Remover ${m.nome} da equipe?`)) rodar("posvenda_membro_del", { id: m.id }, "Removido"); }}><Trash2 className="w-4 h-4" /></Button>
                 </div>
@@ -245,13 +245,19 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
       <CasoDialog id={aberto} dealership={dealership} onClose={() => setAberto(null)} onEncerrar={(id) => rodar("posvenda_caso_encerrar", { id }, "Atendimento encerrado", () => setAberto(null))} />
       <Dialog open={!!linkDlg} onOpenChange={(o) => { if (!o) setLinkDlg(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Link de venda · {linkDlg?.nome}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{linkDlg?.papel === "gerente_manutencao" ? "Link da oficina" : linkDlg?.papel === "gerente_geral" ? "Link da gerência" : "Link de venda"} · {linkDlg?.nome}</DialogTitle></DialogHeader>
           {linkDlg && (
             <div className="space-y-3 text-sm">
-              <p className="text-muted-foreground">Abre no celular <b>só o cadastro da venda</b>, sem login. A venda já sai no nome de {linkDlg.nome.split(" ")[0]} como vendedor. É pessoal: não compartilhe com outra pessoa.</p>
+              <p className="text-muted-foreground">
+                {linkDlg.papel === "gerente_manutencao"
+                  ? <>Abre no celular <b>só a oficina</b>, sem login: preparação dos carros do estoque (troca de óleo e km) e a agenda de trocas de óleo dos clientes. O registro sai no nome de {linkDlg.nome.split(" ")[0]}.</>
+                  : linkDlg.papel === "gerente_geral"
+                  ? <>Abre no celular <b>o acompanhamento da loja</b>, sem login: placar do processo por vendedor, vendas, checklists de entrega, atendimentos e trocas de óleo.</>
+                  : <>Abre no celular <b>só o cadastro da venda</b>, sem login. A venda já sai no nome de {linkDlg.nome.split(" ")[0]} como vendedor.</>}
+                {" "}É pessoal: não compartilhe com outra pessoa.</p>
               <div className="flex gap-2"><Input readOnly value={linkDlg.link} className="text-xs" onFocus={(e) => e.target.select()} /><Button size="sm" variant="outline" onClick={() => copiar(linkDlg.link)}><Copy className="w-4 h-4" /></Button></div>
               <a className="block" target="_blank" rel="noreferrer"
-                href={`https://wa.me/${String(linkDlg.phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(`Oi ${linkDlg.nome.split(" ")[0]}! Esse é o seu link pra cadastrar as vendas no Co-pilot (é só seu, salva nos favoritos ou na tela inicial do celular): ${linkDlg.link}`)}`}>
+                href={`https://wa.me/${String(linkDlg.phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(`Oi ${linkDlg.nome.split(" ")[0]}! Esse é o seu link pessoal do Co-pilot ${linkDlg.papel === "gerente_manutencao" ? "pra registrar a preparação dos carros e as trocas de óleo" : linkDlg.papel === "gerente_geral" ? "pra acompanhar a loja (vendas, entregas, atendimentos)" : "pra cadastrar as vendas"} (é só seu, salva na tela inicial do celular): ${linkDlg.link}`)}`}>
                 <Button className="w-full gap-2"><MessageCircle className="w-4 h-4" /> Enviar pelo WhatsApp</Button>
               </a>
               <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => { const id = equipe.find((m) => m.nome === linkDlg.nome)?.id; if (id && confirm("Gerar um link novo? O atual para de funcionar.")) abrirLink(id, true); }}>Trocar o link (se ele vazou ou a pessoa saiu)</Button>

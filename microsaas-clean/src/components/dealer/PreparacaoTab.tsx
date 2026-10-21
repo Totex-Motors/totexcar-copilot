@@ -35,7 +35,7 @@ function KmControle({ k, dias }: { k?: TrocaOleoCliente["km_controle"]; dias?: n
 
 // Agenda da oficina: próximas trocas de óleo dos clientes que compraram na loja, com o km de hoje
 // estimado pelo ritmo de cada um (o Co-pilot cobra o cliente; a loja indica oficina parceira a quem precisar).
-function TrocasClientes({ dealership }: { dealership?: string }) {
+export function TrocasClientes({ dealership }: { dealership?: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useOficinaTrocas(true, dealership);
   const acao = usePosvendaAcao();
@@ -130,7 +130,7 @@ type Form = {
 };
 const vazio = (): Form => ({ car_desc: "", placa: "", data: hoje(), km: "", oleo: true, oleo_tipo: "", filtro_oleo: true, filtro_ar: false, filtro_combustivel: false, filtro_cabine: false, intervalo_km: "10000", obs: "" });
 
-export function PreparacaoTab({ dealership }: { dealership?: string }) {
+export function PreparacaoTab({ dealership, trocasNoFim }: { dealership?: string; trocasNoFim?: boolean }) {
   const qc = useQueryClient();
   const { data: estoque, isLoading: loadingEstoque } = useEstoqueLista(true, dealership);
   const { data: preps, isLoading: loadingPreps } = usePreparacoes(true, dealership);
@@ -177,7 +177,7 @@ export function PreparacaoTab({ dealership }: { dealership?: string }) {
         </CardContent>
       </Card>
 
-      <TrocasClientes dealership={dealership} />
+      {!trocasNoFim && <TrocasClientes dealership={dealership} />}
 
       <div className="grid grid-cols-3 gap-3">
         <Card className="border-0 shadow-premium-md"><CardContent className="p-4"><div className="text-xs text-muted-foreground">No estoque</div><div className="text-2xl font-bold">{carros.length}</div></CardContent></Card>
@@ -188,7 +188,7 @@ export function PreparacaoTab({ dealership }: { dealership?: string }) {
       <Card className="border-0 shadow-premium-md">
         <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-base">Carros do estoque</CardTitle>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             <Button size="sm" variant={filtro === "pendentes" ? "default" : "outline"} className="h-8" onClick={() => setFiltro("pendentes")}>Sem registro</Button>
             <Button size="sm" variant={filtro === "todos" ? "default" : "outline"} className="h-8" onClick={() => setFiltro("todos")}>Todos</Button>
             <Button size="sm" variant="outline" className="h-8 gap-1" onClick={() => setForm(vazio())}><Plus className="w-3.5 h-3.5" /> Carro fora do estoque</Button>
@@ -239,6 +239,8 @@ export function PreparacaoTab({ dealership }: { dealership?: string }) {
           )}
         </CardContent>
       </Card>
+
+      {trocasNoFim && <TrocasClientes dealership={dealership} />}
 
       <Dialog open={!!form} onOpenChange={(o) => { if (!o) setForm(null); }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">

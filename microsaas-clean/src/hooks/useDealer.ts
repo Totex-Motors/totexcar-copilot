@@ -44,9 +44,13 @@ export interface ClientJourney {
   recent_expenses: { description: string | null; amount: number; type: string; date: string; odometer: number | null; category: string | null }[];
 }
 
+// Telas do LINK PESSOAL da equipe (/oficina, /gerencia): sem login, toda chamada leva o token do link.
+let linkToken: string | null = null;
+export const setLinkToken = (t: string | null) => { linkToken = t; };
+
 async function callDealer(action: string, payload: Record<string, unknown> = {}) {
   const { data, error } = await supabase.functions.invoke("dealer-api", {
-    body: { action, ...payload },
+    body: { action, ...payload, ...(linkToken ? { t: linkToken } : {}) },
   });
   if (error) throw error;
   if (data?.error) throw new Error(data.error);

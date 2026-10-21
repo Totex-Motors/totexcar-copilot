@@ -493,6 +493,12 @@ async function vendaRapida(p: any): Promise<Response> {
   return json({ error: "acao_invalida" }, 400);
 }
 
+// O que cada função alcança pelo link pessoal (o vendedor usa só venda_*, tratado em vendaRapida)
+const ACOES_DO_LINK: Record<string, string[]> = {
+  gerente_manutencao: ["link_me", "estoque_lista", "preparacao_lista", "preparacao_save", "preparacao_del", "oficina_trocas", "oficina_troca_registrar"],
+  gerente_geral: ["link_me", "gerencia_vendas", "entregas_lista", "posvenda_casos", "posvenda_caso", "posvenda_stats", "posvenda_oportunidades", "oficina_trocas", "estoque_lista", "preparacao_lista"],
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
@@ -502,32 +508,90 @@ Deno.serve(async (req) => {
     if (typeof pv?.action === "string" && pv.action.startsWith("venda_")) return await vendaRapida(pv);
   } catch { /* corpo vazio ou não-JSON: segue o fluxo normal */ }
 
-  // identifica o chamador pelo JWT
-  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!token) return json({ error: "missing_token" }, 401);
-  const { data: ud, error: uErr } = await admin.auth.getUser(token);
-  if (uErr || !ud?.user) return json({ error: "invalid_token" }, 401);
-
-  const { data: me } = await admin.from("users")
-    .select("id, name, email, role, dealership").eq("id", ud.user.id).single();
-  if (!me) return json({ error: "no_profile" }, 403);
-
-  const isAdmin = me.role === "admin";
-  const isDealer = me.role === "dealer";
-  if (!isAdmin && !isDealer) return json({ error: "forbidden" }, 403);
-
   let p: any = {};
-  try { p = await req.json(); } catch { /* */ }
+  try { p = await req.clone().json(); } catch { /* */ }
   const action = p.action as string;
 
-  // Loja efetiva: o lojista é SEMPRE preso à própria loja; o admin pode escolher (ou ver tudo).
-  const scopeDealership = isAdmin ? (p.dealership ? String(p.dealership) : null) : (me.dealership || "__none__");
-  // Para AÇÕES DE ESCRITA (criar/config/transferência) o admin sem loja escolhida cai na PRÓPRIA loja
-  // (evita "sem_loja" quando o dono-admin opera o painel da própria loja sem ?dealership=). Leitura não muda.
-  const writeStore = (scopeDealership && scopeDealership !== "__none__") ? scopeDealership : (isAdmin ? (me.dealership || null) : null);
+  let me: any = null, isAdmin = false, isDealer = false;
+  let scopeDealership: string | null = null, writeStore: string | null = null;
+
+  if (typeof p?.t === "string" && p.t.length >= 20) {
+    // LINK PESSOAL da equipe (sem login): o token identifica a pessoa e a loja, e cada função só
+    // alcança as ações dela (gerente de manutenção: oficina; gerente geral: acompanhamento).
+    const { data: membro } = await admin.from("posvenda_equipe").select("id, nome, dealership, papel, ativo").eq("link_token", p.t).maybeSingle();
+    if (!membro || membro.ativo === false) return json({ error: "link_invalido" }, 403);
+    if (!(ACOES_DO_LINK[membro.papel] || []).includes(action)) return json({ error: "acao_nao_permitida" }, 403);
+    const { data: dono } = await admin.from("users").select("id").eq("dealership", membro.dealership).in("role", ["dealer", "admin"]).limit(1);
+    me = { id: dono?.[0]?.id || null, name: membro.nome, email: null, role: "dealer", dealership: membro.dealership, membro };
+    isDealer = true;
+    scopeDealership = writeStore = membro.dealership;
+  } else {
+    // identifica o chamador pelo JWT
+    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!token) return json({ error: "missing_token" }, 401);
+    const { data: ud, error: uErr } = await admin.auth.getUser(token);
+    if (uErr || !ud?.user) return json({ error: "invalid_token" }, 401);
+
+    ({ data: me } = await admin.from("users")
+      .select("id, name, email, role, dealership").eq("id", ud.user.id).single());
+    if (!me) return json({ error: "no_profile" }, 403);
+
+    isAdmin = me.role === "admin";
+    isDealer = me.role === "dealer";
+    if (!isAdmin && !isDealer) return json({ error: "forbidden" }, 403);
+
+    // Loja efetiva: o lojista é SEMPRE preso à própria loja; o admin pode escolher (ou ver tudo).
+    scopeDealership = isAdmin ? (p.dealership ? String(p.dealership) : null) : (me.dealership || "__none__");
+    // Para AÇÕES DE ESCRITA (criar/config/transferência) o admin sem loja escolhida cai na PRÓPRIA loja
+    // (evita "sem_loja" quando o dono-admin opera o painel da própria loja sem ?dealership=). Leitura não muda.
+    writeStore = (scopeDealership && scopeDealership !== "__none__") ? scopeDealership : (isAdmin ? (me.dealership || null) : null);
+  }
 
   try {
     switch (action) {
+      // quem é o dono do link pessoal (nome, função, loja)
+      case "link_me": {
+        if (!me?.membro) return json({ error: "so_pelo_link" }, 400);
+        return json({ ok: true, nome: me.membro.nome, papel: me.membro.papel, loja: me.membro.dealership });
+      }
+
+      // GERÊNCIA (link do gerente geral): vendas dos últimos dias com o que cada uma cumpriu do processo
+      case "gerencia_vendas": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const dias = Math.min(90, Math.max(7, Number(p.dias) || 30));
+        const desde = new Date(Date.now() - dias * 86400000).toISOString();
+        const { data: js } = await admin.from("postsale_journeys").select("id, customer_name, car_desc, purchase_date, created_at, vendedor_id, preparacao_id, nps_score, review_link_sent")
+          .eq("dealership", writeStore).gte("created_at", desde).order("created_at", { ascending: false }).limit(200);
+        const ids = (js || []).map((j: any) => j.id);
+        const vids = [...new Set((js || []).map((j: any) => j.vendedor_id).filter(Boolean))];
+        const [{ data: tags }, { data: cks }, { data: eq }] = await Promise.all([
+          ids.length ? admin.from("car_tags").select("journey_id, label, activated_at").in("journey_id", ids) : Promise.resolve({ data: [] as any[] }),
+          ids.length ? admin.from("entrega_checklists").select("journey_id, status, km, confirmado_em").in("journey_id", ids) : Promise.resolve({ data: [] as any[] }),
+          vids.length ? admin.from("posvenda_equipe").select("id, nome").in("id", vids) : Promise.resolve({ data: [] as any[] }),
+        ]);
+        const tagDe: Record<string, any> = Object.fromEntries((tags || []).map((x: any) => [x.journey_id, x]));
+        const ckDe: Record<string, any> = Object.fromEntries((cks || []).map((x: any) => [x.journey_id, x]));
+        const nome: Record<string, string> = Object.fromEntries((eq || []).map((e: any) => [e.id, e.nome]));
+        const vendas = (js || []).map((j: any) => {
+          const t = tagDe[j.id], c = ckDe[j.id];
+          const etapas = { vendedor: !!j.vendedor_id, revisado: !!j.preparacao_id, etiqueta: !!t, ativou: !!t?.activated_at, checklist: c?.status === "ok", google: !!j.review_link_sent };
+          const feitas = Object.values(etapas).filter(Boolean).length;
+          return {
+            id: j.id, cliente: String(j.customer_name || "Cliente").split(" ")[0], carro: j.car_desc, data: j.purchase_date || String(j.created_at).slice(0, 10),
+            vendedor: j.vendedor_id ? nome[j.vendedor_id] || null : null, etiqueta: t?.label || null, checklist: c?.status || null, km_entrega: c?.km || null,
+            nota: j.nps_score ?? null, etapas, pct: Math.round((feitas / 6) * 100),
+          };
+        });
+        // placar por vendedor: % médio do processo cumprido nas vendas dele
+        const porVend: Record<string, { nome: string; vendas: number; soma: number }> = {};
+        for (const v of vendas) {
+          const k = v.vendedor || "Sem vendedor";
+          (porVend[k] ||= { nome: k, vendas: 0, soma: 0 }); porVend[k].vendas++; porVend[k].soma += v.pct;
+        }
+        const placar = Object.values(porVend).map((x) => ({ nome: x.nome, vendas: x.vendas, pct: Math.round(x.soma / x.vendas) })).sort((a, b) => b.pct - a.pct);
+        return json({ ok: true, dias, vendas, placar });
+      }
+
       case "me":
         return json({ ok: true, dealer: { id: me.id, name: me.name, email: me.email, role: me.role, dealership: me.dealership } });
 
@@ -1429,7 +1493,7 @@ Deno.serve(async (req) => {
 
       case "posvenda_membro_link": {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
-        const { data: m } = await admin.from("posvenda_equipe").select("id, nome, phone, link_token").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
+        const { data: m } = await admin.from("posvenda_equipe").select("id, nome, phone, papel, link_token").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
         if (!m) return json({ error: "membro_nao_encontrado" }, 404);
         let tk = m.link_token as string | null;
         if (!tk || p.trocar) {
@@ -1440,7 +1504,9 @@ Deno.serve(async (req) => {
         }
         const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
         const appUrl = (st?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
-        return json({ ok: true, link: `${appUrl}/venda/${tk}`, nome: m.nome, phone: m.phone });
+        // a tela do link depende da função: vendedor → cadastro da venda; manutenção → oficina; gerente geral → gerência
+        const rota = m.papel === "gerente_manutencao" ? "oficina" : m.papel === "gerente_geral" ? "gerencia" : "venda";
+        return json({ ok: true, link: `${appUrl}/${rota}/${tk}`, nome: m.nome, phone: m.phone, papel: m.papel });
       }
 
       case "posvenda_membro_del": {
