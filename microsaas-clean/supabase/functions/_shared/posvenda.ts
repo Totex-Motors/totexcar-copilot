@@ -24,6 +24,18 @@ export function variantesTel(s: unknown): string[] {
 }
 const chaveTel = (s: unknown) => { const v = variantesTel(s); const d = v[0] || ""; return d.length >= 12 ? `${d.slice(2, 4)}${d.slice(-8)}` : d; };
 
+// CONVERSA FECHADA: uma pergunta do Co-pilot (nota, pesquisa…) só vale como resposta na PRÓXIMA mensagem
+// do cliente. Se ele já mandou outra coisa depois da pergunta, o assunto mudou e a pergunta está encerrada
+// (foi assim que "Sandero 1.6", semanas depois, virou nota 1). Conta só mensagens recebidas já tratadas.
+export async function clienteFalouDepois(sb: any, phone: string, desdeIso: string | null | undefined): Promise<boolean> {
+  if (!desdeIso) return false;
+  try {
+    const { data } = await sb.from("whatsapp_events").select("id").in("from_phone", variantesTel(phone))
+      .not("wa_message_id", "is", null).eq("status", "processed").gt("created_at", desdeIso).limit(1);
+    return !!data?.length;
+  } catch { return false; }
+}
+
 export const PAPEL: Record<string, string> = { vendedor: "vendedor", gerente_manutencao: "gerente de manutenção", gerente_geral: "gerente geral" };
 export const MOTIVO: Record<string, string> = {
   garantia_defeito: "Garantia / defeito", documentacao: "Documentação / transferência", revisao: "Revisão / manutenção",
@@ -228,6 +240,7 @@ async function esperaTick(sb: any, cfgs: Map<string, any>): Promise<number> {
     if (!cfgs.has(c.dealership)) cfgs.set(c.dealership, await configDaLoja(sb, c.dealership));
     const cfg = cfgs.get(c.dealership);
     if (!cfg?.ativo) continue;
+    if (await casoParado(sb, c)) { await encerrarPorInatividade(sb, c); continue; }
     const ini = inicioDoExpediente(cfg.horario);
     if (!ini) continue;
     const { data: ms } = await sb.from("posvenda_mensagens").select("de, texto, created_at").eq("caso_id", c.id).order("created_at", { ascending: false }).limit(15);
@@ -366,6 +379,11 @@ export async function pontePosvenda(sb: any, m: MsgIn, opts?: { transcrever?: Tr
       .order("assumido_at", { ascending: false }).limit(1);
     const caso = ativos?.[0];
     if (!caso) return false;                                    // sem caso ativo: segue como usuário normal
+    if (await casoParado(sb, caso) && !/^#?(fim|encerrar)$/i.test(texto)) {
+      // esqueceu o caso aberto: fecha em vez de repassar pro cliente o que ele escreveu hoje pro Co-pilot
+      await encerrarPorInatividade(sb, caso);
+      return false;
+    }
     if (/^#?(fim|encerrar)$/i.test(texto)) { await encerrar(sb, caso, membro.nome); return true; }
     if (/^#sair$/i.test(texto)) { await devolver(sb, caso, membro); return true; }
     if (!(await janelaAberta(sb, caso.customer_phone))) {
@@ -384,6 +402,11 @@ export async function pontePosvenda(sb: any, m: MsgIn, opts?: { transcrever?: Tr
     .in("status", ["aberto", "em_atendimento", "encerrado"]).order("created_at", { ascending: false }).limit(1);
   const c = casos?.[0];
   if (!c) return false;
+  if (c.status === "em_atendimento" && await casoParado(sb, c)) {
+    // atendimento esquecido aberto: fecha e o cliente volta a falar com o Co-pilot (não cai num vendedor de dias atrás)
+    await encerrarPorInatividade(sb, c);
+    return false;
+  }
   if (c.status === "em_atendimento" && c.agente_id) {
     const { data: ag } = await sb.from("posvenda_equipe").select("*").eq("id", c.agente_id).maybeSingle();
     const md = await prepararMidia(sb, m, c.id, opts?.transcrever);
@@ -404,6 +427,7 @@ export async function pontePosvenda(sb: any, m: MsgIn, opts?: { transcrever?: Tr
   if (c.status === "encerrado" && c.nota == null && c.nota_pedida_at && Date.now() - new Date(c.nota_pedida_at).getTime() < 48 * 3600_000) {
     const n = texto.match(/^\s*([1-5])\s*(?:estrelas?|⭐+)?\s*$/i);
     if (!n) return false;
+    if (await clienteFalouDepois(sb, phone, c.nota_pedida_at)) return false; // já mudou de assunto: pergunta encerrada
     const nota = Number(n[1]);
     await sb.from("posvenda_casos").update({ nota, nota_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", c.id);
     await logMsg(sb, c.id, "cliente", c.customer_name, `Nota ${nota}`);
@@ -468,6 +492,32 @@ async function encerrar(sb: any, c: any, quem: string) {
     await waSendText(wa, c.customer_phone, `✅ Seu atendimento com ${nomeCurto(quem)} foi encerrado.\n\nFicou resolvido? Me responda com uma nota de *1 a 5* (5 = excelente). Qualquer coisa do carro, é só chamar aqui. 🚗`);
   }
   await avisarGrupo(sb, c.dealership, `🏁 *#${c.numero}* encerrado por *${quem}*.`);
+}
+
+// Atendimento parado: 48h sem nenhuma mensagem e a última palavra foi da equipe (ninguém fechou com "fim").
+// Se a última for do CLIENTE, ele está esperando resposta: o caso continua aberto e os lembretes seguem.
+const PARADO_MS = 48 * 3600_000;
+async function casoParado(sb: any, c: any): Promise<boolean> {
+  const { data: ms } = await sb.from("posvenda_mensagens").select("de, created_at").eq("caso_id", c.id)
+    .neq("de", "sistema").order("created_at", { ascending: false }).limit(1);
+  if (ms?.[0]?.de === "cliente") return false;
+  const ult = Math.max(new Date(ms?.[0]?.created_at || 0).getTime(), new Date(c.assumido_at || c.created_at).getTime());
+  return Date.now() - ult > PARADO_MS;
+}
+
+// Fechamento automático: sem pedir nota (o cliente não encerrou nada) e avisando quem estava com o caso.
+async function encerrarPorInatividade(sb: any, c: any) {
+  const wa = await loadWaSettings(sb);
+  const agora = new Date().toISOString();
+  const { data: upd } = await sb.from("posvenda_casos").update({ status: "encerrado", encerrado_at: agora, encerrado_por: "Co-pilot (parado há 48h)", updated_at: agora })
+    .eq("id", c.id).eq("status", "em_atendimento").select("id");
+  if (!upd?.length) return; // outro processo já fechou
+  await logMsg(sb, c.id, "sistema", null, "Encerrado automaticamente: 48h sem nenhuma mensagem.");
+  const agenteTel = (await sb.from("posvenda_equipe").select("phone").eq("id", c.agente_id).maybeSingle()).data?.phone;
+  if (agenteTel && await janelaAberta(sb, agenteTel)) {
+    await waSendText(wa, agenteTel, `🏁 O atendimento #${c.numero} (${nomeCurto(c.customer_name)}) estava parado há 48h e foi encerrado. Suas mensagens voltam a ser só com o Co-pilot. Se ainda tiver algo pendente com o cliente, ligue para ele.`);
+  }
+  await avisarGrupo(sb, c.dealership, `🏁 *#${c.numero}* encerrado automaticamente: 48h sem conversa.`);
 }
 
 async function devolver(sb: any, c: any, membro: any) {
