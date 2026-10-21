@@ -32,7 +32,7 @@ import { salvarFotoCarro } from "../_shared/car-photo.ts";
 import { aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
 import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_TROCA_OLEO } from "../_shared/oleo.ts";
 import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
-import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
+import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -808,6 +808,8 @@ async function handlePostsaleNps(phone: string, text: string): Promise<boolean> 
   // ("Sandero 1.6 16v") não é resposta de pesquisa
   const m = String(text || "").trim().match(/^(?:nota\s*:?\s*)?(10|[0-9])\s*[!.]*$/i);
   if (!m) return false; // tem NPS pendente mas não veio só a nota — deixa o fluxo normal seguir
+  // a pesquisa só vale na PRÓXIMA mensagem: se ele já falou de outra coisa depois, a pergunta foi encerrada
+  if (await clienteFalouDepois(supabase, phone, j.nps_asked_at)) return false;
   await applyNpsScore(j, phone, Number(m[1]));
   return true;
 }
@@ -3987,7 +3989,7 @@ async function handleStandVerMais(phone: string, text: string): Promise<boolean>
   if (novaBusca && !verMais) {
     // arma o PRÓXIMO texto como busca (modelo/tipo/preço) — assim "Mustang" vira busca direta, não agente
     await supabase.from("whatsapp_events")
-      .update({ parsed: { ...parsed, vitrine: { ...(parsed.vitrine || {}), awaiting: true, offset: 0 } } }).eq("id", ev.id);
+      .update({ parsed: { ...parsed, vitrine: { ...(parsed.vitrine || {}), awaiting: true, awaiting_em: new Date().toISOString(), offset: 0 } } }).eq("id", ev.id);
     await sendText(phone, 'Fechou! Me diz o *tipo*, o *modelo* ou a *faixa de preço* — ex.: "SUV até 80 mil", "Mustang", "picape". 🚗');
     return true;
   }
@@ -4008,6 +4010,14 @@ async function handleStandSearch(phone: string, text: string): Promise<boolean> 
   const ev = (data || []).find((e) => (e.parsed as any)?.vitrine?.awaiting);
   if (!ev) return false; // ninguém esperando critério → deixa o fluxo normal (agente/followup)
   const parsed = (ev.parsed as any) || {};
+  // "Nova busca" só arma a PRÓXIMA mensagem, por até 2h. Depois disso (ou se ele já mandou outra coisa)
+  // a pergunta está encerrada: desarma e deixa o fluxo normal — "Sandero 1.6" dias depois não vira busca.
+  const armadoEm = String(parsed.vitrine?.awaiting_em || "");
+  if (!armadoEm || Date.now() - Date.parse(armadoEm) > 2 * 3600_000 || await clienteFalouDepois(supabase, digits, armadoEm)) {
+    await supabase.from("whatsapp_events")
+      .update({ parsed: { ...parsed, vitrine: { ...(parsed.vitrine || {}), awaiting: false } } }).eq("id", ev.id);
+    return false;
+  }
   const loja = String(parsed?.loja || "geral").toLowerCase();
   // consome o one-shot antes de buscar (evita loop se a busca falhar)
   await supabase.from("whatsapp_events")
@@ -4458,12 +4468,14 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     const despesas = (cats || []).filter((c: any) => c.type === "expense").map((c: any) => c.name);
     const receitas = (cats || []).filter((c: any) => c.type === "income").map((c: any) => c.name);
 
-    // memória curta: últimas trocas desta conversa (p/ correções tipo "o valor exato é 101")
+    // memória curta: últimas trocas DESTA conversa (p/ correções tipo "o valor exato é 101"). Só as das
+    // últimas 3h: depois disso a conversa está encerrada e o assunto de dias atrás não pode puxar a resposta.
     let historico = "";
     try {
       const { data: hist } = await supabase.from("whatsapp_events")
         .select("kind, raw, parsed, created_at")
         .eq("user_id", user.id).eq("status", "processed")
+        .gte("created_at", new Date(Date.now() - 3 * 3600_000).toISOString())
         .order("created_at", { ascending: false }).limit(4);
       historico = (hist || []).reverse().map((h: any) => {
         // parsed.input inclui a TRANSCRIÇÃO de áudios (senão o valor dito por voz some da memória)
