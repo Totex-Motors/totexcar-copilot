@@ -29,6 +29,7 @@ import { PostSaleTab } from "@/components/dealer/PostSaleTab";
 import { EtiquetasTab } from "@/components/dealer/EtiquetasTab";
 import { AtendimentoTab } from "@/components/dealer/AtendimentoTab";
 import { PreparacaoTab } from "@/components/dealer/PreparacaoTab";
+import { OrdensServico } from "@/components/oficina/OrdensServico";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
 import { useSearchParams } from "react-router-dom";
 import { useCurrentUser, useAuth } from "@/hooks/useAuth";
@@ -318,7 +319,7 @@ export default function Dealer() {
           </TabsContent>
 
           <TabsContent value="preparacao" className="mt-6">
-            <PreparacaoTab dealership={viewStore} />
+            <div className="space-y-6"><OrdensServico dealership={viewStore} modo="dono" /><PreparacaoTab dealership={viewStore} /></div>
           </TabsContent>
 
           <TabsContent value="stand" className="mt-6">

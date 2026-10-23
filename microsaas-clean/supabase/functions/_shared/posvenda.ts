@@ -92,7 +92,7 @@ export async function membroPorTelefone(sb: any, phone: string): Promise<any | n
 const nomeCurto = (n?: string | null) => String(n || "").trim().split(/\s+/)[0] || "Cliente";
 
 // janela de 24h da Meta: a pessoa escreveu pro Co-pilot nas últimas ~23h?
-async function janelaAberta(sb: any, phone: string): Promise<boolean> {
+export async function janelaAberta(sb: any, phone: string): Promise<boolean> {
   const vs = variantesTel(phone);
   if (!vs.length) return false;
   const { data } = await sb.from("whatsapp_events").select("created_at").in("from_phone", vs)

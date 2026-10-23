@@ -429,6 +429,22 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
     example: ["seu Onix está sem atualização de quilometragem há 12 dias e a troca de óleo está chegando."],
     render: (p) => `⚠️ *Registro de km pendente*\n\n${p[0]}\n\nRegistrar o km faz parte do *controle de manutenção* do seu carro. Mande a *foto do painel* (ou digite o km) aqui mesmo.`,
   },
+  // ORDEM DE SERVIÇO pra oficina parceira (fora da janela de 24h): {{1}} nº da OS · {{2}} loja · {{3}} carro ·
+  // {{4}} serviço pedido · {{5}} link da oficina. Dentro da janela vai como texto livre (oficina.ts).
+  copilot_os_oficina: {
+    category: "UTILITY",
+    body: "🔧 Ordem de serviço {{1}} da {{2}}: o {{3}} está indo para a sua oficina. Serviço pedido: {{4}}. Pelo link da oficina você confirma a chegada e registra o serviço: {{5}} Obrigado pela parceria!",
+    example: ["#12", "Cardoso Veículos", "Onix 2022 prata", "troca de óleo e filtro", "https://copilot.totexmotors.com/parceiro/abc123"],
+    render: (p) => `🔧 *Ordem de serviço ${p[0]}* · ${p[1]}
+
+O *${p[2]}* está indo para a sua oficina.
+Serviço pedido: ${p[3]}
+
+Pelo link da oficina você confirma a chegada e registra o serviço:
+${p[4]}
+
+Obrigado pela parceria!`,
+  },
   // ===================== MARKETING (opt-in) =====================
   // "Valor Vivo": aviso mensal, SÓ pra quem pediu, quando o valor FIPE do carro mudou.
   // {{1}} saudação/nome · {{2}} carro · {{3}} valor novo · {{4}} tendência (subiu/caiu/estável)
@@ -562,6 +578,29 @@ export const WA_TEMPLATES: Record<string, WaTemplate> = {
     render: (p) => `Olá ${p[0]}! Mensagem da ${p[1]}:\n\n${p[2]}`,
   },
 };
+
+// Garante que um template SÓ TEXTO do registry exista na WABA (cria se faltar; mesma ideia do de imagem abaixo).
+export async function garantirTemplateTexto(s: WaSettings, name: string): Promise<string> {
+  const tpl = WA_TEMPLATES[name];
+  const token = s.meta_wa_token || "", waba = s.meta_waba_id || "";
+  if (!tpl || tpl.headerImage || waProvider(s) !== "meta" || !token || !waba) return "sem_meta";
+  try {
+    const auth = { Authorization: `Bearer ${token}` };
+    const lr = await fetch(`${GRAPH}/${waba}/message_templates?name=${encodeURIComponent(name)}&fields=name,status&limit=5`, { headers: auth });
+    const lj = await lr.json().catch(() => ({}));
+    const atual = (lj?.data || []).find((t: any) => t.name === name);
+    if (atual) return String(atual.status || "existe");
+    const components: any[] = [{ type: "BODY", text: tpl.body, ...(tpl.example ? { example: { body_text: [tpl.example] } } : {}) }];
+    if (tpl.buttons?.length) components.push({ type: "BUTTONS", buttons: tpl.buttons.map((t) => ({ type: "QUICK_REPLY", text: t })) });
+    const cr = await fetch(`${GRAPH}/${waba}/message_templates`, {
+      method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, language: "pt_BR", category: tpl.category, components }),
+    });
+    const cj = await cr.json().catch(() => ({}));
+    if (!cr.ok) { console.error("garantirTemplateTexto:", JSON.stringify(cj?.error || cj).slice(0, 300)); return "erro_criar"; }
+    return `criado_${cj.status || "PENDING"}`;
+  } catch (e) { console.error("garantirTemplateTexto:", e); return "erro"; }
+}
 
 // Garante que um template com HEADER IMAGE do registry exista na WABA (cria se faltar). Barato: 1 GET por
 // chamada; só cria quando não existe. Devolve o status atual (APPROVED/PENDING/REJECTED/criado/erro).

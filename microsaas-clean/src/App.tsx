@@ -39,6 +39,7 @@ import Etiqueta from "./pages/Etiqueta";
 import VendaRapida from "./pages/VendaRapida";
 import OficinaLink from "./pages/OficinaLink";
 import GerenciaLink from "./pages/GerenciaLink";
+import ParceiroLink from "./pages/ParceiroLink";
 import NotFound from "./pages/NotFound";
 import { PendingCouponApplier } from "./components/PendingCouponApplier";
 import { InstallPrompt } from "./components/InstallPrompt";
@@ -109,6 +110,7 @@ const App = () => (
           <Route path="/venda/:token" element={<VendaRapida />} />
           <Route path="/oficina/:token" element={<OficinaLink />} />
           <Route path="/gerencia/:token" element={<GerenciaLink />} />
+          <Route path="/parceiro/:token" element={<ParceiroLink />} />
 
           {/* Site público (marketing) — fundo escuro + navbar + footer */}
           <Route element={<MarketingLayout />}>
