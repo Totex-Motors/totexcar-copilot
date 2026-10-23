@@ -10,6 +10,7 @@ import { preparacaoDoCarro, aplicarPreparacaoDaJornada, textoPreparacao } from "
 import { estadoOleo, registrarTrocaOleo } from "../_shared/oleo.ts";
 import { controleKm } from "../_shared/km.ts";
 import { listarChecklists, ITENS_ENTREGA } from "../_shared/entrega.ts";
+import { SERVICOS, novoToken, linkDaOficina, salvarFoto, comFotos, validarServico, prepararDaOS, avisarNovaOS, avisarChegada, avisarConclusao, avisarExtra, avisarDecisaoExtra } from "../_shared/oficina.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -493,10 +494,80 @@ async function vendaRapida(p: any): Promise<Response> {
   return json({ error: "acao_invalida" }, 400);
 }
 
+// LINK DA OFICINA PARCEIRA (/parceiro/<token>): sem login, a oficina vê só as ordens de serviço DELA,
+// confirma a chegada do carro, registra o serviço (campos obrigatórios) e pede aprovação de extraordinário.
+async function oficinaParceira(p: any): Promise<Response> {
+  const t = String(p.t || "");
+  if (t.length < 20) return json({ error: "link_invalido" }, 403);
+  const { data: of } = await admin.from("oficinas_parceiras").select("*").eq("link_token", t).maybeSingle();
+  if (!of || of.ativo === false) return json({ error: "link_invalido" }, 403);
+  if (p.action === "parceiro_info") {
+    const { data: rows } = await admin.from("ordens_servico").select("*").eq("oficina_id", of.id).neq("status", "cancelada")
+      .order("enviada_em", { ascending: false }).limit(60);
+    return json({ ok: true, oficina: { nome: of.nome, responsavel: of.responsavel, loja: of.dealership }, servicos: SERVICOS, ordens: await comFotos(admin, rows || []) });
+  }
+  const { data: os } = await admin.from("ordens_servico").select("*").eq("id", String(p.id || "")).eq("oficina_id", of.id).maybeSingle();
+  if (!os) return json({ error: "os_nao_encontrada" }, 404);
+  const agora = new Date().toISOString();
+
+  if (p.action === "parceiro_receber") {
+    if (os.status !== "enviada") return json({ error: "os_ja_recebida" }, 400);
+    const km = Math.round(Number(p.km_chegada) || 0);
+    if (!(km > 0) || km > 2_000_000) return json({ error: "informe_o_km" }, 400);
+    if (os.km_saida != null && km < os.km_saida) return json({ error: "km_menor_que_na_saida" }, 400);
+    const foto = await salvarFoto(admin, os.id, "chegada", p.foto_chegada);
+    if (!foto) return json({ error: "foto_do_painel_obrigatoria" }, 400);
+    const { data: upd } = await admin.from("ordens_servico").update({ status: "recebida", recebida_em: agora, km_chegada: km, foto_chegada: foto, updated_at: agora })
+      .eq("id", os.id).eq("status", "enviada").select("*").single();
+    if (upd) await avisarChegada(admin, upd, of);
+    return json({ ok: true });
+  }
+
+  if (p.action === "parceiro_concluir") {
+    if (os.status !== "recebida") return json({ error: os.status === "enviada" ? "confirme_a_chegada_antes" : "os_ja_concluida" }, 400);
+    const v = validarServico(os, p);
+    if ("erro" in v) return json({ error: v.erro }, 400);
+    const painel = await salvarFoto(admin, os.id, "painel", p.foto_painel);
+    if (!painel) return json({ error: "foto_do_painel_obrigatoria" }, 400);
+    const oleo = (os.servicos || []).includes("troca_oleo");
+    const etiqueta = oleo ? await salvarFoto(admin, os.id, "etiqueta", p.foto_etiqueta) : null;
+    if (oleo && !etiqueta) return json({ error: "foto_da_etiqueta_obrigatoria" }, 400);
+    const nota = p.foto_nota ? await salvarFoto(admin, os.id, "nota", p.foto_nota) : null;
+    const { data: upd, error } = await admin.from("ordens_servico").update({
+      ...v.campos, status: "concluida", concluida_em: agora, foto_painel: painel, foto_etiqueta: etiqueta, foto_nota: nota, updated_at: agora,
+    }).eq("id", os.id).eq("status", "recebida").select("*").single();
+    if (error || !upd) return json({ error: "os_ja_concluida" }, 400);
+    // troca de óleo → preparação do carro (ponto zero do Co-pilot do cliente na venda)
+    const prep = await prepararDaOS(admin, upd, of.nome).catch(() => null);
+    if (prep) await admin.from("ordens_servico").update({ preparacao_id: prep }).eq("id", os.id);
+    await avisarConclusao(admin, upd, of);
+    return json({ ok: true, preparacao: !!prep });
+  }
+
+  if (p.action === "parceiro_extra") {
+    if (!["recebida", "concluida"].includes(os.status)) return json({ error: "confirme_a_chegada_antes" }, 400);
+    if (os.extra_status === "pendente") return json({ error: "ja_tem_extra_aguardando" }, 400);
+    const desc = String(p.extra_descricao || "").trim().slice(0, 600);
+    if (desc.length < 5) return json({ error: "descreva_o_que_encontrou" }, 400);
+    const foto = await salvarFoto(admin, os.id, "extra", p.extra_foto);
+    if (!foto) return json({ error: "foto_obrigatoria" }, 400);
+    const valor = Number(String(p.extra_valor ?? "").replace(",", "."));
+    const { data: upd } = await admin.from("ordens_servico").update({
+      extra_descricao: desc, extra_foto: foto, extra_valor: valor > 0 ? Math.round(valor * 100) / 100 : null,
+      extra_status: "pendente", extra_pedido_em: agora, extra_decidido_em: null, extra_decidido_por: null, updated_at: agora,
+    }).eq("id", os.id).select("*").single();
+    if (upd) await avisarExtra(admin, upd, of);
+    return json({ ok: true });
+  }
+  return json({ error: "acao_invalida" }, 400);
+}
+
 // O que cada função alcança pelo link pessoal (o vendedor usa só venda_*, tratado em vendaRapida)
 const ACOES_DO_LINK: Record<string, string[]> = {
-  gerente_manutencao: ["link_me", "estoque_lista", "preparacao_lista", "preparacao_save", "preparacao_del", "oficina_trocas", "oficina_troca_registrar"],
-  gerente_geral: ["link_me", "gerencia_vendas", "entregas_lista", "posvenda_casos", "posvenda_caso", "posvenda_stats", "posvenda_oportunidades", "oficina_trocas", "estoque_lista", "preparacao_lista"],
+  gerente_manutencao: ["link_me", "estoque_lista", "preparacao_lista", "preparacao_save", "preparacao_del", "oficina_trocas", "oficina_troca_registrar",
+    "oficinas_lista", "os_lista", "os_criar", "os_devolver", "os_extra_decidir", "os_cancelar"],
+  gerente_geral: ["link_me", "gerencia_vendas", "entregas_lista", "posvenda_casos", "posvenda_caso", "posvenda_stats", "posvenda_oportunidades", "oficina_trocas", "estoque_lista", "preparacao_lista",
+    "oficinas_lista", "os_lista"],
 };
 
 Deno.serve(async (req) => {
@@ -506,6 +577,7 @@ Deno.serve(async (req) => {
   try {
     const pv = await req.clone().json();
     if (typeof pv?.action === "string" && pv.action.startsWith("venda_")) return await vendaRapida(pv);
+    if (typeof pv?.action === "string" && pv.action.startsWith("parceiro_")) return await oficinaParceira(pv);
   } catch { /* corpo vazio ou não-JSON: segue o fluxo normal */ }
 
   let p: any = {};
@@ -1328,6 +1400,127 @@ Deno.serve(async (req) => {
         const r = await registrarTrocaOleo(admin, { userId: uid, accountId: acc?.[0]?.id || null, km: kmT, data: dataT, intervaloKm: Number(p.intervalo_km) || null, fonte: "oficina" });
         if (!r.ok) return json({ error: "falha_registro" }, 400);
         return json({ ok: true, proxima_km: r.proximaKm, proxima_data: r.proximaData });
+      }
+
+      // ===== OFICINAS PARCEIRAS + ORDENS DE SERVIÇO =====
+      case "oficinas_lista": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: ofs } = await admin.from("oficinas_parceiras").select("*").eq("dealership", writeStore).order("nome");
+        // o link aparece pro dono e pro gerente de manutenção (ele reenvia pra oficina); o gerente geral só vê a lista
+        const verLink = !me?.membro || me.membro.papel === "gerente_manutencao";
+        const lista = [];
+        for (const o of ofs || []) {
+          let tk = o.link_token as string | null;
+          if (verLink && !tk && o.ativo) {
+            tk = novoToken();
+            await admin.from("oficinas_parceiras").update({ link_token: tk }).eq("id", o.id);
+          }
+          lista.push({ id: o.id, nome: o.nome, razao_social: o.razao_social, cnpj: o.cnpj, endereco: o.endereco, cidade: o.cidade, telefone: o.telefone,
+            responsavel: o.responsavel, whatsapp: o.whatsapp, ativo: o.ativo, link: verLink && tk ? await linkDaOficina(admin, tk) : null });
+        }
+        return json({ ok: true, oficinas: lista });
+      }
+
+      // cadastro/edição da oficina parceira (só o dono, pelo painel); trocar = novo link (o antigo deixa de valer)
+      case "oficina_parceira_save": {
+        if (!writeStore || me?.membro) return json({ error: "so_pelo_painel" }, 403);
+        const nomeO = String(p.nome || "").trim().slice(0, 80);
+        if (!nomeO) return json({ error: "informe_o_nome" }, 400);
+        let zap = String(p.whatsapp || "").replace(/\D/g, "");
+        if (zap.length === 10 || zap.length === 11) zap = `55${zap}`;
+        const row: Record<string, unknown> = {
+          dealership: writeStore, nome: nomeO, razao_social: String(p.razao_social || "").trim().slice(0, 120) || null, cnpj: String(p.cnpj || "").trim().slice(0, 20) || null,
+          endereco: String(p.endereco || "").trim().slice(0, 160) || null, cidade: String(p.cidade || "").trim().slice(0, 60) || null, telefone: String(p.telefone || "").trim().slice(0, 20) || null,
+          responsavel: String(p.responsavel || "").trim().slice(0, 60) || null, whatsapp: zap || null, ativo: p.ativo !== false, updated_at: new Date().toISOString(),
+        };
+        if (p.trocar_link) row.link_token = novoToken();
+        const { error } = p.id
+          ? await admin.from("oficinas_parceiras").update(row).eq("id", String(p.id)).eq("dealership", writeStore)
+          : await admin.from("oficinas_parceiras").insert({ ...row, link_token: novoToken() });
+        if (error) return json({ error: /relation|does not exist/i.test(error.message) ? "rode_o_sql_das_oficinas" : error.message }, 400);
+        return json({ ok: true });
+      }
+
+      case "os_lista": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: rows, error } = await admin.from("ordens_servico").select("*").eq("dealership", writeStore)
+          .order("enviada_em", { ascending: false }).limit(150);
+        if (error) return json({ error: /relation|does not exist/i.test(error.message) ? "rode_o_sql_das_oficinas" : error.message }, 400);
+        const { data: ofs } = await admin.from("oficinas_parceiras").select("id, nome").eq("dealership", writeStore);
+        const nomeOf: Record<string, string> = Object.fromEntries((ofs || []).map((o: any) => [o.id, o.nome]));
+        const ordens = (await comFotos(admin, rows || [])).map((r: any) => ({ ...r, oficina_nome: nomeOf[r.oficina_id] || "Oficina" }));
+        return json({ ok: true, ordens, servicos: SERVICOS });
+      }
+
+      // o gerente manda o carro do estoque pra oficina (km + foto do painel na saída)
+      case "os_criar": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: of } = await admin.from("oficinas_parceiras").select("*").eq("id", String(p.oficina_id || "")).eq("dealership", writeStore).maybeSingle();
+        if (!of || of.ativo === false) return json({ error: "escolha_a_oficina" }, 400);
+        const servicos = [...new Set((Array.isArray(p.servicos) ? p.servicos : []).map(String).filter((x: string) => SERVICOS[x]))];
+        if (!servicos.length) return json({ error: "escolha_o_servico" }, 400);
+        const desc = String(p.car_desc || "").trim().slice(0, 120);
+        if (!p.vehicle_id && !desc) return json({ error: "informe_o_carro" }, 400);
+        const kmS = Math.round(Number(p.km_saida) || 0);
+        if (!(kmS > 0) || kmS > 2_000_000) return json({ error: "informe_o_km" }, 400);
+        if (p.vehicle_id) {
+          const { data: aberta } = await admin.from("ordens_servico").select("numero").eq("dealership", writeStore).eq("vehicle_id", String(p.vehicle_id))
+            .in("status", ["enviada", "recebida", "concluida"]).limit(1);
+          if (aberta?.length) return json({ error: `carro_ja_tem_os_aberta_${aberta[0].numero}` }, 400);
+        }
+        if (!p.foto_saida) return json({ error: "foto_do_painel_obrigatoria" }, 400);
+        const id = crypto.randomUUID();
+        const foto = await salvarFoto(admin, id, "saida", p.foto_saida);
+        if (!foto) return json({ error: "foto_do_painel_obrigatoria" }, 400);
+        const { data: os, error } = await admin.from("ordens_servico").insert({
+          id, dealership: writeStore, oficina_id: of.id, vehicle_id: p.vehicle_id ? String(p.vehicle_id) : null, car_desc: desc || null,
+          placa: String(p.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7) || null, servicos,
+          pedido_obs: String(p.pedido_obs || "").trim().slice(0, 500) || null, enviada_por: me.name || null, km_saida: kmS, foto_saida: foto,
+        }).select("*").single();
+        if (error || !os) return json({ error: /relation|does not exist/i.test(String(error?.message)) ? "rode_o_sql_das_oficinas" : String(error?.message || "erro") }, 400);
+        let tk = of.link_token as string | null;
+        if (!tk) { tk = novoToken(); await admin.from("oficinas_parceiras").update({ link_token: tk }).eq("id", of.id); }
+        await avisarNovaOS(admin, os, of, await linkDaOficina(admin, tk));
+        return json({ ok: true, numero: os.numero });
+      }
+
+      // carro voltou da oficina (km na volta)
+      case "os_devolver": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: os } = await admin.from("ordens_servico").select("*").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
+        if (!os) return json({ error: "os_nao_encontrada" }, 404);
+        if (os.status !== "concluida") return json({ error: "servico_ainda_nao_registrado" }, 400);
+        const kmV = Math.round(Number(p.km_volta) || 0);
+        if (!(kmV > 0) || (os.km_servico != null && kmV < os.km_servico)) return json({ error: "km_invalido" }, 400);
+        const agora = new Date().toISOString();
+        await admin.from("ordens_servico").update({ status: "devolvida", devolvida_em: agora, km_volta: kmV, devolvida_por: me.name || null, updated_at: agora }).eq("id", os.id);
+        const { data: of } = await admin.from("oficinas_parceiras").select("nome").eq("id", os.oficina_id).maybeSingle();
+        const volta = os.km_servico != null ? kmV - os.km_servico : null;
+        await avisarGrupo(admin, writeStore, `🏁 *OS #${os.numero}*: ${os.car_desc || "carro"} voltou da *${of?.nome || "oficina"}* com ${kmV.toLocaleString("pt-BR")} km${volta != null ? ` (+${volta} km na volta)` : ""}${me.name ? ` · recebido por ${me.name}` : ""}.`).catch(() => false);
+        return json({ ok: true });
+      }
+
+      // extraordinário: o gerente aprova ou recusa
+      case "os_extra_decidir": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: os } = await admin.from("ordens_servico").select("*").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
+        if (!os || os.extra_status !== "pendente") return json({ error: "nada_para_aprovar" }, 400);
+        const aprovado = p.aprovado === true;
+        const agora = new Date().toISOString();
+        const { data: upd } = await admin.from("ordens_servico").update({ extra_status: aprovado ? "aprovado" : "recusado", extra_decidido_em: agora, extra_decidido_por: me.name || null, updated_at: agora })
+          .eq("id", os.id).eq("extra_status", "pendente").select("*").single();
+        const { data: of } = await admin.from("oficinas_parceiras").select("*").eq("id", os.oficina_id).maybeSingle();
+        if (upd && of) await avisarDecisaoExtra(admin, upd, of, aprovado);
+        return json({ ok: true });
+      }
+
+      case "os_cancelar": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const agora = new Date().toISOString();
+        const { data: upd } = await admin.from("ordens_servico").update({ status: "cancelada", cancelada_em: agora, updated_at: agora })
+          .eq("id", String(p.id || "")).eq("dealership", writeStore).in("status", ["enviada", "recebida"]).select("numero").maybeSingle();
+        if (!upd) return json({ error: "nao_da_para_cancelar" }, 400);
+        return json({ ok: true });
       }
 
       // ===== ETIQUETAS QR DO PARA-BRISA =====

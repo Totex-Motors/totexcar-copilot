@@ -388,6 +388,41 @@ export const useOficinaTrocas = (enabled: boolean, dealership?: string) =>
     enabled,
     staleTime: 5 * 60_000,
   });
+// ===== Oficinas parceiras + ordens de serviço (carros do estoque) =====
+export interface OficinaParceira {
+  id: string; nome: string; razao_social: string | null; cnpj: string | null; endereco: string | null; cidade: string | null; telefone: string | null;
+  responsavel: string | null; whatsapp: string | null; ativo: boolean; link: string | null;
+}
+export type StatusOS = "enviada" | "recebida" | "concluida" | "devolvida" | "cancelada";
+export interface OrdemServico {
+  id: string; numero: number; dealership: string; oficina_id: string; oficina_nome?: string; vehicle_id: string | null; car_desc: string | null; placa: string | null;
+  servicos: string[]; pedido_obs: string | null; status: StatusOS;
+  enviada_em: string; enviada_por: string | null; km_saida: number | null;
+  recebida_em: string | null; km_chegada: number | null;
+  concluida_em: string | null; km_servico: number | null; oleo_viscosidade: string | null; oleo_norma: string | null; oleo_marca: string | null; oleo_litros: number | null;
+  filtro_oleo: boolean | null; filtro_ar: boolean | null; filtro_combustivel: boolean | null; filtro_cabine: boolean | null; servico_obs: string | null; valor: number | null;
+  extra_descricao: string | null; extra_valor: number | null; extra_status: "pendente" | "aprovado" | "recusado" | null; extra_pedido_em: string | null; extra_decidido_por: string | null;
+  devolvida_em: string | null; km_volta: number | null; devolvida_por: string | null; preparacao_id: string | null;
+  fotos: Record<"foto_saida" | "foto_chegada" | "foto_painel" | "foto_etiqueta" | "foto_nota" | "extra_foto", string | null>;
+  km_ida: number | null; horas_na_oficina: number; atrasada: boolean;
+}
+export const useOficinasParceiras = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["oficinas-parceiras", dealership || null],
+    queryFn: async () => ((await callDealer("oficinas_lista", dealership ? { dealership } : {})).oficinas || []) as OficinaParceira[],
+    enabled,
+  });
+export const useOrdensServico = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["ordens-servico", dealership || null],
+    queryFn: async () => {
+      const r = await callDealer("os_lista", dealership ? { dealership } : {});
+      return { ordens: (r.ordens || []) as OrdemServico[], servicos: (r.servicos || {}) as Record<string, string> };
+    },
+    enabled,
+    refetchInterval: 60_000,
+  });
+
 export const usePreparacoes = (enabled: boolean, dealership?: string) =>
   useQuery({
     queryKey: ["preparacoes", dealership || null],
