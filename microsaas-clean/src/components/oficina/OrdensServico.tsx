@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Send, Search, Wrench, Copy, MessageCircle, Pencil, Plus } from "lucide-react";
+import { Loader2, Send, Search, Wrench, Copy, MessageCircle, Pencil, Plus, FileText } from "lucide-react";
 import { useEstoqueLista, useOficinasParceiras, useOrdensServico, usePosvendaAcao, type EstoqueCarro, type OficinaParceira, type OrdemServico } from "@/hooks/useDealer";
 import { STATUS_OS, msgErro, kmBR, quando, carroOS, servicosOS, nomeServico, oleoOS, filtrosOS, FotoInput, FotosOS, LinhaDoTempo } from "./comum";
 
@@ -15,6 +15,8 @@ import { STATUS_OS, msgErro, kmBR, quando, carroOS, servicosOS, nomeServico, ole
 // oficina (km + foto do painel na saída); a oficina confirma a chegada e registra o serviço pelo link dela;
 // extraordinário só com aprovação; o gerente confirma a volta. modo "leitura" = gerente geral (só acompanha).
 type Modo = "dono" | "gerente" | "leitura";
+// guia em PDF da parte da oficina (public/guias): vai junto com o link
+const guiaOficina = (link: string) => { try { return `${new URL(link).origin}/guias/guia-oficina-parceira.pdf`; } catch { return "/guias/guia-oficina-parceira.pdf"; } };
 type Envio = { carro: EstoqueCarro | null; car_desc: string; placa: string; oficina_id: string; servicos: string[]; pedido_obs: string; km_saida: string; foto_saida: string | null };
 const envioVazio = (): Envio => ({ carro: null, car_desc: "", placa: "", oficina_id: "", servicos: ["troca_oleo"], pedido_obs: "", km_saida: "", foto_saida: null });
 
@@ -261,7 +263,7 @@ export function DetalheOS({ o, nomes }: { o: OrdemServico; nomes: Record<string,
 // Lista das oficinas com o link de cada uma (copiar / mandar no WhatsApp)
 function Oficinas({ oficinas, modo, onEditar }: { oficinas: OficinaParceira[]; modo: Modo; onEditar: (o: Partial<OficinaParceira>) => void }) {
   const copiar = async (t: string) => { try { await navigator.clipboard.writeText(t); toast({ title: "Link copiado" }); } catch { prompt("Copie o link:", t); } };
-  const zap = (o: OficinaParceira) => `https://wa.me/${String(o.whatsapp || "").replace(/\D/g, "")}?text=${encodeURIComponent(`Olá${o.responsavel ? `, ${o.responsavel}` : ""}! Este é o link da ${o.nome} no Co-pilot da loja. Por ele você recebe os carros que mandarmos, confirma a chegada e registra o serviço:\n${o.link}`)}`;
+  const zap = (o: OficinaParceira) => `https://wa.me/${String(o.whatsapp || "").replace(/\D/g, "")}?text=${encodeURIComponent(`Olá${o.responsavel ? `, ${o.responsavel}` : ""}! Este é o link da ${o.nome} no Co-pilot da loja. Por ele você recebe os carros que mandarmos, confirma a chegada e registra o serviço:\n${o.link}\n\n📄 Como funciona (guia em PDF):\n${guiaOficina(o.link!)}`)}`;
   return (
     <div className="pt-2 border-t space-y-2">
       <div className="flex items-center justify-between">
@@ -281,6 +283,7 @@ function Oficinas({ oficinas, modo, onEditar }: { oficinas: OficinaParceira[]; m
             <div className="flex flex-wrap gap-2 mt-1.5">
               <Button size="sm" variant="outline" className="h-8 gap-1" onClick={() => copiar(o.link!)}><Copy className="w-3.5 h-3.5" /> Copiar link</Button>
               {o.whatsapp && <Button size="sm" variant="outline" className="h-8 gap-1" asChild><a href={zap(o)} target="_blank" rel="noreferrer"><MessageCircle className="w-3.5 h-3.5" /> Mandar no WhatsApp</a></Button>}
+              <Button size="sm" variant="ghost" className="h-8 gap-1" asChild><a href={guiaOficina(o.link)} target="_blank" rel="noreferrer"><FileText className="w-3.5 h-3.5" /> Guia em PDF</a></Button>
             </div>
           )}
         </div>
