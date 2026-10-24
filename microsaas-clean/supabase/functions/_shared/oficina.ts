@@ -8,7 +8,7 @@
 // (enviada/recebida) → aviso no grupo da loja.
 
 import { avisarGrupo, janelaAberta } from "./posvenda.ts";
-import { loadWaSettings, waSendText, waSendTemplate, garantirTemplateTexto } from "./wa.ts";
+import { loadWaSettings, waSendText, waSendTemplate, waSendDocument, garantirTemplateTexto } from "./wa.ts";
 
 export const SERVICOS: Record<string, string> = { troca_oleo: "troca de óleo e filtro", revisao: "revisão", outro: "outro serviço" };
 export const PRAZO_HORAS = 24;
@@ -26,6 +26,9 @@ export async function linkDaOficina(sb: any, token: string): Promise<string> {
   const { data: st } = await sb.from("app_settings").select("app_url").eq("id", 1).maybeSingle();
   return `${String(st?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "")}/parceiro/${token}`;
 }
+// Guia em PDF de como funciona a parte da oficina (public/guias do site), vai junto com o link
+export const GUIA_OFICINA_PATH = "/guias/guia-oficina-parceira.pdf";
+export const guiaDaOficina = (link: string) => `${new URL(link).origin}${GUIA_OFICINA_PATH}`;
 
 // Foto que vem do celular como data URL (a tela já comprime). Guarda no Storage privado e devolve o caminho.
 export async function salvarFoto(sb: any, osId: string, campo: string, dataUrl: unknown): Promise<string | null> {
@@ -126,9 +129,18 @@ export async function avisarOficina(sb: any, oficina: any, texto: string, templa
 
 export async function avisarNovaOS(sb: any, os: any, oficina: any, link: string): Promise<void> {
   const serv = descServicos(os.servicos);
-  await avisarOficina(sb, oficina,
-    `🔧 *Ordem de serviço #${os.numero}* · ${os.dealership}\n\nO *${nomeCarro(os)}* está indo para a ${oficina.nome}.\nServiço pedido: ${serv}${os.pedido_obs ? `\nObs.: ${os.pedido_obs}` : ""}\n\nQuando o carro chegar, abra o link e confirme a chegada (km + foto do painel). No fim, registre o serviço por lá:\n${link}`,
+  // 1ª OS desta oficina: o aviso leva também o guia em PDF de como funciona
+  const { data: antes } = await sb.from("ordens_servico").select("id").eq("oficina_id", oficina.id).neq("id", os.id).limit(1);
+  const primeira = !antes?.length;
+  const guia = guiaDaOficina(link);
+  const foi = await avisarOficina(sb, oficina,
+    `🔧 *Ordem de serviço #${os.numero}* · ${os.dealership}\n\nO *${nomeCarro(os)}* está indo para a ${oficina.nome}.\nServiço pedido: ${serv}${os.pedido_obs ? `\nObs.: ${os.pedido_obs}` : ""}\n\nQuando o carro chegar, abra o link e confirme a chegada (km + foto do painel). No fim, registre o serviço por lá:\n${link}${primeira ? `\n\n📄 Como funciona (guia em PDF): ${guia}` : ""}`,
     { name: "copilot_os_oficina", params: [`#${os.numero}`, os.dealership, nomeCarro(os), serv, link] });
+  // o PDF como documento só vai com a janela de 24h aberta (o template não leva anexo)
+  if (primeira && foi && oficina.whatsapp && await janelaAberta(sb, oficina.whatsapp)) {
+    const wa = await loadWaSettings(sb);
+    await waSendDocument(wa, String(oficina.whatsapp).replace(/\D/g, ""), guia, "Guia da Oficina Parceira.pdf", "📄 Guia da oficina parceira: como receber os carros e registrar o serviço.").catch(() => false);
+  }
   await avisarGrupo(sb, os.dealership, `🔧 *OS #${os.numero}*: ${nomeCarro(os)} enviado para a *${oficina.nome}* (${serv})${os.km_saida ? ` · saiu com ${kmBR(os.km_saida)}` : ""}${os.enviada_por ? ` · por ${os.enviada_por}` : ""}.\nPrazo: ${PRAZO_HORAS}h.`).catch(() => false);
 }
 

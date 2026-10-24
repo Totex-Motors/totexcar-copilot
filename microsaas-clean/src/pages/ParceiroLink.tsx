@@ -101,7 +101,10 @@ export default function ParceiroLink() {
         <div className="max-w-3xl mx-auto">
           <div className="text-[11px] font-bold tracking-widest text-teal-300 uppercase">{data.oficina.loja} · Oficina parceira</div>
           <h1 className="text-xl font-extrabold mt-0.5">{data.oficina.nome}</h1>
-          {data.oficina.responsavel && <div className="text-sm text-blue-100">Olá, <b className="text-white">{data.oficina.responsavel}</b></div>}
+          <div className="flex items-center justify-between gap-2">
+            {data.oficina.responsavel ? <div className="text-sm text-blue-100">Olá, <b className="text-white">{data.oficina.responsavel}</b></div> : <span />}
+            <a href="/guias/guia-oficina-parceira.pdf" target="_blank" rel="noreferrer" className="text-xs font-semibold text-white border border-white/40 rounded-full px-3 py-1">📄 Como funciona</a>
+          </div>
         </div>
       </header>
       <main className="max-w-3xl mx-auto px-3 sm:px-4 pt-4 space-y-5">
