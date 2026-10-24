@@ -1408,6 +1408,13 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: {} },
   },
   {
+    name: "status_documentacao",
+    description: "Status da TRANSFERÊNCIA do carro para o NOME do cliente (documentação do despachante da loja Cardoso) e multas do veículo. Use quando perguntarem sobre a transferência, o nome no documento, o que falta para o carro ficar no nome dele, cautelar/vistoria, ou multas do carro comprado na Cardoso. Só traz o carro do próprio cliente.",
+    parameters: { type: "object", properties: {
+      placa: { type: "string", description: "Placa do carro (opcional; por padrão usa o carro do usuário)" }
+    } },
+  },
+  {
     name: "arquivar_documento",
     description: "GUARDA no ArquivoZap o documento que o usuário acabou de enviar (foto/PDF). Chame SEMPRE que a mídia for um documento que vale guardar: multa/auto de infração, IPVA, boleto, CRLV/CRV (documento do carro), CNH, nota fiscal, apólice de seguro, manual, comprovante. Chame ALÉM de qualquer outra ação (ex.: junto com registrar_multa). NÃO chame para hodômetro/painel, print de ganhos de app, foto de carro à venda, selfie ou paisagem.",
     parameters: {
@@ -2203,6 +2210,23 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           .select("descricao, valor, pontos, prazo_recurso, status, chance, created_at")
           .eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
         return { multas: data || [] };
+      } catch (e) { return { error: String((e as any)?.message || e) }; }
+    }
+
+    if (name === "status_documentacao") {
+      try {
+        const api = Deno.env.get("DOC_API");
+        const token = Deno.env.get("DOC_TOKEN");
+        if (!api || !token) return { error: "integracao_documentacao_nao_configurada" };
+        const placa = String(args?.placa || vehicle?.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (!placa) return { error: "sem_placa", mensagem: "Não achei a placa do seu carro. Cadastre a placa no app ou me diga a placa." };
+        const nome = String((user as any)?.name || "");
+        const cpf = String((user as any)?.cpf || "").replace(/\D/g, "");
+        const qs = new URLSearchParams({ placa });
+        if (cpf) qs.set("cpf", cpf);
+        if (nome) qs.set("cliente", nome);
+        const r = await fetch(`${api}?${qs.toString()}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
+        return await r.json();
       } catch (e) { return { error: String((e as any)?.message || e) }; }
     }
 
