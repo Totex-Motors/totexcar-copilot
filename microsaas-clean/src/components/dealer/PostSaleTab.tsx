@@ -17,6 +17,7 @@ import {
 import { SeloLojaCard } from "./SeloLojaCard";
 import { SorteioFeiraoCard } from "./SorteioFeiraoCard";
 import { RoletaLojaCard } from "./RoletaLojaCard";
+import { textoOsCarro } from "@/components/oficina/comum";
 
 const TRANSFER_STEPS: Array<[string, string]> = [
   ["vistoria", "Vistoria (se exigida)"],
@@ -185,7 +186,8 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                     <div className="text-[12px] text-muted-foreground truncate">{[carroEstoque.versao, carroEstoque.cor].filter(Boolean).join(" · ")}</div>
                     {carroEstoque.preparacao
                       ? <div className="text-[12px] text-green-700 font-medium">🛠️ Revisado: óleo e filtro em {fmtPrep(carroEstoque.preparacao)}</div>
-                      : <div className="text-[12px] text-amber-700 font-medium">⚠️ Sem registro de troca de óleo. Peça pro gerente de manutenção registrar na aba Preparação antes da entrega.</div>}
+                      : carroEstoque.os ? <div className="text-[12px] text-sky-700 font-medium">{textoOsCarro(carroEstoque.os)}. A revisão é antes da entrega.</div>
+                      : <div className="text-[12px] text-amber-700 font-medium">⚠️ Sem revisão registrada. A revisão é antes da venda: o gerente de manutenção manda o carro pra oficina parceira na aba Preparação.</div>}
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => setCarroEstoque(null)}>Trocar</Button>
                 </div>
@@ -203,7 +205,7 @@ export function PostSaleTab({ dealership }: { dealership?: string }) {
                           <span className="min-w-0">
                             <span className="block text-sm truncate">{c.desc}</span>
                             <span className="block text-[11.5px] text-muted-foreground truncate">{[c.versao, c.cor, c.preco ? `R$ ${Number(c.preco).toLocaleString("pt-BR")}` : null].filter(Boolean).join(" · ")}</span>
-                            <span className={`block text-[11px] font-medium ${c.preparacao ? "text-green-700" : "text-amber-700"}`}>{c.preparacao ? `🛠️ Revisado ${fmtPrep(c.preparacao)}` : "⚠️ Sem troca de óleo registrada"}</span>
+                            <span className={`block text-[11px] font-medium ${c.preparacao ? "text-green-700" : c.os ? "text-sky-700" : "text-amber-700"}`}>{c.preparacao ? `🛠️ Revisado ${fmtPrep(c.preparacao)}` : c.os ? textoOsCarro(c.os) : "⚠️ Sem revisão registrada"}</span>
                           </span>
                         </button>
                       ))}

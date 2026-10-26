@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Wrench, Plus, Trash2, Search, Droplet, Send } from "lucide-react";
 import { abrirEnvioOficina } from "@/components/oficina/OrdensServico";
+import { textoOsCarro } from "@/components/oficina/comum";
 import { useEstoqueLista, usePreparacoes, usePosvendaAcao, useOficinaTrocas, type EstoqueCarro, type Preparacao, type TrocaOleoCliente } from "@/hooks/useDealer";
 
 // PREPARAÇÃO DO CARRO ANTES DA VENDA — o gerente de manutenção registra a troca de óleo + filtro e o km.
@@ -207,12 +208,13 @@ export function PreparacaoTab({ dealership, trocasNoFim, enviarOficina }: { deal
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{c.desc}</div>
                     <div className="text-xs text-muted-foreground truncate">{[c.versao, c.cor, c.km ? `${kmBR(c.km)} no anúncio` : null].filter(Boolean).join(" · ")}</div>
+                    {c.os && <div className="text-xs text-sky-700 font-medium">{textoOsCarro(c.os)}</div>}
                     {c.preparacao
                       ? <div className="text-xs text-green-700 font-medium">🛠️ Óleo e filtro em {dataBR(c.preparacao.data)} · {kmBR(c.preparacao.km)}{c.preparacao.feito_por ? ` · ${c.preparacao.feito_por}` : ""}</div>
                       : <div className="text-xs text-amber-700 font-medium">⚠️ Sem troca de óleo registrada</div>}
                   </div>
                   <div className={`flex gap-1.5 shrink-0 ${enviarOficina ? "w-full sm:w-auto" : ""}`}>
-                    {enviarOficina && <Button size="sm" className="h-8 gap-1 flex-1 sm:flex-none" onClick={() => abrirEnvioOficina(c)}><Send className="w-3.5 h-3.5" /> Mandar pra oficina</Button>}
+                    {enviarOficina && !c.os && <Button size="sm" variant={c.preparacao ? "outline" : "default"} className="h-8 gap-1 flex-1 sm:flex-none" onClick={() => abrirEnvioOficina(c)}><Send className="w-3.5 h-3.5" /> Mandar pra oficina</Button>}
                     <Button size="sm" variant={enviarOficina || c.preparacao ? "outline" : "default"} className={`h-8 ${enviarOficina ? "flex-1 sm:flex-none" : ""}`} onClick={() => abrirDoEstoque(c)}>{enviarOficina ? "Troca já feita" : c.preparacao ? "Nova troca" : "Registrar"}</Button>
                   </div>
                 </div>

@@ -7,7 +7,8 @@
 // Extraordinário (algo além do pedido) só com aprovação do gerente. Carro parado na oficina mais de 1 dia
 // (enviada/recebida) → aviso no grupo da loja.
 
-import { avisarGrupo, janelaAberta } from "./posvenda.ts";
+import { avisarGrupo, janelaAberta, variantesTel } from "./posvenda.ts";
+import { aplicarPreparacaoDaJornada } from "./preparacao.ts";
 import { loadWaSettings, waSendText, waSendTemplate, waSendDocument, garantirTemplateTexto } from "./wa.ts";
 
 export const SERVICOS: Record<string, string> = { troca_oleo: "troca de óleo e filtro", revisao: "revisão", outro: "outro serviço" };
@@ -150,9 +151,46 @@ export async function avisarChegada(sb: any, os: any, oficina: any): Promise<voi
   await avisarGrupo(sb, os.dealership, `📥 *OS #${os.numero}*: a *${oficina.nome}* recebeu o ${nomeCarro(os)} com ${kmBR(os.km_chegada)}${ida != null ? ` (${ida >= 0 ? "+" : ""}${ida} km desde a saída)` : ""}.${alerta}`).catch(() => false);
 }
 
-export async function avisarConclusao(sb: any, os: any, oficina: any): Promise<void> {
+export async function avisarConclusao(sb: any, os: any, oficina: any, venda?: { cliente: string | null; aplicado: boolean } | null): Promise<void> {
   const oleo = (os.servicos || []).includes("troca_oleo") ? `\n🛢️ Óleo: ${descOleo(os)}${descFiltros(os) ? `\n🧰 Filtros: ${descFiltros(os)}` : ""}` : "";
-  await avisarGrupo(sb, os.dealership, `✅ *OS #${os.numero} pronta* na *${oficina.nome}*: ${nomeCarro(os)} · ${kmBR(os.km_servico)}${oleo}${os.servico_obs ? `\n📝 ${os.servico_obs}` : ""}\nFotos do painel e da etiqueta no link da oficina. Gerente: buscar o carro e confirmar a volta.`).catch(() => false);
+  const vendido = venda ? `\n🚗 Carro já vendido${venda.cliente ? ` (${venda.cliente})` : ""}: ${venda.aplicado ? "a troca já está no Co-pilot do cliente." : "a troca entra no Co-pilot do cliente assim que ele ativar a etiqueta."}` : "";
+  await avisarGrupo(sb, os.dealership, `✅ *OS #${os.numero} pronta* na *${oficina.nome}*: ${nomeCarro(os)} · ${kmBR(os.km_servico)}${oleo}${os.servico_obs ? `\n📝 ${os.servico_obs}` : ""}${vendido}\nFotos do painel e da etiqueta no link da oficina. Gerente: buscar o carro e confirmar a volta.`).catch(() => false);
+}
+
+// A revisão é ANTES da venda; a exceção é vender e mandar depois. Venda deste carro: a jornada mais recente
+// do mesmo carro (anúncio do estoque, ou a placa pela etiqueta), feita até 60 dias antes do envio à oficina.
+export async function vendaDoCarro(sb: any, os: any): Promise<any | null> {
+  const desde = new Date(new Date(os.enviada_em || Date.now()).getTime() - 60 * 86_400_000).toISOString();
+  if (os.vehicle_id) {
+    const { data } = await sb.from("postsale_journeys").select("id, user_id, customer_phone, customer_name, preparacao_id, created_at")
+      .eq("dealership", os.dealership).eq("vehicle_id", String(os.vehicle_id)).gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+    if (data?.[0]) return data[0];
+  }
+  const placa = String(os.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (placa.length >= 7) {
+    const { data: tags } = await sb.from("car_tags").select("journey_id").eq("dealership", os.dealership).eq("placa", placa).not("journey_id", "is", null).limit(1);
+    const jid = tags?.[0]?.journey_id;
+    if (jid) {
+      const { data: j } = await sb.from("postsale_journeys").select("id, user_id, customer_phone, customer_name, preparacao_id, created_at").eq("id", jid).gte("created_at", desde).maybeSingle();
+      if (j) return j;
+    }
+  }
+  return null;
+}
+
+// Serviço concluído num carro JÁ VENDIDO: a troca vira a preparação da venda e vai pro Co-pilot do cliente
+// (se ele ainda não ativou, entra na ativação da etiqueta ou no cron diário — prep_aplicada = false).
+export async function ligarNaVenda(sb: any, os: any, prepId: string): Promise<{ cliente: string | null; aplicado: boolean } | null> {
+  const j = await vendaDoCarro(sb, os);
+  if (!j) return null;
+  await sb.from("postsale_journeys").update({ preparacao_id: prepId, prep_aplicada: false }).eq("id", j.id);
+  let uid = j.user_id as string | null;
+  if (!uid && j.customer_phone) {
+    const { data: us } = await sb.from("users").select("id").in("phone", variantesTel(j.customer_phone)).limit(1);
+    uid = us?.[0]?.id || null;
+  }
+  const aplicado = uid ? !!(await aplicarPreparacaoDaJornada(sb, { id: j.id, preparacao_id: prepId, prep_aplicada: false }, uid)) : false;
+  return { cliente: j.customer_name ? String(j.customer_name).split(" ")[0] : null, aplicado };
 }
 
 export async function avisarExtra(sb: any, os: any, oficina: any): Promise<void> {

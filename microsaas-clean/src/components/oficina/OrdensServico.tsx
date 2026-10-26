@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Send, Search, Wrench, Copy, MessageCircle, Pencil, Plus, FileText } from "lucide-react";
 import { useEstoqueLista, useOficinasParceiras, useOrdensServico, usePosvendaAcao, type EstoqueCarro, type OficinaParceira, type OrdemServico } from "@/hooks/useDealer";
-import { STATUS_OS, msgErro, kmBR, quando, carroOS, servicosOS, nomeServico, oleoOS, filtrosOS, FotoInput, FotosOS, LinhaDoTempo } from "./comum";
+import { STATUS_OS, msgErro, kmBR, quando, carroOS, servicosOS, nomeServico, textoOsCarro, oleoOS, filtrosOS, FotoInput, FotosOS, LinhaDoTempo } from "./comum";
 
 // ORDENS DE SERVIÇO nas OFICINAS PARCEIRAS — o gerente de manutenção manda um carro do estoque pra uma
 // oficina (km + foto do painel na saída); a oficina confirma a chegada e registra o serviço pelo link dela;
@@ -84,8 +84,9 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">
-          O carro sai com km e foto do painel; a oficina confirma a chegada e registra o serviço no link dela (óleo, filtros, km, foto do painel e da etiqueta — tudo obrigatório).
-          Algo além do pedido só com aprovação. Prazo: 1 dia. A troca de óleo registrada já vira a preparação do carro.
+          <b>A revisão é antes da venda:</b> mande os carros do estoque sem revisão pra uma oficina parceira. O carro sai com km e foto do painel; a oficina confirma a chegada e registra o serviço no link dela (óleo, filtros, km, foto do painel e da etiqueta — tudo obrigatório).
+          Algo além do pedido só com aprovação. Prazo: 1 dia. A troca registrada vira a preparação do carro e, na venda, o ponto de partida do Co-pilot do cliente.
+          Se o carro já foi vendido, a troca vai direto pro Co-pilot do cliente.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
           {([["Na oficina", k.oficina, ""], ["Prontos p/ buscar", k.prontas, "text-green-600"], ["Extra p/ aprovar", k.extra, k.extra ? "text-red-600" : ""], ["Passou do prazo", k.atrasadas, k.atrasadas ? "text-red-600" : ""]] as const).map(([l, v, c]) => (
@@ -104,7 +105,7 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
               <div key={o.id} className="py-2.5 space-y-1.5">
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setDetalhe(o)}>
-                    <div className="text-sm font-medium truncate">#{o.numero} · {carroOS(o)}</div>
+                    <div className="text-sm font-medium truncate">#{o.numero} · {carroOS(o)}{o.vendido && <span className="ml-1.5 text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 align-middle">Já vendido</span>}</div>
                     <div className="text-xs text-muted-foreground">{o.oficina_nome} · {servicosOS(o, nomes)} · saiu {quando(o.enviada_em)}</div>
                     {o.atrasada && <div className="text-xs font-medium text-red-700">⏰ Passou do prazo de 1 dia ({o.horas_na_oficina}h)</div>}
                     {o.km_ida != null && o.km_ida > 50 && <div className="text-xs font-medium text-red-700">⚠️ Rodou {kmBR(o.km_ida)} entre a loja e a oficina</div>}
@@ -229,7 +230,10 @@ function EscolherCarro({ dealership, envio, setEnvio }: { dealership?: string; e
   const { data: estoque, isLoading } = useEstoqueLista(true, dealership);
   const [busca, setBusca] = useState("");
   const [fora, setFora] = useState(false);
-  const lista = useMemo(() => (estoque || []).filter((c) => !busca.trim() || `${c.desc} ${c.versao || ""} ${c.cor || ""}`.toLowerCase().includes(busca.trim().toLowerCase())).slice(0, 30), [estoque, busca]);
+  // antes da venda: os sem revisão primeiro; carro que já está numa oficina não aparece pra escolher
+  const lista = useMemo(() => (estoque || [])
+    .filter((c) => !busca.trim() || `${c.desc} ${c.versao || ""} ${c.cor || ""}`.toLowerCase().includes(busca.trim().toLowerCase()))
+    .sort((a, b) => Number(!!a.os) - Number(!!b.os) || Number(!!a.preparacao) - Number(!!b.preparacao)).slice(0, 30), [estoque, busca]);
   if (envio.carro) return (
     <div className="flex items-center gap-2 rounded-lg border p-2">
       {envio.carro.capa ? <img src={envio.carro.capa} alt="" className="w-14 h-10 rounded object-cover" /> : <div className="w-14 h-10 rounded bg-muted" />}
@@ -250,9 +254,12 @@ function EscolherCarro({ dealership, envio, setEnvio }: { dealership?: string; e
       <div className="relative"><Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" /><Input className="pl-8" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar modelo, ano ou cor" /></div>
       <div className="max-h-56 overflow-y-auto divide-y rounded border">
         {isLoading ? <div className="p-3 text-center"><Loader2 className="w-4 h-4 animate-spin inline" /></div> : lista.map((c) => (
-          <button key={c.id} type="button" className="w-full flex items-center gap-2 p-2 text-left hover:bg-muted/60" onClick={() => setEnvio({ ...envio, carro: c, km_saida: c.km ? String(c.km) : envio.km_saida })}>
+          <button key={c.id} type="button" disabled={!!c.os} className="w-full flex items-center gap-2 p-2 text-left hover:bg-muted/60 disabled:opacity-50" onClick={() => setEnvio({ ...envio, carro: c, km_saida: c.km ? String(c.km) : envio.km_saida })}>
             {c.capa ? <img src={c.capa} alt="" loading="lazy" className="w-12 h-9 rounded object-cover" /> : <div className="w-12 h-9 rounded bg-muted" />}
-            <span className="text-sm truncate">{c.desc}{c.cor ? ` · ${c.cor}` : ""}</span>
+            <span className="min-w-0">
+              <span className="block text-sm truncate">{c.desc}{c.cor ? ` · ${c.cor}` : ""}</span>
+              <span className={`block text-[11px] font-medium ${c.os ? "text-sky-700" : c.preparacao ? "text-green-700" : "text-amber-700"}`}>{c.os ? textoOsCarro(c.os) : c.preparacao ? "🛠️ Já revisado" : "⚠️ Sem revisão"}</span>
+            </span>
           </button>
         ))}
       </div>

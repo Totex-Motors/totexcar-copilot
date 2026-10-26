@@ -187,7 +187,8 @@ export const usePostsaleCreate = () =>
 
 // estoque da loja (marketplace) pro pós-venda escolher o carro vendido — foto de capa obrigatória
 export interface PrepResumo { id: string; data: string; km: number; intervalo_km: number; feito_por: string | null }
-export interface EstoqueCarro { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: PrepResumo | null }
+export interface OsResumo { numero: number; status: "enviada" | "recebida" | "concluida"; oficina: string }
+export interface EstoqueCarro { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: PrepResumo | null; os?: OsResumo | null }
 export const useEstoqueLista = (enabled: boolean, dealership?: string) =>
   useQuery({
     queryKey: ["estoque-lista", dealership || null],
@@ -404,7 +405,7 @@ export interface OrdemServico {
   extra_descricao: string | null; extra_valor: number | null; extra_status: "pendente" | "aprovado" | "recusado" | null; extra_pedido_em: string | null; extra_decidido_por: string | null;
   devolvida_em: string | null; km_volta: number | null; devolvida_por: string | null; preparacao_id: string | null;
   fotos: Record<"foto_saida" | "foto_chegada" | "foto_painel" | "foto_etiqueta" | "foto_nota" | "extra_foto", string | null>;
-  km_ida: number | null; horas_na_oficina: number; atrasada: boolean;
+  km_ida: number | null; horas_na_oficina: number; atrasada: boolean; vendido?: boolean;
 }
 export const useOficinasParceiras = (enabled: boolean, dealership?: string) =>
   useQuery({
