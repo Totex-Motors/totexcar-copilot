@@ -319,7 +319,7 @@ export default function Dealer() {
           </TabsContent>
 
           <TabsContent value="preparacao" className="mt-6">
-            <div className="space-y-6"><OrdensServico dealership={viewStore} modo="dono" /><PreparacaoTab dealership={viewStore} /></div>
+            <div className="space-y-6"><OrdensServico dealership={viewStore} modo="dono" /><PreparacaoTab dealership={viewStore} enviarOficina /></div>
           </TabsContent>
 
           <TabsContent value="stand" className="mt-6">
