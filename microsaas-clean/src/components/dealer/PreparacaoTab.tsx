@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Wrench, Plus, Trash2, Search, Droplet } from "lucide-react";
+import { Loader2, Wrench, Plus, Trash2, Search, Droplet, Send } from "lucide-react";
+import { abrirEnvioOficina } from "@/components/oficina/OrdensServico";
 import { useEstoqueLista, usePreparacoes, usePosvendaAcao, useOficinaTrocas, type EstoqueCarro, type Preparacao, type TrocaOleoCliente } from "@/hooks/useDealer";
 
 // PREPARAÇÃO DO CARRO ANTES DA VENDA — o gerente de manutenção registra a troca de óleo + filtro e o km.
@@ -130,7 +131,7 @@ type Form = {
 };
 const vazio = (): Form => ({ car_desc: "", placa: "", data: hoje(), km: "", oleo: true, oleo_tipo: "", filtro_oleo: true, filtro_ar: false, filtro_combustivel: false, filtro_cabine: false, intervalo_km: "10000", obs: "" });
 
-export function PreparacaoTab({ dealership, trocasNoFim }: { dealership?: string; trocasNoFim?: boolean }) {
+export function PreparacaoTab({ dealership, trocasNoFim, enviarOficina }: { dealership?: string; trocasNoFim?: boolean; enviarOficina?: boolean }) {
   const qc = useQueryClient();
   const { data: estoque, isLoading: loadingEstoque } = useEstoqueLista(true, dealership);
   const { data: preps, isLoading: loadingPreps } = usePreparacoes(true, dealership);
@@ -201,7 +202,7 @@ export function PreparacaoTab({ dealership, trocasNoFim }: { dealership?: string
           ) : (
             <div className="divide-y">
               {lista.map((c) => (
-                <div key={c.id} className="flex items-center gap-3 py-2.5">
+                <div key={c.id} className={`flex items-center gap-3 py-2.5 ${enviarOficina ? "flex-wrap sm:flex-nowrap" : ""}`}>
                   {c.capa ? <img src={c.capa} alt="" loading="lazy" className="w-16 h-11 rounded object-cover shrink-0" /> : <div className="w-16 h-11 rounded bg-muted shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{c.desc}</div>
@@ -210,7 +211,10 @@ export function PreparacaoTab({ dealership, trocasNoFim }: { dealership?: string
                       ? <div className="text-xs text-green-700 font-medium">🛠️ Óleo e filtro em {dataBR(c.preparacao.data)} · {kmBR(c.preparacao.km)}{c.preparacao.feito_por ? ` · ${c.preparacao.feito_por}` : ""}</div>
                       : <div className="text-xs text-amber-700 font-medium">⚠️ Sem troca de óleo registrada</div>}
                   </div>
-                  <Button size="sm" variant={c.preparacao ? "outline" : "default"} className="h-8 shrink-0" onClick={() => abrirDoEstoque(c)}>{c.preparacao ? "Nova troca" : "Registrar"}</Button>
+                  <div className={`flex gap-1.5 shrink-0 ${enviarOficina ? "w-full sm:w-auto" : ""}`}>
+                    {enviarOficina && <Button size="sm" className="h-8 gap-1 flex-1 sm:flex-none" onClick={() => abrirEnvioOficina(c)}><Send className="w-3.5 h-3.5" /> Mandar pra oficina</Button>}
+                    <Button size="sm" variant={enviarOficina || c.preparacao ? "outline" : "default"} className={`h-8 ${enviarOficina ? "flex-1 sm:flex-none" : ""}`} onClick={() => abrirDoEstoque(c)}>{enviarOficina ? "Troca já feita" : c.preparacao ? "Nova troca" : "Registrar"}</Button>
+                  </div>
                 </div>
               ))}
             </div>

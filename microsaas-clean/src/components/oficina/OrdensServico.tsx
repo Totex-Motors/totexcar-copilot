@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ const guiaOficina = (link: string) => { try { return `${new URL(link).origin}/gu
 type Envio = { carro: EstoqueCarro | null; car_desc: string; placa: string; oficina_id: string; servicos: string[]; pedido_obs: string; km_saida: string; foto_saida: string | null };
 const envioVazio = (): Envio => ({ carro: null, car_desc: "", placa: "", oficina_id: "", servicos: ["troca_oleo"], pedido_obs: "", km_saida: "", foto_saida: null });
 
+// Abre o "Mandar carro pra oficina" já com o carro escolhido (botão em cada carro da lista do estoque).
+export const abrirEnvioOficina = (carro?: EstoqueCarro) => window.dispatchEvent(new CustomEvent("os:enviar", { detail: carro || null }));
+
 export function OrdensServico({ dealership, modo }: { dealership?: string; modo: Modo }) {
   const qc = useQueryClient();
   const pode = modo !== "leitura";
@@ -31,6 +34,15 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
   const [detalhe, setDetalhe] = useState<OrdemServico | null>(null);
   const [volta, setVolta] = useState<{ o: OrdemServico; km: string } | null>(null);
   const [ofForm, setOfForm] = useState<Partial<OficinaParceira> | null>(null);
+  useEffect(() => {
+    if (!pode) return;
+    const abrir = (e: Event) => {
+      const carro = (e as CustomEvent).detail as EstoqueCarro | null;
+      setEnvio({ ...envioVazio(), carro, km_saida: carro?.km ? String(carro.km) : "" });
+    };
+    window.addEventListener("os:enviar", abrir);
+    return () => window.removeEventListener("os:enviar", abrir);
+  }, [pode]);
 
   const ordens = data?.ordens || [];
   const nomes = data?.servicos || {};
@@ -130,14 +142,27 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
           <DialogHeader><DialogTitle>Mandar carro pra oficina</DialogTitle></DialogHeader>
           {envio && (
             <div className="space-y-3">
-              <EscolherCarro dealership={dealership} envio={envio} setEnvio={setEnvio} />
-              <div className="space-y-1"><Label className="text-xs">Oficina <span className="text-red-600">*</span></Label>
-                <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={envio.oficina_id} onChange={(e) => setEnvio({ ...envio, oficina_id: e.target.value })}>
-                  <option value="">Escolha…</option>
-                  {ativas.map((o) => <option key={o.id} value={o.id}>{o.nome}{o.responsavel ? ` (${o.responsavel})` : ""}</option>)}
-                </select>
+              <div className="space-y-1.5"><Label className="text-xs font-semibold">1. Para qual oficina? <span className="text-red-600">*</span></Label>
+                {!ativas.length ? (
+                  <div className="rounded-lg bg-amber-50 text-amber-900 text-sm p-2">Nenhuma oficina parceira cadastrada. {modo === "dono" ? "Cadastre em “Oficinas parceiras”, no fim desta seção." : "Peça ao gerente para cadastrar."}</div>
+                ) : (
+                  <div className="grid gap-2">
+                    {ativas.map((o) => {
+                      const sel = envio.oficina_id === o.id;
+                      return (
+                        <button key={o.id} type="button" onClick={() => setEnvio({ ...envio, oficina_id: o.id })}
+                          className={`w-full text-left rounded-lg border-2 p-2.5 flex items-center gap-3 ${sel ? "border-primary bg-primary/5" : "border-muted hover:border-primary/40"}`}>
+                          <span className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center ${sel ? "border-primary" : "border-muted-foreground/40"}`}>{sel && <span className="w-2.5 h-2.5 rounded-full bg-primary" />}</span>
+                          <span className="min-w-0"><span className="block text-sm font-semibold">{o.nome}</span><span className="block text-xs text-muted-foreground">{[o.responsavel, o.cidade].filter(Boolean).join(" · ")}</span></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <div className="space-y-1.5"><Label className="text-xs">Serviço <span className="text-red-600">*</span></Label>
+              <div className="text-xs font-semibold">2. Qual carro?</div>
+              <EscolherCarro dealership={dealership} envio={envio} setEnvio={setEnvio} />
+              <div className="space-y-1.5"><Label className="text-xs font-semibold">3. Serviço <span className="text-red-600">*</span></Label>
                 {Object.keys(nomes).map((s) => (
                   <label key={s} className="flex items-center gap-2 text-sm cursor-pointer">
                     <Checkbox checked={envio.servicos.includes(s)} onCheckedChange={(v) => setEnvio({ ...envio, servicos: v === true ? [...envio.servicos, s] : envio.servicos.filter((x) => x !== s) })} /> {nomeServico(s, nomes)}

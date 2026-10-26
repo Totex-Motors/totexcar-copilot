@@ -10,5 +10,5 @@ import { OrdensServico } from "@/components/oficina/OrdensServico";
 export default function OficinaLink() {
   const { token = "" } = useParams();
   setLinkToken(token);
-  return <LinkShell token={token} titulo="Oficina">{() => <><OrdensServico modo="gerente" /><PreparacaoTab trocasNoFim /></>}</LinkShell>;
+  return <LinkShell token={token} titulo="Oficina">{() => <><OrdensServico modo="gerente" /><PreparacaoTab trocasNoFim enviarOficina /></>}</LinkShell>;
 }
