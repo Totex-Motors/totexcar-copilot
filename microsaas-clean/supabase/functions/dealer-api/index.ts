@@ -391,7 +391,7 @@ async function criarVenda(loja: string, me: { id: string | null }, p: any): Prom
   } catch (e) { console.error("preparação na venda:", e); }
   // A revisão é ANTES da venda. Vendeu sem ela → o grupo fica sabendo na hora (o gerente de manutenção manda
   // o carro pra oficina parceira; quando ela registrar a troca, vai direto pro Co-pilot do cliente).
-  if (!revisado && p.origem !== "sorteio") {
+  if (AVISO_VENDA_SEM_REVISAO && !revisado && p.origem !== "sorteio") {
     try {
       const { data: aberta } = p.vehicle_id
         ? await admin.from("ordens_servico").select("numero, status, oficina_id").eq("dealership", loja).eq("vehicle_id", String(p.vehicle_id)).in("status", ["enviada", "recebida", "concluida"]).limit(1)
@@ -461,6 +461,10 @@ async function criarVenda(loja: string, me: { id: string | null }, p: any): Prom
   } catch (e) { console.error("foto de capa:", e); }
   return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError, foto_estoque: foto, revisado });
 }
+
+// Aviso no grupo quando um carro é vendido sem revisão registrada. DESLIGADO por decisão do dono (27/10):
+// quase todo o estoque ainda está sem troca registrada; liga quando o gerente de manutenção revisar o estoque.
+const AVISO_VENDA_SEM_REVISAO = false;
 
 // Estoque da loja (marketplace) com o status da preparação de cada carro.
 async function estoqueDaLoja(loja: string): Promise<{ carros: any[]; aviso?: string }> {
