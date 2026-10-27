@@ -205,11 +205,11 @@
   </nav>
 
   <main>
-    <!-- comunicado do link público: sorteio se valida NA VISITA à loja -->
+    <!-- comunicado do link público: sorteio se valida NA VISITA à loja + compra do carro -->
     <div id="aviso-visita" style="display:none; background:#FFF7E0; color:#3A2A00; border:2px solid var(--ouro); border-radius:14px; padding:14px 16px; margin-bottom:14px; font-size:14px; line-height:1.55">
       <b>📢 Importante — como validar sua participação:</b><br>
-      O cadastro garante o seu voucher, mas o sorteio vale para quem <b>visitar a loja</b>.
-      Chegando lá, <b>procure a promotora</b> e diga: <i>"vim visitar a loja e quero participar do sorteio"</i>. Pronto — participação confirmada! 🎟️
+      O cadastro garante o seu voucher, mas o sorteio vale para quem <b>visitar a loja e comprar um carro</b>.
+      Chegando lá, <b>procure a promotora</b> e diga: <i>"vim visitar a loja e quero participar do sorteio"</i>. Fechou a compra do seu carro, participação confirmada! 🎟️
     </div>
     <!-- brinde de toda ação: o Co-pilot (não é sorteado) + os brindes que a loja configurar -->
     <div id="brindes-box" style="display:none; background:linear-gradient(135deg,#0b1f6b,#1a3fd1); color:#fff; border-radius:14px; padding:14px 16px; margin-bottom:14px; font-size:14px; line-height:1.5">
@@ -844,7 +844,7 @@
     document.getElementById('v-nome').textContent = nome;
     document.getElementById('v-info').innerHTML = 'Guarde este número! Sorteio <b>' + esc(quandoTxt()) + '</b>.<br>'
       + (nGanhadores()>1 ? nGanhadores()+' ganhadores levam ' : 'O ganhador leva ') + esc(premioTxt()) + '.'
-      + (PUBLICO ? '<br><b>Valide sua participação:</b> visite a loja, procure a promotora e diga que veio pelo link e quer participar do sorteio.' : '');
+      + (PUBLICO ? '<br><b>Valide sua participação:</b> visite a loja e compre seu carro: procure a promotora e diga que veio pelo link e quer participar do sorteio.' : '');
     var num = String(zap||'').replace(/\D/g,'');
     if(num && num.length <= 11) num = '55' + num;
     var primeiro = nome.split(' ')[0];
