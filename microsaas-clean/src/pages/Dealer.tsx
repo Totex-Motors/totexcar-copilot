@@ -134,6 +134,9 @@ export default function Dealer() {
 
   // admin pode abrir o painel de uma loja específica via /lojista?dealership=...
   const [searchParams] = useSearchParams();
+  // aba aberta guardada na sessão: se a página recarregar (ex.: ao voltar da câmera), volta na mesma aba
+  const [aba, setAba] = useState<string>(() => { try { return sessionStorage.getItem("lojista:aba") || "clientes"; } catch { return "clientes"; } });
+  const trocarAba = (v: string) => { setAba(v); try { sessionStorage.setItem("lojista:aba", v); } catch { /* ok */ } };
   const viewStore = userData?.role === "admin" ? (searchParams.get("dealership") || undefined) : undefined;
 
   const { data: dealer } = useDealerMe(!!user && isDealerOrAdmin);
@@ -227,7 +230,7 @@ export default function Dealer() {
           </CardContent></Card>
         </div>
 
-        <Tabs defaultValue="clientes" className="w-full">
+        <Tabs value={aba} onValueChange={trocarAba} className="w-full">
           <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="clientes" className="gap-2"><Users className="w-4 h-4" /> Clientes</TabsTrigger>
             <TabsTrigger value="conversas" className="gap-2"><MessagesSquare className="w-4 h-4" /> Conversas</TabsTrigger>
