@@ -99,8 +99,8 @@
   </div>
 
   <div class="pitch">
-    <h1>Imagine seu carro com um <em>co-piloto inteligente</em></h1>
-    <p class="sub">O TotexCar Co-pilot é uma IA no seu WhatsApp que cuida do seu carro por você — sem baixar nada, sem complicação.</p>
+    <h1>🎁 Você já ganhou um <em>co-piloto inteligente</em> para o seu novo carro</h1>
+    <p class="sub">Além de concorrer ao sorteio, o TotexCar Co-pilot já é seu: uma IA no seu WhatsApp que cuida do seu carro por você — sem baixar nada, sem complicação.</p>
 
     <div class="beneficios">
       <div class="b"><div class="ico">🔔</div>
@@ -119,6 +119,11 @@
         <div><b>Valorize na hora de trocar</b>
         <span id="b-recompra">Acompanhe a tabela FIPE e receba ofertas de recompra da Cardoso pelo seu usado.</span></div>
       </div>
+    </div>
+
+    <div class="premio" id="brindes-box" style="display:none">
+      <b>🎁 E tem mais brindes pra você</b>
+      <div id="brindes-txt"></div>
     </div>
 
     <div class="premio">
@@ -180,6 +185,14 @@
       pic.appendChild(document.createTextNode(' ' + ev.premio + '. Guarde esta página — este número é seu!'));
       document.getElementById('premio-txt').textContent =
         ev.premio + (n>1 ? ' para ' + n + ' sorteados.' : '.') + ' Resultado ' + quando + ' — fique por perto!';
+      // brindes da ação (configurados no painel; o Co-pilot já é brinde de todo mundo)
+      var brindes = (ev.beneficios || []).filter(function(b){ return /^\s*🎁/.test(String(b)); })
+        .map(function(b){ return String(b).replace(/^\s*🎁\s*/, ''); }).filter(Boolean);
+      if(brindes.length){
+        var bx = document.getElementById('brindes-txt');
+        brindes.forEach(function(t, i){ if(i) bx.appendChild(document.createElement('br')); bx.appendChild(document.createTextNode('✅ ' + t)); });
+        document.getElementById('brindes-box').style.display = 'block';
+      }
     })
     .catch(function(){});
 

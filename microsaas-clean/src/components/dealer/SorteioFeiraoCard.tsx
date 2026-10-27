@@ -36,8 +36,14 @@ const AUTO_DEFAULT: AutoCfg = {
 };
 interface FeiraoEvento {
   id: string; loja: string; titulo: string; premio: string;
-  ganhadores: number; sorteio_em: string; ativo: boolean; tipo?: string;
+  ganhadores: number; sorteio_em: string; ativo: boolean; tipo?: string; beneficios?: string[] | null;
 }
+// Brindes da ação: o Co-pilot NÃO é sorteado (já é brinde de todo mundo); os demais brindes ficam junto dos
+// benefícios da ação, marcados com 🎁 — o link público e o voucher listam esses e escondem dos benefícios.
+const ehBrinde = (b: string) => /^\s*🎁/.test(b);
+const brindesDe = (bs?: string[] | null) => (bs || []).filter(ehBrinde).map((b) => b.replace(/^\s*🎁\s*/, "")).filter(Boolean);
+const comBrindes = (bs: string[] | null | undefined, brindes: string) =>
+  [...(bs || []).filter((b) => !ehBrinde(b)), ...brindes.split("\n").map((b) => b.trim()).filter(Boolean).slice(0, 8).map((b) => `🎁 ${b}`)];
 
 const TIPOS: Record<string, { rotulo: string; icone: string }> = {
   feirao: { rotulo: "Feirão na loja", icone: "🎪" },
@@ -177,7 +183,21 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   // Nova ação de feirão/sorteio: título, prêmio, nº de ganhadores e data/hora — o app se adapta sozinho.
   const [novaAcao, setNovaAcao] = useState(false);
   const [salvandoAcao, setSalvandoAcao] = useState(false);
-  const [acao, setAcao] = useState({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao", beneficios: "" });
+  const [acao, setAcao] = useState({ titulo: "", premio: "", ganhadores: "1", quando: "", tipo: "feirao", beneficios: "", brindes: "" });
+  // brindes da ação ativa (editáveis a qualquer momento, sem criar ação nova)
+  const [brindesEd, setBrindesEd] = useState<string | null>(null);
+  const salvarBrindes = async () => {
+    if (!evento || brindesEd == null) return;
+    const r = await fetch(`${FEIRAO_URL}/rest/v1/feirao_eventos?id=eq.${evento.id}`, {
+      method: "PATCH",
+      headers: { ...HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify({ beneficios: comBrindes(evento.beneficios, brindesEd) }),
+    });
+    if (!r.ok) { toast({ title: "Não consegui salvar os brindes", variant: "destructive" }); return; }
+    toast({ title: "Brindes salvos 🎁", description: "O link do sorteio e o voucher já mostram." });
+    setBrindesEd(null);
+    qc.invalidateQueries({ queryKey: ["feirao-eventos", slug] });
+  };
   const [campos, setCampos] = useState<Campo[]>([]); // vazio = formulário padrão
 
   const setCampo = (i: number, patch: Partial<Campo>) =>
@@ -220,6 +240,10 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
       toast({ title: "Informe a data e hora do sorteio", variant: "destructive" });
       return;
     }
+    if (!acao.premio.trim()) {
+      toast({ title: "Informe o prêmio do sorteio", description: "O Co-pilot não é sorteado: ele já entra como brinde de todo mundo.", variant: "destructive" });
+      return;
+    }
     setSalvandoAcao(true);
     try {
       // encerra a ação ativa anterior (o histórico fica guardado no banco)
@@ -235,10 +259,10 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
           loja: slug,
           tipo: acao.tipo,
           titulo: acao.titulo.trim() || `${TIPOS[acao.tipo]?.rotulo || "Feirão"} ${lojaNome}`,
-          premio: acao.premio.trim() || "1 ano grátis do TotexCar Co-pilot",
+          premio: acao.premio.trim(),
           ganhadores: Math.min(100, Math.max(1, Number(acao.ganhadores) || 5)),
           sorteio_em: new Date(acao.quando).toISOString(),
-          beneficios: acao.beneficios.split("\n").map((b) => b.trim()).filter(Boolean).slice(0, 12),
+          beneficios: comBrindes(acao.beneficios.split("\n").map((b) => b.trim()).filter(Boolean).slice(0, 12), acao.brindes),
           campos: campos.length ? montarCampos() : null,
           ativo: true,
         }),
@@ -247,7 +271,7 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
       toast({ title: "Nova ação criada! 🎪", description: "O app já mostra a nova ação — as anteriores ficam no Histórico deste card." });
       setNovaAcao(false);
       setEventoSelId(null);
-      setAcao({ titulo: "", premio: "1 ano grátis do TotexCar Co-pilot", ganhadores: "5", quando: "", tipo: "feirao", beneficios: "" });
+      setAcao({ titulo: "", premio: "", ganhadores: "1", quando: "", tipo: "feirao", beneficios: "", brindes: "" });
       setCampos([]);
       qc.invalidateQueries({ queryKey: ["feirao-eventos", slug] });
       qc.invalidateQueries({ queryKey: ["feirao-ganhadores", slug] });
@@ -390,6 +414,20 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
                     Sorteio {new Date(evento.sorteio_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     {" · "}{evento.ganhadores} ganhador{evento.ganhadores > 1 ? "es" : ""} · {evento.premio}
                   </p>
+                  <p className="text-[12px] text-muted-foreground">
+                    🎁 Brindes: Co-pilot{brindesDe(evento.beneficios).length ? ` + ${brindesDe(evento.beneficios).join(", ")}` : ""}
+                    {evento.ativo && brindesEd == null && <button type="button" className="ml-2 text-primary font-medium underline" onClick={() => setBrindesEd(brindesDe(evento.beneficios).join("\n"))}>editar brindes</button>}
+                  </p>
+                  {evento.ativo && brindesEd != null && (
+                    <div className="mt-2 space-y-1.5">
+                      <textarea className="w-full border rounded-md p-2 text-sm bg-background min-h-[70px]" value={brindesEd} onChange={(e) => setBrindesEd(e.target.value)}
+                        placeholder={"Um por linha (o Co-pilot já está incluso)\nEx.: Tanque cheio\nEx.: Película de brinde"} />
+                      <div className="flex gap-2">
+                        <Button size="sm" className="h-8" onClick={salvarBrindes}>Salvar brindes</Button>
+                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setBrindesEd(null)}>Cancelar</Button>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">Nenhuma ação configurada — o app usa o padrão (hoje 18:00, 5 ganhadores).</p>
@@ -464,14 +502,25 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
                 <Input type="datetime-local" value={acao.quando} onChange={(e) => setAcao((p) => ({ ...p, quando: e.target.value }))} />
               </div>
               <div className="space-y-1 col-span-2 md:col-span-1">
-                <Label className="text-xs">Prêmio</Label>
-                <Input value={acao.premio} onChange={(e) => setAcao((p) => ({ ...p, premio: e.target.value }))} placeholder="1 ano grátis do TotexCar Co-pilot" />
+                <Label className="text-xs">Prêmio do sorteio *</Label>
+                <Input value={acao.premio} onChange={(e) => setAcao((p) => ({ ...p, premio: e.target.value }))} placeholder="Ex.: 1 TV LED 43 polegadas" />
+                <p className="text-[11px] text-muted-foreground">O Co-pilot não é sorteado: ele já entra como brinde de todo mundo.</p>
               </div>
               {/* como a ação aparece no link público (cabeçalho do sorteio e voucher) */}
               <div className="col-span-2 rounded-lg bg-[#0b1f6b] text-white px-3 py-2 text-[12.5px] leading-snug">
                 <div className="text-[10.5px] uppercase tracking-wider text-teal-300 font-bold">Como aparece no link do sorteio</div>
                 <div>{TIPOS[acao.tipo]?.icone} {acao.tipo === "feirao" ? "Feirão" : TIPOS[acao.tipo]?.rotulo} · {acao.titulo.trim() || `${TIPOS[acao.tipo]?.rotulo || "Feirão"} ${lojaNome}`}</div>
-                <div>🏆 <b>{acao.premio.trim() || "1 ano grátis do TotexCar Co-pilot"}</b> · {Math.max(1, Number(acao.ganhadores) || 5)} ganhador{(Number(acao.ganhadores) || 5) > 1 ? "es" : ""}</div>
+                <div>🏆 <b>{acao.premio.trim() || "prêmio do sorteio"}</b> · {Math.max(1, Number(acao.ganhadores) || 1)} ganhador{(Number(acao.ganhadores) || 1) > 1 ? "es" : ""}</div>
+                <div>🎁 Você já ganhou um co-piloto inteligente para o seu novo carro{acao.brindes.trim() ? ` + ${acao.brindes.split("\n").map((b) => b.trim()).filter(Boolean).join(", ")}` : ""}</div>
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Brindes da ação (um por linha — o Co-pilot já está incluso)</Label>
+                <textarea
+                  className="w-full border rounded-md p-2 text-sm bg-background min-h-[70px]"
+                  placeholder={"Ex.: Tanque cheio\nEx.: Película de brinde"}
+                  value={acao.brindes}
+                  onChange={(e) => setAcao((p) => ({ ...p, brindes: e.target.value }))}
+                />
               </div>
               <div className="space-y-1 max-w-[140px]">
                 <Label className="text-xs">Nº de ganhadores</Label>

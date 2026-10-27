@@ -209,6 +209,12 @@
       O cadastro garante o seu voucher, mas o sorteio vale para quem <b>visitar a loja</b>.
       Chegando lá, <b>procure a promotora</b> e diga: <i>"vim visitar a loja e quero participar do sorteio"</i>. Pronto — participação confirmada! 🎟️
     </div>
+    <!-- brinde de toda ação: o Co-pilot (não é sorteado) + os brindes que a loja configurar -->
+    <div id="brindes-box" style="display:none; background:linear-gradient(135deg,#0b1f6b,#1a3fd1); color:#fff; border-radius:14px; padding:14px 16px; margin-bottom:14px; font-size:14px; line-height:1.5">
+      <b style="font-size:15px">🎁 Você já ganhou um co-piloto inteligente para o seu novo carro</b>
+      <div style="opacity:.9; margin-top:4px">O TotexCar Co-pilot cuida do seu carro pelo WhatsApp: vencimentos, troca de óleo, gastos e mais.</div>
+      <div id="brindes-lista" style="margin-top:8px"></div>
+    </div>
     <div id="beneficios-box" style="display:none; background:var(--card); border:1.5px solid var(--linha); border-radius:14px; padding:14px 16px; margin-bottom:16px; text-align:center">
       <b id="beneficios-titulo" style="font-size:15px">🎁 Benefícios exclusivos</b>
       <div style="font-size:13.5px; color:var(--tinta2); margin-top:4px">te esperam na loja — venha descobrir pessoalmente!</div>
@@ -352,7 +358,7 @@
     live:     { rotulo: '📱 Live no Instagram', de: 'da live',     o: 'a live' }
   };
   function tipoAcao(){ return TIPOS_ACAO[(EV && EV.tipo) || 'feirao'] || TIPOS_ACAO.feirao; }
-  function premioTxt(){ return (EV && EV.premio) || '1 ano grátis do TotexCar Co-pilot'; }
+  function premioTxt(){ return (EV && EV.premio) || 'o prêmio da ação'; }
   function quandoTxt(){
     if(!EV) return 'hoje às 18:00';
     var d = new Date(EV.sorteio_em);
@@ -414,7 +420,13 @@
       aviso.style.display = 'block';
       // conta só o que é benefício de verdade: ignora avisos (*) e, se houver linhas com ✅,
       // considera apenas elas (frases de abertura ficam de fora)
-      var linhas = (EV.beneficios || []).filter(function(b){ return !/^\s*\*/.test(String(b)); });
+      // brindes (linhas 🎁 configuradas no painel) aparecem listados; o resto é o teaser dos benefícios
+      var brindes = (EV.beneficios || []).filter(function(b){ return /^\s*🎁/.test(String(b)); })
+        .map(function(b){ return String(b).replace(/^\s*🎁\s*/, ''); }).filter(Boolean);
+      document.getElementById('brindes-lista').innerHTML = brindes.length
+        ? '<b>E tem mais brindes:</b><br>' + brindes.map(function(t){ return '✅ ' + esc(t); }).join('<br>') : '';
+      document.getElementById('brindes-box').style.display = 'block';
+      var linhas = (EV.beneficios || []).filter(function(b){ return !/^\s*\*/.test(String(b)) && !/^\s*🎁/.test(String(b)); });
       var comCheck = linhas.filter(function(b){ return String(b).indexOf('✅') >= 0; });
       var qtd = (comCheck.length || linhas.length) || 9;
       document.getElementById('beneficios-titulo').textContent =
@@ -825,7 +837,8 @@
     var n = nGanhadores();
     var msg = 'Olá, ' + primeiro + '! 🎟️ Seu voucher do sorteio ' + (LOJA==='cardoso' ? 'do Feirão Cardoso Veículos' : 'de ' + nomeLoja) + ' é *' + voucher + '*.\n\n'
       + 'Sorteio ' + quandoTxt() + ' — ' + (n>1 ? n+' ganhadores levam' : 'o ganhador leva') + ' ' + premioTxt() + '!\n\n'
-      + 'Veja seu voucher e conheça o app: ' + pagina;
+      + '🎁 E você já ganhou um co-piloto inteligente para o seu novo carro: o TotexCar Co-pilot.\n\n'
+      + 'Veja seu voucher: ' + pagina;
     var vz = document.getElementById('v-zap');
     if(PUBLICO){
       // quem se cadastrou é o próprio cliente: leva pra página do voucher dele
