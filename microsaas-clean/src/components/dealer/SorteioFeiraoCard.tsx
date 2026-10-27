@@ -22,9 +22,44 @@ interface Ganhador {
   insta: string | null; sorteado_em: string;
 }
 interface AutoEtapa { on: boolean; dias?: number; msg: string }
+
+// Logo → PNG transparente (lado maior até 800 px). Com `branco`, tira o fundo liso (cor dos cantos)
+// e pinta o resto de branco, pra aparecer no topo azul do app do sorteio.
+async function logoPng(file: File, branco: boolean): Promise<Blob> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((ok, erro) => {
+      const i = new Image(); i.onload = () => ok(i); i.onerror = () => erro(new Error("Imagem inválida.")); i.src = url;
+    });
+    const esc = Math.min(1, 800 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * esc); c.height = Math.round(img.naturalHeight * esc);
+    const ctx = c.getContext("2d")!;
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    if (branco) {
+      const d = ctx.getImageData(0, 0, c.width, c.height);
+      const px = d.data;
+      const canto = (x: number, y: number) => { const k = (y * c.width + x) * 4; return [px[k], px[k + 1], px[k + 2], px[k + 3]]; };
+      const cs = [canto(0, 0), canto(c.width - 1, 0), canto(0, c.height - 1), canto(c.width - 1, c.height - 1)];
+      const temFundo = cs.every((q) => q[3] > 200);
+      const fundo = [0, 1, 2].map((i) => cs.reduce((t, q) => t + q[i], 0) / 4);
+      for (let k = 0; k < px.length; k += 4) {
+        // distância da cor do fundo → opacidade (sombra clara e fundo somem; o desenho fica)
+        const dist = Math.hypot(px[k] - fundo[0], px[k + 1] - fundo[1], px[k + 2] - fundo[2]);
+        const a = temFundo ? Math.max(0, Math.min(1, (dist - 40) / 80)) : 1;
+        px[k + 3] = Math.round(px[k + 3] * a);
+        px[k] = px[k + 1] = px[k + 2] = 255;
+      }
+      ctx.putImageData(d, 0, 0);
+    }
+    return await new Promise<Blob>((ok, erro) => c.toBlob((b) => (b ? ok(b) : erro(new Error("Falha ao gerar o PNG."))), "image/png"));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 interface AutoCfg { pos1: AutoEtapa; pos2: AutoEtapa; vip: AutoEtapa }
 interface FeiraoLoja {
-  id: string; nome: string; foto_url: string | null;
+  id: string; nome: string; foto_url: string | null; logo_url?: string | null;
   whatsapp: string | null; instagram: string | null;
   automacao?: Partial<AutoCfg> | null;
 }
@@ -97,6 +132,9 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const [ativando, setAtivando] = useState<string | null>(null); // voucher em andamento ("*" = todos)
   const [subindo, setSubindo] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
+  const [subindoLogo, setSubindoLogo] = useState(false);
+  const [logoBranco, setLogoBranco] = useState(true);
 
   const lojaNome = dealership || meData?.dealership || "";
   // A Cardoso é a loja original do app (dados antigos sem coluna loja) — slug fixo pra casar com o histórico.
@@ -383,6 +421,44 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
     }
   };
 
+  // Logo da loja: entra no lugar do nome no app do sorteio, no voucher e na página do feirão.
+  const subirLogo = async (file: File) => {
+    setSubindoLogo(true);
+    try {
+      const blob = await logoPng(file, logoBranco);
+      const path = `${slug}/logo-${Date.now()}.png`;
+      const up = await fetch(`${FEIRAO_URL}/storage/v1/object/feirao/${path}`, {
+        method: "POST",
+        headers: { ...HEADERS, "Content-Type": "image/png" },
+        body: blob,
+      });
+      if (!up.ok) throw new Error("Falha ao enviar o logo.");
+      const save = await fetch(`${FEIRAO_URL}/rest/v1/feirao_lojas`, {
+        method: "POST",
+        headers: { ...HEADERS, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify({ id: slug, nome: lojaNome, logo_url: `${FEIRAO_URL}/storage/v1/object/public/feirao/${path}` }),
+      });
+      if (!save.ok) {
+        const t = await save.text();
+        throw new Error(/logo_url/.test(t) ? "Falta rodar o SQL do logo no banco do sorteio (coluna logo_url)." : "Logo enviado, mas não foi possível salvar a configuração.");
+      }
+      toast({ title: "Logo atualizado! ✨", description: "O app do sorteio e o voucher já mostram o logo no lugar do nome." });
+      qc.invalidateQueries({ queryKey: ["feirao-loja", slug] });
+    } catch (e: any) {
+      toast({ title: "Não foi possível atualizar o logo", description: String(e?.message || e), variant: "destructive" });
+    } finally {
+      setSubindoLogo(false);
+      if (logoRef.current) logoRef.current.value = "";
+    }
+  };
+  const tirarLogo = async () => {
+    if (!confirm("Tirar o logo e voltar a mostrar o nome da loja?")) return;
+    await fetch(`${FEIRAO_URL}/rest/v1/feirao_lojas?id=eq.${slug}`, {
+      method: "PATCH", headers: { ...HEADERS, "Content-Type": "application/json" }, body: JSON.stringify({ logo_url: null }),
+    });
+    qc.invalidateQueries({ queryKey: ["feirao-loja", slug] });
+  };
+
   return (
     <Card className="border-0 shadow-premium-md">
       <CardHeader className="pb-2">
@@ -598,6 +674,31 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Personalização: logo da loja no lugar do nome (app do sorteio, voucher e feirão) */}
+        <div className="flex items-start gap-3 rounded-lg border border-dashed p-3">
+          <div className="w-20 h-14 rounded-md flex items-center justify-center shrink-0 p-1.5" style={{ background: "linear-gradient(160deg,#0A1B5C,#1436C7)" }}>
+            {lojaCfg?.logo_url ? <img src={lojaCfg.logo_url} alt={`Logo ${lojaNome}`} className="max-w-full max-h-full object-contain" /> : <span className="text-[10px] font-bold text-white text-center leading-tight">{lojaNome}</span>}
+          </div>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="text-sm font-medium">Logo da loja</p>
+            <p className="text-[12px] text-muted-foreground">Aparece no lugar do nome, no topo do app do sorteio, do voucher e da página do feirão.</p>
+            <p className="text-[12px] rounded-md bg-muted px-2 py-1">📐 PNG de preferência, horizontal (ex.: 800 × 260 px). Com fundo liso também funciona: a opção abaixo tira o fundo.</p>
+            <label className="flex items-center gap-2 text-[12px]">
+              <input type="checkbox" checked={logoBranco} onChange={(e) => setLogoBranco(e.target.checked)} />
+              Deixar o logo branco e tirar o fundo (combina com o topo azul)
+            </label>
+            <input ref={logoRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => e.target.files?.[0] && subirLogo(e.target.files[0])} />
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" className="gap-1.5 h-8" disabled={subindoLogo} onClick={() => logoRef.current?.click()}>
+                {subindoLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+                {lojaCfg?.logo_url ? "Trocar logo" : "Enviar logo"}
+              </Button>
+              {lojaCfg?.logo_url && <Button variant="ghost" size="sm" className="h-8" onClick={tirarLogo}>Voltar ao nome</Button>}
+            </div>
+          </div>
         </div>
 
         {/* Personalização: foto da fachada da loja no app e no voucher do cliente */}

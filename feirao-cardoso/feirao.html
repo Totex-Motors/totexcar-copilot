@@ -26,6 +26,8 @@
 
   .marca{text-align:center; font-size:22px; font-weight:800; letter-spacing:-.4px}
   .marca em{font-style:italic; color:var(--sky)}
+  .marca .logo-loja{display:block; height:52px; width:auto; max-width:240px; margin:0 auto; object-fit:contain}
+  .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
   .desde{text-align:center; font-size:12px; opacity:.75; margin-top:2px; letter-spacing:.14em}
 
   .operacao{text-align:center; margin-top:26px}
@@ -99,7 +101,7 @@
 <body>
 <div class="pagina">
 
-  <div class="marca">CARDOSO <em>Veículos</em></div>
+  <div class="marca" id="marca">CARDOSO <em>Veículos</em></div>
   <div class="desde">DESDE 1999 · CARAPICUÍBA</div>
 
   <div class="operacao">
@@ -193,12 +195,28 @@
     }
   }
 
-  // fachada da loja (mesma foto configurada no painel)
-  fetch('https://fbgtqiqovwxccinbzvmx.supabase.co/rest/v1/feirao_lojas?select=foto_url&id=eq.cardoso',
+
+  // logo da loja no lugar do nome (painel → Sorteios → Logo). Só troca depois que a imagem carregou;
+  // o nome continua no texto (escondido) pro título da página e pras mensagens.
+  function aplicarLogo(el, url, nome){
+    if(!el || !url) return;
+    var img = new Image();
+    img.alt = nome || el.textContent.replace(/\s+/g,' ').trim();
+    img.className = 'logo-loja';
+    img.onload = function(){
+      var s = document.createElement('span'); s.className = 'sr'; s.textContent = el.textContent;
+      el.innerHTML = ''; el.appendChild(s); el.appendChild(img);
+    };
+    img.src = url;
+  }
+
+  // logo e fachada da loja (mesmos do painel)
+  fetch('https://fbgtqiqovwxccinbzvmx.supabase.co/rest/v1/feirao_lojas?select=*&id=eq.cardoso',
     { headers: { apikey: 'sb_publishable_7FBkjLTMpozEHHcgucNA1g_xTNWsrfp',
                  Authorization: 'Bearer sb_publishable_7FBkjLTMpozEHHcgucNA1g_xTNWsrfp' } })
     .then(function(r){ return r.ok ? r.json() : []; })
     .then(function(ls){
+      if(ls && ls[0]) aplicarLogo(document.getElementById('marca'), ls[0].logo_url, ls[0].nome);
       var f = ls && ls[0] && ls[0].foto_url;
       if(f){ var img = document.getElementById('fachada'); img.src = f; img.style.display = 'block'; }
     })

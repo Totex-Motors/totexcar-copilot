@@ -26,6 +26,8 @@
 
   .marca{text-align:center; font-size:26px; font-weight:800; letter-spacing:-.5px}
   .marca em{font-style:italic; color:var(--sky); font-weight:700}
+  .marca .logo-loja{display:block; height:58px; width:auto; max-width:260px; margin:0 auto; object-fit:contain}
+  .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
   .desde{text-align:center; font-size:12px; opacity:.8; margin-top:2px}
 
   /* ---------- ticket ---------- */
@@ -157,7 +159,22 @@
     ola.appendChild(document.createTextNode(', você está concorrendo!'));
   }
 
-  // multi-loja: personaliza nome, fachada e contatos da loja parceira
+
+  // logo da loja no lugar do nome (painel → Sorteios → Logo). Só troca depois que a imagem carregou;
+  // o nome continua no texto (escondido) pro título da página e pras mensagens.
+  function aplicarLogo(el, url, nome){
+    if(!el || !url) return;
+    var img = new Image();
+    img.alt = nome || el.textContent.replace(/\s+/g,' ').trim();
+    img.className = 'logo-loja';
+    img.onload = function(){
+      var s = document.createElement('span'); s.className = 'sr'; s.textContent = el.textContent;
+      el.innerHTML = ''; el.appendChild(s); el.appendChild(img);
+    };
+    img.src = url;
+  }
+
+  // multi-loja: personaliza nome, logo, fachada e contatos da loja parceira
   var LOJA = (p.get('loja')||'cardoso').toLowerCase().replace(/[^a-z0-9-]/g,'') || 'cardoso';
   var SUPA_URL = 'https://fbgtqiqovwxccinbzvmx.supabase.co';
   var SUPA_KEY = 'sb_publishable_7FBkjLTMpozEHHcgucNA1g_xTNWsrfp';
@@ -217,6 +234,7 @@
           zapb.textContent = '💬 Falar com a ' + l.nome + ' no WhatsApp';
         } else { zapb.style.display = 'none'; }
       }
+      aplicarLogo(document.getElementById('marca'), l.logo_url, l.nome);
       if(l.foto_url){
         var img = document.getElementById('fachada');
         img.src = l.foto_url; img.alt = 'Fachada ' + l.nome; img.style.display = 'block';
