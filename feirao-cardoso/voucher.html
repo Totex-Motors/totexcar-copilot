@@ -2,9 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Seu voucher do Feirão — Cardoso Veículos</title>
+<title>Seu voucher do sorteio — Cardoso Veículos</title>
 <meta property="og:title" content="🎟️ Meu voucher do sorteio — TotexCar Co-pilot">
-<meta property="og:description" content="Voucher do sorteio do feirão + tudo o que o assistente do seu carro faz no WhatsApp.">
+<meta property="og:description" content="Seu voucher do sorteio + tudo o que o assistente do seu carro faz no WhatsApp.">
 <meta property="og:image" content="https://totexcar-copilot-s5zs.vercel.app/og-sorteio.jpg">
 <meta property="og:image:width" content="1080">
 <meta property="og:image:height" content="1080">
@@ -84,7 +84,7 @@
 <body>
 <div class="pagina">
   <div class="marca" id="marca">CARDOSO <em>Veículos</em></div>
-  <div class="desde" id="desde">desde 1999 · Feirão TotexCar Co-pilot</div>
+  <div class="desde" id="desde">desde 1999</div>
   <img id="fachada" alt="" style="display:none; width:100%; border-radius:16px; margin-top:16px; max-height:180px; object-fit:cover; box-shadow:0 8px 30px rgba(0,0,0,.3)">
 
   <div class="ticket">
@@ -93,8 +93,6 @@
       <div class="ola" id="ola">Você está concorrendo!</div>
       <div class="num" id="num">—</div>
       <div class="picote" id="picote">
-        Sorteio <b>hoje às 18:00</b>, aqui no feirão.<br>
-        <b>5 ganhadores</b> levam <b>1 ano grátis</b> do TotexCar Co-pilot.
         Guarde esta página — este número é seu!
       </div>
     </div>
@@ -125,7 +123,7 @@
 
     <div class="premio">
       <b>🏆 Prêmio do sorteio</b>
-      <div id="premio-txt">1 ano de TotexCar Co-pilot grátis para 5 sorteados.<br>Resultado às 18:00 — fique por perto!</div>
+      <div id="premio-txt">Carregando o prêmio…</div>
     </div>
   </div>
 
@@ -136,7 +134,7 @@
 
   <footer id="rodape">
     Cardoso Veículos · (11) 94957-1603 · desde 1999<br>
-    Feirão com sorteio do app TotexCar Co-pilot
+    Sorteios com o app TotexCar Co-pilot
   </footer>
 </div>
 
@@ -169,6 +167,9 @@
         ? 'hoje' : 'dia ' + d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
       var quando = dia + ' às ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
       var n = ev.ganhadores || 5;
+      // descrição da ação escolhida no painel (tipo + nome), não só o app
+      var rot = { feirao: '🎪 Feirão', promocao: '🏷️ Promoção', live: '📱 Live no Instagram' }[ev.tipo || 'feirao'] || '🎪 Feirão';
+      document.getElementById('desde').textContent = rot + (ev.titulo ? ' · ' + ev.titulo : ' · desde 1999');
       var pic = document.getElementById('picote');
       pic.innerHTML = '';
       pic.appendChild(document.createTextNode('Sorteio '));
@@ -191,8 +192,7 @@
         document.getElementById('marca').textContent = l.nome;
         document.getElementById('b-recompra').textContent =
           'Acompanhe a tabela FIPE e receba ofertas de recompra da ' + l.nome + ' pelo seu usado.';
-        document.getElementById('desde').textContent = 'Feirão TotexCar Co-pilot';
-        document.getElementById('rodape').textContent = l.nome + ' — Feirão com sorteio do app TotexCar Co-pilot';
+        document.getElementById('rodape').textContent = l.nome + ' — sorteios com o app TotexCar Co-pilot';
         var ins = document.getElementById('cta-insta');
         if(l.instagram){
           ins.href = 'https://instagram.com/' + l.instagram.replace(/^@/,'');

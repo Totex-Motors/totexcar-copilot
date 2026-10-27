@@ -467,12 +467,18 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
                 <Label className="text-xs">Prêmio</Label>
                 <Input value={acao.premio} onChange={(e) => setAcao((p) => ({ ...p, premio: e.target.value }))} placeholder="1 ano grátis do TotexCar Co-pilot" />
               </div>
+              {/* como a ação aparece no link público (cabeçalho do sorteio e voucher) */}
+              <div className="col-span-2 rounded-lg bg-[#0b1f6b] text-white px-3 py-2 text-[12.5px] leading-snug">
+                <div className="text-[10.5px] uppercase tracking-wider text-teal-300 font-bold">Como aparece no link do sorteio</div>
+                <div>{TIPOS[acao.tipo]?.icone} {acao.tipo === "feirao" ? "Feirão" : TIPOS[acao.tipo]?.rotulo} · {acao.titulo.trim() || `${TIPOS[acao.tipo]?.rotulo || "Feirão"} ${lojaNome}`}</div>
+                <div>🏆 <b>{acao.premio.trim() || "1 ano grátis do TotexCar Co-pilot"}</b> · {Math.max(1, Number(acao.ganhadores) || 5)} ganhador{(Number(acao.ganhadores) || 5) > 1 ? "es" : ""}</div>
+              </div>
               <div className="space-y-1 max-w-[140px]">
                 <Label className="text-xs">Nº de ganhadores</Label>
                 <Input type="number" min={1} max={100} value={acao.ganhadores} onChange={(e) => setAcao((p) => ({ ...p, ganhadores: e.target.value }))} />
               </div>
               <div className="space-y-1 col-span-2">
-                <Label className="text-xs">Benefícios do feirão (um por linha — aparecem no link público como a lista da ação)</Label>
+                <Label className="text-xs">Benefícios {acao.tipo === "live" ? "da live" : acao.tipo === "promocao" ? "da promoção" : "do feirão"} (um por linha — aparecem no link público como a lista da ação)</Label>
                 <textarea
                   className="w-full border rounded-md p-2 text-sm bg-background min-h-[90px]"
                   placeholder={"Taxa zero no financiamento\nAvaliação acima da FIPE\nPrimeira parcela para 90 dias\n…"}

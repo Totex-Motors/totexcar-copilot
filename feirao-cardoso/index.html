@@ -2,9 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Feirão Cardoso Veículos — Sorteio TotexCar Co-pilot</title>
-<meta property="og:title" content="🎟️ Sorteio do Feirão — 1 ano grátis do TotexCar Co-pilot">
-<meta property="og:description" content="Cadastre-se em 1 minuto, receba seu voucher na hora e valide sua participação na loja. Serão 5 sorteados!">
+<title>Sorteio Cardoso Veículos</title>
+<meta property="og:title" content="🎟️ Sorteio Cardoso Veículos — participe!">
+<meta property="og:description" content="Cadastre-se em 1 minuto e receba seu voucher na hora. Veja o prêmio e a data do sorteio no link.">
 <meta property="og:image" content="https://totexcar-copilot-s5zs.vercel.app/og-sorteio.jpg">
 <meta property="og:image:width" content="1080">
 <meta property="og:image:height" content="1080">
@@ -189,10 +189,10 @@
           style="background:rgba(255,255,255,.16); color:#fff; text-decoration:none; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; margin-top:4px">?</a>
       </div>
     </div>
-    <div class="sub">Feirão · Sorteio TotexCar Co-pilot · desde 1999</div>
+    <div class="sub" id="hdr-acao">Sorteio · desde 1999</div>
     <div class="contagem">
       <b id="total">0</b>
-      <span id="hdr-sub">clientes cadastrados<br>sorteio hoje às <b style="font-size:13px">18:00</b> · 5 ganham 1 ano grátis</span>
+      <span id="hdr-sub">clientes cadastrados<br>carregando a ação…</span>
     </div>
   </header>
 
@@ -210,7 +210,7 @@
       Chegando lá, <b>procure a promotora</b> e diga: <i>"vim visitar a loja e quero participar do sorteio"</i>. Pronto — participação confirmada! 🎟️
     </div>
     <div id="beneficios-box" style="display:none; background:var(--card); border:1.5px solid var(--linha); border-radius:14px; padding:14px 16px; margin-bottom:16px; text-align:center">
-      <b id="beneficios-titulo" style="font-size:15px">🎁 9 benefícios exclusivos do feirão</b>
+      <b id="beneficios-titulo" style="font-size:15px">🎁 Benefícios exclusivos</b>
       <div style="font-size:13.5px; color:var(--tinta2); margin-top:4px">te esperam na loja — venha descobrir pessoalmente!</div>
     </div>
 
@@ -251,7 +251,7 @@
         <div class="chips" id="g-promotora"></div>
       </div>
       <div class="campo" id="campo-origem">
-        <label>Onde viu o feirão?</label>
+        <label id="lbl-origem">Onde viu o feirão?</label>
         <div class="chips" id="g-origem">
           <button data-v="Panfleto">Panfleto</button>
           <button data-v="Instagram">Instagram</button>
@@ -286,8 +286,8 @@
     <section id="tela-sor" class="tela">
       <div class="sorteio-capa">
         <div class="hora" id="cap-quando">Hoje · 18:00</div>
-        <h2 id="cap-titulo">Grande sorteio do Feirão</h2>
-        <div class="premio" id="cap-premio">5 × 1 ANO GRÁTIS DE TOTEXCAR CO-PILOT</div>
+        <h2 id="cap-titulo">Grande sorteio</h2>
+        <div class="premio" id="cap-premio"></div>
       </div>
       <div class="rolando" id="rolando"></div>
       <div id="ganhadoresBox"></div>
@@ -295,7 +295,7 @@
     </section>
   </main>
 
-  <footer>Cardoso Veículos · (11) 94957-1603 · @cardosoveiculos — app do feirão TotexCar Co-pilot</footer>
+  <footer>Cardoso Veículos · (11) 94957-1603 · @cardosoveiculos — sorteios com o app TotexCar Co-pilot</footer>
 </div>
 
 <!-- VOUCHER -->
@@ -345,6 +345,13 @@
   var MODO_CAMPOS = false;   // evento com formulário próprio (campos definidos no painel)
   var CAMPOS = [];           // definição dos campos do evento ativo
   function nGanhadores(){ return (EV && EV.ganhadores) || 5; }
+  // tipo da ação escolhido no painel (Feirão / Promoção / Live): muda o cabeçalho, os benefícios e o sorteio
+  var TIPOS_ACAO = {
+    feirao:   { rotulo: '🎪 Feirão',            de: 'do feirão',   o: 'o feirão' },
+    promocao: { rotulo: '🏷️ Promoção',          de: 'da promoção', o: 'a promoção' },
+    live:     { rotulo: '📱 Live no Instagram', de: 'da live',     o: 'a live' }
+  };
+  function tipoAcao(){ return TIPOS_ACAO[(EV && EV.tipo) || 'feirao'] || TIPOS_ACAO.feirao; }
   function premioTxt(){ return (EV && EV.premio) || '1 ano grátis do TotexCar Co-pilot'; }
   function quandoTxt(){
     if(!EV) return 'hoje às 18:00';
@@ -367,9 +374,15 @@
     if(!EV) return;
     FEV = '&evento_id=eq.' + EV.id;
     var n = nGanhadores();
-    var tipoTag = EV.tipo === 'live' ? '📱 Live no Instagram · ' : (EV.tipo === 'promocao' ? '🏷️ Promoção · ' : '');
+    var ta = tipoAcao();
+    // descrição da ação: tipo + nome (ex.: "🏷️ Promoção · Esquenta Black Friday") e o prêmio que está sendo sorteado
+    document.getElementById('hdr-acao').textContent = ta.rotulo + (EV.titulo ? ' · ' + EV.titulo : ' · desde 1999');
+    document.title = (EV.titulo || ('Sorteio ' + ta.de)) + ' — ' + document.querySelector('header .marca').textContent.replace(/\s+/g,' ').trim();
     document.getElementById('hdr-sub').innerHTML = (PUBLICO ? 'participantes' : 'clientes cadastrados') + '<br>'
-      + tipoTag + 'sorteio ' + esc(quandoTxt()) + ' · <b style="font-size:13px">' + n + '</b> ganhador' + (n>1?'es':'');
+      + '🏆 <b style="font-size:13px">' + esc(premioTxt()) + '</b><br>'
+      + 'sorteio ' + esc(quandoTxt()) + ' · <b style="font-size:13px">' + n + '</b> ganhador' + (n>1?'es':'');
+    var lblOrigem = document.getElementById('lbl-origem');
+    if(lblOrigem) lblOrigem.textContent = 'Onde viu ' + ta.o + '?';
     // na live, quem se cadastra pelo link já conta como origem "Live Instagram" — sem pergunta
     if(PUBLICO && EV.tipo === 'live'){
       var campoOrigem = document.getElementById('g-origem').closest('.campo');
@@ -392,21 +405,27 @@
 
     // link público: comunicado da validação presencial + teaser dos benefícios (sem revelar a lista)
     if(PUBLICO){
-      document.getElementById('aviso-visita').style.display = 'block';
+      var aviso = document.getElementById('aviso-visita');
+      if(EV.tipo === 'live'){
+        // na live o sorteio é ao vivo: não precisa ir até a loja
+        aviso.innerHTML = '<b>📢 Como participar:</b><br>Cadastro feito, voucher garantido! O sorteio acontece <b>ao vivo na live do Instagram</b>, '
+          + esc(quandoTxt()) + '. Fique ligado! 🎥';
+      }
+      aviso.style.display = 'block';
       // conta só o que é benefício de verdade: ignora avisos (*) e, se houver linhas com ✅,
       // considera apenas elas (frases de abertura ficam de fora)
       var linhas = (EV.beneficios || []).filter(function(b){ return !/^\s*\*/.test(String(b)); });
       var comCheck = linhas.filter(function(b){ return String(b).indexOf('✅') >= 0; });
       var qtd = (comCheck.length || linhas.length) || 9;
       document.getElementById('beneficios-titulo').textContent =
-        '🎁 ' + qtd + ' benefícios exclusivos do feirão';
+        '🎁 ' + qtd + ' benefícios exclusivos ' + ta.de;
       document.getElementById('beneficios-box').style.display = 'block';
     }
     var d = new Date(EV.sorteio_em);
     document.getElementById('cap-quando').textContent =
       (d.toDateString() === new Date().toDateString() ? 'Hoje' : d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}))
       + ' · ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
-    document.getElementById('cap-titulo').textContent = EV.titulo || 'Grande sorteio do Feirão';
+    document.getElementById('cap-titulo').textContent = EV.titulo || ('Grande sorteio ' + ta.de);
     document.getElementById('cap-premio').textContent = n + ' × ' + premioTxt().toUpperCase();
     if(!dados_ganhadores_na_tela()) document.getElementById('btnSortear').textContent = '🎉 Sortear os ' + n + ' ganhadores';
     renderCampos();
@@ -514,7 +533,7 @@
           rodape.textContent = l.nome
             + (l.whatsapp ? ' · WhatsApp ' + l.whatsapp.replace(/^55/, '') : '')
             + (l.instagram ? ' · ' + l.instagram : '')
-            + ' — app do feirão TotexCar Co-pilot';
+            + ' — sorteios com o app TotexCar Co-pilot';
         }
         if(l.foto_url){
           var img = document.createElement('img');
