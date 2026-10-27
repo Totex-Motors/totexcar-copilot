@@ -22,13 +22,21 @@ const envioVazio = (): Envio => ({ carro: null, car_desc: "", placa: "", oficina
 
 // Rascunho do envio na sessão: se o celular recarregar a página ao abrir a câmera (falta de memória),
 // o "Mandar carro pra oficina" volta aberto com o que já tinha sido preenchido (inclusive a foto).
+// Fica no localStorage (sobrevive até se o app instalado for reaberto) e vale por 2 horas.
 const RASCUNHO = "os:envio-rascunho";
-const lerRascunho = (): Envio | null => { try { const r = sessionStorage.getItem(RASCUNHO); return r ? JSON.parse(r) : null; } catch { return null; } };
+const VALIDADE_RASCUNHO = 2 * 3600_000;
+const lerRascunho = (): Envio | null => {
+  try {
+    const r = JSON.parse(localStorage.getItem(RASCUNHO) || "null");
+    return r?.em && Date.now() - r.em < VALIDADE_RASCUNHO ? (r.envio as Envio) : null;
+  } catch { return null; }
+};
 const guardarRascunho = (e: Envio | null) => {
   try {
-    if (!e) { sessionStorage.removeItem(RASCUNHO); return; }
-    try { sessionStorage.setItem(RASCUNHO, JSON.stringify(e)); } catch { sessionStorage.setItem(RASCUNHO, JSON.stringify({ ...e, foto_saida: null })); }
-  } catch { /* sem sessionStorage */ }
+    if (!e) { localStorage.removeItem(RASCUNHO); return; }
+    try { localStorage.setItem(RASCUNHO, JSON.stringify({ em: Date.now(), envio: e })); }
+    catch { localStorage.setItem(RASCUNHO, JSON.stringify({ em: Date.now(), envio: { ...e, foto_saida: null } })); }
+  } catch { /* sem localStorage */ }
 };
 const PLACA_OK = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
 const limparPlaca = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);

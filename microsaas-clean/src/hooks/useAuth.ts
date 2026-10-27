@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { normalizePhone } from '@/utils/phone';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -138,18 +138,24 @@ export const useCurrentUser = () => {
 
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const uid = user?.id;
+  // perfil já carregado pra este usuário: a renovação da sessão (que o Supabase dispara ao VOLTAR pra
+  // aba, ex.: depois de tirar/escolher uma foto) atualiza em silêncio, sem o "carregando" de tela
+  // inteira — ele desmontava a página e fechava o que estava aberto (bug do envio pra oficina).
+  const carregadoPara = useRef<string | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
-      console.log('🔍 useCurrentUser fetchUserData - user:', user?.id);
+      console.log('🔍 useCurrentUser fetchUserData - user:', uid);
       if (!user) {
         console.log('❌ useCurrentUser - No user, returning null');
+        carregadoPara.current = null;
         setUserData(null);
         setLoading(false);
         return;
       }
 
-      setLoading(true); // novo user chegou (ex.: pós-refresh de token): volta a carregar o perfil
+      if (carregadoPara.current !== uid) setLoading(true); // outro usuário: carrega o perfil do zero
       try {
         console.log('🔍 useCurrentUser - Fetching user data for user.id:', user.id);
         // Buscar dados do usuário na tabela users usando o ID do auth.users
@@ -166,7 +172,9 @@ export const useCurrentUser = () => {
         }
         
         console.log('🔍 useCurrentUser - Setting userData:', data);
-        setUserData(data);
+        // renovação silenciosa que falhou não apaga o perfil que já estava na tela
+        if (data || carregadoPara.current !== uid) setUserData(data);
+        carregadoPara.current = uid ?? null;
       } catch (error) {
         console.error('Erro ao buscar dados do usuário:', error);
       } finally {
@@ -175,7 +183,9 @@ export const useCurrentUser = () => {
     };
 
     fetchUserData();
-  }, [user]);
+    // só quando muda QUEM está logado (a sessão renovada traz um objeto novo do mesmo usuário)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
 
   return {
     user,

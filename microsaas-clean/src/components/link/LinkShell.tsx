@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 // Casca das telas do LINK PESSOAL da equipe (sem login): valida o token, mostra loja + pessoa no topo
 // e só então renderiza o conteúdo (que chama a dealer-api com o mesmo token via setLinkToken).
 export function LinkShell({ token, titulo, children }: { token: string; titulo: string; children: (me: { nome: string; papel: string; loja: string }) => ReactNode }) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["link-me", token],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("dealer-api", { body: { action: "link_me", t: token } });
@@ -14,9 +14,12 @@ export function LinkShell({ token, titulo, children }: { token: string; titulo: 
       return data as { nome: string; papel: string; loja: string };
     },
     retry: false,
+    // voltar da câmera/galeria não recarrega a casca (nem derruba a tela se a rede oscilar)
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
   });
   if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-7 h-7 animate-spin text-primary" /></div>;
-  if (error || !data) return (
+  if (!data) return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
       <div className="text-center max-w-sm space-y-3"><p className="text-3xl">🔒</p><h1 className="text-lg font-semibold">Este link não vale mais. Peça um novo ao gerente.</h1></div>
     </div>
