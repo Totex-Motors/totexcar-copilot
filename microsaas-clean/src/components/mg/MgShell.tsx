@@ -122,6 +122,7 @@ export const MG_CSS = `
 .mg .doc-card .lock{position:absolute;left:0;right:0;bottom:0;top:96px;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center;background:linear-gradient(180deg,rgba(8,63,61,.55) 0%,rgba(8,63,61,.96) 40%)}
 .mg .doc-card .lock .lt{font-size:14.5px;font-weight:800}.mg .doc-card .lock .ls{font-size:12px;opacity:.85;margin:3px 0 10px}
 .mg .doc-card .lock button{background:#fff;color:var(--brand-deep);font-weight:800;font-size:14px;border-radius:12px;padding:10px 16px;border:0;cursor:pointer}
+.mg .doc-card .lock button.alt{background:none;color:#fff;font-size:12.5px;font-weight:700;text-decoration:underline;padding:8px 4px 0}
 .mg .status{flex:1;border-radius:12px;padding:10px 11px;display:flex;align-items:center;gap:9px}
 .mg .status.ok{background:var(--good-soft)}
 .mg .status.warn{background:var(--gain-soft)}
