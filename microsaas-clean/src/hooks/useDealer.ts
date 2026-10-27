@@ -188,7 +188,7 @@ export const usePostsaleCreate = () =>
 // estoque da loja (marketplace) pro pós-venda escolher o carro vendido — foto de capa obrigatória
 export interface PrepResumo { id: string; data: string; km: number; intervalo_km: number; feito_por: string | null }
 export interface OsResumo { numero: number; status: "enviada" | "recebida" | "concluida"; oficina: string }
-export interface EstoqueCarro { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: PrepResumo | null; os?: OsResumo | null }
+export interface EstoqueCarro { id: string; desc: string; versao: string | null; cor: string | null; placa?: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: PrepResumo | null; os?: OsResumo | null }
 export const useEstoqueLista = (enabled: boolean, dealership?: string) =>
   useQuery({
     queryKey: ["estoque-lista", dealership || null],

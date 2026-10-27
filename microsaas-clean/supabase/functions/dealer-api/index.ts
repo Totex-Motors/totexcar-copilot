@@ -484,8 +484,19 @@ async function estoqueDaLoja(loja: string): Promise<{ carros: any[]; aviso?: str
     const nomeOf: Record<string, string> = Object.fromEntries((ofs || []).map((o: any) => [o.id, o.nome]));
     for (const o of oss || []) osDe[o.vehicle_id] = { numero: o.numero, status: o.status, oficina: nomeOf[o.oficina_id] || "oficina" };
   } catch { /* tabela das oficinas ainda não criada */ }
+  // placa: o marketplace não traz; vale a última informada pra esse carro (OS ou preparação)
+  const placaDe: Record<string, string> = {};
+  for (const pr of preps || []) if (pr.placa && !placaDe[pr.vehicle_id]) placaDe[pr.vehicle_id] = pr.placa;
+  try {
+    const { data: comPlaca } = await admin.from("ordens_servico").select("vehicle_id, placa").eq("dealership", loja)
+      .not("vehicle_id", "is", null).not("placa", "is", null).order("enviada_em", { ascending: false }).limit(1000);
+    const daOs: Record<string, string> = {};
+    for (const o of comPlaca || []) if (!daOs[o.vehicle_id]) daOs[o.vehicle_id] = o.placa;
+    Object.assign(placaDe, daOs); // a da OS é a mais recente conferida
+  } catch { /* tabela das oficinas ainda não criada */ }
   const carros = (await mktStock(did)).map((v: any) => ({
     id: v.id, desc: descVeiculo(v), versao: v.version || null, cor: v.color || null,
+    placa: String(v.plate || placaDe[v.id] || "").toUpperCase().replace(/[^A-Z0-9]/g, "") || null,
     preco: v.price || null, km: v.mileage || null, capa: capaDoVeiculo(v),
     preparacao: prepDe[v.id] ? { id: prepDe[v.id].id, data: prepDe[v.id].data, km: prepDe[v.id].km, intervalo_km: prepDe[v.id].intervalo_km, feito_por: prepDe[v.id].feito_por } : null,
     os: osDe[v.id] || null,
@@ -1502,13 +1513,17 @@ Deno.serve(async (req) => {
             .in("status", ["enviada", "recebida", "concluida"]).limit(1);
           if (aberta?.length) return json({ error: `carro_ja_tem_os_aberta_${aberta[0].numero}` }, 400);
         }
+        // a placa confere o carro certo na oficina (o estoque do marketplace não traz placa)
+        const placa = String(p.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (!placa) return json({ error: "informe_a_placa" }, 400);
+        if (!/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(placa)) return json({ error: "placa_invalida" }, 400);
         if (!p.foto_saida) return json({ error: "foto_do_painel_obrigatoria" }, 400);
         const id = crypto.randomUUID();
         const foto = await salvarFoto(admin, id, "saida", p.foto_saida);
         if (!foto) return json({ error: "foto_do_painel_obrigatoria" }, 400);
         const { data: os, error } = await admin.from("ordens_servico").insert({
           id, dealership: writeStore, oficina_id: of.id, vehicle_id: p.vehicle_id ? String(p.vehicle_id) : null, car_desc: desc || null,
-          placa: String(p.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7) || null, servicos,
+          placa, servicos,
           pedido_obs: String(p.pedido_obs || "").trim().slice(0, 500) || null, enviada_por: me.name || null, km_saida: kmS, foto_saida: foto,
         }).select("*").single();
         if (error || !os) return json({ error: /relation|does not exist/i.test(String(error?.message)) ? "rode_o_sql_das_oficinas" : String(error?.message || "erro") }, 400);
