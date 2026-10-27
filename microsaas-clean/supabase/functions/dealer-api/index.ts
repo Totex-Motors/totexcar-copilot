@@ -12,6 +12,7 @@ import { controleKm } from "../_shared/km.ts";
 import { listarChecklists, ITENS_ENTREGA } from "../_shared/entrega.ts";
 import { SERVICOS, novoToken, linkDaOficina, salvarFoto, comFotos, validarServico, prepararDaOS, ligarNaVenda, vendaDoCarro, avisarNovaOS, avisarChegada, avisarConclusao, avisarExtra, avisarDecisaoExtra } from "../_shared/oficina.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
+import { placasDoErp } from "../_shared/erp.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -484,7 +485,7 @@ async function estoqueDaLoja(loja: string): Promise<{ carros: any[]; aviso?: str
     const nomeOf: Record<string, string> = Object.fromEntries((ofs || []).map((o: any) => [o.id, o.nome]));
     for (const o of oss || []) osDe[o.vehicle_id] = { numero: o.numero, status: o.status, oficina: nomeOf[o.oficina_id] || "oficina" };
   } catch { /* tabela das oficinas ainda não criada */ }
-  // placa: o marketplace não traz; vale a última informada pra esse carro (OS ou preparação)
+  // placa sem ERP: vale a última informada pra esse carro (OS ou preparação)
   const placaDe: Record<string, string> = {};
   for (const pr of preps || []) if (pr.placa && !placaDe[pr.vehicle_id]) placaDe[pr.vehicle_id] = pr.placa;
   try {
@@ -494,9 +495,11 @@ async function estoqueDaLoja(loja: string): Promise<{ carros: any[]; aviso?: str
     for (const o of comPlaca || []) if (!daOs[o.vehicle_id]) daOs[o.vehicle_id] = o.placa;
     Object.assign(placaDe, daOs); // a da OS é a mais recente conferida
   } catch { /* tabela das oficinas ainda não criada */ }
-  const carros = (await mktStock(did)).map((v: any) => ({
+  // placa oficial vem do feed do ERP (casado pelo erpExternalId); senão a última conferida
+  const [stock, doErp] = await Promise.all([mktStock(did), placasDoErp(loja)]);
+  const carros = stock.map((v: any) => ({
     id: v.id, desc: descVeiculo(v), versao: v.version || null, cor: v.color || null,
-    placa: String(v.plate || placaDe[v.id] || "").toUpperCase().replace(/[^A-Z0-9]/g, "") || null,
+    placa: String((doErp || {})[String(v.erpExternalId ?? "")] || v.plate || placaDe[v.id] || "").toUpperCase().replace(/[^A-Z0-9]/g, "") || null,
     preco: v.price || null, km: v.mileage || null, capa: capaDoVeiculo(v),
     preparacao: prepDe[v.id] ? { id: prepDe[v.id].id, data: prepDe[v.id].data, km: prepDe[v.id].km, intervalo_km: prepDe[v.id].intervalo_km, feito_por: prepDe[v.id].feito_por } : null,
     os: osDe[v.id] || null,
