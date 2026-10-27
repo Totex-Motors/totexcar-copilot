@@ -550,7 +550,7 @@
         if(l.foto_url){
           var img = document.createElement('img');
           img.src = l.foto_url; img.alt = 'Fachada ' + l.nome;
-          img.style.cssText = 'width:100%;border-radius:12px;margin-top:12px;display:block;max-height:140px;object-fit:cover';
+          img.style.cssText = 'width:100%;height:auto;border-radius:12px;margin-top:12px;display:block'; // arte 1080x1350 (4:5) aparece inteira, sem corte
           document.querySelector('header').appendChild(img);
         }
         // link público: cliente escolhe a PROMOTORA que o atendeu (o canal já diz onde viu)
