@@ -40,6 +40,8 @@
   header .linha1{display:flex; justify-content:space-between; align-items:flex-start; gap:8px}
   header .marca{font-size:24px; font-weight:800; letter-spacing:-.5px}
   header .marca em{font-style:italic; color:var(--sky); font-weight:700}
+  header .marca .logo-loja{display:block; height:42px; width:auto; max-width:200px; object-fit:contain}
+  .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
   .status{
     font-size:11px; font-weight:800; padding:5px 10px; border-radius:999px;
     white-space:nowrap; margin-top:4px;
@@ -530,7 +532,22 @@
     return CAMPOS.map(function(c){ var v = p.respostas[c.id]; return v ? v : null; }).filter(Boolean).join(' · ');
   }
 
-  // personalização da loja (nome, foto da fachada, contatos)
+
+  // logo da loja no lugar do nome (painel → Sorteios → Logo). Só troca depois que a imagem carregou;
+  // o nome continua no texto (escondido) pro título da página e pras mensagens.
+  function aplicarLogo(el, url, nome){
+    if(!el || !url) return;
+    var img = new Image();
+    img.alt = nome || el.textContent.replace(/\s+/g,' ').trim();
+    img.className = 'logo-loja';
+    img.onload = function(){
+      var s = document.createElement('span'); s.className = 'sr'; s.textContent = el.textContent;
+      el.innerHTML = ''; el.appendChild(s); el.appendChild(img);
+    };
+    img.src = url;
+  }
+
+  // personalização da loja (nome, logo, foto da fachada, contatos)
   function aplicarLoja(){
     api('feirao_lojas?select=*&id=eq.' + encodeURIComponent(LOJA))
       .then(function(r){ return r.ok ? r.json() : []; })
@@ -547,6 +564,7 @@
             + (l.instagram ? ' · ' + l.instagram : '')
             + ' — sorteios com o app TotexCar Co-pilot';
         }
+        aplicarLogo(document.querySelector('header .marca'), l.logo_url, l.nome);
         if(l.foto_url){
           var img = document.createElement('img');
           img.src = l.foto_url; img.alt = 'Fachada ' + l.nome;
