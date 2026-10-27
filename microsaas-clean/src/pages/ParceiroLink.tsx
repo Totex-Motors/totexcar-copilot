@@ -76,7 +76,7 @@ export default function ParceiroLink() {
         <Card key={o.id} className="border-0 shadow-md"><CardContent className="p-3 space-y-2">
           <div className="flex items-start gap-2">
             <div className="flex-1 min-w-0">
-              <div className="font-semibold">OS #{o.numero} · {carroOS(o)}</div>
+              <div className="font-semibold">OS #{o.numero} · {o.car_desc || "Carro"}{o.placa && <span className="ml-1.5 text-xs font-bold tracking-wider px-1.5 py-0.5 rounded border border-slate-400 bg-white align-middle">{o.placa}</span>}</div>
               <div className="text-sm text-muted-foreground">{servicosOS(o, nomes)}</div>
               {o.pedido_obs && <div className="text-sm">📝 {o.pedido_obs}</div>}
               <div className="text-xs text-muted-foreground">Saiu da loja {quando(o.enviada_em)}{o.km_saida ? ` com ${kmBR(o.km_saida)}` : ""}</div>
@@ -131,11 +131,17 @@ export default function ParceiroLink() {
       </main>
 
       <Dialog open={!!receber} onOpenChange={(v) => { if (!v) setReceber(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
           <DialogHeader><DialogTitle>Recebi o carro</DialogTitle></DialogHeader>
           {receber && (
             <div className="space-y-3">
-              <p className="text-sm">OS #{receber.o.numero} · {carroOS(receber.o)}</p>
+              <p className="text-sm">OS #{receber.o.numero} · {receber.o.car_desc || "Carro"}</p>
+              {receber.o.placa && (
+                <div className="rounded-lg border-2 border-slate-800 bg-white text-center py-2">
+                  <div className="text-[10px] font-bold tracking-widest text-slate-500">CONFIRA A PLACA DO CARRO</div>
+                  <div className="text-2xl font-extrabold tracking-[0.25em] text-slate-900">{receber.o.placa}</div>
+                </div>
+              )}
               <div className="space-y-1"><Label className="text-xs">Km do painel na chegada <span className="text-red-600">*</span></Label><Input type="number" inputMode="numeric" value={receber.km} onChange={(e) => setReceber({ ...receber, km: e.target.value })} /></div>
               <FotoInput label="Foto do painel (km aparecendo)" obrigatoria valor={receber.foto} onChange={(v) => setReceber({ ...receber, foto: v })} />
               <Button className="w-full" disabled={acao.isPending} onClick={() => {
@@ -149,7 +155,7 @@ export default function ParceiroLink() {
       </Dialog>
 
       <Dialog open={!!servico} onOpenChange={(v) => { if (!v) setServico(null); }}>
-        <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
           <DialogHeader><DialogTitle>Registrar o serviço</DialogTitle></DialogHeader>
           {servico && (
             <div className="space-y-3">
@@ -182,7 +188,7 @@ export default function ParceiroLink() {
       </Dialog>
 
       <Dialog open={!!extra} onOpenChange={(v) => { if (!v) setExtra(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
           <DialogHeader><DialogTitle>Encontrei algo além do pedido</DialogTitle></DialogHeader>
           {extra && (
             <div className="space-y-3">

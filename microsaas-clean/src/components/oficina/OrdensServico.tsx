@@ -20,6 +20,19 @@ const guiaOficina = (link: string) => { try { return `${new URL(link).origin}/gu
 type Envio = { carro: EstoqueCarro | null; car_desc: string; placa: string; oficina_id: string; servicos: string[]; pedido_obs: string; km_saida: string; foto_saida: string | null };
 const envioVazio = (): Envio => ({ carro: null, car_desc: "", placa: "", oficina_id: "", servicos: ["troca_oleo"], pedido_obs: "", km_saida: "", foto_saida: null });
 
+// Rascunho do envio na sessão: se o celular recarregar a página ao abrir a câmera (falta de memória),
+// o "Mandar carro pra oficina" volta aberto com o que já tinha sido preenchido (inclusive a foto).
+const RASCUNHO = "os:envio-rascunho";
+const lerRascunho = (): Envio | null => { try { const r = sessionStorage.getItem(RASCUNHO); return r ? JSON.parse(r) : null; } catch { return null; } };
+const guardarRascunho = (e: Envio | null) => {
+  try {
+    if (!e) { sessionStorage.removeItem(RASCUNHO); return; }
+    try { sessionStorage.setItem(RASCUNHO, JSON.stringify(e)); } catch { sessionStorage.setItem(RASCUNHO, JSON.stringify({ ...e, foto_saida: null })); }
+  } catch { /* sem sessionStorage */ }
+};
+const PLACA_OK = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
+const limparPlaca = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+
 // Abre o "Mandar carro pra oficina" já com o carro escolhido (botão em cada carro da lista do estoque).
 export const abrirEnvioOficina = (carro?: EstoqueCarro) => window.dispatchEvent(new CustomEvent("os:enviar", { detail: carro || null }));
 
@@ -30,7 +43,8 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
   const { data: oficinas } = useOficinasParceiras(true, dealership);
   const acao = usePosvendaAcao();
   const [aba, setAba] = useState<"abertas" | "todas">("abertas");
-  const [envio, setEnvio] = useState<Envio | null>(null);
+  const [envio, setEnvio] = useState<Envio | null>(() => (modo !== "leitura" ? lerRascunho() : null));
+  useEffect(() => { if (pode) guardarRascunho(envio); }, [envio, pode]);
   const [detalhe, setDetalhe] = useState<OrdemServico | null>(null);
   const [volta, setVolta] = useState<{ o: OrdemServico; km: string } | null>(null);
   const [ofForm, setOfForm] = useState<Partial<OficinaParceira> | null>(null);
@@ -38,7 +52,7 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
     if (!pode) return;
     const abrir = (e: Event) => {
       const carro = (e as CustomEvent).detail as EstoqueCarro | null;
-      setEnvio({ ...envioVazio(), carro, km_saida: carro?.km ? String(carro.km) : "" });
+      setEnvio({ ...envioVazio(), carro, placa: carro?.placa || "", km_saida: carro?.km ? String(carro.km) : "" });
     };
     window.addEventListener("os:enviar", abrir);
     return () => window.removeEventListener("os:enviar", abrir);
@@ -67,12 +81,15 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
     if (!envio) return;
     if (!envio.carro && !envio.car_desc.trim()) return toast({ title: "Escolha o carro", variant: "destructive" });
     if (!envio.oficina_id) return toast({ title: "Escolha a oficina", variant: "destructive" });
+    if (!envio.placa) return toast({ title: "Informe a placa do carro", description: "Confira no carro: é por ela que a oficina confere se recebeu o carro certo.", variant: "destructive" });
+    if (!PLACA_OK.test(envio.placa)) return toast({ title: "Placa inválida", description: "Use o formato ABC1D23 ou ABC1234.", variant: "destructive" });
     if (!envio.servicos.length) return toast({ title: "Escolha o serviço", variant: "destructive" });
     if (!(Number(envio.km_saida) > 0)) return toast({ title: "Informe o km do painel na saída", variant: "destructive" });
     if (!envio.foto_saida) return toast({ title: "Tire a foto do painel na saída", variant: "destructive" });
     rodar({
       action: "os_criar", oficina_id: envio.oficina_id, servicos: envio.servicos, pedido_obs: envio.pedido_obs, km_saida: Number(envio.km_saida), foto_saida: envio.foto_saida,
-      ...(envio.carro ? { vehicle_id: envio.carro.id, car_desc: [envio.carro.desc, envio.carro.cor].filter(Boolean).join(" ") } : { car_desc: envio.car_desc, placa: envio.placa }),
+      placa: envio.placa,
+      ...(envio.carro ? { vehicle_id: envio.carro.id, car_desc: [envio.carro.desc, envio.carro.cor].filter(Boolean).join(" ") } : { car_desc: envio.car_desc }),
     }, "Carro enviado ✅ A oficina foi avisada no WhatsApp.", () => setEnvio(null));
   };
 
@@ -139,7 +156,7 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
 
       {/* mandar carro pra oficina */}
       <Dialog open={!!envio} onOpenChange={(o) => { if (!o) setEnvio(null); }}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
           <DialogHeader><DialogTitle>Mandar carro pra oficina</DialogTitle></DialogHeader>
           {envio && (
             <div className="space-y-3">
@@ -232,32 +249,50 @@ function EscolherCarro({ dealership, envio, setEnvio }: { dealership?: string; e
   const [fora, setFora] = useState(false);
   // antes da venda: os sem revisão primeiro; carro que já está numa oficina não aparece pra escolher
   const lista = useMemo(() => (estoque || [])
-    .filter((c) => !busca.trim() || `${c.desc} ${c.versao || ""} ${c.cor || ""}`.toLowerCase().includes(busca.trim().toLowerCase()))
+    .filter((c) => {
+      const q = busca.trim().toLowerCase();
+      if (!q) return true;
+      const qPlaca = q.replace(/[^a-z0-9]/g, "");
+      return `${c.desc} ${c.versao || ""} ${c.cor || ""}`.toLowerCase().includes(q) || (!!qPlaca && (c.placa || "").toLowerCase().includes(qPlaca));
+    })
     .sort((a, b) => Number(!!a.os) - Number(!!b.os) || Number(!!a.preparacao) - Number(!!b.preparacao)).slice(0, 30), [estoque, busca]);
+  const campoPlaca = (
+    <div className="space-y-1">
+      <Label className="text-xs">Placa <span className="text-red-600">*</span> <span className="font-normal text-muted-foreground">· confira no carro</span></Label>
+      <Input value={envio.placa} onChange={(e) => setEnvio({ ...envio, placa: limparPlaca(e.target.value) })} maxLength={7} placeholder="ABC1D23"
+        className={`uppercase tracking-widest font-semibold ${envio.placa && !PLACA_OK.test(envio.placa) ? "border-red-400" : ""}`} />
+    </div>
+  );
   if (envio.carro) return (
-    <div className="flex items-center gap-2 rounded-lg border p-2">
-      {envio.carro.capa ? <img src={envio.carro.capa} alt="" className="w-14 h-10 rounded object-cover" /> : <div className="w-14 h-10 rounded bg-muted" />}
-      <div className="flex-1 min-w-0 text-sm font-medium truncate">{envio.carro.desc}{envio.carro.cor ? ` · ${envio.carro.cor}` : ""}</div>
-      <Button size="sm" variant="ghost" className="h-8" onClick={() => setEnvio({ ...envio, carro: null })}>Trocar</Button>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 rounded-lg border p-2">
+        {envio.carro.capa ? <img src={envio.carro.capa} alt="" className="w-14 h-10 rounded object-cover" /> : <div className="w-14 h-10 rounded bg-muted" />}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium truncate">{envio.carro.desc}{envio.carro.cor ? ` · ${envio.carro.cor}` : ""}</div>
+          {envio.carro.placa && <div className="text-[11px] text-muted-foreground">Placa no cadastro: <b className="tracking-wider">{envio.carro.placa}</b></div>}
+        </div>
+        <Button size="sm" variant="ghost" className="h-8" onClick={() => setEnvio({ ...envio, carro: null, placa: "" })}>Trocar</Button>
+      </div>
+      {campoPlaca}
     </div>
   );
   if (fora) return (
     <div className="space-y-2">
       <div className="space-y-1"><Label className="text-xs">Carro <span className="text-red-600">*</span></Label><Input value={envio.car_desc} onChange={(e) => setEnvio({ ...envio, car_desc: e.target.value })} placeholder="Ex.: Onix 2022 prata" /></div>
-      <div className="space-y-1"><Label className="text-xs">Placa</Label><Input value={envio.placa} onChange={(e) => setEnvio({ ...envio, placa: e.target.value.toUpperCase() })} maxLength={8} placeholder="ABC1D23" /></div>
+      {campoPlaca}
       <Button size="sm" variant="link" className="h-auto p-0" onClick={() => setFora(false)}>Escolher do estoque</Button>
     </div>
   );
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">Carro do estoque <span className="text-red-600">*</span></Label>
-      <div className="relative"><Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" /><Input className="pl-8" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar modelo, ano ou cor" /></div>
+      <div className="relative"><Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" /><Input className="pl-8" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar modelo, ano, cor ou placa" /></div>
       <div className="max-h-56 overflow-y-auto divide-y rounded border">
         {isLoading ? <div className="p-3 text-center"><Loader2 className="w-4 h-4 animate-spin inline" /></div> : lista.map((c) => (
-          <button key={c.id} type="button" disabled={!!c.os} className="w-full flex items-center gap-2 p-2 text-left hover:bg-muted/60 disabled:opacity-50" onClick={() => setEnvio({ ...envio, carro: c, km_saida: c.km ? String(c.km) : envio.km_saida })}>
+          <button key={c.id} type="button" disabled={!!c.os} className="w-full flex items-center gap-2 p-2 text-left hover:bg-muted/60 disabled:opacity-50" onClick={() => setEnvio({ ...envio, carro: c, placa: c.placa || "", km_saida: c.km ? String(c.km) : envio.km_saida })}>
             {c.capa ? <img src={c.capa} alt="" loading="lazy" className="w-12 h-9 rounded object-cover" /> : <div className="w-12 h-9 rounded bg-muted" />}
             <span className="min-w-0">
-              <span className="block text-sm truncate">{c.desc}{c.cor ? ` · ${c.cor}` : ""}</span>
+              <span className="block text-sm truncate">{c.desc}{c.cor ? ` · ${c.cor}` : ""}{c.placa && <b className="ml-1.5 text-[11px] tracking-wider px-1 py-0.5 rounded border bg-muted/60">{c.placa}</b>}</span>
               <span className={`block text-[11px] font-medium ${c.os ? "text-sky-700" : c.preparacao ? "text-green-700" : "text-amber-700"}`}>{c.os ? textoOsCarro(c.os) : c.preparacao ? "🛠️ Já revisado" : "⚠️ Sem revisão"}</span>
             </span>
           </button>

@@ -33,6 +33,8 @@ const ERROS: Record<string, string> = {
   escolha_a_oficina: "Escolha a oficina.",
   escolha_o_servico: "Escolha pelo menos um serviço.",
   informe_o_carro: "Escolha o carro.",
+  informe_a_placa: "Informe a placa do carro (confira no carro).",
+  placa_invalida: "Placa inválida. Use o formato ABC1D23 ou ABC1234.",
   servico_ainda_nao_registrado: "A oficina ainda não registrou o serviço.",
   km_invalido: "Km inválido (não pode ser menor que o km do serviço).",
   nao_da_para_cancelar: "Essa ordem não pode mais ser cancelada.",
@@ -60,11 +62,13 @@ export const filtrosOS = (o: OrdemServico) => [o.filtro_oleo && "óleo", o.filtr
 // Botão de foto: abre a câmera traseira no celular, comprime e devolve o data URL.
 export function FotoInput({ label, valor, onChange, obrigatoria }: { label: string; valor: string | null; onChange: (v: string | null) => void; obrigatoria?: boolean }) {
   const ref = useRef<HTMLInputElement>(null);
+  const galeria = useRef<HTMLInputElement>(null);
   const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState(false);
   const escolher = async (f?: File) => {
     if (!f) return;
-    setCarregando(true);
-    try { onChange(await fotoComprimida(f)); } catch { onChange(null); } finally { setCarregando(false); }
+    setCarregando(true); setErro(false);
+    try { onChange(await fotoComprimida(f)); } catch { onChange(null); setErro(true); } finally { setCarregando(false); }
   };
   return (
     <div className="space-y-1">
@@ -74,7 +78,11 @@ export function FotoInput({ label, valor, onChange, obrigatoria }: { label: stri
         {valor ? <img src={valor} alt="" className="w-16 h-16 rounded object-cover" /> : <div className="w-16 h-16 rounded bg-muted flex items-center justify-center">{carregando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-6 h-6 text-muted-foreground" />}</div>}
         <span className="flex-1">{valor ? <span className="text-green-700 font-medium flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Foto ok · tocar pra trocar</span> : "Tirar foto"}</span>
       </button>
+      {/* se a câmera do celular fechar a página, dá pra tirar a foto no app da câmera e escolher aqui */}
+      <button type="button" onClick={() => galeria.current?.click()} className="text-[11.5px] text-primary underline">ou escolher da galeria</button>
+      {erro && <div className="text-[11.5px] text-red-600">Não consegui ler essa foto. Tente de novo ou escolha da galeria.</div>}
       <input ref={ref} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { escolher(e.target.files?.[0]); e.target.value = ""; }} />
+      <input ref={galeria} type="file" accept="image/*" hidden onChange={(e) => { escolher(e.target.files?.[0]); e.target.value = ""; }} />
     </div>
   );
 }
