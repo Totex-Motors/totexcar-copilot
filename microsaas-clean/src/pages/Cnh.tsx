@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { Navigate, Link, useSearchParams } from "react-router-dom";
-import { CalendarDays, ChevronRight, MessageCircle, ShieldAlert, Pencil, Info, Loader2, Sparkles, IdCard } from "lucide-react";
+import { CalendarDays, ChevronRight, MessageCircle, ShieldAlert, Pencil, Info, Loader2, Sparkles, IdCard, FileUp, FileText, Trash2 } from "lucide-react";
 import { MgShell } from "@/components/mg/MgShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
+import { fotoComprimida } from "@/lib/foto";
 
 const WA = "5511963786699";
 const PRECO_CNH = 9.9;
@@ -44,6 +45,35 @@ function lerCnh(dados: any) {
   };
 }
 
+// CNH importada do PDF da CNH digital (ou foto da CNH) — edge function "cnh"
+type CnhImportada = {
+  nome: string | null; categoria: string | null; registro: string | null; validade: string | null;
+  primeira_habilitacao: string | null; emissao: string | null; observacoes: string | null;
+  digital: boolean; importada_em: string; url: string | null;
+};
+async function chamarCnh(body: Record<string, unknown>): Promise<any> {
+  try {
+    const { data, error } = await supabase.functions.invoke("cnh", { body });
+    if (error) { try { return await (error as any).context.json(); } catch { return { ok: false, error: String(error.message || error) }; } }
+    return data;
+  } catch (e: any) { return { ok: false, error: String(e?.message || e) }; }
+}
+const ERRO_IMPORT: Record<string, string> = {
+  nao_parece_cnh: "Esse arquivo não parece uma CNH. Envie o PDF exportado do app da CNH ou uma foto da CNH aberta.",
+  nao_consegui_ler: "Não consegui ler a CNH. Tente o PDF do app ou uma foto mais nítida, sem reflexo.",
+  formato_nao_aceito: "Envie um PDF, JPG ou PNG.",
+  arquivo_grande: "Arquivo muito grande (máximo 8 MB).",
+};
+const lerArquivo = (f: File) => new Promise<string>((ok, erro) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result || ""));
+  r.onerror = () => erro(new Error("arquivo_invalido"));
+  r.readAsDataURL(f);
+});
+// junta dois cartões: o primeiro manda, o segundo completa o que faltar
+const junta = <T extends Record<string, any>>(a: T, b: T): T =>
+  Object.fromEntries(Object.keys({ ...b, ...a }).map((k) => [k, a[k] ?? b[k]])) as T;
+
 // TELA CNH — habilitação: vencimento (status real), consulta de pontos (via Co-pilot), regra de
 // renovação e atalho pra multas. Dado hoje: cnh_vencimento (no cadastro do dono).
 export default function Cnh() {
@@ -59,7 +89,42 @@ export default function Cnh() {
   const cpfRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (userId) fetchUltimaConsulta(userId, "cnh").then((r) => r && setUltima(r)); }, [userId]);
   useEffect(() => { if (res?.ok) setUltima(res); }, [res]);
-  const cartao = ultima?.ok ? lerCnh(ultima.dados) : null;
+  // CNH importada (PDF da CNH digital / foto): cartão grátis com validade, categoria e registro
+  const [imp, setImp] = useState<CnhImportada | null>(null);
+  const [lendo, setLendo] = useState(false);
+  const [erroImp, setErroImp] = useState("");
+  const arqRef = useRef<HTMLInputElement>(null);
+  const importRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (userId) chamarCnh({ acao: "minha" }).then((r) => r?.ok && setImp(r.cnh || null)); }, [userId]);
+  const importar = async (f?: File) => {
+    if (!f || lendo) return;
+    setErroImp("");
+    if (f.size > 8 * 1024 * 1024) { setErroImp(ERRO_IMPORT.arquivo_grande); return; }
+    setLendo(true);
+    try {
+      const arquivo = f.type === "application/pdf" ? await lerArquivo(f) : await fotoComprimida(f, 1800, 0.85);
+      const r = await chamarCnh({ acao: "ler", arquivo });
+      if (r?.ok && r.cnh) setImp(r.cnh);
+      else setErroImp(ERRO_IMPORT[r?.error] || "Não consegui importar agora. Tente de novo.");
+    } catch { setErroImp(ERRO_IMPORT.nao_consegui_ler); } finally { setLendo(false); }
+  };
+  const apagarImportada = async () => {
+    if (!confirm("Apagar a CNH importada (arquivo e dados lidos)? O vencimento continua no cadastro pros avisos.")) return;
+    const r = await chamarCnh({ acao: "apagar" });
+    if (r?.ok) setImp(null); else alert("Não consegui apagar agora. Tente de novo.");
+  };
+  const irParaImport = () => importRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  const pago = ultima?.ok ? lerCnh(ultima.dados) : null;
+  const pagoEm = ultima?.id ? (consultasCnh?.find((c: any) => c.id === ultima.id) as any)?.created_at : null;
+  const impCartao = imp ? {
+    nome: imp.nome ? titulo(nomeCurto(imp.nome)) : null, categoria: imp.categoria, registro: imp.registro,
+    validade: fmtBR(imp.validade), validadeIso: imp.validade, primeira: fmtBR(imp.primeira_habilitacao),
+    situacao: null, ocorrencias: null, pontos: null,
+  } : null;
+  // a fonte mais nova manda (CNH renovada depois da consulta, ou consulta depois do import)
+  const impMaisNova = !!imp && (!pago || !pagoEm || new Date(imp.importada_em) > new Date(pagoEm));
+  const cartao: any = pago && impCartao ? (impMaisNova ? junta<any>(impCartao, pago) : junta<any>(pago, impCartao)) : (pago || impCartao);
   // validade oficial preenche o vencimento (os avisos de renovação passam a funcionar sozinhos)
   useEffect(() => {
     if (!userId || !cartao?.validadeIso || userData?.cnh_vencimento === cartao.validadeIso) return;
@@ -118,35 +183,70 @@ export default function Cnh() {
             <div><span className="dl">Nº de registro</span><b>{cartao ? (cartao.registro || "—") : "••••••0000"}</b></div>
             <div><span className="dl">Validade</span><b>{cartao ? (cartao.validade || "—") : "00/00/0000"}</b></div>
             <div><span className="dl">1ª habilitação</span><b>{cartao ? (cartao.primeira || "—") : "00/00/0000"}</b></div>
-            <div><span className="dl">Situação</span><b>{cartao ? (cartao.situacao || "Não informada") : "Regular"}</b></div>
+            <div><span className="dl">Situação</span><b>{cartao ? (cartao.situacao || (pago ? "Não informada" : "Ver no Detran")) : "Regular"}</b></div>
           </div>
           {cartao ? (
-            <span className="dp"><i style={{ background: st?.cls === "ok" ? "#7BE0A6" : "#F5B97A" }} /> {st ? st.txt : "Consultado"} · consultado em {ultima?.id && consultasCnh?.find((c: any) => c.id === ultima.id) ? new Date((consultasCnh.find((c: any) => c.id === ultima.id) as any).created_at).toLocaleDateString("pt-BR") : "hoje"}</span>
+            <span className="dp"><i style={{ background: st?.cls === "ok" ? "#7BE0A6" : "#F5B97A" }} /> {st ? st.txt : "Consultado"} · {impMaisNova
+              ? `${imp!.digital ? "CNH digital" : "importada"} em ${new Date(imp!.importada_em).toLocaleDateString("pt-BR")}`
+              : `consultado em ${pagoEm ? new Date(pagoEm).toLocaleDateString("pt-BR") : "hoje"}`}</span>
           ) : (
             <>
-              <div style={{ height: 34 }} />
+              <div style={{ height: 62 }} />
               <div className="lock">
                 <div className="lt">🔒 Veja sua CNH completa</div>
                 <div className="ls">Categoria, registro, validade oficial, pontos e situação, direto do Detran.</div>
                 <button onClick={irParaConsulta}>Desbloquear por R$ {PRECO_CNH.toFixed(2).replace(".", ",")}</button>
+                <button className="alt" onClick={irParaImport}>ou importe grátis da CNH digital</button>
               </div>
             </>
           )}
         </section>
 
-        {cartao && (
+        {/* importar da CNH digital (PDF exportado do app do governo) ou foto da CNH */}
+        <section className="card pad" ref={importRef as any}>
+          <input ref={arqRef} type="file" accept="application/pdf,image/*" hidden onChange={(e) => { importar(e.target.files?.[0]); e.target.value = ""; }} />
+          {imp ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 14 }}><FileText size={16} style={{ color: "var(--brand)" }} /> CNH importada</div>
+              <p style={{ fontSize: 12.5, color: "var(--muted)", margin: "4px 0 10px" }}>
+                {imp.digital ? "Da CNH digital" : "Da foto da CNH"} · {new Date(imp.importada_em).toLocaleDateString("pt-BR")}{imp.observacoes ? ` · Obs.: ${imp.observacoes}` : ""}. Guardada só pra você no ArquivoZap; te aviso antes de vencer.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {imp.url && <a className="sbtn" href={imp.url} target="_blank" rel="noreferrer"><FileText size={14} /> Ver arquivo</a>}
+                <button className="sbtn" disabled={lendo} onClick={() => arqRef.current?.click()}>{lendo ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />} {lendo ? "Lendo…" : "Atualizar"}</button>
+                <button className="sbtn" onClick={apagarImportada}><Trash2 size={14} /> Apagar</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 14 }}><FileUp size={16} style={{ color: "var(--brand)" }} /> Importar da CNH digital · grátis</div>
+              <ol style={{ fontSize: 12.5, color: "var(--muted)", margin: "8px 0 10px 18px", listStyle: "decimal", lineHeight: 1.55 }}>
+                <li>Abra o app da CNH (Carteira Digital de Trânsito / CNH do Brasil)</li>
+                <li>Toque na sua CNH → <b>Compartilhar</b> → <b>PDF</b></li>
+                <li>Envie o arquivo aqui</li>
+              </ol>
+              <button className="btn-primary" disabled={lendo} onClick={() => arqRef.current?.click()}>
+                {lendo ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />} {lendo ? "Lendo sua CNH…" : "Enviar PDF ou foto da CNH"}
+              </button>
+              <p style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 8 }}>Também vale foto da CNH física, aberta e sem reflexo, ou mandar o PDF no WhatsApp do Co-pilot. Fica guardada só pra você e dá pra apagar quando quiser. Pontos e situação vêm da consulta no Detran.</p>
+            </>
+          )}
+          {erroImp && <div className="card pad" style={{ background: "var(--gain-soft)", borderColor: "transparent", fontSize: 13, marginTop: 10 }}>{erroImp}</div>}
+        </section>
+
+        {pago && (
           <section className="card pad">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <div><div style={{ fontWeight: 800, fontSize: 14.5 }}>Pontos no Detran</div><div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>{cartao.ocorrencias ? `${cartao.ocorrencias} ocorrência(s) · limite para suspensão: 40 pontos` : "Nenhuma ocorrência registrada na consulta"}</div></div>
-              <span style={{ fontSize: 26, fontWeight: 800, color: "var(--brand)" }}>{cartao.pontos != null ? cartao.pontos : "—"}</span>
+              <div><div style={{ fontWeight: 800, fontSize: 14.5 }}>Pontos no Detran</div><div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>{pago.ocorrencias ? `${pago.ocorrencias} ocorrência(s) · limite para suspensão: 40 pontos` : "Nenhuma ocorrência registrada na consulta"}</div></div>
+              <span style={{ fontSize: 26, fontWeight: 800, color: "var(--brand)" }}>{pago.pontos != null ? pago.pontos : "—"}</span>
             </div>
           </section>
         )}
 
         {/* consultar pontos/situação (GPT Motors, por CPF) */}
         <section className="card pad" ref={consultaRef as any}>
-          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={16} style={{ color: "var(--brand)" }} /> {cartao ? "Atualizar minha CNH" : "Desbloquear minha CNH"}</div>
-          <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>{cartao ? "Consulta nova no Detran por CPF: pontos, situação e validade de hoje." : "Consulta oficial no Detran por CPF. O cartão acima fica completo e salvo no app."}</p>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={16} style={{ color: "var(--brand)" }} /> {pago ? "Atualizar minha CNH" : cartao ? "Ver pontos e situação no Detran" : "Desbloquear minha CNH"}</div>
+          <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>{pago ? "Consulta nova no Detran por CPF: pontos, situação e validade de hoje." : cartao ? "O PDF da CNH não traz pontos nem suspensão. A consulta oficial no Detran por CPF mostra e fica salva no app." : "Consulta oficial no Detran por CPF. O cartão acima fica completo e salvo no app."}</p>
 
           {res?.ok ? (
             <div style={{ marginBottom: 8 }}>
@@ -174,7 +274,7 @@ export default function Cnh() {
               <input ref={cpfRef} className="field" inputMode="numeric" placeholder="CPF do motorista" value={cpf} onChange={(e) => setCpf(maskCpf(e.target.value))} />
               <button className="btn-primary" style={{ marginTop: 10 }} onClick={consultar} disabled={busy || cpfLimpo.length !== 11}>
                 {busy ? <Loader2 size={16} className="animate-spin" /> : <ShieldAlert size={16} />}
-                {busy ? "Consultando…" : `${cartao ? "Atualizar" : "Desbloquear"} · R$ ${PRECO_CNH.toFixed(2).replace(".", ",")}`}
+                {busy ? "Consultando…" : `${pago ? "Atualizar" : cartao ? "Consultar" : "Desbloquear"} · R$ ${PRECO_CNH.toFixed(2).replace(".", ",")}`}
               </button>
             </>
           )}

@@ -33,6 +33,7 @@ import { aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparac
 import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_TROCA_OLEO } from "../_shared/oleo.ts";
 import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
 import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
+import { normalizarCnh, fichaCnh, aplicarCnhNoCadastro } from "../_shared/cnh.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -1416,6 +1417,20 @@ const TOOL_SPECS = [
         tipo: { type: "string", description: "Um de: multa, ipva, boleto, crlv, cnh, nota_fiscal, seguro, manual, comprovante, documento" },
         nome: { type: "string", description: "Rótulo curto e humano, ex.: 'Boleto IPVA 2026', 'CRLV Civic', 'Multa Av. Paulista'" },
         resumo: { type: "string", description: "1 linha com o essencial que dá pra ler (vencimento, valor, placa, órgão...)" },
+        cnh: {
+          type: "object",
+          description: "SÓ quando tipo = cnh (CNH física ou PDF da CNH digital): os campos copiados EXATAMENTE do documento; o que não der pra ler, deixe de fora (nunca invente). Preenche a aba CNH do app e os avisos de renovação.",
+          properties: {
+            nome: { type: "string" },
+            categoria: { type: "string", description: "ex.: AB" },
+            numero_registro: { type: "string", description: "nº de registro, só dígitos" },
+            validade: { type: "string", description: "DD/MM/AAAA" },
+            primeira_habilitacao: { type: "string", description: "DD/MM/AAAA" },
+            emissao: { type: "string", description: "DD/MM/AAAA" },
+            observacoes: { type: "string" },
+            digital: { type: "boolean", description: "true se for o PDF/print da CNH digital" },
+          },
+        },
       },
       required: ["tipo", "nome"],
     },
@@ -2165,6 +2180,15 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         nome: String(args?.nome || "Documento"),
         resumo: String(args?.resumo || ""),
       };
+      // CNH: o que a IA leu vai pro cadastro (aba CNH + avisos de renovação) e pra ficha do ArquivoZap
+      if (ctx.archive.tipo.toLowerCase() === "cnh" && args?.cnh && typeof args.cnh === "object") {
+        const cnh = normalizarCnh({ ...args.cnh, e_cnh: true });
+        if (cnh.validade || cnh.categoria) {
+          ctx.archive = { ...fichaCnh(cnh), meta: { cnh, origem: "whatsapp" } };
+          await aplicarCnhNoCadastro(supabase, user.id, cnh);
+          return { ok: true, message: `CNH guardada no ArquivoZap e a aba CNH do app foi preenchida${cnh.validade ? ` (validade ${cnh.validade.split("-").reverse().join("/")})` : ""}. Confirme em 1–2 linhas naturais: guardou, a validade que leu e que você avisa antes de vencer. Pontos e situação no Detran não vêm no documento — só cite se ele perguntar.` };
+        }
+      }
       return { ok: true, message: "Documento guardado no ArquivoZap. Confirme em 1 linha natural que guardou e que ele pode pedir depois (ex.: 'guardei seu CRLV no ArquivoZap — é só me pedir quando precisar 👍'). NÃO invente conteúdo." };
     }
 
