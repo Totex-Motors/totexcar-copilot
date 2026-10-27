@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Gift, Trophy, ExternalLink, CheckCircle2, Camera, Store, CalendarPlus, Zap, BarChart3, Plus, Trash2 } from "lucide-react";
 import { usePostsaleCreate, usePostsaleList, useDealerMe } from "@/hooks/useDealer";
+import { fotoComprimida } from "@/lib/foto";
 
 // App do sorteio (feirao-cardoso/) — banco próprio no projeto TotexMotors OS, chave publishable (uso público).
 const FEIRAO_URL = "https://fbgtqiqovwxccinbzvmx.supabase.co";
@@ -356,12 +357,13 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
   const subirFachada = async (file: File) => {
     setSubindo(true);
     try {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-      const path = `${slug}/fachada-${Date.now()}.${ext}`;
+      // reduz pro tamanho certo (lado maior 1350 px → arte 4:5 fica 1080×1350) e JPG leve, abre rápido no 4G
+      const blob = await (await fetch(await fotoComprimida(file, 1350, 0.85))).blob();
+      const path = `${slug}/fachada-${Date.now()}.jpg`;
       const up = await fetch(`${FEIRAO_URL}/storage/v1/object/feirao/${path}`, {
         method: "POST",
-        headers: { ...HEADERS, "Content-Type": file.type || "image/jpeg" },
-        body: file,
+        headers: { ...HEADERS, "Content-Type": "image/jpeg" },
+        body: blob,
       });
       if (!up.ok) throw new Error("Falha ao enviar a foto.");
       const fotoUrl = `${FEIRAO_URL}/storage/v1/object/public/feirao/${path}`;
@@ -371,10 +373,10 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
         body: JSON.stringify({ id: slug, nome: lojaNome, foto_url: fotoUrl }),
       });
       if (!save.ok) throw new Error("Foto enviada, mas não foi possível salvar a configuração.");
-      toast({ title: "Fachada atualizada! 📸", description: "O app do sorteio e a página do voucher já mostram a foto da sua loja." });
+      toast({ title: "Arte atualizada! 📸", description: "O app do sorteio e o voucher já mostram a nova imagem (1080 × 1350)." });
       qc.invalidateQueries({ queryKey: ["feirao-loja", slug] });
     } catch (e: any) {
-      toast({ title: "Não foi possível atualizar a fachada", description: String(e?.message || e), variant: "destructive" });
+      toast({ title: "Não foi possível atualizar a arte", description: String(e?.message || e), variant: "destructive" });
     } finally {
       setSubindo(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -599,22 +601,25 @@ export function SorteioFeiraoCard({ dealership }: { dealership?: string }) {
         </div>
 
         {/* Personalização: foto da fachada da loja no app e no voucher do cliente */}
-        <div className="flex items-center gap-3 rounded-lg border border-dashed p-3">
+        <div className="flex items-start gap-3 rounded-lg border border-dashed p-3">
           {lojaCfg?.foto_url ? (
-            <img src={lojaCfg.foto_url} alt={`Fachada ${lojaNome}`} className="w-20 h-14 rounded-md object-cover shrink-0" />
+            <a href={lojaCfg.foto_url} target="_blank" rel="noreferrer" className="shrink-0">
+              <img src={lojaCfg.foto_url} alt={`Arte da ação ${lojaNome}`} className="w-20 aspect-[4/5] rounded-md object-cover" />
+            </a>
           ) : (
-            <div className="w-20 h-14 rounded-md bg-muted flex items-center justify-center shrink-0"><Store className="w-6 h-6 text-muted-foreground" /></div>
+            <div className="w-20 aspect-[4/5] rounded-md bg-muted flex items-center justify-center shrink-0"><Store className="w-6 h-6 text-muted-foreground" /></div>
           )}
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Foto da fachada da loja</p>
-            <p className="text-[12px] text-muted-foreground">Personaliza o app do sorteio e o voucher que o cliente recebe no WhatsApp.</p>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="text-sm font-medium">Arte da ação (ou foto da loja)</p>
+            <p className="text-[12px] text-muted-foreground">Aparece inteira no topo do app do sorteio e no voucher que o cliente recebe no WhatsApp.</p>
+            <p className="text-[12px] rounded-md bg-muted px-2 py-1">📐 Tamanho certo: <b>1080 × 1350 px</b> (vertical 4:5, o mesmo do feed do Instagram), JPG. Exporte a arte original, sem print da tela.</p>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => e.target.files?.[0] && subirFachada(e.target.files[0])} />
+            <Button variant="outline" size="sm" className="gap-1.5 h-8" disabled={subindo} onClick={() => fileRef.current?.click()}>
+              {subindo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+              {lojaCfg?.foto_url ? "Trocar arte" : "Enviar arte"}
+            </Button>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden"
-            onChange={(e) => e.target.files?.[0] && subirFachada(e.target.files[0])} />
-          <Button variant="outline" size="sm" className="gap-1.5 h-8 shrink-0" disabled={subindo} onClick={() => fileRef.current?.click()}>
-            {subindo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
-            {lojaCfg?.foto_url ? "Trocar foto" : "Enviar foto"}
-          </Button>
         </div>
 
         {isLoading ? (
