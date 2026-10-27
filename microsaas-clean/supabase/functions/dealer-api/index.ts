@@ -10,7 +10,7 @@ import { preparacaoDoCarro, aplicarPreparacaoDaJornada, textoPreparacao } from "
 import { estadoOleo, registrarTrocaOleo } from "../_shared/oleo.ts";
 import { controleKm } from "../_shared/km.ts";
 import { listarChecklists, ITENS_ENTREGA } from "../_shared/entrega.ts";
-import { SERVICOS, novoToken, linkDaOficina, salvarFoto, comFotos, validarServico, prepararDaOS, avisarNovaOS, avisarChegada, avisarConclusao, avisarExtra, avisarDecisaoExtra } from "../_shared/oficina.ts";
+import { SERVICOS, novoToken, linkDaOficina, salvarFoto, comFotos, validarServico, prepararDaOS, ligarNaVenda, vendaDoCarro, avisarNovaOS, avisarChegada, avisarConclusao, avisarExtra, avisarDecisaoExtra } from "../_shared/oficina.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -389,6 +389,21 @@ async function criarVenda(loja: string, me: { id: string | null }, p: any): Prom
       if (provisionedUserId) await aplicarPreparacaoDaJornada(admin, { id: created.id, preparacao_id: prep.id, prep_aplicada: false }, provisionedUserId);
     }
   } catch (e) { console.error("preparação na venda:", e); }
+  // A revisão é ANTES da venda. Vendeu sem ela → o grupo fica sabendo na hora (o gerente de manutenção manda
+  // o carro pra oficina parceira; quando ela registrar a troca, vai direto pro Co-pilot do cliente).
+  if (AVISO_VENDA_SEM_REVISAO && !revisado && p.origem !== "sorteio") {
+    try {
+      const { data: aberta } = p.vehicle_id
+        ? await admin.from("ordens_servico").select("numero, status, oficina_id").eq("dealership", loja).eq("vehicle_id", String(p.vehicle_id)).in("status", ["enviada", "recebida", "concluida"]).limit(1)
+        : { data: [] as any[] };
+      const os = aberta?.[0];
+      const nomeOf = os ? (await admin.from("oficinas_parceiras").select("nome").eq("id", os.oficina_id).maybeSingle()).data?.nome : null;
+      const vend = p.vendedor_id ? (await admin.from("posvenda_equipe").select("nome").eq("id", String(p.vendedor_id)).maybeSingle()).data?.nome : null;
+      await avisarGrupo(admin, loja, os
+        ? `🔧 *Vendido com o carro na oficina*: ${car || "carro"}${vend ? ` · vendedor ${vend}` : ""}\nOS #${os.numero} na *${nomeOf || "oficina"}*. Quando ela registrar o serviço, a troca de óleo vai direto pro Co-pilot do cliente.`
+        : `⚠️ *Vendido sem revisão registrada*: ${car || "carro"}${vend ? ` · vendedor ${vend}` : ""}\nA revisão é antes da venda. Gerente de manutenção: mande o carro pra oficina parceira; a troca registrada vai direto pro Co-pilot do cliente.`).catch(() => false);
+    } catch (e) { console.error("aviso venda sem revisão:", e); }
+  }
 
   // Boas-vindas + convite pra ativar o Co-pilot com o bônus da loja (semi-automático).
   // Iniciado pelo negócio → TEMPLATE na API oficial (cortesia = utilidade; convite bônus = marketing).
@@ -447,6 +462,10 @@ async function criarVenda(loja: string, me: { id: string | null }, p: any): Prom
   return json({ ok: true, id: created.id, welcome_sent: welcome, sponsored: cortesia, user_id: provisionedUserId, vehicle_created: vehicleCreated, tag: tagBound, tag_error: tagError, foto_estoque: foto, revisado });
 }
 
+// Aviso no grupo quando um carro é vendido sem revisão registrada. DESLIGADO por decisão do dono (27/10):
+// quase todo o estoque ainda está sem troca registrada; liga quando o gerente de manutenção revisar o estoque.
+const AVISO_VENDA_SEM_REVISAO = false;
+
 // Estoque da loja (marketplace) com o status da preparação de cada carro.
 async function estoqueDaLoja(loja: string): Promise<{ carros: any[]; aviso?: string }> {
   const did = await mktDealerIdByName(loja);
@@ -455,10 +474,21 @@ async function estoqueDaLoja(loja: string): Promise<{ carros: any[]; aviso?: str
     .order("data", { ascending: false }).order("created_at", { ascending: false }).limit(2000);
   const prepDe: Record<string, any> = {};
   for (const pr of preps || []) if (!prepDe[pr.vehicle_id]) prepDe[pr.vehicle_id] = pr;
+  // carro na oficina parceira agora (OS aberta): a revisão é ANTES da venda, então a lista mostra onde ele está
+  const osDe: Record<string, any> = {};
+  try {
+    const { data: oss } = await admin.from("ordens_servico").select("numero, status, vehicle_id, oficina_id").eq("dealership", loja)
+      .in("status", ["enviada", "recebida", "concluida"]).not("vehicle_id", "is", null).limit(500);
+    const ofIds = [...new Set((oss || []).map((o: any) => o.oficina_id))];
+    const { data: ofs } = ofIds.length ? await admin.from("oficinas_parceiras").select("id, nome").in("id", ofIds) : { data: [] };
+    const nomeOf: Record<string, string> = Object.fromEntries((ofs || []).map((o: any) => [o.id, o.nome]));
+    for (const o of oss || []) osDe[o.vehicle_id] = { numero: o.numero, status: o.status, oficina: nomeOf[o.oficina_id] || "oficina" };
+  } catch { /* tabela das oficinas ainda não criada */ }
   const carros = (await mktStock(did)).map((v: any) => ({
     id: v.id, desc: descVeiculo(v), versao: v.version || null, cor: v.color || null,
     preco: v.price || null, km: v.mileage || null, capa: capaDoVeiculo(v),
     preparacao: prepDe[v.id] ? { id: prepDe[v.id].id, data: prepDe[v.id].data, km: prepDe[v.id].km, intervalo_km: prepDe[v.id].intervalo_km, feito_por: prepDe[v.id].feito_por } : null,
+    os: osDe[v.id] || null,
   }));
   return { carros };
 }
@@ -540,8 +570,10 @@ async function oficinaParceira(p: any): Promise<Response> {
     // troca de óleo → preparação do carro (ponto zero do Co-pilot do cliente na venda)
     const prep = await prepararDaOS(admin, upd, of.nome).catch(() => null);
     if (prep) await admin.from("ordens_servico").update({ preparacao_id: prep }).eq("id", os.id);
-    await avisarConclusao(admin, upd, of);
-    return json({ ok: true, preparacao: !!prep });
+    // exceção: o carro já foi vendido (mandou depois da venda) → a troca vai pro Co-pilot do cliente
+    const venda = prep ? await ligarNaVenda(admin, upd, prep).catch(() => null) : null;
+    await avisarConclusao(admin, upd, of, venda);
+    return json({ ok: true, preparacao: !!prep, vendido: !!venda });
   }
 
   if (p.action === "parceiro_extra") {
@@ -1448,7 +1480,9 @@ Deno.serve(async (req) => {
         if (error) return json({ error: /relation|does not exist/i.test(error.message) ? "rode_o_sql_das_oficinas" : error.message }, 400);
         const { data: ofs } = await admin.from("oficinas_parceiras").select("id, nome").eq("dealership", writeStore);
         const nomeOf: Record<string, string> = Object.fromEntries((ofs || []).map((o: any) => [o.id, o.nome]));
-        const ordens = (await comFotos(admin, rows || [])).map((r: any) => ({ ...r, oficina_nome: nomeOf[r.oficina_id] || "Oficina" }));
+        const vendidos = new Set<string>();
+        for (const r of rows || []) if (r.status !== "cancelada" && await vendaDoCarro(admin, r).catch(() => null)) vendidos.add(r.id);
+        const ordens = (await comFotos(admin, rows || [])).map((r: any) => ({ ...r, oficina_nome: nomeOf[r.oficina_id] || "Oficina", vendido: vendidos.has(r.id) }));
         return json({ ok: true, ordens, servicos: SERVICOS });
       }
 

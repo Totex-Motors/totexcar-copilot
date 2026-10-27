@@ -45,6 +45,9 @@ export const msgErro = (e: unknown) => {
   return ERROS[c] || c || "Erro";
 };
 
+// onde está o carro do estoque que foi pra oficina parceira
+export const textoOsCarro = (os: { numero: number; status: string; oficina: string }) =>
+  os.status === "concluida" ? `✅ Pronto na ${os.oficina} (OS #${os.numero}): falta buscar` : `🔧 Na oficina ${os.oficina} (OS #${os.numero})`;
 export const kmBR = (n?: number | null) => (n != null ? `${Number(n).toLocaleString("pt-BR")} km` : "");
 export const quando = (s?: string | null) => (s ? new Date(s).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
 export const carroOS = (o: OrdemServico) => `${o.car_desc || "Carro"}${o.placa ? ` · ${o.placa}` : ""}`;

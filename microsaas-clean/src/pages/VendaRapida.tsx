@@ -7,12 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, CheckCircle2, Search, Car, Tag, ChevronLeft } from "lucide-react";
 import { maskCpf, cpfValido } from "@/lib/cpf";
+import { textoOsCarro } from "@/components/oficina/comum";
 
 // LINK DO VENDEDOR: /venda/{token}. Tela única, pensada pro celular, SÓ com o cadastro da venda — sem login
 // e sem o resto do painel. O token é pessoal (gerado no painel, aba Atendimento → Equipe) e já identifica
 // o vendedor e a loja: a venda sai no nome dele, o cliente recebe as boas-vindas e a etiqueta é vinculada.
 
-type Carro = { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: { data: string; km: number } | null };
+type Carro = { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: { data: string; km: number } | null; os?: { numero: number; status: string; oficina: string } | null };
 type Venda = { id: string; cliente: string; carro: string | null; data: string; etiqueta: string | null; ativou: boolean };
 type Info = { loja: string; vendedor: { nome: string }; carros: Carro[]; aviso: string | null; vendas: Venda[] };
 
@@ -140,7 +141,8 @@ export default function VendaRapida() {
                       <div className="text-sm font-medium">{carro.desc}</div>
                       <div className="text-xs text-muted-foreground">{[carro.versao, carro.cor].filter(Boolean).join(" · ")}</div>
                       {carro.preparacao ? <div className="text-xs text-green-700 font-medium">🛠️ Revisado em {dataBR(carro.preparacao.data)} · {kmBR(carro.preparacao.km)}</div>
-                        : <div className="text-xs text-amber-700 font-medium">⚠️ Sem troca de óleo registrada</div>}
+                        : carro.os ? <div className="text-xs text-sky-700 font-medium">{textoOsCarro(carro.os)}. A revisão é antes da entrega: combine com o Lucas.</div>
+                        : <div className="text-xs text-amber-700 font-medium">⚠️ Sem revisão registrada. A revisão é antes da venda: avise o Lucas.</div>}
                     </div>
                     <Button size="sm" variant="ghost" onClick={() => setCarro(null)}><ChevronLeft className="w-4 h-4" /> Trocar</Button>
                   </div>
@@ -156,7 +158,7 @@ export default function VendaRapida() {
                           <span className="min-w-0">
                             <span className="block text-sm truncate">{c.desc}</span>
                             <span className="block text-[11.5px] text-muted-foreground truncate">{[c.versao, c.cor].filter(Boolean).join(" · ")}</span>
-                            <span className={`block text-[11px] font-medium ${c.preparacao ? "text-green-700" : "text-amber-700"}`}>{c.preparacao ? "🛠️ Revisado" : "⚠️ Sem troca de óleo registrada"}</span>
+                            <span className={`block text-[11px] font-medium ${c.preparacao ? "text-green-700" : c.os ? "text-sky-700" : "text-amber-700"}`}>{c.preparacao ? "🛠️ Revisado" : c.os ? textoOsCarro(c.os) : "⚠️ Sem revisão registrada"}</span>
                           </span>
                         </button>
                       ))}
