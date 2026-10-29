@@ -2,6 +2,8 @@
 // Ações protegidas por papel admin. Usa service role para criar/excluir contas.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { SERVICE_TYPES } from "../_shared/radar-search.ts";
+import { publicarFlow, flowPublicado, RECOMPRA_V2_PREFIXO, FLOW_ENDPOINT } from "../_shared/flows.ts";
+import recompraV2 from "../_shared/recompra-flow-v2.json" with { type: "json" };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -51,6 +53,19 @@ Deno.serve(async (req) => {
 
   try {
     switch (action) {
+      // FORMULÁRIO "AVALIAR MEU CARRO" (WhatsApp Flow) v2 — com o campo "Ou digite o modelo".
+      // Publica na Meta (flow novo apontando pro wa-flow-endpoint); o webhook passa a usar sozinho.
+      case "flow_recompra_status":
+      case "publicar_flow_recompra": {
+        const { data: st } = await admin.from("app_settings").select("meta_wa_token, meta_waba_id").eq("id", 1).single();
+        const tk = String(st?.meta_wa_token || "").trim(), waba = String(st?.meta_waba_id || "").trim();
+        if (!tk || !waba) return json({ error: "meta_wa_token/meta_waba_id não configurados" }, 400);
+        if (action === "flow_recompra_status") return json({ ok: true, flow_id: await flowPublicado(tk, waba, RECOMPRA_V2_PREFIXO) });
+        const name = `${RECOMPRA_V2_PREFIXO}_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
+        const r = await publicarFlow(tk, waba, name, recompraV2, FLOW_ENDPOINT);
+        return json(r, r.ok ? 200 : 502);
+      }
+
       // FUNIL DO STAND (todas as lojas) — escaneios → presente → conversa → ativação, por loja+promotor
       case "stand_report": {
         const { data, error } = await admin.rpc("stand_report", { p_loja: null });

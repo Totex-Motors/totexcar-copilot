@@ -127,7 +127,8 @@ const Admin = () => {
         <TabsContent value="dealers" className="mt-6">
           <DealersTab />
         </TabsContent>
-        <TabsContent value="config" className="mt-6">
+        <TabsContent value="config" className="mt-6 space-y-6">
+          <FlowAvaliacaoCard />
           <ConfigTab />
         </TabsContent>
         <TabsContent value="growth" className="mt-6">
@@ -1289,6 +1290,37 @@ function GptMotorsTab() {
 }
 
 export default Admin;
+
+// "Avaliar meu carro" no WhatsApp (Flow): publica a versão 2, com o campo "Ou digite o modelo" na tela de
+// modelo. O webhook passa a mandar a v2 sozinho (acha a versão publicada mais nova pelo nome).
+function FlowAvaliacaoCard() {
+  const [busy, setBusy] = useState(false);
+  const { data: st, refetch } = useQuery({
+    queryKey: ["flow-recompra-status"],
+    queryFn: async () => (await supabase.functions.invoke("admin-api", { body: { action: "flow_recompra_status" } })).data as { ok?: boolean; flow_id?: string | null } | null,
+  });
+  const publicar = async () => {
+    if (!confirm("Publicar a versão nova do formulário \"Avaliar meu carro\" no WhatsApp?")) return;
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "publicar_flow_recompra" } });
+      let r: any = data;
+      if (error) { try { r = await (error as any).context.json(); } catch { r = { error: String(error.message || error) }; } }
+      if (r?.ok) { toast({ title: "Formulário publicado ✅", description: "Em até 30 min o WhatsApp passa a abrir a versão com o campo de digitar o modelo." }); refetch(); }
+      else toast({ title: "Não publicou", description: r?.validation_errors ? JSON.stringify(r.validation_errors).slice(0, 300) : `${r?.etapa || ""} ${JSON.stringify(r?.body || r?.error || r).slice(0, 300)}`, variant: "destructive" });
+    } finally { setBusy(false); }
+  };
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><MessageCircle className="w-4 h-4" /> Formulário "Avaliar meu carro" (WhatsApp)</CardTitle></CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <p className="text-muted-foreground">Versão 2: na tela do modelo, a pessoa pode <b>digitar o nome</b> (ex.: Toro) e escolher a versão; marcas grandes aparecem por família.</p>
+        <p>{st?.flow_id ? <>✅ Versão 2 no ar (id {st.flow_id}).</> : <>Ainda na versão 1.</>}</p>
+        <Button size="sm" disabled={busy} onClick={publicar}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : st?.flow_id ? "Publicar de novo" : "Publicar versão 2"}</Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 // Consulta veicular paga: relatório consolidado de requisições e créditos PRÉ-PAGOS do fornecedor
 // (o dono compra créditos; cada consulta que bate no fornecedor consome 1; cache não consome)

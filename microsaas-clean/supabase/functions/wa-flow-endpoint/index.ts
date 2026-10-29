@@ -122,6 +122,14 @@ function familias(arr: any[]) {
   return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(0, 200)
     .map(([k, g]) => ({ id: ID_FAMILIA + k, title: (g.n > 1 ? `${g.nome} (${g.n} versões)` : g.nome).slice(0, 30) }));
 }
+// busca digitada ("toro freedom", "Toro", "s10 ltz"): todas as palavras, sem acento; se nenhuma versão
+// tiver todas, aceita as que começam pela 1ª palavra (o nome do modelo)
+function buscarModelos(arr: any[], busca: string) {
+  const palavras = semAcento(busca).split(/\s+/).filter(Boolean);
+  if (!palavras.length) return [];
+  const todas = arr.filter((x: any) => { const n = semAcento(x.nome); return palavras.every((w) => n.includes(w)); });
+  return todas.length ? todas : arr.filter((x: any) => familiaDe(x.nome) === palavras[0]);
+}
 // lista da tela MODELO: com filtro (sem acento, por palavra) ou cabendo em 200, as versões; senão, as famílias
 function listaModelos(arr: any[], filtro?: string) {
   const f = semAcento(filtro);
@@ -501,6 +509,10 @@ async function handleRadar(req: any, userId?: string): Promise<any> {
 }
 
 // ---------------- telas do flow RECOMPRA ----------------
+async function telaAno(d: any) {
+  const anos = await fipeGet(`/marcas/${encodeURIComponent(d.marca)}/modelos/${encodeURIComponent(d.modelo)}/anos`);
+  return { screen: "ANO", data: { anos: cap200(anos), marca: String(d.marca), marca_nome: String(d.marca_nome || ""), modelo: String(d.modelo) } };
+}
 async function handleRecompra(req: any): Promise<any> {
   const d = req.data || {};
 
@@ -516,6 +528,32 @@ async function handleRecompra(req: any): Promise<any> {
       const marcaNome = (marcas.find((m: any) => String(m.codigo) === String(d.marca)) || {}).nome || "";
       return { screen: "MODELO", data: { modelos: listaModelos(res?.modelos || [], d.filtro), marca: String(d.marca), marca_nome: String(marcaNome) } };
     }
+    // v2 do flow (tem o campo "Ou digite o modelo"): a busca/família vai pra tela VERSAO.
+    // v1 (sem o campo): família volta na própria tela MODELO.
+    if (req.screen === "MODELO" && "busca" in d) {
+      const modelo = String(d.modelo || "");
+      const base = { marca: String(d.marca), marca_nome: String(d.marca_nome || "") };
+      if (modelo && !modelo.startsWith(ID_FAMILIA)) return await telaAno(d);
+      const todos = (await fipeGet(`/marcas/${encodeURIComponent(d.marca)}/modelos`))?.modelos || [];
+      const busca = String(d.busca || "").trim();
+      if (busca) {
+        const achou = buscarModelos(todos, busca);
+        if (!achou.length) {
+          return { screen: "MODELO", data: { ...base, modelos: listaModelos(todos, ""), error_message: `Não achei "${busca.slice(0, 30)}" na ${base.marca_nome || "marca"}. Confira o nome ou escolha na lista.` } };
+        }
+        const aviso = achou.length > 200 ? `Achei ${achou.length} versões; mostrando 200. Digite mais detalhes (ex.: Toro Freedom) pra afinar.`
+          : `${achou.length === 1 ? "1 versão encontrada" : `${achou.length} versões encontradas`} para "${busca.slice(0, 30)}". Escolha a sua:`;
+        return { screen: "VERSAO", data: { ...base, modelos: cap200(achou), aviso } };
+      }
+      if (modelo.startsWith(ID_FAMILIA)) {
+        const fam = modelo.slice(ID_FAMILIA.length);
+        const versoes = todos.filter((x: any) => familiaDe(x.nome) === fam);
+        const nome = versoes[0] ? String(versoes[0].nome).split(/\s+/)[0] : "esse modelo";
+        return { screen: "VERSAO", data: { ...base, modelos: cap200(versoes), aviso: `${versoes.length} ${versoes.length === 1 ? "versão" : "versões"} de ${nome}. Escolha a sua:` } };
+      }
+      return { screen: "MODELO", data: { ...base, modelos: listaModelos(todos, ""), error_message: "Escolha o modelo na lista ou digite o nome dele." } };
+    }
+    if (req.screen === "VERSAO") return await telaAno(d);
     if (req.screen === "MODELO" && String(d.modelo || "").startsWith(ID_FAMILIA)) {
       // escolheu a família: a mesma tela volta com as versões dela (ex.: as 26 da Toro)
       const fam = String(d.modelo).slice(ID_FAMILIA.length);
