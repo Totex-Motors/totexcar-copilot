@@ -106,6 +106,32 @@ const cap200 = (arr: any[], filtro?: string) => {
   return list.slice(0, 200).map((x: any) => ({ id: String(x.codigo), title: String(x.nome).slice(0, 30) }));
 };
 
+// MARCA GRANDE (Fiat tem 586 modelos na FIPE): a lista cortava em 200 em ordem alfabética ("até o Marea")
+// e a Toro sumia. Sem filtro, mostra as FAMÍLIAS (Toro, Strada, Uno…); escolhida a família, a mesma tela
+// MODELO volta só com as versões dela. id da família = "f:" + nome.
+const semAcento = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const familiaDe = (nome: unknown) => semAcento(String(nome).split(/\s+/)[0]);
+const ID_FAMILIA = "f:";
+function familias(arr: any[]) {
+  const grupos = new Map<string, { nome: string; n: number }>();
+  for (const x of arr) {
+    const k = familiaDe(x.nome);
+    const g = grupos.get(k);
+    if (g) g.n++; else grupos.set(k, { nome: String(x.nome).split(/\s+/)[0], n: 1 });
+  }
+  return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(0, 200)
+    .map(([k, g]) => ({ id: ID_FAMILIA + k, title: (g.n > 1 ? `${g.nome} (${g.n} versões)` : g.nome).slice(0, 30) }));
+}
+// lista da tela MODELO: com filtro (sem acento, por palavra) ou cabendo em 200, as versões; senão, as famílias
+function listaModelos(arr: any[], filtro?: string) {
+  const f = semAcento(filtro);
+  if (f) {
+    const achou = arr.filter((x: any) => semAcento(x.nome).includes(f));
+    if (achou.length) return achou.length > 200 ? familias(achou) : cap200(achou);
+  }
+  return arr.length > 200 ? familias(arr) : cap200(arr);
+}
+
 // ---------------- telas do flow GARAGEM TOTEX (estoque ao vivo do marketplace) ----------------
 const MARKETPLACE = (Deno.env.get("MARKETPLACE_URL") || "https://totexmotors.com").replace(/\/+$/, "");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -488,7 +514,14 @@ async function handleRecompra(req: any): Promise<any> {
       const res = await fipeGet(`/marcas/${encodeURIComponent(d.marca)}/modelos`);
       const marcas = await fipeGet("/marcas");
       const marcaNome = (marcas.find((m: any) => String(m.codigo) === String(d.marca)) || {}).nome || "";
-      return { screen: "MODELO", data: { modelos: cap200(res?.modelos || [], d.filtro), marca: String(d.marca), marca_nome: String(marcaNome) } };
+      return { screen: "MODELO", data: { modelos: listaModelos(res?.modelos || [], d.filtro), marca: String(d.marca), marca_nome: String(marcaNome) } };
+    }
+    if (req.screen === "MODELO" && String(d.modelo || "").startsWith(ID_FAMILIA)) {
+      // escolheu a família: a mesma tela volta com as versões dela (ex.: as 26 da Toro)
+      const fam = String(d.modelo).slice(ID_FAMILIA.length);
+      const res = await fipeGet(`/marcas/${encodeURIComponent(d.marca)}/modelos`);
+      const versoes = (res?.modelos || []).filter((x: any) => familiaDe(x.nome) === fam);
+      return { screen: "MODELO", data: { modelos: cap200(versoes), marca: String(d.marca), marca_nome: String(d.marca_nome || "") } };
     }
     if (req.screen === "MODELO") {
       const anos = await fipeGet(`/marcas/${encodeURIComponent(d.marca)}/modelos/${encodeURIComponent(d.modelo)}/anos`);
