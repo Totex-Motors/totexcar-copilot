@@ -34,6 +34,7 @@ import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_
 import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
 import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 import { normalizarCnh, fichaCnh, aplicarCnhNoCadastro } from "../_shared/cnh.ts";
+import { flowPublicado, RECOMPRA_V2_PREFIXO } from "../_shared/flows.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -143,6 +144,11 @@ const GARAGEM_URL = "https://totexmotors.com/comprar";
 const GARAGEM_FLOW_ID = "1052809144367365";
 // Flow da RECOMPRA FIPE AO VIVO (avaliar o próprio carro pela FIPE dentro do WhatsApp)
 const RECOMPRA_FLOW_ID = "2122157961991407";
+// avaliação FIPE: usa a v2 (com "Ou digite o modelo") assim que ela for publicada pelo Admin; senão a v1
+async function recompraFlowId(): Promise<string> {
+  const s = await getSettings();
+  return (await flowPublicado(String(s?.meta_wa_token || "").trim(), String(s?.meta_waba_id || "").trim(), RECOMPRA_V2_PREFIXO)) || RECOMPRA_FLOW_ID;
+}
 // Flows novos (Radar e Modo Viagem). Ficam em SECRET porque o id só existe depois
 // de publicar o flow na Meta — sem o id, o código cai no caminho de texto do agente
 // em vez de mandar um formulário quebrado.
@@ -2903,7 +2909,7 @@ async function abrirAvaliacaoFlow(phone: string) {
   await waSendFlow(s, phone, {
     header: "Avalie seu carro 🚗",
     body: "Me diga a marca, o modelo e o ano que eu já pego a referência de tabela — depois você escolhe como quer vender e eu mostro quanto recebe.",
-    cta: "Avaliar meu carro", flowId: RECOMPRA_FLOW_ID, token: "recompra",
+    cta: "Avaliar meu carro", flowId: await recompraFlowId(), token: "recompra",
     fallbackText: "Pra avaliar seu carro, me diga a marca, o modelo e o ano. 🚗",
   });
 }
@@ -4853,7 +4859,7 @@ ${JSON.stringify(snapshot)}`;
         header: "Avalie seu carro 🚗",
         body: "Receba uma proposta de compra da loja parceira pro seu carro em segundos — tudo aqui no WhatsApp, sem compromisso.",
         cta: "Avaliar meu carro",
-        flowId: RECOMPRA_FLOW_ID,
+        flowId: await recompraFlowId(),
         token: "recompra",
         fallbackText: "Pra avaliar seu carro, me diga a marca, o modelo e o ano que eu já preparo a proposta da loja. 🚗",
       });
