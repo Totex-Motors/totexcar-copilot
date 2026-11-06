@@ -284,7 +284,7 @@ export const useSendCampaign = () =>
   });
 
 // ===== Pós-venda: atendimento com handoff (equipe, grupo, casos) =====
-export type PapelEquipe = "vendedor" | "gerente_manutencao" | "gerente_geral";
+export type PapelEquipe = "vendedor" | "gerente_manutencao" | "apoio_manutencao" | "gerente_geral";
 export interface MembroEquipe { id: string; dealership: string; nome: string; phone: string; papel: PapelEquipe; ativo: boolean }
 export interface PosvendaConfig { dealership: string; grupo_id: string | null; grupo_nome: string | null; sla_min: number; horario: Record<string, [string, string]> | null; ativo: boolean }
 export interface PosvendaCaso {

@@ -612,9 +612,14 @@ async function oficinaParceira(p: any): Promise<Response> {
 const ACOES_DO_LINK: Record<string, string[]> = {
   gerente_manutencao: ["link_me", "estoque_lista", "preparacao_lista", "preparacao_save", "preparacao_del", "oficina_trocas", "oficina_troca_registrar",
     "oficinas_lista", "os_lista", "os_criar", "os_devolver", "os_extra_decidir", "os_cancelar"],
+  // apoio de manutenção (leva os carros pras oficinas): o mesmo link do gerente de manutenção; fica fora da
+  // escada de atendimento do pós-venda (escalarPara só olha gerente_manutencao / gerente_geral)
+  apoio_manutencao: [],
   gerente_geral: ["link_me", "gerencia_vendas", "entregas_lista", "posvenda_casos", "posvenda_caso", "posvenda_stats", "posvenda_oportunidades", "oficina_trocas", "estoque_lista", "preparacao_lista",
     "oficinas_lista", "os_lista"],
 };
+
+ACOES_DO_LINK.apoio_manutencao = ACOES_DO_LINK.gerente_manutencao;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -1453,7 +1458,7 @@ Deno.serve(async (req) => {
         if (!writeStore) return json({ error: "sem_loja" }, 400);
         const { data: ofs } = await admin.from("oficinas_parceiras").select("*").eq("dealership", writeStore).order("nome");
         // o link aparece pro dono e pro gerente de manutenção (ele reenvia pra oficina); o gerente geral só vê a lista
-        const verLink = !me?.membro || me.membro.papel === "gerente_manutencao";
+        const verLink = !me?.membro || me.membro.papel === "gerente_manutencao" || me.membro.papel === "apoio_manutencao";
         const lista = [];
         for (const o of ofs || []) {
           let tk = o.link_token as string | null;
@@ -1726,13 +1731,13 @@ Deno.serve(async (req) => {
         const phone = vs[vs.length - 1] || "";
         if (!nome) return json({ error: "nome_obrigatorio" }, 400);
         if (phone.length < 12) return json({ error: "telefone_invalido" }, 400);
-        const papel = ["vendedor", "gerente_manutencao", "gerente_geral"].includes(String(p.papel)) ? String(p.papel) : "vendedor";
+        const papel = ["vendedor", "gerente_manutencao", "apoio_manutencao", "gerente_geral"].includes(String(p.papel)) ? String(p.papel) : "vendedor";
         const row = { dealership: writeStore, nome, phone, papel, ativo: p.ativo === undefined ? true : !!p.ativo };
         const q = p.id
           ? admin.from("posvenda_equipe").update(row).eq("id", String(p.id)).eq("dealership", writeStore)
           : admin.from("posvenda_equipe").insert(row);
         const { error } = await q;
-        if (error) return json({ error: /duplicate|unique/i.test(error.message) ? "telefone_ja_cadastrado" : error.message }, 400);
+        if (error) return json({ error: /duplicate|unique/i.test(error.message) ? "telefone_ja_cadastrado" : /papel_check/i.test(error.message) ? "rode_o_sql_do_apoio_de_manutencao" : error.message }, 400);
         return json({ ok: true });
       }
 
@@ -1750,7 +1755,7 @@ Deno.serve(async (req) => {
         const { data: st } = await admin.from("app_settings").select("app_url").eq("id", 1).single();
         const appUrl = (st?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
         // a tela do link depende da função: vendedor → cadastro da venda; manutenção → oficina; gerente geral → gerência
-        const rota = m.papel === "gerente_manutencao" ? "oficina" : m.papel === "gerente_geral" ? "gerencia" : "venda";
+        const rota = m.papel === "gerente_manutencao" || m.papel === "apoio_manutencao" ? "oficina" : m.papel === "gerente_geral" ? "gerencia" : "venda";
         return json({ ok: true, link: `${appUrl}/${rota}/${tk}`, nome: m.nome, phone: m.phone, papel: m.papel });
       }
 
