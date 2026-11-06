@@ -36,7 +36,7 @@ export async function clienteFalouDepois(sb: any, phone: string, desdeIso: strin
   } catch { return false; }
 }
 
-export const PAPEL: Record<string, string> = { vendedor: "vendedor", gerente_manutencao: "gerente de manutenção", gerente_geral: "gerente geral" };
+export const PAPEL: Record<string, string> = { vendedor: "vendedor", gerente_manutencao: "gerente de manutenção", apoio_manutencao: "apoio de manutenção", gerente_geral: "gerente geral" };
 export const MOTIVO: Record<string, string> = {
   garantia_defeito: "Garantia / defeito", documentacao: "Documentação / transferência", revisao: "Revisão / manutenção",
   financeiro: "Financeiro", troca_recompra: "Troca / recompra", reclamacao: "Reclamação", outro: "Outro",

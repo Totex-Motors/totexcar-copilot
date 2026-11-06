@@ -13,7 +13,7 @@ import { textoOsCarro } from "@/components/oficina/comum";
 // e sem o resto do painel. O token é pessoal (gerado no painel, aba Atendimento → Equipe) e já identifica
 // o vendedor e a loja: a venda sai no nome dele, o cliente recebe as boas-vindas e a etiqueta é vinculada.
 
-type Carro = { id: string; desc: string; versao: string | null; cor: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: { data: string; km: number } | null; os?: { numero: number; status: string; oficina: string } | null };
+type Carro = { id: string; desc: string; versao: string | null; cor: string | null; placa?: string | null; preco: number | null; km: number | null; capa: string | null; preparacao?: { data: string; km: number } | null; os?: { numero: number; status: string; oficina: string } | null };
 type Venda = { id: string; cliente: string; carro: string | null; data: string; etiqueta: string | null; ativou: boolean };
 type Info = { loja: string; vendedor: { nome: string }; carros: Carro[]; aviso: string | null; vendas: Venda[] };
 
@@ -61,7 +61,9 @@ export default function VendaRapida() {
 
   const lista = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return (info?.carros || []).filter((c) => !q || `${c.desc} ${c.versao || ""} ${c.cor || ""}`.toLowerCase().includes(q)).slice(0, 40);
+    const qPlaca = q.replace(/[^a-z0-9]/g, "");
+    return (info?.carros || []).filter((c) => !q || `${c.desc} ${c.versao || ""} ${c.cor || ""}`.toLowerCase().includes(q)
+      || (!!qPlaca && (c.placa || "").toLowerCase().includes(qPlaca))).slice(0, 40);
   }, [info, busca]);
 
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -139,25 +141,25 @@ export default function VendaRapida() {
                     {carro.capa ? <img src={carro.capa} alt="" className="w-20 h-14 rounded-md object-cover shrink-0" /> : <div className="w-20 h-14 rounded-md bg-muted shrink-0" />}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium">{carro.desc}</div>
-                      <div className="text-xs text-muted-foreground">{[carro.versao, carro.cor].filter(Boolean).join(" · ")}</div>
+                      <div className="text-xs text-muted-foreground">{[carro.versao, carro.cor].filter(Boolean).join(" · ")}{carro.placa && <b className="ml-1.5 tracking-wider text-foreground">{carro.placa}</b>}</div>
                       {carro.preparacao ? <div className="text-xs text-green-700 font-medium">🛠️ Revisado em {dataBR(carro.preparacao.data)} · {kmBR(carro.preparacao.km)}</div>
                         : carro.os ? <div className="text-xs text-sky-700 font-medium">{textoOsCarro(carro.os)}. A revisão é antes da entrega: combine com o Lucas.</div>
                         : <div className="text-xs text-amber-700 font-medium">⚠️ Sem revisão registrada. A revisão é antes da venda: avise o Lucas.</div>}
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => setCarro(null)}><ChevronLeft className="w-4 h-4" /> Trocar</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setCarro(null); set("placa", ""); }}><ChevronLeft className="w-4 h-4" /> Trocar</Button>
                   </div>
                 ) : fora ? (
                   <div className="space-y-1"><Label className="text-xs">Modelo e ano</Label><Input value={f.carro} onChange={(e) => set("carro", e.target.value)} placeholder="Ex.: Onix 2020 prata" /></div>
                 ) : (
                   <>
-                    <div className="relative"><Search className="w-4 h-4 absolute left-2.5 top-3 text-muted-foreground" /><Input className="pl-8 h-10" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Busque: modelo, ano ou cor" /></div>
+                    <div className="relative"><Search className="w-4 h-4 absolute left-2.5 top-3 text-muted-foreground" /><Input className="pl-8 h-10" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Busque: modelo, ano, cor ou placa" /></div>
                     <div className="max-h-72 overflow-y-auto divide-y rounded-md border bg-white">
                       {lista.map((c) => (
-                        <button key={c.id} type="button" onClick={() => setCarro(c)} className="w-full flex items-center gap-2.5 p-2 text-left active:bg-muted">
+                        <button key={c.id} type="button" onClick={() => { setCarro(c); if (c.placa) set("placa", c.placa); }} className="w-full flex items-center gap-2.5 p-2 text-left active:bg-muted">
                           {c.capa ? <img src={c.capa} alt="" loading="lazy" className="w-16 h-11 rounded object-cover shrink-0" /> : <div className="w-16 h-11 rounded bg-muted shrink-0" />}
                           <span className="min-w-0">
                             <span className="block text-sm truncate">{c.desc}</span>
-                            <span className="block text-[11.5px] text-muted-foreground truncate">{[c.versao, c.cor].filter(Boolean).join(" · ")}</span>
+                            <span className="block text-[11.5px] text-muted-foreground truncate">{[c.versao, c.cor].filter(Boolean).join(" · ")}{c.placa && <b className="ml-1.5 tracking-wider text-foreground">{c.placa}</b>}</span>
                             <span className={`block text-[11px] font-medium ${c.preparacao ? "text-green-700" : c.os ? "text-sky-700" : "text-amber-700"}`}>{c.preparacao ? "🛠️ Revisado" : c.os ? textoOsCarro(c.os) : "⚠️ Sem revisão registrada"}</span>
                           </span>
                         </button>

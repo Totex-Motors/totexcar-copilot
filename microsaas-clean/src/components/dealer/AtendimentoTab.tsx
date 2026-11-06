@@ -15,7 +15,10 @@ import { Textarea } from "@/components/ui/textarea";
 // CENTRAL DE ATENDIMENTO DO PÓS-VENDA — o Co-pilot atende primeiro; quando precisa de gente, abre um caso,
 // avisa o grupo da equipe (número do Canal, só grupo) e quem tocar no link "#assumir N" conversa com o
 // cliente pelo próprio WhatsApp, através do Co-pilot. Escada: vendedor → gerente de manutenção → gerente geral.
-const PAPEL: Record<PapelEquipe, string> = { vendedor: "Vendedor", gerente_manutencao: "Gerente de manutenção", gerente_geral: "Gerente geral" };
+// Apoio de manutenção (ex.: quem leva os carros pras oficinas): mesmo link da oficina do gerente de manutenção,
+// mas FORA da escada de atendimento (não recebe os casos de pós-venda que sobem pro gerente).
+const PAPEL: Record<PapelEquipe, string> = { vendedor: "Vendedor", gerente_manutencao: "Gerente de manutenção", apoio_manutencao: "Apoio de manutenção", gerente_geral: "Gerente geral" };
+const daOficina = (p?: string) => p === "gerente_manutencao" || p === "apoio_manutencao";
 const STATUS: Record<string, { label: string; cls: string }> = {
   aberto: { label: "Esperando alguém", cls: "bg-amber-500/15 text-amber-700" },
   em_atendimento: { label: "Em atendimento", cls: "bg-green-500/15 text-green-700" },
@@ -245,19 +248,19 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
       <CasoDialog id={aberto} dealership={dealership} onClose={() => setAberto(null)} onEncerrar={(id) => rodar("posvenda_caso_encerrar", { id }, "Atendimento encerrado", () => setAberto(null))} />
       <Dialog open={!!linkDlg} onOpenChange={(o) => { if (!o) setLinkDlg(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{linkDlg?.papel === "gerente_manutencao" ? "Link da oficina" : linkDlg?.papel === "gerente_geral" ? "Link da gerência" : "Link de venda"} · {linkDlg?.nome}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{daOficina(linkDlg?.papel) ? "Link da oficina" : linkDlg?.papel === "gerente_geral" ? "Link da gerência" : "Link de venda"} · {linkDlg?.nome}</DialogTitle></DialogHeader>
           {linkDlg && (
             <div className="space-y-3 text-sm">
               <p className="text-muted-foreground">
-                {linkDlg.papel === "gerente_manutencao"
-                  ? <>Abre no celular <b>só a oficina</b>, sem login: preparação dos carros do estoque (troca de óleo e km) e a agenda de trocas de óleo dos clientes. O registro sai no nome de {linkDlg.nome.split(" ")[0]}.</>
+                {daOficina(linkDlg.papel)
+                  ? <>Abre no celular <b>só a oficina</b>, sem login: mandar carros pras oficinas parceiras, preparação dos carros do estoque (troca de óleo e km) e a agenda de trocas de óleo dos clientes. O registro sai no nome de {linkDlg.nome.split(" ")[0]}.</>
                   : linkDlg.papel === "gerente_geral"
                   ? <>Abre no celular <b>o acompanhamento da loja</b>, sem login: placar do processo por vendedor, vendas, checklists de entrega, atendimentos e trocas de óleo.</>
                   : <>Abre no celular <b>só o cadastro da venda</b>, sem login. A venda já sai no nome de {linkDlg.nome.split(" ")[0]} como vendedor.</>}
                 {" "}É pessoal: não compartilhe com outra pessoa.</p>
               <div className="flex gap-2"><Input readOnly value={linkDlg.link} className="text-xs" onFocus={(e) => e.target.select()} /><Button size="sm" variant="outline" onClick={() => copiar(linkDlg.link)}><Copy className="w-4 h-4" /></Button></div>
               <a className="block" target="_blank" rel="noreferrer"
-                href={`https://wa.me/${String(linkDlg.phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(`Oi ${linkDlg.nome.split(" ")[0]}! Esse é o seu link pessoal do Co-pilot ${linkDlg.papel === "gerente_manutencao" ? "pra registrar a preparação dos carros e as trocas de óleo" : linkDlg.papel === "gerente_geral" ? "pra acompanhar a loja (vendas, entregas, atendimentos)" : "pra cadastrar as vendas"} (é só seu, salva na tela inicial do celular): ${linkDlg.link}`)}`}>
+                href={`https://wa.me/${String(linkDlg.phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(`Oi ${linkDlg.nome.split(" ")[0]}! Esse é o seu link pessoal do Co-pilot ${daOficina(linkDlg.papel) ? "pra mandar os carros pras oficinas e registrar a preparação e as trocas de óleo" : linkDlg.papel === "gerente_geral" ? "pra acompanhar a loja (vendas, entregas, atendimentos)" : "pra cadastrar as vendas"} (é só seu, salva na tela inicial do celular): ${linkDlg.link}`)}`}>
                 <Button className="w-full gap-2"><MessageCircle className="w-4 h-4" /> Enviar pelo WhatsApp</Button>
               </a>
               <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => { const id = equipe.find((m) => m.nome === linkDlg.nome)?.id; if (id && confirm("Gerar um link novo? O atual para de funcionar.")) abrirLink(id, true); }}>Trocar o link (se ele vazou ou a pessoa saiu)</Button>

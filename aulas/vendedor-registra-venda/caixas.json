@@ -1,0 +1,150 @@
+{
+ "v01-lista": {
+  "revisado": {
+   "x": 115,
+   "y": 264.75,
+   "width": 136.171875,
+   "height": 16.5
+  },
+  "semrev": {
+   "x": 115,
+   "y": 335.5,
+   "width": 159.765625,
+   "height": 16.5
+  },
+  "naoficina": {
+   "x": 115,
+   "y": 406.25,
+   "width": 216.453125,
+   "height": 16.5
+  }
+ },
+ "v02-busca-placa": {
+  "busca": {
+   "x": 32,
+   "y": 166.5,
+   "width": 326,
+   "height": 40
+  },
+  "placa": {
+   "x": 189.90625,
+   "y": 248.5,
+   "width": 56.671875,
+   "height": 14
+  }
+ },
+ "v03-carro-escolhido": {
+  "revisado": {
+   "x": 124,
+   "y": 238.5,
+   "width": 130.46875,
+   "height": 48
+  },
+  "placa": {
+   "x": 159.328125,
+   "y": 222.5,
+   "width": 59.125,
+   "height": 15
+  }
+ },
+ "v04-cpf-invalido": {
+  "cpf": {
+   "x": 32,
+   "y": 590,
+   "width": 326,
+   "height": 40
+  },
+  "aviso": {
+   "x": 32,
+   "y": 634,
+   "width": 326,
+   "height": 16
+  }
+ },
+ "v05-cliente-entrega": {
+  "nome": {
+   "x": 32,
+   "y": 244,
+   "width": 326,
+   "height": 40
+  },
+  "whats": {
+   "x": 32,
+   "y": 324,
+   "width": 326,
+   "height": 40
+  },
+  "cpf": {
+   "x": 32,
+   "y": 404,
+   "width": 326,
+   "height": 40
+  },
+  "etiqueta": {
+   "x": 32,
+   "y": 556,
+   "width": 157,
+   "height": 40
+  },
+  "placa": {
+   "x": 201,
+   "y": 556,
+   "width": 157,
+   "height": 40
+  },
+  "km": {
+   "x": 32,
+   "y": 636,
+   "width": 326,
+   "height": 40
+  },
+  "registrar": {
+   "x": 16,
+   "y": 708,
+   "width": 358,
+   "height": 48
+  }
+ },
+ "v06-venda-registrada": {
+  "boasvindas": {
+   "x": 36,
+   "y": 206.5,
+   "width": 318,
+   "height": 40
+  },
+  "etiqueta": {
+   "x": 36,
+   "y": 252.5,
+   "width": 318,
+   "height": 20
+  },
+  "revisao": {
+   "x": 36,
+   "y": 278.5,
+   "width": 318,
+   "height": 40
+  },
+  "entrega": {
+   "x": 49,
+   "y": 344.5,
+   "width": 126.453125,
+   "height": 17
+  }
+ },
+ "v07-minhas-vendas": {
+  "status": {
+   "x": 264.8125,
+   "y": 750.25,
+   "width": 93.1875,
+   "height": 24
+  }
+ },
+ "v08-ativou": {
+  "status": {
+   "x": 308.546875,
+   "y": 750.25,
+   "width": 49.453125,
+   "height": 24
+  }
+ }
+}
