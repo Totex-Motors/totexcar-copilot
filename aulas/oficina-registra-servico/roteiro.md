@@ -151,9 +151,9 @@ Duração estimada pela narração: **~3 min 12 s** (estimativa por contagem de 
 
 ## Estado da produção
 
-- [x] Roteiro e storyboard com o exemplo preenchido
+- [x] Roteiro e storyboard com o exemplo preenchido (aprovado pelo dono em 06/11/2026)
 - [x] Capturas reais do link (dados de demonstração)
-- [ ] Narração final gravada (voz a definir/autorizar)
+- [ ] Narração final gravada (voz do Marcos; texto em gravacao-v1.pdf)
 - [ ] Tempos das cenas ajustados ao áudio real (hoje: estimativa)
 - [ ] Composição animada e prévia
 - [ ] Revisão do vídeo exportado

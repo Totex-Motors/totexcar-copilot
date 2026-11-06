@@ -23,7 +23,7 @@ for (const c of A.cenas) {
   for (const [ancora, muda] of c.eventos) md += `- ${ancora} → ${muda}\n`;
   md += `\n`;
 }
-md += `## Estado da produção\n\n- [x] Roteiro e storyboard com o exemplo preenchido\n- [x] Capturas reais do link (dados de demonstração)\n- [ ] Narração final gravada (voz a definir/autorizar)\n- [ ] Tempos das cenas ajustados ao áudio real (hoje: estimativa)\n- [ ] Composição animada e prévia\n- [ ] Revisão do vídeo exportado\n`;
+md += `## Estado da produção\n\n- [x] Roteiro e storyboard com o exemplo preenchido (aprovado pelo dono em 06/11/2026)\n- [x] Capturas reais do link (dados de demonstração)\n- [ ] Narração final gravada (voz do Marcos; texto em gravacao-v1.pdf)\n- [ ] Tempos das cenas ajustados ao áudio real (hoje: estimativa)\n- [ ] Composição animada e prévia\n- [ ] Revisão do vídeo exportado\n`;
 fs.writeFileSync(path.join(DIR, "roteiro.md"), md);
 
 // ---------- storyboard.html ----------
