@@ -1,0 +1,166 @@
+{
+ "c01-lista-chegando": {
+  "chegando": {
+   "x": 12,
+   "y": 124.5,
+   "width": 366,
+   "height": 20
+  },
+  "placa": {
+   "x": 70.296875,
+   "y": 191.125,
+   "width": 73.125,
+   "height": 21
+  },
+  "botao": {
+   "x": 24,
+   "y": 272.5,
+   "width": 342,
+   "height": 40
+  }
+ },
+ "c02-receber-vazio": {
+  "placa": {
+   "x": 28,
+   "y": 285.5,
+   "width": 334,
+   "height": 67
+  }
+ },
+ "c03-receber-preenchido": {
+  "km": {
+   "x": 28,
+   "y": 392.5,
+   "width": 334,
+   "height": 40
+  },
+  "foto": {
+   "x": 28,
+   "y": 464.5,
+   "width": 334,
+   "height": 84
+  },
+  "confirmar": {
+   "x": 28,
+   "y": 584.5,
+   "width": 334,
+   "height": 40
+  }
+ },
+ "c04a-chegada-confirmada": {},
+ "c04-lista-na-oficina": {
+  "naoficina": {
+   "x": 12,
+   "y": 192.5,
+   "width": 366,
+   "height": 20
+  },
+  "registrar": {
+   "x": 24,
+   "y": 324.5,
+   "width": 342,
+   "height": 40
+  },
+  "extra": {
+   "x": 24,
+   "y": 372.5,
+   "width": 342,
+   "height": 40
+  }
+ },
+ "c05-servico-vazio": {},
+ "c06-servico-oleo": {
+  "km": {
+   "x": 25,
+   "y": 172.765625,
+   "width": 340,
+   "height": 40
+  },
+  "visc": {
+   "x": 25,
+   "y": 252.765625,
+   "width": 166,
+   "height": 40
+  },
+  "litros": {
+   "x": 199,
+   "y": 252.765625,
+   "width": 166,
+   "height": 40
+  },
+  "norma": {
+   "x": 25,
+   "y": 332.765625,
+   "width": 340,
+   "height": 40
+  },
+  "marca": {
+   "x": 25,
+   "y": 412.765625,
+   "width": 340,
+   "height": 40
+  },
+  "filtro": {
+   "x": 25,
+   "y": 494.765625,
+   "width": 340,
+   "height": 20
+  }
+ },
+ "c07-erro-sem-etiqueta": {
+  "aviso": {
+   "x": 41,
+   "y": 41,
+   "width": 260.03125,
+   "height": 20
+  },
+  "etiqueta": {
+   "x": 25,
+   "y": 404.765625,
+   "width": 340,
+   "height": 84
+  }
+ },
+ "c08-servico-fotos": {
+  "painel": {
+   "x": 25,
+   "y": 324.765625,
+   "width": 340,
+   "height": 84
+  },
+  "etiqueta": {
+   "x": 25,
+   "y": 464.765625,
+   "width": 340,
+   "height": 84
+  }
+ },
+ "c09a-aviso-registrado": {
+  "aviso": {
+   "x": 41,
+   "y": 41,
+   "width": 267.703125,
+   "height": 20
+  }
+ },
+ "c09-servico-registrado": {
+  "feitos": {
+   "x": 12,
+   "y": 260.5,
+   "width": 366,
+   "height": 20
+  },
+  "resumo": {
+   "x": 24,
+   "y": 392.5,
+   "width": 342,
+   "height": 20
+  },
+  "status": {
+   "x": 262.328125,
+   "y": 300.5,
+   "width": 103.671875,
+   "height": 20.5
+  }
+ }
+}

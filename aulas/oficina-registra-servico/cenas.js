@@ -1,0 +1,96 @@
+// Fonte única da aula "Como a oficina registra o serviço": gera o roteiro (Markdown) e o storyboard (HTML/PDF).
+// tela: captura real do link da oficina (dados de demonstração) OU ilustração desenhada (marcada como tal).
+// marcas: [quadro, elemento, tipo] — tipo "circulo" | "seta" | "sublinhado"; caixas vêm de caixas.json.
+module.exports = {
+  titulo: "Como a oficina registra o serviço",
+  subtitulo: "Link da oficina parceira · TotexCar Co-pilot · Cardoso Veículos",
+  aluno: "Mecânico ou atendente das oficinas parceiras (Pires, LTL, New Car). Usa WhatsApp no celular; não precisa saber nada de sistema.",
+  situacao: "A loja mandou um carro do estoque para trocar o óleo. A oficina precisa registrar o serviço no link para a loja e o futuro dono do carro saberem o que foi feito.",
+  objetivo: "Ao terminar, o aluno confirma a chegada do carro e registra uma troca de óleo completa no link, com km e as duas fotos, e confere na tela que o registro entrou.",
+  exemplo: "OS #14 · Onix 2022 prata · placa ABC1D23 (fictícia) · saiu da loja com 48.200 km · chegou com 48.210 · troca de óleo 5W30 API SP Lubrax 3,5 L + filtro de óleo, com 48.212 km.",
+  destino: "Celular, enviado pelo WhatsApp junto com o link da oficina. Vídeo vertical 1080×1920, 30 fps.",
+  visual: "Tela real do link (azul da loja) + marcações à mão em laranja #FF8500, fundo branco nas ilustrações.",
+  cenas: [
+    {
+      id: "S1", nome: "O problema", tela: "ilustracao:problema",
+      fala: "Você trocou o óleo do Onix e devolveu o carro pra loja. Um mês depois ele é vendido. O novo dono pergunta: quando foi a última troca? Que óleo usaram? Se ninguém registrou, ninguém sabe. E o carro fica sem o aviso da próxima troca.",
+      mostra: "Ficha do Onix em branco. Balão do cliente com as duas perguntas. Ponto de interrogação laranja sobre a ficha.",
+      eventos: [["“ninguém sabe”", "a ficha vazia ganha o ? laranja"]],
+    },
+    {
+      id: "S2", nome: "O que é o registro", tela: "ilustracao:ficha",
+      fala: "O registro é a ficha desse serviço, feita no celular, com prova. O km do painel e a foto da etiqueta mostram que a troca aconteceu. Essa ficha vira o ponto de partida do assistente do dono do carro, que avisa a próxima troca na hora certa.",
+      mostra: "A mesma ficha agora preenchida (5W30 · API SP · Lubrax · 3,5 L · 48.212 km) com duas fotos pequenas. Seta laranja até um balão do assistente: “Próxima troca: 58.212 km”. Marcado como ilustração.",
+      eventos: [["“com prova”", "círculo nas duas fotos"], ["“avisa a próxima troca”", "seta até o balão do assistente"]],
+    },
+    {
+      id: "S3", nome: "Onde entrar", tela: "c01-lista-chegando",
+      marcas: [["c01-lista-chegando", "chegando", "sublinhado"], ["c01-lista-chegando", "placa", "circulo"]],
+      fala: "Quando a loja manda um carro, chega no WhatsApp da oficina uma mensagem com o link. Toque no link. A tela tem três partes: Chegando, Na oficina e Serviços feitos. O Onix aparece em Chegando, com a placa ao lado.",
+      mostra: "Captura real do link. Sublinhado em “Chegando (1)” e círculo na placa ABC1D23.",
+      eventos: [["“Chegando, Na oficina e Serviços feitos”", "sublinhado em Chegando"], ["“com a placa ao lado”", "círculo na placa"]],
+    },
+    {
+      id: "S4", nome: "Confirmar a chegada", tela: "c02-receber-vazio",
+      marcas: [["c02-receber-vazio", "placa", "circulo"]],
+      fala: "Com o carro na sua frente, toque em Recebi o carro. Antes de tudo, confira a placa. Ela tem que ser a mesma do carro que chegou.",
+      mostra: "Captura real da janela “Recebi o carro”. Círculo no quadro “Confira a placa do carro”.",
+      eventos: [["“confira a placa”", "círculo no quadro da placa"]],
+    },
+    {
+      id: "S4b", nome: "Km e foto da chegada", tela: "c03-receber-preenchido",
+      marcas: [["c03-receber-preenchido", "km", "circulo"], ["c03-receber-preenchido", "foto", "circulo"], ["c03-receber-preenchido", "confirmar", "seta"]],
+      fala: "Digite o km que está no painel agora, aqui 48.210, e tire a foto do painel com o km aparecendo. Depois, Confirmar chegada. Esse km mostra quanto o carro rodou da loja até a oficina.",
+      mostra: "Mesma janela preenchida: 48210 e “Foto ok”. Círculos no km e na foto; contorno no botão Confirmar chegada.",
+      eventos: [["“aqui 48.210”", "círculo no km"], ["“tire a foto do painel”", "círculo na foto"], ["“Confirmar chegada”", "contorno no botão"]],
+    },
+    {
+      id: "S5", nome: "O carro muda de lugar", tela: "c04-lista-na-oficina",
+      marcas: [["c04-lista-na-oficina", "naoficina", "sublinhado"], ["c04-lista-na-oficina", "registrar", "seta"]],
+      fala: "Repare: o Onix saiu de Chegando e foi pra Na oficina. É assim que a loja sabe que ele chegou. Feita a troca, toque em Registrar o serviço feito.",
+      mostra: "Captura real da lista. Sublinhado em “Na oficina (1)”; contorno no botão verde “Registrar o serviço feito”.",
+      eventos: [["“foi pra Na oficina”", "sublinhado em Na oficina"], ["“Registrar o serviço feito”", "contorno no botão verde"]],
+    },
+    {
+      id: "S6", nome: "Os dados do óleo", tela: "c06-servico-oleo",
+      marcas: [["c06-servico-oleo", "km", "circulo"], ["c06-servico-oleo", "visc", "circulo"], ["c06-servico-oleo", "litros", "circulo"], ["c06-servico-oleo", "norma", "circulo"], ["c06-servico-oleo", "marca", "circulo"]],
+      fala: "Primeiro o km do painel na hora do serviço: 48.212. Depois o óleo, como está no frasco. Viscosidade é o número grande da frente, aqui 5W30. Litros, quanto foi no motor: 3,5. Norma é o selo de especificação no rótulo, aqui API SP. E a marca, Lubrax. O filtro de óleo já vem marcado; marque também se trocou outro filtro.",
+      mostra: "Captura real do formulário preenchido. Os círculos aparecem um por vez, junto com cada campo falado.",
+      eventos: [["“48.212”", "círculo no km"], ["“aqui 5W30”", "círculo na viscosidade"], ["“3,5”", "círculo nos litros"], ["“aqui API SP”", "círculo na norma"], ["“Lubrax”", "círculo na marca"]],
+    },
+    {
+      id: "S7", nome: "As duas fotos", tela: "c07-erro-sem-etiqueta",
+      marcas: [["c07-erro-sem-etiqueta", "aviso", "sublinhado"], ["c07-erro-sem-etiqueta", "etiqueta", "circulo"]],
+      fala: "Agora as fotos. São duas obrigatórias: a do painel com o km e a da etiqueta de troca no para-brisa. Se faltar uma, o link não deixa registrar e avisa em vermelho o que falta.",
+      mostra: "Captura real: aviso vermelho “Tire a foto da etiqueta de troca de óleo”. Sublinhado no aviso, círculo no campo da etiqueta vazio.",
+      eventos: [["“avisa em vermelho”", "sublinhado no aviso"], ["“o que falta”", "círculo no campo da etiqueta"]],
+    },
+    {
+      id: "S7b", nome: "Fotos prontas", tela: "c08-servico-fotos",
+      marcas: [["c08-servico-fotos", "painel", "circulo"], ["c08-servico-fotos", "etiqueta", "circulo"]],
+      fala: "Com as duas fotos, aparece Foto ok nos dois campos. Valor e nota são opcionais. Toque em Registrar serviço.",
+      mostra: "Captura real com as duas fotos ok (fotos de demonstração identificadas como ilustração). Círculos nos dois campos.",
+      eventos: [["“Foto ok nos dois campos”", "círculos nas duas fotos"]],
+    },
+    {
+      id: "S8", nome: "Conferir o resultado", tela: "c09-servico-registrado",
+      marcas: [["c09-servico-registrado", "feitos", "sublinhado"], ["c09-servico-registrado", "resumo", "sublinhado"], ["c09-servico-registrado", "status", "circulo"]],
+      fala: "Pronto. Aparece Serviço registrado e a loja é avisada na hora. O Onix vai pra Serviços feitos, como Pronto pra buscar. Confira a linha do óleo: 5W30, API SP, Lubrax, 3,5 litros. Se estiver certa, o trabalho no link acabou.",
+      mostra: "Captura real da lista final. Sublinhado em “Serviços feitos (1)” e na linha do óleo; círculo em “Pronto p/ buscar”.",
+      eventos: [["“vai pra Serviços feitos”", "sublinhado em Serviços feitos"], ["“Confira a linha do óleo”", "sublinhado na linha 🛢️"], ["“Pronto pra buscar”", "círculo no status"]],
+    },
+    {
+      id: "S9", nome: "Achou algo além do pedido", tela: "c04-lista-na-oficina",
+      marcas: [["c04-lista-na-oficina", "extra", "seta"]],
+      fala: "E se achar outro problema, como pastilha de freio no fim? Não faça sem aprovação. Toque em Encontrei algo além do pedido, descreva e mande a foto. A loja aprova ou recusa pelo link, e você recebe a resposta no WhatsApp. O prazo do serviço combinado é de um dia.",
+      mostra: "Volta à captura da lista com o carro na oficina. Contorno no botão “Encontrei algo além do pedido”.",
+      eventos: [["“Encontrei algo além do pedido”", "contorno no botão"]],
+    },
+    {
+      id: "S10", nome: "Sua vez", tela: "ilustracao:pratica",
+      fala: "Sua vez. Chegou um HB20 com 30.110 km. Você trocou o óleo com 0W20, 4 litros, ACEA C5, marca Mobil, e o painel marcava 30.115. Antes de tocar em Registrar: que km vai no campo do serviço, e quais são as duas fotos obrigatórias? Pausa. O km é o do painel na hora do serviço, 30.115. Se você digitar menos que o da chegada, o link avisa que está errado. E as fotos são a do painel e a da etiqueta.",
+      mostra: "Ficha do HB20 (ilustração) com os dados soltos. Pausa de 3 s com a pergunta na tela; depois a resposta aparece nos campos certos.",
+      eventos: [["“Pausa.”", "3 s parados com a pergunta"], ["“30.115”", "o km entra no campo Km do painel"], ["“a do painel e a da etiqueta”", "círculos nos dois campos de foto"]],
+    },
+  ],
+};
