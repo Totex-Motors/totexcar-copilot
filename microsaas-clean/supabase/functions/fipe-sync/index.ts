@@ -6,6 +6,8 @@
 //   part=0 limpa a tabela antes de inserir; chame part=0..M-1 pra popular tudo (ex.: parts=8).
 // Toda fatia também grava o mês em public.fipe_historico (valorização/depreciação mês a mês).
 // Carga do histórico: ?mes=AAAA/MM&historico_only=1 (não mexe na fipe_tabela; só o histórico).
+// AUTOMÁTICO: ?se_mudou=1 (cron de hora em hora) só baixa quando o dataset publicou um mês mais novo que o
+// da fipe_tabela — o arquivo do mês sai uns dias depois da virada, então a troca acontece em até 1h.
 
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 const SB = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
@@ -37,6 +39,17 @@ Deno.serve(async (req) => {
   // ORQUESTRADOR: sem ?part, chama a si mesmo pra cada fatia (cada uma é um worker com budget próprio).
   // É o modo do cron mensal — 1 chamada popula tudo.
   if (url.searchParams.get("part") == null) {
+    if (url.searchParams.get("se_mudou") === "1") {
+      const arq = await urlMesAtual();
+      const m = arq?.match(/\/(\d{4})\/(\d{2})\/fipex-prices\.csv$/);
+      const novo = m ? Number(m[1]) * 100 + Number(m[2]) : 0;
+      const atual = await fetch(`${SB}/rest/v1/fipe_tabela?select=ref_mes,ref_ano&limit=1`, { headers: H }).then((r) => r.json()).catch(() => []);
+      const tem = atual?.[0]?.ref_ano ? Number(atual[0].ref_ano) * 100 + Number(atual[0].ref_mes) : 0;
+      if (!novo || novo <= tem) {
+        return new Response(JSON.stringify({ ok: true, atualizado: false, tabela: tem, dataset: novo }), { headers: { "content-type": "application/json" } });
+      }
+      console.log(`fipe-sync: mês novo no dataset (${novo}; tabela em ${tem}) — atualizando`);
+    }
     const parts = Math.max(1, parseInt(url.searchParams.get("parts") || "4", 10) || 4);
     const extra = ["mes", "historico_only"].map((k) => url.searchParams.get(k) ? `&${k}=${encodeURIComponent(url.searchParams.get(k)!)}` : "").join("");
     const base = `${SB}/functions/v1/fipe-sync?secret=${encodeURIComponent(url.searchParams.get("secret") || "")}&parts=${parts}${extra}`;
