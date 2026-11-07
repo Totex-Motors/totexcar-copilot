@@ -1,0 +1,178 @@
+{
+ "cena": "S7",
+ "arquivo": "6e46dcd1-S7.m4a",
+ "duracao": 20.71,
+ "texto": "Na entrega o número de etiqueta que vai no parabresa aqui cv0016. A placa já vem preenchida, confira no carro. E o KM do painel agora, 48.230. Tudo certo? Toque em registrar, venda.",
+ "palavras": [
+  {
+   "p": "Na",
+   "ini": 0.0,
+   "fim": 0.6
+  },
+  {
+   "p": "entrega",
+   "ini": 0.6,
+   "fim": 1.32
+  },
+  {
+   "p": "o",
+   "ini": 1.32,
+   "fim": 1.68
+  },
+  {
+   "p": "número",
+   "ini": 1.68,
+   "fim": 1.96
+  },
+  {
+   "p": "de",
+   "ini": 1.96,
+   "fim": 2.18
+  },
+  {
+   "p": "etiqueta",
+   "ini": 2.18,
+   "fim": 2.68
+  },
+  {
+   "p": "que",
+   "ini": 2.68,
+   "fim": 2.84
+  },
+  {
+   "p": "vai",
+   "ini": 2.84,
+   "fim": 3.04
+  },
+  {
+   "p": "no",
+   "ini": 3.04,
+   "fim": 3.18
+  },
+  {
+   "p": "parabresa",
+   "ini": 3.18,
+   "fim": 3.92
+  },
+  {
+   "p": "aqui",
+   "ini": 3.92,
+   "fim": 4.68
+  },
+  {
+   "p": "cv0016.",
+   "ini": 4.68,
+   "fim": 7.88
+  },
+  {
+   "p": "A",
+   "ini": 8.7,
+   "fim": 8.94
+  },
+  {
+   "p": "placa",
+   "ini": 8.94,
+   "fim": 9.2
+  },
+  {
+   "p": "já",
+   "ini": 9.2,
+   "fim": 9.4
+  },
+  {
+   "p": "vem",
+   "ini": 9.4,
+   "fim": 9.58
+  },
+  {
+   "p": "preenchida,",
+   "ini": 9.58,
+   "fim": 10.24
+  },
+  {
+   "p": "confira",
+   "ini": 10.68,
+   "fim": 11.0
+  },
+  {
+   "p": "no",
+   "ini": 11.0,
+   "fim": 11.14
+  },
+  {
+   "p": "carro.",
+   "ini": 11.14,
+   "fim": 11.46
+  },
+  {
+   "p": "E",
+   "ini": 12.24,
+   "fim": 12.46
+  },
+  {
+   "p": "o",
+   "ini": 12.46,
+   "fim": 12.56
+  },
+  {
+   "p": "KM",
+   "ini": 12.56,
+   "fim": 12.9
+  },
+  {
+   "p": "do",
+   "ini": 12.9,
+   "fim": 13.06
+  },
+  {
+   "p": "painel",
+   "ini": 13.06,
+   "fim": 13.52
+  },
+  {
+   "p": "agora,",
+   "ini": 13.52,
+   "fim": 13.8
+  },
+  {
+   "p": "48",
+   "ini": 14.14,
+   "fim": 14.8
+  },
+  {
+   "p": ".230.",
+   "ini": 14.8,
+   "fim": 16.46
+  },
+  {
+   "p": "Tudo",
+   "ini": 16.98,
+   "fim": 17.14
+  },
+  {
+   "p": "certo?",
+   "ini": 17.14,
+   "fim": 17.46
+  },
+  {
+   "p": "Toque",
+   "ini": 18.06,
+   "fim": 18.52
+  },
+  {
+   "p": "em",
+   "ini": 18.52,
+   "fim": 18.72
+  },
+  {
+   "p": "registrar,",
+   "ini": 18.72,
+   "fim": 19.32
+  },
+  {
+   "p": "venda.",
+   "ini": 19.54,
+   "fim": 19.88
+  }
+ ]
+}

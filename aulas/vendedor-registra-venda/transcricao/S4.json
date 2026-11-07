@@ -1,0 +1,148 @@
+{
+ "cena": "S4",
+ "arquivo": "e9f3373f-S4.m4a",
+ "duracao": 15.06,
+ "texto": "O jeito mais seguro de achar o carro é pela placa. Digite a placa na busca aqui ABC 1D 2 3 e confira no carro antes de tocar.",
+ "palavras": [
+  {
+   "p": "O",
+   "ini": 0.74,
+   "fim": 1.42
+  },
+  {
+   "p": "jeito",
+   "ini": 1.42,
+   "fim": 1.58
+  },
+  {
+   "p": "mais",
+   "ini": 1.58,
+   "fim": 1.94
+  },
+  {
+   "p": "seguro",
+   "ini": 1.94,
+   "fim": 2.32
+  },
+  {
+   "p": "de",
+   "ini": 2.32,
+   "fim": 2.52
+  },
+  {
+   "p": "achar",
+   "ini": 2.52,
+   "fim": 2.8
+  },
+  {
+   "p": "o",
+   "ini": 2.8,
+   "fim": 2.9
+  },
+  {
+   "p": "carro",
+   "ini": 2.9,
+   "fim": 3.2
+  },
+  {
+   "p": "é",
+   "ini": 3.2,
+   "fim": 3.48
+  },
+  {
+   "p": "pela",
+   "ini": 3.48,
+   "fim": 3.68
+  },
+  {
+   "p": "placa.",
+   "ini": 3.68,
+   "fim": 4.04
+  },
+  {
+   "p": "Digite",
+   "ini": 4.74,
+   "fim": 5.02
+  },
+  {
+   "p": "a",
+   "ini": 5.02,
+   "fim": 5.12
+  },
+  {
+   "p": "placa",
+   "ini": 5.12,
+   "fim": 5.48
+  },
+  {
+   "p": "na",
+   "ini": 5.48,
+   "fim": 5.62
+  },
+  {
+   "p": "busca",
+   "ini": 5.62,
+   "fim": 6.02
+  },
+  {
+   "p": "aqui",
+   "ini": 6.02,
+   "fim": 7.0
+  },
+  {
+   "p": "ABC",
+   "ini": 7.0,
+   "fim": 8.18
+  },
+  {
+   "p": "1D",
+   "ini": 8.18,
+   "fim": 9.82
+  },
+  {
+   "p": "2",
+   "ini": 9.82,
+   "fim": 10.66
+  },
+  {
+   "p": "3",
+   "ini": 10.66,
+   "fim": 11.5
+  },
+  {
+   "p": "e",
+   "ini": 11.5,
+   "fim": 12.4
+  },
+  {
+   "p": "confira",
+   "ini": 12.4,
+   "fim": 12.92
+  },
+  {
+   "p": "no",
+   "ini": 12.92,
+   "fim": 13.08
+  },
+  {
+   "p": "carro",
+   "ini": 13.08,
+   "fim": 13.4
+  },
+  {
+   "p": "antes",
+   "ini": 13.4,
+   "fim": 13.68
+  },
+  {
+   "p": "de",
+   "ini": 13.68,
+   "fim": 13.86
+  },
+  {
+   "p": "tocar.",
+   "ini": 13.86,
+   "fim": 14.1
+  }
+ ]
+}

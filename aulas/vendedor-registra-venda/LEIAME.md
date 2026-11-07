@@ -11,4 +11,12 @@ Fontes da aula (skill `aulas-visuais`). Versão atual: **storyboard v1 APROVADO 
 
 Regenerar: build de demonstração servido em 127.0.0.1:4179 (ver a aula da oficina), depois `node captura.cjs`, `node simulacao-whatsapp.cjs`, `node gerar.cjs`, `node gravacao.cjs` nesta pasta.
 
-Pendente: gravação da voz, tempos pelo áudio, animação, revisão do vídeo exportado.
+## Vídeo (prévia v1, 07/11/2026)
+
+- `audio/S1…S12.m4a`: narração gravada (enviada pelo dono em 07/11/2026), originais sem edição.
+- `transcricao/S*.json`: transcrição local (faster-whisper, modelo small, sem serviço externo) com o tempo de cada palavra; gerada por `transcrever.py`.
+- `video.js`: o que aparece em cada cena e em qual trecho da fala (âncoras).
+- `render-video.cjs`: alinha roteiro × áudio palavra a palavra, gera os quadros 1080×1920 e junta com o áudio (loudnorm -16 LUFS). 1080p vertical, 30 fps, H.264/AAC.
+- Gerar: `node render-video.cjs transcricao audio <saida.mp4>` (o mp4 não fica no repositório; sai em minutos a partir destes fontes).
+
+Pendente: revisão da prévia pelo dono; aprovação; publicação.

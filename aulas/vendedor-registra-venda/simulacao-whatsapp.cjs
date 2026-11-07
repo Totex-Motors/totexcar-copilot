@@ -51,10 +51,16 @@ const frames = {
 (async () => {
   const b = await pw.chromium.launch();
   const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  // posição dos elementos (px CSS) pra marcação laranja no vídeo/storyboard
+  const ALVOS = { e01: { numero: ".et .n" }, w01: { pedido: ".b.ele" }, w02: { foto: ".foto img", lista: ".b.ele", botao: ".btn.sel" }, w03: { ok: ".b.ele >> nth=-1" } };
+  const caixas = {};
   for (const [n, html] of Object.entries(frames)) {
     await p.setContent(html); await p.waitForTimeout(250);
     await p.screenshot({ path: path.join(DIR, "capturas", `${n}.png`) });
+    caixas[n] = {};
+    for (const [nome, sel] of Object.entries(ALVOS[n] || {})) { const bb = await p.locator(sel).first().boundingBox().catch(() => null); if (bb) caixas[n][nome] = bb; }
     console.log("ok", n);
   }
+  fs.writeFileSync(path.join(DIR, "caixas-sim.json"), JSON.stringify(caixas, null, 1));
   await b.close();
 })();

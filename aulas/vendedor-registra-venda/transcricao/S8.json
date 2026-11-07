@@ -1,0 +1,263 @@
+{
+ "cena": "S8",
+ "arquivo": "13190245-S8.m4a",
+ "duracao": 23.85,
+ "texto": "Venda registrada. Leia as três linhas. O cliente já recebeu as boas-vindas no WhatsApp. A etiqueta ficou ligada a ele. E a troca de óleo foi pro assistente dele. Se aparecer um aviso amarelo ou vermelho, resolva antes de entregar. Etiqueta errada. Confira o número. Carro sem revisão. Aviso Lucas.",
+ "palavras": [
+  {
+   "p": "Venda",
+   "ini": 0.0,
+   "fim": 1.12
+  },
+  {
+   "p": "registrada.",
+   "ini": 1.12,
+   "fim": 1.82
+  },
+  {
+   "p": "Leia",
+   "ini": 2.14,
+   "fim": 2.5
+  },
+  {
+   "p": "as",
+   "ini": 2.5,
+   "fim": 2.7
+  },
+  {
+   "p": "três",
+   "ini": 2.7,
+   "fim": 2.9
+  },
+  {
+   "p": "linhas.",
+   "ini": 2.9,
+   "fim": 3.32
+  },
+  {
+   "p": "O",
+   "ini": 3.94,
+   "fim": 3.96
+  },
+  {
+   "p": "cliente",
+   "ini": 3.96,
+   "fim": 4.36
+  },
+  {
+   "p": "já",
+   "ini": 4.36,
+   "fim": 4.48
+  },
+  {
+   "p": "recebeu",
+   "ini": 4.48,
+   "fim": 5.1
+  },
+  {
+   "p": "as",
+   "ini": 5.1,
+   "fim": 5.22
+  },
+  {
+   "p": "boas",
+   "ini": 5.22,
+   "fim": 5.56
+  },
+  {
+   "p": "-vindas",
+   "ini": 5.56,
+   "fim": 5.9
+  },
+  {
+   "p": "no",
+   "ini": 5.9,
+   "fim": 6.06
+  },
+  {
+   "p": "WhatsApp.",
+   "ini": 6.06,
+   "fim": 6.42
+  },
+  {
+   "p": "A",
+   "ini": 7.26,
+   "fim": 7.5
+  },
+  {
+   "p": "etiqueta",
+   "ini": 7.5,
+   "fim": 8.62
+  },
+  {
+   "p": "ficou",
+   "ini": 8.62,
+   "fim": 8.9
+  },
+  {
+   "p": "ligada",
+   "ini": 8.9,
+   "fim": 9.52
+  },
+  {
+   "p": "a",
+   "ini": 9.52,
+   "fim": 9.68
+  },
+  {
+   "p": "ele.",
+   "ini": 9.68,
+   "fim": 9.9
+  },
+  {
+   "p": "E",
+   "ini": 10.48,
+   "fim": 10.64
+  },
+  {
+   "p": "a",
+   "ini": 10.64,
+   "fim": 10.72
+  },
+  {
+   "p": "troca",
+   "ini": 10.72,
+   "fim": 11.06
+  },
+  {
+   "p": "de",
+   "ini": 11.06,
+   "fim": 11.24
+  },
+  {
+   "p": "óleo",
+   "ini": 11.24,
+   "fim": 11.48
+  },
+  {
+   "p": "foi",
+   "ini": 11.48,
+   "fim": 11.78
+  },
+  {
+   "p": "pro",
+   "ini": 11.78,
+   "fim": 11.94
+  },
+  {
+   "p": "assistente",
+   "ini": 11.94,
+   "fim": 12.46
+  },
+  {
+   "p": "dele.",
+   "ini": 12.46,
+   "fim": 12.82
+  },
+  {
+   "p": "Se",
+   "ini": 13.42,
+   "fim": 13.62
+  },
+  {
+   "p": "aparecer",
+   "ini": 13.62,
+   "fim": 14.0
+  },
+  {
+   "p": "um",
+   "ini": 14.0,
+   "fim": 14.34
+  },
+  {
+   "p": "aviso",
+   "ini": 14.34,
+   "fim": 14.68
+  },
+  {
+   "p": "amarelo",
+   "ini": 14.68,
+   "fim": 15.2
+  },
+  {
+   "p": "ou",
+   "ini": 15.2,
+   "fim": 15.36
+  },
+  {
+   "p": "vermelho,",
+   "ini": 15.36,
+   "fim": 15.88
+  },
+  {
+   "p": "resolva",
+   "ini": 16.24,
+   "fim": 16.48
+  },
+  {
+   "p": "antes",
+   "ini": 16.48,
+   "fim": 16.74
+  },
+  {
+   "p": "de",
+   "ini": 16.74,
+   "fim": 16.9
+  },
+  {
+   "p": "entregar.",
+   "ini": 16.9,
+   "fim": 17.32
+  },
+  {
+   "p": "Etiqueta",
+   "ini": 17.74,
+   "fim": 18.22
+  },
+  {
+   "p": "errada.",
+   "ini": 18.22,
+   "fim": 18.66
+  },
+  {
+   "p": "Confira",
+   "ini": 19.04,
+   "fim": 19.52
+  },
+  {
+   "p": "o",
+   "ini": 19.52,
+   "fim": 19.66
+  },
+  {
+   "p": "número.",
+   "ini": 19.66,
+   "fim": 20.02
+  },
+  {
+   "p": "Carro",
+   "ini": 20.64,
+   "fim": 20.94
+  },
+  {
+   "p": "sem",
+   "ini": 20.94,
+   "fim": 21.18
+  },
+  {
+   "p": "revisão.",
+   "ini": 21.18,
+   "fim": 21.8
+  },
+  {
+   "p": "Aviso",
+   "ini": 22.1,
+   "fim": 22.42
+  },
+  {
+   "p": "Lucas.",
+   "ini": 22.42,
+   "fim": 22.68
+  }
+ ]
+}

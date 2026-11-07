@@ -1,0 +1,353 @@
+{
+ "cena": "S12",
+ "arquivo": "152c7d0e-S12.m4a",
+ "duracao": 36.12,
+ "texto": "Sua vez, o cliente quer levar hoje o HB20 branco placa BR-A2E19. Na lista ele aparece sem revisão registrada. O que você faz antes de marcar a entrega? E se na entrega o cliente tocar em Tem Problema o carro pode sair? Antes avisa o Lucas para revisar o carro na oficina. E não, com Tem Problema, você resolve em primeiro. O carro só vai com tudo certo.",
+ "palavras": [
+  {
+   "p": "Sua",
+   "ini": 0.0,
+   "fim": 1.1
+  },
+  {
+   "p": "vez,",
+   "ini": 1.1,
+   "fim": 1.36
+  },
+  {
+   "p": "o",
+   "ini": 1.82,
+   "fim": 1.96
+  },
+  {
+   "p": "cliente",
+   "ini": 1.96,
+   "fim": 2.52
+  },
+  {
+   "p": "quer",
+   "ini": 2.52,
+   "fim": 2.7
+  },
+  {
+   "p": "levar",
+   "ini": 2.7,
+   "fim": 2.96
+  },
+  {
+   "p": "hoje",
+   "ini": 2.96,
+   "fim": 3.32
+  },
+  {
+   "p": "o",
+   "ini": 3.32,
+   "fim": 3.4
+  },
+  {
+   "p": "HB20",
+   "ini": 3.4,
+   "fim": 3.96
+  },
+  {
+   "p": "branco",
+   "ini": 3.96,
+   "fim": 4.4
+  },
+  {
+   "p": "placa",
+   "ini": 4.4,
+   "fim": 4.88
+  },
+  {
+   "p": "BR",
+   "ini": 4.88,
+   "fim": 5.34
+  },
+  {
+   "p": "-A2E19.",
+   "ini": 5.34,
+   "fim": 7.78
+  },
+  {
+   "p": "Na",
+   "ini": 8.76,
+   "fim": 9.12
+  },
+  {
+   "p": "lista",
+   "ini": 9.12,
+   "fim": 9.5
+  },
+  {
+   "p": "ele",
+   "ini": 9.5,
+   "fim": 9.88
+  },
+  {
+   "p": "aparece",
+   "ini": 9.88,
+   "fim": 10.24
+  },
+  {
+   "p": "sem",
+   "ini": 10.24,
+   "fim": 10.7
+  },
+  {
+   "p": "revisão",
+   "ini": 10.7,
+   "fim": 11.16
+  },
+  {
+   "p": "registrada.",
+   "ini": 11.16,
+   "fim": 11.82
+  },
+  {
+   "p": "O",
+   "ini": 12.26,
+   "fim": 12.32
+  },
+  {
+   "p": "que",
+   "ini": 12.32,
+   "fim": 12.42
+  },
+  {
+   "p": "você",
+   "ini": 12.42,
+   "fim": 12.7
+  },
+  {
+   "p": "faz",
+   "ini": 12.7,
+   "fim": 13.02
+  },
+  {
+   "p": "antes",
+   "ini": 13.02,
+   "fim": 13.62
+  },
+  {
+   "p": "de",
+   "ini": 13.62,
+   "fim": 13.8
+  },
+  {
+   "p": "marcar",
+   "ini": 13.8,
+   "fim": 14.16
+  },
+  {
+   "p": "a",
+   "ini": 14.16,
+   "fim": 14.32
+  },
+  {
+   "p": "entrega?",
+   "ini": 14.32,
+   "fim": 15.12
+  },
+  {
+   "p": "E",
+   "ini": 15.42,
+   "fim": 15.9
+  },
+  {
+   "p": "se",
+   "ini": 15.9,
+   "fim": 15.98
+  },
+  {
+   "p": "na",
+   "ini": 15.98,
+   "fim": 16.14
+  },
+  {
+   "p": "entrega",
+   "ini": 16.14,
+   "fim": 16.62
+  },
+  {
+   "p": "o",
+   "ini": 16.62,
+   "fim": 16.74
+  },
+  {
+   "p": "cliente",
+   "ini": 16.74,
+   "fim": 17.34
+  },
+  {
+   "p": "tocar",
+   "ini": 17.34,
+   "fim": 17.7
+  },
+  {
+   "p": "em",
+   "ini": 17.7,
+   "fim": 18.02
+  },
+  {
+   "p": "Tem",
+   "ini": 18.02,
+   "fim": 18.3
+  },
+  {
+   "p": "Problema",
+   "ini": 18.3,
+   "fim": 19.06
+  },
+  {
+   "p": "o",
+   "ini": 19.06,
+   "fim": 19.26
+  },
+  {
+   "p": "carro",
+   "ini": 19.26,
+   "fim": 19.44
+  },
+  {
+   "p": "pode",
+   "ini": 19.44,
+   "fim": 19.72
+  },
+  {
+   "p": "sair?",
+   "ini": 19.72,
+   "fim": 20.02
+  },
+  {
+   "p": "Antes",
+   "ini": 23.62,
+   "fim": 23.98
+  },
+  {
+   "p": "avisa",
+   "ini": 23.98,
+   "fim": 24.68
+  },
+  {
+   "p": "o",
+   "ini": 24.68,
+   "fim": 24.86
+  },
+  {
+   "p": "Lucas",
+   "ini": 24.86,
+   "fim": 25.1
+  },
+  {
+   "p": "para",
+   "ini": 25.1,
+   "fim": 25.4
+  },
+  {
+   "p": "revisar",
+   "ini": 25.4,
+   "fim": 25.88
+  },
+  {
+   "p": "o",
+   "ini": 25.88,
+   "fim": 26.02
+  },
+  {
+   "p": "carro",
+   "ini": 26.02,
+   "fim": 26.3
+  },
+  {
+   "p": "na",
+   "ini": 26.3,
+   "fim": 26.52
+  },
+  {
+   "p": "oficina.",
+   "ini": 26.52,
+   "fim": 27.12
+  },
+  {
+   "p": "E",
+   "ini": 27.12,
+   "fim": 28.2
+  },
+  {
+   "p": "não,",
+   "ini": 28.2,
+   "fim": 28.38
+  },
+  {
+   "p": "com",
+   "ini": 28.74,
+   "fim": 29.0
+  },
+  {
+   "p": "Tem",
+   "ini": 29.0,
+   "fim": 29.24
+  },
+  {
+   "p": "Problema,",
+   "ini": 29.24,
+   "fim": 30.02
+  },
+  {
+   "p": "você",
+   "ini": 30.2,
+   "fim": 30.4
+  },
+  {
+   "p": "resolve",
+   "ini": 30.4,
+   "fim": 30.96
+  },
+  {
+   "p": "em",
+   "ini": 30.96,
+   "fim": 31.14
+  },
+  {
+   "p": "primeiro.",
+   "ini": 31.14,
+   "fim": 31.48
+  },
+  {
+   "p": "O",
+   "ini": 32.42,
+   "fim": 32.68
+  },
+  {
+   "p": "carro",
+   "ini": 32.68,
+   "fim": 32.94
+  },
+  {
+   "p": "só",
+   "ini": 32.94,
+   "fim": 33.2
+  },
+  {
+   "p": "vai",
+   "ini": 33.2,
+   "fim": 33.5
+  },
+  {
+   "p": "com",
+   "ini": 33.5,
+   "fim": 33.96
+  },
+  {
+   "p": "tudo",
+   "ini": 33.96,
+   "fim": 34.28
+  },
+  {
+   "p": "certo.",
+   "ini": 34.28,
+   "fim": 34.6
+  }
+ ]
+}

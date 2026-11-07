@@ -1,0 +1,168 @@
+{
+ "cena": "S6",
+ "arquivo": "83e405ff-S6.m4a",
+ "duracao": 15.34,
+ "texto": "Agora o cliente. Nome completo, WhatsApp com DDD e CPF. O CPF é obrigatório. Se o número estiver errado, o link avisa em vermelho na hora. Confira com o cliente e corrige.",
+ "palavras": [
+  {
+   "p": "Agora",
+   "ini": 0.0,
+   "fim": 1.32
+  },
+  {
+   "p": "o",
+   "ini": 1.32,
+   "fim": 1.62
+  },
+  {
+   "p": "cliente.",
+   "ini": 1.62,
+   "fim": 2.22
+  },
+  {
+   "p": "Nome",
+   "ini": 2.58,
+   "fim": 2.88
+  },
+  {
+   "p": "completo,",
+   "ini": 2.88,
+   "fim": 3.26
+  },
+  {
+   "p": "WhatsApp",
+   "ini": 3.7,
+   "fim": 4.2
+  },
+  {
+   "p": "com",
+   "ini": 4.2,
+   "fim": 4.62
+  },
+  {
+   "p": "DDD",
+   "ini": 4.62,
+   "fim": 5.0
+  },
+  {
+   "p": "e",
+   "ini": 5.0,
+   "fim": 5.52
+  },
+  {
+   "p": "CPF.",
+   "ini": 5.52,
+   "fim": 6.1
+  },
+  {
+   "p": "O",
+   "ini": 6.5,
+   "fim": 6.68
+  },
+  {
+   "p": "CPF",
+   "ini": 6.68,
+   "fim": 7.26
+  },
+  {
+   "p": "é",
+   "ini": 7.26,
+   "fim": 7.64
+  },
+  {
+   "p": "obrigatório.",
+   "ini": 7.64,
+   "fim": 8.34
+  },
+  {
+   "p": "Se",
+   "ini": 8.82,
+   "fim": 9.0
+  },
+  {
+   "p": "o",
+   "ini": 9.0,
+   "fim": 9.08
+  },
+  {
+   "p": "número",
+   "ini": 9.08,
+   "fim": 9.26
+  },
+  {
+   "p": "estiver",
+   "ini": 9.26,
+   "fim": 9.6
+  },
+  {
+   "p": "errado,",
+   "ini": 9.6,
+   "fim": 10.06
+  },
+  {
+   "p": "o",
+   "ini": 10.48,
+   "fim": 10.54
+  },
+  {
+   "p": "link",
+   "ini": 10.54,
+   "fim": 10.74
+  },
+  {
+   "p": "avisa",
+   "ini": 10.74,
+   "fim": 11.14
+  },
+  {
+   "p": "em",
+   "ini": 11.14,
+   "fim": 11.3
+  },
+  {
+   "p": "vermelho",
+   "ini": 11.3,
+   "fim": 11.7
+  },
+  {
+   "p": "na",
+   "ini": 11.7,
+   "fim": 11.86
+  },
+  {
+   "p": "hora.",
+   "ini": 11.86,
+   "fim": 12.1
+  },
+  {
+   "p": "Confira",
+   "ini": 12.58,
+   "fim": 13.04
+  },
+  {
+   "p": "com",
+   "ini": 13.04,
+   "fim": 13.26
+  },
+  {
+   "p": "o",
+   "ini": 13.26,
+   "fim": 13.38
+  },
+  {
+   "p": "cliente",
+   "ini": 13.38,
+   "fim": 13.98
+  },
+  {
+   "p": "e",
+   "ini": 13.98,
+   "fim": 14.1
+  },
+  {
+   "p": "corrige.",
+   "ini": 14.1,
+   "fim": 14.54
+  }
+ ]
+}

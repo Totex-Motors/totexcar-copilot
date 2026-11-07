@@ -1,0 +1,288 @@
+{
+ "cena": "S10",
+ "arquivo": "742647ca-S10.m4a",
+ "duracao": 26.43,
+ "texto": "O whatsapp do cliente abre com o assistente. Ele liga o carro e manda a foto do painel, com o KM e sem luz de alerta. Depois vocês dois conferem os sete itens, dialista, bateria, painel, pneus e step, luzes, ar, limpador, lataria e as chaves e o manual. Tudo ok? Ele toca em tudo certo.",
+ "palavras": [
+  {
+   "p": "O",
+   "ini": 0.0,
+   "fim": 0.96
+  },
+  {
+   "p": "whatsapp",
+   "ini": 0.96,
+   "fim": 1.54
+  },
+  {
+   "p": "do",
+   "ini": 1.54,
+   "fim": 1.74
+  },
+  {
+   "p": "cliente",
+   "ini": 1.74,
+   "fim": 2.36
+  },
+  {
+   "p": "abre",
+   "ini": 2.36,
+   "fim": 2.66
+  },
+  {
+   "p": "com",
+   "ini": 2.66,
+   "fim": 3.0
+  },
+  {
+   "p": "o",
+   "ini": 3.0,
+   "fim": 3.32
+  },
+  {
+   "p": "assistente.",
+   "ini": 3.32,
+   "fim": 3.78
+  },
+  {
+   "p": "Ele",
+   "ini": 4.54,
+   "fim": 4.84
+  },
+  {
+   "p": "liga",
+   "ini": 4.84,
+   "fim": 5.1
+  },
+  {
+   "p": "o",
+   "ini": 5.1,
+   "fim": 5.22
+  },
+  {
+   "p": "carro",
+   "ini": 5.22,
+   "fim": 5.6
+  },
+  {
+   "p": "e",
+   "ini": 5.6,
+   "fim": 6.06
+  },
+  {
+   "p": "manda",
+   "ini": 6.06,
+   "fim": 6.36
+  },
+  {
+   "p": "a",
+   "ini": 6.36,
+   "fim": 6.42
+  },
+  {
+   "p": "foto",
+   "ini": 6.42,
+   "fim": 6.64
+  },
+  {
+   "p": "do",
+   "ini": 6.64,
+   "fim": 6.94
+  },
+  {
+   "p": "painel,",
+   "ini": 6.94,
+   "fim": 7.4
+  },
+  {
+   "p": "com",
+   "ini": 7.74,
+   "fim": 7.94
+  },
+  {
+   "p": "o",
+   "ini": 7.94,
+   "fim": 8.06
+  },
+  {
+   "p": "KM",
+   "ini": 8.06,
+   "fim": 8.48
+  },
+  {
+   "p": "e",
+   "ini": 8.48,
+   "fim": 8.98
+  },
+  {
+   "p": "sem",
+   "ini": 8.98,
+   "fim": 9.2
+  },
+  {
+   "p": "luz",
+   "ini": 9.2,
+   "fim": 9.46
+  },
+  {
+   "p": "de",
+   "ini": 9.46,
+   "fim": 9.66
+  },
+  {
+   "p": "alerta.",
+   "ini": 9.66,
+   "fim": 10.16
+  },
+  {
+   "p": "Depois",
+   "ini": 10.76,
+   "fim": 11.04
+  },
+  {
+   "p": "vocês",
+   "ini": 11.04,
+   "fim": 11.46
+  },
+  {
+   "p": "dois",
+   "ini": 11.46,
+   "fim": 11.68
+  },
+  {
+   "p": "conferem",
+   "ini": 11.68,
+   "fim": 12.3
+  },
+  {
+   "p": "os",
+   "ini": 12.3,
+   "fim": 12.6
+  },
+  {
+   "p": "sete",
+   "ini": 12.6,
+   "fim": 13.02
+  },
+  {
+   "p": "itens,",
+   "ini": 13.02,
+   "fim": 13.38
+  },
+  {
+   "p": "dialista,",
+   "ini": 13.58,
+   "fim": 14.1
+  },
+  {
+   "p": "bateria,",
+   "ini": 14.32,
+   "fim": 14.9
+  },
+  {
+   "p": "painel,",
+   "ini": 15.12,
+   "fim": 15.58
+  },
+  {
+   "p": "pneus",
+   "ini": 15.98,
+   "fim": 16.54
+  },
+  {
+   "p": "e",
+   "ini": 16.54,
+   "fim": 16.88
+  },
+  {
+   "p": "step,",
+   "ini": 16.88,
+   "fim": 17.2
+  },
+  {
+   "p": "luzes,",
+   "ini": 17.78,
+   "fim": 18.38
+  },
+  {
+   "p": "ar,",
+   "ini": 18.7,
+   "fim": 18.86
+  },
+  {
+   "p": "limpador,",
+   "ini": 19.28,
+   "fim": 19.8
+  },
+  {
+   "p": "lataria",
+   "ini": 20.34,
+   "fim": 20.92
+  },
+  {
+   "p": "e",
+   "ini": 20.92,
+   "fim": 21.54
+  },
+  {
+   "p": "as",
+   "ini": 21.54,
+   "fim": 21.72
+  },
+  {
+   "p": "chaves",
+   "ini": 21.72,
+   "fim": 22.08
+  },
+  {
+   "p": "e",
+   "ini": 22.08,
+   "fim": 22.42
+  },
+  {
+   "p": "o",
+   "ini": 22.42,
+   "fim": 22.5
+  },
+  {
+   "p": "manual.",
+   "ini": 22.5,
+   "fim": 22.8
+  },
+  {
+   "p": "Tudo",
+   "ini": 23.24,
+   "fim": 23.32
+  },
+  {
+   "p": "ok?",
+   "ini": 23.32,
+   "fim": 23.62
+  },
+  {
+   "p": "Ele",
+   "ini": 24.18,
+   "fim": 24.28
+  },
+  {
+   "p": "toca",
+   "ini": 24.28,
+   "fim": 24.62
+  },
+  {
+   "p": "em",
+   "ini": 24.62,
+   "fim": 24.86
+  },
+  {
+   "p": "tudo",
+   "ini": 24.86,
+   "fim": 25.1
+  },
+  {
+   "p": "certo.",
+   "ini": 25.1,
+   "fim": 25.42
+  }
+ ]
+}

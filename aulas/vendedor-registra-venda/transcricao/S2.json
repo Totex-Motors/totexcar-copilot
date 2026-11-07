@@ -1,0 +1,283 @@
+{
+ "cena": "S2",
+ "arquivo": "4d68917a-S2.m4a",
+ "duracao": 17.92,
+ "texto": "O caminho certo tem quatro passos. Você registra a venda no seu link, cola e etiqueta no parabrisa, o cliente escaneia e manda foto do painel. E ele mesmo toca em tudo certo. No fim fica a prova de como o carro saiu e o assistente do carro já começa a trabalhar para o cliente.",
+ "palavras": [
+  {
+   "p": "O",
+   "ini": 0.0,
+   "fim": 0.36
+  },
+  {
+   "p": "caminho",
+   "ini": 0.36,
+   "fim": 0.56
+  },
+  {
+   "p": "certo",
+   "ini": 0.56,
+   "fim": 0.94
+  },
+  {
+   "p": "tem",
+   "ini": 0.94,
+   "fim": 1.22
+  },
+  {
+   "p": "quatro",
+   "ini": 1.22,
+   "fim": 1.52
+  },
+  {
+   "p": "passos.",
+   "ini": 1.52,
+   "fim": 2.08
+  },
+  {
+   "p": "Você",
+   "ini": 2.28,
+   "fim": 2.38
+  },
+  {
+   "p": "registra",
+   "ini": 2.38,
+   "fim": 3.08
+  },
+  {
+   "p": "a",
+   "ini": 3.08,
+   "fim": 3.52
+  },
+  {
+   "p": "venda",
+   "ini": 3.52,
+   "fim": 3.88
+  },
+  {
+   "p": "no",
+   "ini": 3.88,
+   "fim": 4.02
+  },
+  {
+   "p": "seu",
+   "ini": 4.02,
+   "fim": 4.2
+  },
+  {
+   "p": "link,",
+   "ini": 4.2,
+   "fim": 4.54
+  },
+  {
+   "p": "cola",
+   "ini": 4.94,
+   "fim": 5.38
+  },
+  {
+   "p": "e",
+   "ini": 5.38,
+   "fim": 5.58
+  },
+  {
+   "p": "etiqueta",
+   "ini": 5.58,
+   "fim": 5.9
+  },
+  {
+   "p": "no",
+   "ini": 5.9,
+   "fim": 6.02
+  },
+  {
+   "p": "parabrisa,",
+   "ini": 6.02,
+   "fim": 6.58
+  },
+  {
+   "p": "o",
+   "ini": 6.8,
+   "fim": 6.84
+  },
+  {
+   "p": "cliente",
+   "ini": 6.84,
+   "fim": 7.16
+  },
+  {
+   "p": "escaneia",
+   "ini": 7.16,
+   "fim": 7.66
+  },
+  {
+   "p": "e",
+   "ini": 7.66,
+   "fim": 7.86
+  },
+  {
+   "p": "manda",
+   "ini": 7.86,
+   "fim": 8.14
+  },
+  {
+   "p": "foto",
+   "ini": 8.14,
+   "fim": 8.4
+  },
+  {
+   "p": "do",
+   "ini": 8.4,
+   "fim": 8.58
+  },
+  {
+   "p": "painel.",
+   "ini": 8.58,
+   "fim": 9.02
+  },
+  {
+   "p": "E",
+   "ini": 9.58,
+   "fim": 9.7
+  },
+  {
+   "p": "ele",
+   "ini": 9.7,
+   "fim": 9.86
+  },
+  {
+   "p": "mesmo",
+   "ini": 9.86,
+   "fim": 10.12
+  },
+  {
+   "p": "toca",
+   "ini": 10.12,
+   "fim": 10.58
+  },
+  {
+   "p": "em",
+   "ini": 10.58,
+   "fim": 10.78
+  },
+  {
+   "p": "tudo",
+   "ini": 10.78,
+   "fim": 10.98
+  },
+  {
+   "p": "certo.",
+   "ini": 10.98,
+   "fim": 11.36
+  },
+  {
+   "p": "No",
+   "ini": 11.92,
+   "fim": 12.04
+  },
+  {
+   "p": "fim",
+   "ini": 12.04,
+   "fim": 12.26
+  },
+  {
+   "p": "fica",
+   "ini": 12.26,
+   "fim": 12.54
+  },
+  {
+   "p": "a",
+   "ini": 12.54,
+   "fim": 12.66
+  },
+  {
+   "p": "prova",
+   "ini": 12.66,
+   "fim": 12.86
+  },
+  {
+   "p": "de",
+   "ini": 12.86,
+   "fim": 13.08
+  },
+  {
+   "p": "como",
+   "ini": 13.08,
+   "fim": 13.32
+  },
+  {
+   "p": "o",
+   "ini": 13.32,
+   "fim": 13.46
+  },
+  {
+   "p": "carro",
+   "ini": 13.46,
+   "fim": 13.6
+  },
+  {
+   "p": "saiu",
+   "ini": 13.6,
+   "fim": 14.08
+  },
+  {
+   "p": "e",
+   "ini": 14.08,
+   "fim": 14.54
+  },
+  {
+   "p": "o",
+   "ini": 14.54,
+   "fim": 14.64
+  },
+  {
+   "p": "assistente",
+   "ini": 14.64,
+   "fim": 15.06
+  },
+  {
+   "p": "do",
+   "ini": 15.06,
+   "fim": 15.22
+  },
+  {
+   "p": "carro",
+   "ini": 15.22,
+   "fim": 15.5
+  },
+  {
+   "p": "já",
+   "ini": 15.5,
+   "fim": 15.68
+  },
+  {
+   "p": "começa",
+   "ini": 15.68,
+   "fim": 15.94
+  },
+  {
+   "p": "a",
+   "ini": 15.94,
+   "fim": 16.18
+  },
+  {
+   "p": "trabalhar",
+   "ini": 16.18,
+   "fim": 16.52
+  },
+  {
+   "p": "para",
+   "ini": 16.52,
+   "fim": 16.78
+  },
+  {
+   "p": "o",
+   "ini": 16.78,
+   "fim": 16.84
+  },
+  {
+   "p": "cliente.",
+   "ini": 16.84,
+   "fim": 17.38
+  }
+ ]
+}

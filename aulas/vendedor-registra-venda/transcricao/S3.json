@@ -1,0 +1,263 @@
+{
+ "cena": "S3",
+ "arquivo": "811f474e-S3.m4a",
+ "duracao": 21.12,
+ "texto": "Abra o seu link de venda que o gerente mandou no seu whatsapp. Ele é só seu. A venda sai no seu nome. Na lista, olhe a linha de baixo de cada carro. Revisado, pode vender. Sem revisão registrada, avise o Lucas antes. Na oficina, o carro ainda está sendo revisado.",
+ "palavras": [
+  {
+   "p": "Abra",
+   "ini": 0.84,
+   "fim": 1.4
+  },
+  {
+   "p": "o",
+   "ini": 1.4,
+   "fim": 1.48
+  },
+  {
+   "p": "seu",
+   "ini": 1.48,
+   "fim": 1.64
+  },
+  {
+   "p": "link",
+   "ini": 1.64,
+   "fim": 1.96
+  },
+  {
+   "p": "de",
+   "ini": 1.96,
+   "fim": 2.18
+  },
+  {
+   "p": "venda",
+   "ini": 2.18,
+   "fim": 2.5
+  },
+  {
+   "p": "que",
+   "ini": 2.5,
+   "fim": 2.86
+  },
+  {
+   "p": "o",
+   "ini": 2.86,
+   "fim": 2.94
+  },
+  {
+   "p": "gerente",
+   "ini": 2.94,
+   "fim": 3.2
+  },
+  {
+   "p": "mandou",
+   "ini": 3.2,
+   "fim": 3.64
+  },
+  {
+   "p": "no",
+   "ini": 3.64,
+   "fim": 3.82
+  },
+  {
+   "p": "seu",
+   "ini": 3.82,
+   "fim": 3.92
+  },
+  {
+   "p": "whatsapp.",
+   "ini": 3.92,
+   "fim": 4.52
+  },
+  {
+   "p": "Ele",
+   "ini": 5.1,
+   "fim": 5.58
+  },
+  {
+   "p": "é",
+   "ini": 5.58,
+   "fim": 5.72
+  },
+  {
+   "p": "só",
+   "ini": 5.72,
+   "fim": 5.82
+  },
+  {
+   "p": "seu.",
+   "ini": 5.82,
+   "fim": 6.08
+  },
+  {
+   "p": "A",
+   "ini": 6.62,
+   "fim": 6.78
+  },
+  {
+   "p": "venda",
+   "ini": 6.78,
+   "fim": 7.02
+  },
+  {
+   "p": "sai",
+   "ini": 7.02,
+   "fim": 7.3
+  },
+  {
+   "p": "no",
+   "ini": 7.3,
+   "fim": 7.44
+  },
+  {
+   "p": "seu",
+   "ini": 7.44,
+   "fim": 7.6
+  },
+  {
+   "p": "nome.",
+   "ini": 7.6,
+   "fim": 7.92
+  },
+  {
+   "p": "Na",
+   "ini": 8.44,
+   "fim": 8.58
+  },
+  {
+   "p": "lista,",
+   "ini": 8.58,
+   "fim": 8.92
+  },
+  {
+   "p": "olhe",
+   "ini": 9.54,
+   "fim": 9.86
+  },
+  {
+   "p": "a",
+   "ini": 9.86,
+   "fim": 9.9
+  },
+  {
+   "p": "linha",
+   "ini": 9.9,
+   "fim": 10.16
+  },
+  {
+   "p": "de",
+   "ini": 10.16,
+   "fim": 10.36
+  },
+  {
+   "p": "baixo",
+   "ini": 10.36,
+   "fim": 10.62
+  },
+  {
+   "p": "de",
+   "ini": 10.62,
+   "fim": 10.86
+  },
+  {
+   "p": "cada",
+   "ini": 10.86,
+   "fim": 11.06
+  },
+  {
+   "p": "carro.",
+   "ini": 11.06,
+   "fim": 11.46
+  },
+  {
+   "p": "Revisado,",
+   "ini": 12.2,
+   "fim": 12.76
+  },
+  {
+   "p": "pode",
+   "ini": 13.02,
+   "fim": 13.16
+  },
+  {
+   "p": "vender.",
+   "ini": 13.16,
+   "fim": 13.46
+  },
+  {
+   "p": "Sem",
+   "ini": 14.04,
+   "fim": 14.32
+  },
+  {
+   "p": "revisão",
+   "ini": 14.32,
+   "fim": 14.8
+  },
+  {
+   "p": "registrada,",
+   "ini": 14.8,
+   "fim": 15.44
+  },
+  {
+   "p": "avise",
+   "ini": 15.98,
+   "fim": 16.44
+  },
+  {
+   "p": "o",
+   "ini": 16.44,
+   "fim": 16.58
+  },
+  {
+   "p": "Lucas",
+   "ini": 16.58,
+   "fim": 16.78
+  },
+  {
+   "p": "antes.",
+   "ini": 16.78,
+   "fim": 17.2
+  },
+  {
+   "p": "Na",
+   "ini": 17.66,
+   "fim": 17.72
+  },
+  {
+   "p": "oficina,",
+   "ini": 17.72,
+   "fim": 18.28
+  },
+  {
+   "p": "o",
+   "ini": 18.74,
+   "fim": 18.8
+  },
+  {
+   "p": "carro",
+   "ini": 18.8,
+   "fim": 19.06
+  },
+  {
+   "p": "ainda",
+   "ini": 19.06,
+   "fim": 19.32
+  },
+  {
+   "p": "está",
+   "ini": 19.32,
+   "fim": 19.66
+  },
+  {
+   "p": "sendo",
+   "ini": 19.66,
+   "fim": 19.94
+  },
+  {
+   "p": "revisado.",
+   "ini": 19.94,
+   "fim": 20.54
+  }
+ ]
+}
