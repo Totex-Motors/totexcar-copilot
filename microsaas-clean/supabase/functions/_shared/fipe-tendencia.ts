@@ -88,19 +88,59 @@ export const MARCA_ALIAS: Record<string, string[]> = {
 };
 
 // escolhe a melhor variante por sobreposição de tokens do modelo (+ dica de combustível)
+// Casa o modelo da PLACA ("T CROSS HL TSI AE", "VW/GOL 1.0", "ONIX 10MT LT") com a tabela FIPE.
+// 1) FAMÍLIA obrigatória: a 1ª palavra do nome FIPE sem pontuação ("T-Cross" → "tcross", "up!" → "up") tem que
+//    bater com o começo do modelo da placa (1, 2 ou 3 palavras juntas: "T CROSS" → "tcross"). Sem isso, um
+//    "HL TSI" casava com o Virtus Highline (erro real: T-Cross 2020 virou Virtus 2019).
+// 2) Palavras INTEIRAS (não pedaço: "hl" não casa dentro de "highline"), com as siglas das versões.
+// 3) Ano: exato vale mais; o ano seguinte também conta (a placa às vezes só traz o de fabricação: 2019/2020).
+const SIGLAS: Record<string, string[]> = {
+  hl: ["highline", "hig"], cl: ["comfortline", "comf"], tl: ["trendline", "trend"], ae: ["aut"], at: ["aut"], aut: ["aut"],
+  mt: ["mec"], mec: ["mec"], tb: ["turbo", "tb"], turbo: ["turbo", "tb"], cvt: ["cvt", "aut"],
+};
+const compacta = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+export const familiaFipe = (nome: unknown) => compacta(String(nome ?? "").trim().split(/\s+/)[0] || "");
+function familiasDaPlaca(modelo: string): string[] {
+  // tira prefixo de marca/importado colado com barra ("VW/T CROSS", "I/VW GOLF")
+  const t = normFipe(String(modelo).replace(/^\S*\//, "")).split(" ").filter(Boolean);
+  const out = new Set<string>();
+  for (const ini of [0, 1]) for (const n of [1, 2, 3]) { const c = t.slice(ini, ini + n).join(""); if (c.length >= 2) out.add(c); }
+  return [...out];
+}
+const bateFamilia = (fam: string, cands: string[]) =>
+  !!fam && cands.some((c) => c === fam || (c.length >= 3 && fam.length >= 3 && (fam.startsWith(c) || c.startsWith(fam)) && Math.abs(fam.length - c.length) <= 3));
+
 export function ranquearFipe(rows: any[], modeloPlaca: string, comb: string | null, anoAlvo: number | null) {
-  const toks = normFipe(modeloPlaca).split(" ").filter((t) => t.length >= 2);
+  const cands = familiasDaPlaca(modeloPlaca);
+  // siglas coladas da placa viram palavras: "XEI20FLEX" → xei 20 flex, "10MT" → 10 mt, "200TSI" → 200 tsi
+  const toks = normFipe(String(modeloPlaca).replace(/^\S*\//, "").replace(/([a-z])(\d)/gi, "$1 $2").replace(/(\d)([a-z])/gi, "$1 $2"))
+    .split(" ").filter((t) => t.length >= 2);
   const combN = normFipe(comb || "");
   const isHib = /hibrid|phev|hev/.test(combN), isDies = /diesel/.test(combN), isEle = /eletric|ev\b/.test(combN);
-  return rows.map((r: any) => {
+  const isFlex = /flex|alcool.*gasolina|gasolina.*alcool/.test(combN);
+  const avaliados = rows.map((r: any) => {
     const nm = r.modelo_norm || normFipe(r.nome_modelo);
-    let sc = toks.reduce((a, t) => a + (nm.includes(t) ? 1 : 0), 0);
+    const palavras = new Set(nm.split(" "));
+    const fam = familiaFipe(r.nome_modelo);
+    const daFamilia = bateFamilia(fam, cands);
+    let sc = daFamilia ? 3 : 0;
+    for (const t of toks) {
+      if (fam && (t === fam || fam.startsWith(t))) continue; // a família já contou
+      const alvos = SIGLAS[t] || [t];
+      if (alvos.some((a) => palavras.has(a) || (a.length >= 4 && nm.includes(a)))) sc += 1;
+    }
     if (isHib) sc += /hibrid/.test(nm) ? 2 : -1;
     if (isDies && /diesel/.test(nm)) sc += 2;
     if (isEle && /eletric/.test(nm)) sc += 2;
-    if (anoAlvo && r.ano_modelo === anoAlvo) sc += 0.5; // desempate: ano exato
-    return { r, sc };
-  }).filter((x) => x.sc > 0).sort((a, b) => b.sc - a.sc);
+    if (isFlex && /flex/.test(nm)) sc += 0.3;
+    if (anoAlvo && r.ano_modelo === anoAlvo) sc += 0.5;
+    else if (anoAlvo && r.ano_modelo === anoAlvo + 1) sc += 0.4; // 2019/2020: o modelo costuma ser o ano seguinte
+    return { r, sc, daFamilia };
+  });
+  // com a família achada, os de outra família saem da disputa
+  const daFam = avaliados.filter((x) => x.daFamilia);
+  const base = daFam.length ? daFam : avaliados.filter((x) => x.sc >= 2);
+  return base.filter((x) => x.sc > 0).sort((a, b) => b.sc - a.sc).map(({ r, sc }) => ({ r, sc }));
 }
 
 // ---- carro do dono → código FIPE + tendência (agente e alerta mensal) ----
@@ -112,6 +152,11 @@ export async function tendenciaDaConta(supabase: any, acc: any, fnBase: string, 
   if (!acc?.id) return null;
   let codigo: string | null = acc.fipe_codigo || null;
   let ano: number | null = Number(acc.fipe_ano) || null;
+  // vínculo salvo pela regra antiga pode ser de OUTRO modelo (ex.: T-Cross ligado ao Virtus): confere a família
+  if (codigo && ano && acc.modelo) {
+    const { data: v } = await supabase.from("fipe_tabela").select("nome_modelo").eq("codigo_fipe", codigo).limit(1);
+    if (v?.[0]?.nome_modelo && !bateFamilia(familiaFipe(v[0].nome_modelo), familiasDaPlaca(String(acc.modelo)))) { codigo = null; ano = null; }
+  }
 
   if (!codigo || !ano) {
     const placa = String(acc.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
