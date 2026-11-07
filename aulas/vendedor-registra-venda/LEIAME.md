@@ -1,6 +1,6 @@
 # Aula: Como o vendedor registra a venda e faz a entrega
 
-Fontes da aula (skill `aulas-visuais`). Versão atual: **storyboard v1, aguardando aprovação**.
+Fontes da aula (skill `aulas-visuais`). Versão atual: **storyboard v1 APROVADO pelo dono (07/11/2026)**.
 
 - `roteiro.md`: roteiro com narração, tela e sincronização de cada cena (gerado de `cenas.js`).
 - `storyboard-v1.pdf`: storyboard visual (gerado por `gerar.cjs`).
@@ -11,4 +11,4 @@ Fontes da aula (skill `aulas-visuais`). Versão atual: **storyboard v1, aguardan
 
 Regenerar: build de demonstração servido em 127.0.0.1:4179 (ver a aula da oficina), depois `node captura.cjs`, `node simulacao-whatsapp.cjs`, `node gerar.cjs`, `node gravacao.cjs` nesta pasta.
 
-Pendente: aprovação do storyboard, gravação da voz, tempos pelo áudio, animação, revisão do vídeo exportado.
+Pendente: gravação da voz, tempos pelo áudio, animação, revisão do vídeo exportado.

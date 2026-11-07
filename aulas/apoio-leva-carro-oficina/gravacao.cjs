@@ -49,7 +49,7 @@ h1{font-size:22px;margin:0 0 6px} .sub{color:#667085;font-size:13px;margin:0 0 1
 .f{font-size:21px;line-height:1.45;margin:0 0 12px} .sil{color:#FF8500;font-weight:800;font-size:17px}
 .tela{font-size:12px;color:#98a2b3;border-top:1px solid #eee;padding-top:8px;margin-top:16px}
 </style></head><body>
-<h1>Gravação · ${esc(A.titulo)}</h1><p class="sub">Roteiro da aula (storyboard v1).</p>
+<h1>Gravação · ${esc(A.titulo)}</h1><p class="sub">Roteiro aprovado (storyboard v1).</p>
 <ul class="dicas">
 <li>Grave <b>um áudio por cena</b> no gravador do celular (ou áudio do WhatsApp) e dê o nome da cena: <b>S1, S2, S3, S4, S4b…</b> São ${A.cenas.length} áudios.</li>
 <li>Lugar <b>silencioso</b>, sem ventilador nem eco. Celular a <b>um palmo</b> da boca.</li>
