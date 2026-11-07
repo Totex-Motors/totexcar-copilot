@@ -1,0 +1,253 @@
+{
+ "cena": "S1",
+ "arquivo": "80d2d429-S1.m4a",
+ "duracao": 17.88,
+ "texto": "Você entregou o Onyx e o cliente saiu feliz. Dois dias depois, ele liga, acendeu uma luz no painel, já estava assim quando eu peguei. Se ninguém conferiu na entrega, vira sua palavra contra dele. E o cliente ficou sem um assistente que ia avisar a troca de óleo.",
+ "palavras": [
+  {
+   "p": "Você",
+   "ini": 0.0,
+   "fim": 1.1
+  },
+  {
+   "p": "entregou",
+   "ini": 1.1,
+   "fim": 1.68
+  },
+  {
+   "p": "o",
+   "ini": 1.68,
+   "fim": 1.88
+  },
+  {
+   "p": "Onyx",
+   "ini": 1.88,
+   "fim": 2.26
+  },
+  {
+   "p": "e",
+   "ini": 2.26,
+   "fim": 2.38
+  },
+  {
+   "p": "o",
+   "ini": 2.38,
+   "fim": 2.46
+  },
+  {
+   "p": "cliente",
+   "ini": 2.46,
+   "fim": 2.82
+  },
+  {
+   "p": "saiu",
+   "ini": 2.82,
+   "fim": 3.02
+  },
+  {
+   "p": "feliz.",
+   "ini": 3.02,
+   "fim": 3.3
+  },
+  {
+   "p": "Dois",
+   "ini": 3.96,
+   "fim": 4.24
+  },
+  {
+   "p": "dias",
+   "ini": 4.24,
+   "fim": 4.46
+  },
+  {
+   "p": "depois,",
+   "ini": 4.46,
+   "fim": 4.8
+  },
+  {
+   "p": "ele",
+   "ini": 5.32,
+   "fim": 5.54
+  },
+  {
+   "p": "liga,",
+   "ini": 5.54,
+   "fim": 5.88
+  },
+  {
+   "p": "acendeu",
+   "ini": 6.32,
+   "fim": 6.7
+  },
+  {
+   "p": "uma",
+   "ini": 6.7,
+   "fim": 6.94
+  },
+  {
+   "p": "luz",
+   "ini": 6.94,
+   "fim": 7.06
+  },
+  {
+   "p": "no",
+   "ini": 7.06,
+   "fim": 7.2
+  },
+  {
+   "p": "painel,",
+   "ini": 7.2,
+   "fim": 7.62
+  },
+  {
+   "p": "já",
+   "ini": 7.9,
+   "fim": 8.02
+  },
+  {
+   "p": "estava",
+   "ini": 8.02,
+   "fim": 8.28
+  },
+  {
+   "p": "assim",
+   "ini": 8.28,
+   "fim": 8.5
+  },
+  {
+   "p": "quando",
+   "ini": 8.5,
+   "fim": 8.66
+  },
+  {
+   "p": "eu",
+   "ini": 8.66,
+   "fim": 8.8
+  },
+  {
+   "p": "peguei.",
+   "ini": 8.8,
+   "fim": 9.18
+  },
+  {
+   "p": "Se",
+   "ini": 9.76,
+   "fim": 9.92
+  },
+  {
+   "p": "ninguém",
+   "ini": 9.92,
+   "fim": 10.08
+  },
+  {
+   "p": "conferiu",
+   "ini": 10.08,
+   "fim": 10.68
+  },
+  {
+   "p": "na",
+   "ini": 10.68,
+   "fim": 10.8
+  },
+  {
+   "p": "entrega,",
+   "ini": 10.8,
+   "fim": 11.26
+  },
+  {
+   "p": "vira",
+   "ini": 11.56,
+   "fim": 11.74
+  },
+  {
+   "p": "sua",
+   "ini": 11.74,
+   "fim": 11.86
+  },
+  {
+   "p": "palavra",
+   "ini": 11.86,
+   "fim": 12.18
+  },
+  {
+   "p": "contra",
+   "ini": 12.18,
+   "fim": 12.52
+  },
+  {
+   "p": "dele.",
+   "ini": 12.52,
+   "fim": 12.86
+  },
+  {
+   "p": "E",
+   "ini": 13.4,
+   "fim": 13.6
+  },
+  {
+   "p": "o",
+   "ini": 13.6,
+   "fim": 13.62
+  },
+  {
+   "p": "cliente",
+   "ini": 13.62,
+   "fim": 14.06
+  },
+  {
+   "p": "ficou",
+   "ini": 14.06,
+   "fim": 14.34
+  },
+  {
+   "p": "sem",
+   "ini": 14.34,
+   "fim": 14.62
+  },
+  {
+   "p": "um",
+   "ini": 14.62,
+   "fim": 14.74
+  },
+  {
+   "p": "assistente",
+   "ini": 14.74,
+   "fim": 15.16
+  },
+  {
+   "p": "que",
+   "ini": 15.16,
+   "fim": 15.4
+  },
+  {
+   "p": "ia",
+   "ini": 15.4,
+   "fim": 15.5
+  },
+  {
+   "p": "avisar",
+   "ini": 15.5,
+   "fim": 15.88
+  },
+  {
+   "p": "a",
+   "ini": 15.88,
+   "fim": 15.96
+  },
+  {
+   "p": "troca",
+   "ini": 15.96,
+   "fim": 16.3
+  },
+  {
+   "p": "de",
+   "ini": 16.3,
+   "fim": 16.46
+  },
+  {
+   "p": "óleo.",
+   "ini": 16.46,
+   "fim": 16.74
+  }
+ ]
+}

@@ -1,0 +1,173 @@
+{
+ "cena": "S9",
+ "arquivo": "0c62501e-S9.m4a",
+ "duracao": 13.44,
+ "texto": "Colhe a etiqueta no para-brisa por dentro, no canto de cima com o ouvido limpo. Confira se o número é o mesmo do cadastro. Peça para o cliente, aponta a câmera aqui.",
+ "palavras": [
+  {
+   "p": "Colhe",
+   "ini": 0.68,
+   "fim": 1.2
+  },
+  {
+   "p": "a",
+   "ini": 1.2,
+   "fim": 1.26
+  },
+  {
+   "p": "etiqueta",
+   "ini": 1.26,
+   "fim": 1.88
+  },
+  {
+   "p": "no",
+   "ini": 1.88,
+   "fim": 2.04
+  },
+  {
+   "p": "para",
+   "ini": 2.04,
+   "fim": 2.22
+  },
+  {
+   "p": "-brisa",
+   "ini": 2.22,
+   "fim": 2.6
+  },
+  {
+   "p": "por",
+   "ini": 2.6,
+   "fim": 2.82
+  },
+  {
+   "p": "dentro,",
+   "ini": 2.82,
+   "fim": 3.18
+  },
+  {
+   "p": "no",
+   "ini": 3.58,
+   "fim": 3.76
+  },
+  {
+   "p": "canto",
+   "ini": 3.76,
+   "fim": 4.1
+  },
+  {
+   "p": "de",
+   "ini": 4.1,
+   "fim": 4.24
+  },
+  {
+   "p": "cima",
+   "ini": 4.24,
+   "fim": 4.64
+  },
+  {
+   "p": "com",
+   "ini": 4.64,
+   "fim": 5.34
+  },
+  {
+   "p": "o",
+   "ini": 5.34,
+   "fim": 5.5
+  },
+  {
+   "p": "ouvido",
+   "ini": 5.5,
+   "fim": 5.76
+  },
+  {
+   "p": "limpo.",
+   "ini": 5.76,
+   "fim": 6.28
+  },
+  {
+   "p": "Confira",
+   "ini": 6.74,
+   "fim": 7.18
+  },
+  {
+   "p": "se",
+   "ini": 7.18,
+   "fim": 7.38
+  },
+  {
+   "p": "o",
+   "ini": 7.38,
+   "fim": 7.56
+  },
+  {
+   "p": "número",
+   "ini": 7.56,
+   "fim": 7.82
+  },
+  {
+   "p": "é",
+   "ini": 7.82,
+   "fim": 8.06
+  },
+  {
+   "p": "o",
+   "ini": 8.06,
+   "fim": 8.14
+  },
+  {
+   "p": "mesmo",
+   "ini": 8.14,
+   "fim": 8.36
+  },
+  {
+   "p": "do",
+   "ini": 8.36,
+   "fim": 8.56
+  },
+  {
+   "p": "cadastro.",
+   "ini": 8.56,
+   "fim": 9.2
+  },
+  {
+   "p": "Peça",
+   "ini": 9.76,
+   "fim": 10.12
+  },
+  {
+   "p": "para",
+   "ini": 10.12,
+   "fim": 10.3
+  },
+  {
+   "p": "o",
+   "ini": 10.3,
+   "fim": 10.36
+  },
+  {
+   "p": "cliente,",
+   "ini": 10.36,
+   "fim": 11.02
+  },
+  {
+   "p": "aponta",
+   "ini": 11.26,
+   "fim": 11.76
+  },
+  {
+   "p": "a",
+   "ini": 11.76,
+   "fim": 12.08
+  },
+  {
+   "p": "câmera",
+   "ini": 12.08,
+   "fim": 12.34
+  },
+  {
+   "p": "aqui.",
+   "ini": 12.34,
+   "fim": 12.6
+  }
+ ]
+}

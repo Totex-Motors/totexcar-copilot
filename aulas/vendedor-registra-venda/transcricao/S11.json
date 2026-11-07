@@ -1,0 +1,188 @@
+{
+ "cena": "S11",
+ "arquivo": "96a201ec-S11.m4a",
+ "duracao": 18.54,
+ "texto": "Pronto! Entrega registrada com data hora IKM. O grupo da loja recebe entrega conferida com o seu nome. Só agora o carro sai. No seu link, a venda do João passa de falta escanear para ativou.",
+ "palavras": [
+  {
+   "p": "Pronto!",
+   "ini": 0.0,
+   "fim": 1.02
+  },
+  {
+   "p": "Entrega",
+   "ini": 1.6,
+   "fim": 2.18
+  },
+  {
+   "p": "registrada",
+   "ini": 2.18,
+   "fim": 2.88
+  },
+  {
+   "p": "com",
+   "ini": 2.88,
+   "fim": 3.28
+  },
+  {
+   "p": "data",
+   "ini": 3.28,
+   "fim": 3.5
+  },
+  {
+   "p": "hora",
+   "ini": 3.5,
+   "fim": 3.96
+  },
+  {
+   "p": "IKM.",
+   "ini": 3.96,
+   "fim": 4.58
+  },
+  {
+   "p": "O",
+   "ini": 5.08,
+   "fim": 5.26
+  },
+  {
+   "p": "grupo",
+   "ini": 5.26,
+   "fim": 5.52
+  },
+  {
+   "p": "da",
+   "ini": 5.52,
+   "fim": 5.72
+  },
+  {
+   "p": "loja",
+   "ini": 5.72,
+   "fim": 6.04
+  },
+  {
+   "p": "recebe",
+   "ini": 6.04,
+   "fim": 6.52
+  },
+  {
+   "p": "entrega",
+   "ini": 6.52,
+   "fim": 7.16
+  },
+  {
+   "p": "conferida",
+   "ini": 7.16,
+   "fim": 7.88
+  },
+  {
+   "p": "com",
+   "ini": 7.88,
+   "fim": 8.46
+  },
+  {
+   "p": "o",
+   "ini": 8.46,
+   "fim": 8.6
+  },
+  {
+   "p": "seu",
+   "ini": 8.6,
+   "fim": 8.7
+  },
+  {
+   "p": "nome.",
+   "ini": 8.7,
+   "fim": 9.0
+  },
+  {
+   "p": "Só",
+   "ini": 9.74,
+   "fim": 10.02
+  },
+  {
+   "p": "agora",
+   "ini": 10.02,
+   "fim": 10.3
+  },
+  {
+   "p": "o",
+   "ini": 10.3,
+   "fim": 10.46
+  },
+  {
+   "p": "carro",
+   "ini": 10.46,
+   "fim": 10.6
+  },
+  {
+   "p": "sai.",
+   "ini": 10.6,
+   "fim": 10.94
+  },
+  {
+   "p": "No",
+   "ini": 11.56,
+   "fim": 11.7
+  },
+  {
+   "p": "seu",
+   "ini": 11.7,
+   "fim": 11.9
+  },
+  {
+   "p": "link,",
+   "ini": 11.9,
+   "fim": 12.3
+  },
+  {
+   "p": "a",
+   "ini": 12.58,
+   "fim": 12.62
+  },
+  {
+   "p": "venda",
+   "ini": 12.62,
+   "fim": 12.88
+  },
+  {
+   "p": "do",
+   "ini": 12.88,
+   "fim": 13.06
+  },
+  {
+   "p": "João",
+   "ini": 13.06,
+   "fim": 13.34
+  },
+  {
+   "p": "passa",
+   "ini": 13.34,
+   "fim": 13.92
+  },
+  {
+   "p": "de",
+   "ini": 13.92,
+   "fim": 15.1
+  },
+  {
+   "p": "falta",
+   "ini": 15.1,
+   "fim": 15.48
+  },
+  {
+   "p": "escanear",
+   "ini": 15.48,
+   "fim": 16.34
+  },
+  {
+   "p": "para",
+   "ini": 16.34,
+   "fim": 16.82
+  },
+  {
+   "p": "ativou.",
+   "ini": 16.82,
+   "fim": 17.56
+  }
+ ]
+}
