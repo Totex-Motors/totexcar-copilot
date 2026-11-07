@@ -19,6 +19,8 @@ const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const H = { apikey: KEY, authorization: `Bearer ${KEY}`, "content-type": "application/json" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
 
+// sobe quando a regra de casamento placa → FIPE muda: o resultado guardado é refeito com os dados da placa já pagos
+const VERSAO = 2;
 const brl = (cent: number) => `R$ ${(cent / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 async function sbGet(path: string): Promise<any> {
@@ -48,13 +50,26 @@ async function consultaPlaca(placa: string): Promise<any | null> {
       if (!r.ok) return null; data = await r.json().catch(() => ({}));
     }
     const d = data?.basico?.dados || data?.dados || data?.response || data;
-    const pick = (...ks: string[]) => { for (const k of ks) if (d?.[k] != null && String(d[k]).trim()) return String(d[k]).trim(); return null; };
-    const toInt = (v: string | null) => { const n = parseInt(String(v ?? "").replace(/\D/g, ""), 10); return Number.isFinite(n) ? n : null; };
+    // campos em qualquer nível e em qualquer grafia (anoModelo, ano_modelo, AnoModelo…): antes só o 1º nível,
+    // e o ano-modelo escapava (T-Cross 2019/2020 saía como 2019 → não existe na FIPE)
+    const plano: Record<string, unknown> = {};
+    const achata = (o: any, prof = 0) => {
+      if (!o || typeof o !== "object" || prof > 5) return;
+      for (const [k, v] of Object.entries(o)) {
+        const kk = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (v && typeof v === "object") achata(v, prof + 1);
+        else if (v != null && String(v).trim() && !(kk in plano)) plano[kk] = v;
+      }
+    };
+    achata(d); if (d !== data) achata(data);
+    const pick = (...ks: string[]) => { for (const k of ks) { const v = plano[k.toLowerCase().replace(/[^a-z0-9]/g, "")]; if (v != null && String(v).trim()) return String(v).trim(); } return null; };
+    // "2019/2020" → fabricação 2019, modelo 2020 (antes virava 20192020)
+    const toAno = (v: string | null, ultimo: boolean) => { const m = String(v ?? "").match(/(?:19|20)\d{2}/g); return m ? Number(ultimo ? m[m.length - 1] : m[0]) : null; };
     return {
       marca: pick("marca", "fabricante"),
       modelo: pick("modelo", "submodelo", "marcamodelo"),
-      ano: toInt(pick("anoModelo", "anomodelo", "ano")),
-      ano_fab: toInt(pick("ano", "anoFabricacao", "anofabricacao")),
+      ano: toAno(pick("anoModelo", "anomod", "ano"), true),
+      ano_fab: toAno(pick("anoFabricacao", "anofab", "ano"), false),
       combustivel: pick("combustivel", "tipoCombustivel"),
       cor: pick("cor"),
     };
@@ -80,7 +95,7 @@ Deno.serve(async (req) => {
     const r = c?.[0]?.resultado;
     const fresco = c?.[0] && Date.now() - new Date(c[0].fetched_at).getTime() < 20 * 24 * 3600_000;
     const mesmoMes = !refAtual || !r?.ref || r.ref === refAtual;
-    if (r && fresco && mesmoMes && r.tendencia) return json({ ...r, cached: true });
+    if (r && fresco && mesmoMes && r.tendencia && r.v === VERSAO) return json({ ...r, cached: true });
     // FIPE virou de mês (ou cache velho): reaproveita o VEÍCULO guardado — os dados da placa não mudam
     if (r?.marca && (r?.veiculo_placa?.modelo || r?.modelo_placa)) {
       veh = r.veiculo_placa || { marca: r.marca, modelo: r.modelo_placa, ano: r.ano, ano_fab: null, combustivel: r.combustivel, cor: r.cor };
@@ -91,7 +106,7 @@ Deno.serve(async (req) => {
   if (!veh?.marca || !veh?.modelo) return json({ ok: false, error: "placa_nao_encontrada", placa }, 404);
 
   const anoAlvo = veh.ano || veh.ano_fab;
-  const out: any = { ok: true, placa, marca: veh.marca, modelo_placa: veh.modelo, ano: anoAlvo, combustivel: veh.combustivel, cor: veh.cor, veiculo_placa: veh };
+  const out: any = { ok: true, v: VERSAO, placa, marca: veh.marca, modelo_placa: veh.modelo, ano: anoAlvo, combustivel: veh.combustivel, cor: veh.cor, veiculo_placa: veh };
 
   // FIPE local: pega os carros da marca nos anos próximos e ranqueia o modelo
   const alias = MARCA_ALIAS[norm(veh.marca)] || [norm(veh.marca)];
