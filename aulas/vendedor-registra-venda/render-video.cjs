@@ -6,7 +6,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const pw = require("playwright");
 const DIR = __dirname;
-const [TRANS, AUDIOS, SAIDA] = process.argv.slice(2);
+const [TRANS, AUDIOS, SAIDA] = process.argv.slice(2).map((p) => path.resolve(p));
 const A = require("./cenas.js");
 const TL = require("./video.js");
 const caixas = { ...JSON.parse(fs.readFileSync(path.join(DIR, "caixas.json"), "utf8")), ...JSON.parse(fs.readFileSync(path.join(DIR, "caixas-sim.json"), "utf8")) };
