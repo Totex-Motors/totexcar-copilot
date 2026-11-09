@@ -6,6 +6,7 @@ import { useUserProfile, useUpdateUserProfile } from "@/hooks/useUserProfile";
 import { useVehicle, useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { ExcluirConta } from "@/components/settings/ExcluirConta";
 
 const WA = "5511963786699";
 const COMBUSTIVEIS = ["Flex", "Gasolina", "Etanol", "Diesel", "GNV", "Elétrico", "Híbrido"];
@@ -163,6 +164,8 @@ const Settings = () => {
         >
           <LogOut size={16} /> Sair da conta
         </button>
+
+        <ExcluirConta onExcluida={async () => { try { await signOut(); } catch { /* login já apagado */ } localStorage.clear(); window.location.href = "/"; }} />
       </div>
     </MgShell>
   );
