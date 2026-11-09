@@ -6,6 +6,7 @@
 // Auth: access token do usuário (deploy com --no-verify-jwt, como as outras).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { lerCnhMidia, fichaCnh, aplicarCnhNoCadastro, type CnhLida } from "../_shared/cnh.ts";
+import { subirDoc, linkDoc, protegerMeta, cifrarTexto, decifrarTexto } from "../_shared/cofre.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -31,24 +32,25 @@ async function aiCfg() {
 
 // fichas de CNH do usuário (do app pelo user_id; do WhatsApp também pelo telefone)
 async function fichasCnh(uid: string, phone: string) {
-  let q = admin.from("arquivozap_docs").select("id, storage_path, meta, created_at").eq("tipo", "cnh").order("created_at", { ascending: false });
+  let q = admin.from("arquivozap_docs").select("id, storage_path, mime, meta, created_at").eq("tipo", "cnh").order("created_at", { ascending: false });
   q = phone ? q.or(`user_id.eq.${uid},phone.eq.${phone}`) : q.eq("user_id", uid);
   const { data } = await q;
   return data || [];
 }
 
 async function resposta(doc: any) {
-  const c: CnhLida | undefined = doc?.meta?.cnh;
+  const c: (CnhLida & { numero_final?: string }) | undefined = doc?.meta?.cnh;
   if (!c) return { ok: true, cnh: null };
-  const { data: s } = await admin.storage.from("arquivozap").createSignedUrl(doc.storage_path, 600);
+  const url = await linkDoc(admin, doc.storage_path, doc.mime, 600, "CNH"); // cifrado → função doc decifra na hora
+  const final = c.numero_final || (c.numero_registro ? c.numero_registro.slice(-4) : "");
   return {
     ok: true,
     cnh: {
       nome: c.nome, categoria: c.categoria,
-      registro: c.numero_registro ? `••••••${c.numero_registro.slice(-4)}` : null,
+      registro: final ? `••••••${final}` : null,
       validade: c.validade, primeira_habilitacao: c.primeira_habilitacao, emissao: c.emissao,
       observacoes: c.observacoes, digital: !!c.digital,
-      importada_em: doc.created_at, url: s?.signedUrl || null,
+      importada_em: doc.created_at, url,
     },
   };
 }
@@ -71,6 +73,19 @@ Deno.serve(async (req) => {
     if (acao === "minha") {
       const docs = await fichasCnh(uid, phone);
       return json(await resposta(docs.find((d: any) => d.meta?.cnh)));
+    }
+
+    // nº da CNH do cadastro: guardado cifrado; o app só vê o final e grava por aqui
+    if (acao === "numero") {
+      if (body?.numero !== undefined) {
+        const n = String(body.numero || "").replace(/\D/g, "");
+        if (n && (n.length < 9 || n.length > 12)) return json({ ok: false, error: "numero_invalido" }, 400);
+        const { error } = await admin.from("users").update({ cnh_numero: n ? await cifrarTexto(admin, n) : null }).eq("id", uid);
+        if (error) return json({ ok: false, error: error.message }, 500);
+      }
+      const { data: r } = await admin.from("users").select("cnh_numero").eq("id", uid).maybeSingle();
+      const n = await decifrarTexto(admin, r?.cnh_numero);
+      return json({ ok: true, final: n ? n.slice(-4) : null });
     }
 
     if (acao === "apagar") {
@@ -99,13 +114,13 @@ Deno.serve(async (req) => {
       // guarda o original (pasta privada) e troca a CNH anterior, se tinha
       const antigas = await fichasCnh(uid, phone);
       const path = `${phone || uid}/cnh-${crypto.randomUUID()}.${ext}`;
-      const up = await admin.storage.from("arquivozap").upload(path, bytes, { contentType: mime, upsert: false });
-      if (up.error) { console.error("cnh upload:", up.error.message); return json({ ok: false, error: "falha_ao_guardar" }, 500); }
+      const up = await subirDoc(admin, path, bytes, mime); // cifrado (AES-256) → <path>.enc
+      if (up.error) { console.error("cnh upload:", up.error); return json({ ok: false, error: "falha_ao_guardar" }, 500); }
       const { data: doc, error } = await admin.from("arquivozap_docs").insert({
         user_id: uid, phone, ...fichaCnh(cnh),
-        meta: { cnh, origem: "app" }, storage_path: path, mime, size: bytes.length,
-      }).select("id, storage_path, meta, created_at").single();
-      if (error) { await admin.storage.from("arquivozap").remove([path]); return json({ ok: false, error: error.message }, 500); }
+        meta: await protegerMeta(admin, { cnh, origem: "app" }), storage_path: up.path, mime, size: bytes.length,
+      }).select("id, storage_path, mime, meta, created_at").single();
+      if (error) { await admin.storage.from("arquivozap").remove([up.path]); return json({ ok: false, error: error.message }, 500); }
       if (antigas.length) {
         await admin.storage.from("arquivozap").remove(antigas.map((d: any) => d.storage_path).filter(Boolean));
         await admin.from("arquivozap_docs").delete().in("id", antigas.map((d: any) => d.id));

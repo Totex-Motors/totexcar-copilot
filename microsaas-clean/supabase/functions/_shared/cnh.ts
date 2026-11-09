@@ -4,6 +4,7 @@
 // Pontos e situação NÃO vêm no documento: continuam na consulta paga do Detran.
 
 import type { AIConfig } from "./proactive.ts";
+import { cifrarTexto } from "./cofre.ts";
 
 export type CnhLida = {
   e_cnh: boolean;
@@ -120,6 +121,6 @@ export async function aplicarCnhNoCadastro(sb: any, userId: string, c: CnhLida):
   const up: Record<string, string> = {};
   if (c.validade) up.cnh_vencimento = c.validade;
   if (c.categoria) up.cnh_categoria = c.categoria;
-  if (c.numero_registro) up.cnh_numero = c.numero_registro;
+  if (c.numero_registro) up.cnh_numero = (await cifrarTexto(sb, c.numero_registro)) || c.numero_registro; // cifrado (cofre)
   if (Object.keys(up).length) await sb.from("users").update(up).eq("id", userId);
 }

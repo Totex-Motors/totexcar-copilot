@@ -30,8 +30,14 @@ const Settings = () => {
   const [car, setCar] = useState({ name: "", type: "carro", marca: "", modelo: "", ano_fabricacao: "", ano_modelo: "", placa: "", uf: "", renavam: "", chassi: "", cor: "", combustivel: "Flex", hodometro: "", seguradora: "", licenciamento_vencimento: "", ipva_vencimento: "", seguro_vencimento: "", valor_compra: "", data_compra: "" });
 
   React.useEffect(() => {
-    if (userProfile) setOwner({ name: userProfile.name || "", phone: userProfile.phone || "", currency: userProfile.currency || "BRL", cnh_numero: userProfile.cnh_numero || "", cnh_categoria: userProfile.cnh_categoria || "", cnh_vencimento: userProfile.cnh_vencimento || "" });
+    if (userProfile) setOwner({ name: userProfile.name || "", phone: userProfile.phone || "", currency: userProfile.currency || "BRL", cnh_numero: "", cnh_categoria: userProfile.cnh_categoria || "", cnh_vencimento: userProfile.cnh_vencimento || "" });
   }, [userProfile]);
+  // nº da CNH fica CIFRADO no banco: aqui só aparece o final; trocar grava pela função cnh (que cifra)
+  const [cnhFinal, setCnhFinal] = useState<string | null>(null);
+  React.useEffect(() => {
+    if (!userId) return;
+    supabase.functions.invoke("cnh", { body: { acao: "numero" } }).then(({ data }) => setCnhFinal(data?.final || null)).catch(() => {});
+  }, [userId]);
   React.useEffect(() => {
     if (vehicle) setCar({ name: vehicle.name || "", type: vehicle.type || "carro", marca: vehicle.marca || "", modelo: vehicle.modelo || "", ano_fabricacao: vehicle.ano_fabricacao?.toString() || "", ano_modelo: vehicle.ano_modelo?.toString() || "", placa: vehicle.placa || "", uf: (vehicle as any).uf || "", renavam: vehicle.renavam || "", chassi: vehicle.chassi || "", cor: vehicle.cor || "", combustivel: vehicle.combustivel || "Flex", hodometro: vehicle.hodometro?.toString() || "", seguradora: vehicle.seguradora || "", licenciamento_vencimento: vehicle.licenciamento_vencimento || "", ipva_vencimento: vehicle.ipva_vencimento || "", seguro_vencimento: vehicle.seguro_vencimento || "", valor_compra: (vehicle as any).valor_compra?.toString() || "", data_compra: (vehicle as any).data_compra || "" });
   }, [vehicle]);
@@ -39,7 +45,11 @@ const Settings = () => {
   const handleSave = async () => {
     if (!userId) return;
     try {
-      await updateProfile.mutateAsync({ userId, updates: { name: owner.name, phone: (owner.phone || "").replace(/\D/g, ""), currency: owner.currency, cnh_numero: owner.cnh_numero || null, cnh_categoria: owner.cnh_categoria || null, cnh_vencimento: owner.cnh_vencimento || null } });
+      await updateProfile.mutateAsync({ userId, updates: { name: owner.name, phone: (owner.phone || "").replace(/\D/g, ""), currency: owner.currency, cnh_categoria: owner.cnh_categoria || null, cnh_vencimento: owner.cnh_vencimento || null } });
+      if (owner.cnh_numero.trim()) {
+        const { data: r } = await supabase.functions.invoke("cnh", { body: { acao: "numero", numero: owner.cnh_numero } });
+        if (r?.ok) { setCnhFinal(r.final || null); setOwner((p) => ({ ...p, cnh_numero: "" })); }
+      }
       const payload = { name: car.name || "Meu veículo", type: car.type, marca: car.marca || null, modelo: car.modelo || null, ano_fabricacao: car.ano_fabricacao ? Number(car.ano_fabricacao) : null, ano_modelo: car.ano_modelo ? Number(car.ano_modelo) : null, placa: car.placa ? car.placa.toUpperCase() : null, uf: car.uf || null, renavam: car.renavam || null, chassi: car.chassi ? car.chassi.toUpperCase() : null, cor: car.cor || null, combustivel: car.combustivel || null, hodometro: car.hodometro ? Number(car.hodometro) : 0, seguradora: car.seguradora || null, licenciamento_vencimento: car.licenciamento_vencimento || null, ipva_vencimento: car.ipva_vencimento || null, seguro_vencimento: car.seguro_vencimento || null, valor_compra: car.valor_compra ? Number(car.valor_compra) : null, data_compra: car.data_compra || null };
       if (vehicle) await updateAccount.mutateAsync({ id: vehicle.id, updates: payload });
       else await createAccount.mutateAsync({ user_id: userId, is_active: true, ...payload });
@@ -91,7 +101,7 @@ const Settings = () => {
           <section className="card pad"><div className="formgrid">
             <Field label="Nome completo" full>{inp(owner.name, (v) => setOwner((p) => ({ ...p, name: v })))}</Field>
             <Field label="Telefone" full>{inp(owner.phone, (v) => setOwner((p) => ({ ...p, phone: v })), { placeholder: "(11) 90000-0000" })}</Field>
-            <Field label="Nº da CNH">{inp(owner.cnh_numero, (v) => setOwner((p) => ({ ...p, cnh_numero: v })), { placeholder: "00000000000" })}</Field>
+            <Field label="Nº da CNH">{inp(owner.cnh_numero, (v) => setOwner((p) => ({ ...p, cnh_numero: v })), { placeholder: cnhFinal ? `••••••${cnhFinal} · protegido` : "00000000000", inputMode: "numeric" })}</Field>
             <Field label="Categoria">
               <select className="field" value={owner.cnh_categoria} onChange={(e) => setOwner((p) => ({ ...p, cnh_categoria: e.target.value }))}>
                 <option value="">—</option>{["A", "B", "AB", "C", "D", "E"].map((c) => <option key={c} value={c}>{c}</option>)}
