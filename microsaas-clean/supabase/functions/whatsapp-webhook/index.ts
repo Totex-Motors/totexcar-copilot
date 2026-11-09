@@ -34,6 +34,7 @@ import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_
 import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
 import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 import { normalizarCnh, fichaCnh, aplicarCnhNoCadastro } from "../_shared/cnh.ts";
+import { subirDoc, linkDoc, protegerMeta } from "../_shared/cofre.ts";
 import { flowPublicado, RECOMPRA_V2_PREFIXO } from "../_shared/flows.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -1674,13 +1675,14 @@ async function archiveDoc(phone: string, userId: string | null, media: { data: s
     const ext = media.kind === "pdf" ? "pdf" : (String(media.mime || "").split("/")[1] || "jpg").replace("jpeg", "jpg");
     const path = `${onlyDigits(phone)}/${crypto.randomUUID()}.${ext}`;
     const bytes = Uint8Array.from(atob(media.data), (c) => c.charCodeAt(0));
-    const up = await supabase.storage.from("arquivozap").upload(path, bytes, { contentType: media.mime || "application/octet-stream", upsert: false });
-    if (up.error) { console.error("arquivozap upload:", up.error.message); return; }
+    // cifrado no cofre (AES-256): o Storage guarda só <path>.enc
+    const up = await subirDoc(supabase, path, bytes, media.mime || "application/octet-stream");
+    if (up.error) { console.error("arquivozap upload:", up.error); return; }
     await supabase.from("arquivozap_docs").insert({
       user_id: userId || null, phone: onlyDigits(phone),
       tipo: (cls.tipo || "documento").toLowerCase(), nome: cls.nome || cls.tipo || "documento",
-      resumo: cls.resumo || null, meta: cls.meta || {},
-      storage_path: path, mime: media.mime || null, size: bytes.length,
+      resumo: cls.resumo || null, meta: await protegerMeta(supabase, cls.meta || {}),
+      storage_path: up.path, mime: media.mime || null, size: bytes.length,
     });
   } catch (e) { console.error("archiveDoc:", e); }
 }
@@ -2214,13 +2216,14 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
       const s = await getSettings();
       let enviados = 0;
       for (const d of docs) {
-        const { data: signed } = await supabase.storage.from("arquivozap").createSignedUrl(d.storage_path, 600);
-        if (!signed?.signedUrl) continue;
+        // link de 10 min: arquivo cifrado passa pela função `doc`, que decifra na hora
+        const link = await linkDoc(supabase, d.storage_path, d.mime, 600, String(d.nome || d.tipo || "documento"));
+        if (!link) continue;
         const cap = `📎 ${d.nome || d.tipo}${d.resumo ? ` — ${d.resumo}` : ""}`;
-        const isPdf = String(d.mime || "").includes("pdf") || String(d.storage_path || "").endsWith(".pdf");
+        const isPdf = String(d.mime || "").includes("pdf") || /\.pdf(\.enc)?$/.test(String(d.storage_path || ""));
         const ok = isPdf
-          ? await waSendDocument(s, String(user.phone), signed.signedUrl, `${String(d.nome || d.tipo || "documento").replace(/[^\w.-]+/g, "_")}.pdf`, cap)
-          : await waSendImage(s, String(user.phone), signed.signedUrl, cap);
+          ? await waSendDocument(s, String(user.phone), link, `${String(d.nome || d.tipo || "documento").replace(/[^\w.-]+/g, "_")}.pdf`, cap)
+          : await waSendImage(s, String(user.phone), link, cap);
         if (ok) enviados++;
       }
       return { ok: true, encontrados: docs.length, enviados, itens: docs.map((d: any) => ({ tipo: d.tipo, nome: d.nome })),
