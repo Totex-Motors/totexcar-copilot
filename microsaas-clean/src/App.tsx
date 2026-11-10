@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import Entrar from "./pages/Entrar";
 import Transactions from "./pages/Transactions";
+import VoiceExpense from "./pages/VoiceExpense";
 import Analytics from "./pages/Analytics";
 import Categories from "./pages/Categories";
 import Settings from "./pages/Settings";
@@ -70,6 +71,7 @@ const App = () => (
           <Route path="/" element={<Home />} />
           <Route path="/entrar" element={<Entrar />} />
           <Route path="/transactions" element={<Transactions />} />
+          <Route path="/gastos-voz" element={<VoiceExpense />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/categories" element={<Categories />} />

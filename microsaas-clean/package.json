@@ -9,7 +9,9 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:radar": "node scripts/test-radar.mjs"
+    "test:radar": "node scripts/test-radar.mjs",
+    "test:voice": "node --experimental-strip-types scripts/test-voice-expense.mjs",
+    "test:voice:browser": "node scripts/test-voice-browser.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

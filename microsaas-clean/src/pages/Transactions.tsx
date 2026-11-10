@@ -30,6 +30,7 @@ export default function Transactions() {
   return (
     <MgShell title="Gastos do carro" back="/">
       <div className="stack">
+        <Link to="/gastos-voz" className="card list-row"><span className="offer-ico"><Receipt size={22} /></span><div><div className="t">Registrar gasto por voz</div><div className="s">Fale o total pago e o km, confira e confirme.</div></div><ChevronRight size={20} /></Link>
         {/* resumo do mês */}
         <div className="kpi">
           <div className="box"><div className="l">Gasto no mês</div><div className="v mono" style={{ color: "var(--gain)" }}>{brl(monthly?.expenses)}</div></div>
