@@ -9,6 +9,7 @@ import { useVehicle } from "@/hooks/useAccounts";
 import { useMultas, useUpdateMultaStatus, type Multa } from "@/hooks/useMultas";
 import { runGptConsulta, startGptCheckout, fetchUltimaConsulta, fetchConsultaById, useMinhasConsultas, gptErroMsg, type GptResult } from "@/hooks/useGptMotors";
 import { toast } from "@/hooks/use-toast";
+import { PedagiosFreeFlow } from "@/components/multas/PedagiosFreeFlow";
 
 const WA = "5511963786699";
 const WA_LINK = `https://wa.me/${WA}?text=${encodeURIComponent("Oi! Recebi uma multa e quero analisar. Vou mandar a foto do auto de infração 📄")}`;
@@ -130,6 +131,8 @@ export default function Multas() {
           </div>
           <span className="go"><ChevronRight size={18} /></span>
         </a>
+
+        <PedagiosFreeFlow userId={userId} />
 
         {/* resumo */}
         {!!lista.length && (

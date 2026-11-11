@@ -3,6 +3,7 @@
 // destino/origem/dias/perfil e recebe o plano pronto (IA) + os dados usados na conta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { pesquisarRota, pesquisarLugares, consumoDoVeiculo, extrairPedagios } from "../_shared/route-research.ts";
+import { detectarFreeFlow } from "../_shared/freeflow.ts";
 import { buscarAtracoes, montarDias, normalizarInteresses, INTERESSES, buscarLugaresTipo, casarCard, type LugarCard } from "../_shared/roteiro.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -203,6 +204,8 @@ REGRAS: combustível calculado com os dados REAIS do carro (se houver custo_por_
       }
     }
     if (plano) {
+      // FREE FLOW: trajeto com pedágio sem cancela → orientação no plano (e lembrete depois da viagem, no cron)
+      plano.free_flow = detectarFreeFlow(pesquisa, plano, p.origem ? String(p.origem) : null, p.destino ? String(p.destino) : null);
       plano.roteiro_dias = roteiroDias;
       plano.interesses = interesses;
       // ONDE FICAR: itens da IA ganham foto/nota/preço do card que casar; cards que sobraram entram em seguida (até 6)

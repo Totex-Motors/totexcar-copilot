@@ -28,7 +28,7 @@ export async function pesquisarRota(openaiKey: string, origem: string, destino: 
   const prompt = `Pesquise AGORA na web e responda em português do Brasil, direto e factual (sem enrolação), sobre a viagem DE CARRO de "${origem || "São Paulo/SP"}" até "${destino}" (Brasil):
 
 1. MELHOR ROTA e distância total em km (ida), citando as rodovias (ex.: Castello Branco, Tamoios).
-2. PEDÁGIOS no trajeto: liste praça a praça com o VALOR ATUAL de cada uma (carro de passeio) e o TOTAL da ida. Se houver tag/pedágio free-flow, cite.
+2. PEDÁGIOS no trajeto: liste praça a praça com o VALOR ATUAL de cada uma (carro de passeio) e o TOTAL da ida. Se o trajeto passar por pórtico de pedágio FREE FLOW (sem cancela, ex.: Via Dutra em Guarulhos, Rio-Santos em Itaguaí/Mangaratiba/Paraty), diga EXPLICITAMENTE "free flow" e onde.
 3. BALSA/TRAVESSIA obrigatória ou recomendada no destino (ex.: balsa São Sebastião–Ilhabela): preço ATUAL para carro, se pedestre paga, tempo médio de fila em alta temporada e se dá pra agendar/comprar antecipado (cite o site oficial).
 4. Condições/dicas atuais da rota (obras, trechos de serra, neblina, horários a evitar).
 5. Estimativa de tempo de viagem (ida).

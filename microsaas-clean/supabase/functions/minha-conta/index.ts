@@ -34,7 +34,7 @@ const POR_USUARIO: [string, string][] = [
   ["multas", "user_id"], ["user_memory", "user_id"], ["open_loops", "user_id"], ["notification_log", "user_id"], ["car_radar", "user_id"],
   ["vehicle_queries", "user_id"], ["viagem_planos", "user_id"], ["driver_provider_actions", "user_id"], ["provider_quote_requests", "user_id"],
   ["service_searches", "user_id"], ["access_links", "user_id"], ["roleta_giros", "user_id"], ["support_tickets", "user_id"],
-  ["gpt_consultas", "user_id"], ["arquivozap_docs", "user_id"], ["whatsapp_events", "user_id"],
+  ["gpt_consultas", "user_id"], ["arquivozap_docs", "user_id"], ["whatsapp_events", "user_id"], ["pedagios", "user_id"],
 ];
 const POR_TELEFONE: [string, string][] = [
   ["whatsapp_events", "from_phone"], ["arquivozap_docs", "phone"], ["valor_vivo_subs", "phone"], ["jj_state", "from_phone"], ["fidelidade_state", "from_phone"],
