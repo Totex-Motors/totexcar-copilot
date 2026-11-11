@@ -33,8 +33,27 @@ async function waS(): Promise<WaSettings> {
   return _wa;
 }
 // Envia um alerta (iniciado pelo negócio) pelo template certo; no uazapi vira o texto equivalente.
-async function sendTpl(phone: string, name: string, params: any[]) {
-  await waSendTemplate(await waS(), phone, name, params);
+// Devolve se o WhatsApp ACEITOU (tenta 2x). Quem chama só conta como avisado se der true.
+async function sendTpl(phone: string, name: string, params: any[]): Promise<boolean> {
+  for (let t = 0; t < 2; t++) {
+    try { if (await waSendTemplate(await waS(), phone, name, params)) return true; } catch (e) { console.error("sendTpl:", name, e); }
+    if (t === 0) await new Promise((r) => setTimeout(r, 1500));
+  }
+  console.error("sendTpl FALHOU:", name, phone.slice(-4));
+  return false;
+}
+
+// AVISO SÓ CONTA SE CHEGOU: o notification_log é reservado antes (evita duplicar entre execuções) e,
+// se o envio falhar, a reserva é apagada → a próxima rodada tenta de novo.
+async function liberarAviso(userId: string, kind: string, dueDate: string) {
+  const { error } = await supabase.from("notification_log").delete().eq("user_id", userId).eq("kind", kind).eq("due_date", dueDate);
+  if (error) console.error("liberarAviso:", kind, error.message);
+}
+// Marco da vez: o menor marco >= dias que faltam, aceitando até 2 dias de atraso (se o aviso do
+// "faltam 3 dias" falhou, ele ainda sai no dia seguinte, com o texto certo de "faltam 2 dias").
+function marcoAtual(days: number, marks: number[]): number | null {
+  const m = [...marks].sort((a, b) => a - b).find((x) => x >= days);
+  return m != null && m - days <= 2 ? m : null;
 }
 
 // ---- PROATIVO COMPOSTO POR IA (MODULO-PROATIVO-TOTEXCAR.md) ----
@@ -58,11 +77,13 @@ async function aiCfg(): Promise<AIConfig> {
 // a IA falha; quando a IA decide PULAR: com forceSend=true cai no fallback (prazo legal nunca
 // se perde), sem forceSend a mensagem é simplesmente não enviada nesta rodada.
 async function sendProactiveIA(u: any, phone: string, insight: any, opts: {
-  carro?: string; forceSend?: boolean; assuntoDefault: string; fallback: () => Promise<void>; variante?: string;
+  carro?: string; forceSend?: boolean; assuntoDefault: string; fallback: () => Promise<boolean | void>; variante?: string;
 }): Promise<boolean> {
+  // true = mensagem ENTREGUE ao WhatsApp (pela IA ou pelo template fixo), ou a IA decidiu pular um aviso opcional
+  const fb = async () => (await opts.fallback()) !== false;
   try {
     const cfg = await aiCfg();
-    if (!cfg.key) { await opts.fallback(); return false; }
+    if (!cfg.key) return await fb();
     const d = await loadDossier(supabase, u.id);
     const { data: lastPro } = await supabase.from("whatsapp_events")
       .select("parsed").eq("user_id", u.id).eq("kind", "proativo")
@@ -75,14 +96,11 @@ async function sendProactiveIA(u: any, phone: string, insight: any, opts: {
       nome: String(u.name || "").split(" ")[0], carro: opts.carro || "",
       pro: !!u.driver_mode, loja: u.dealership || "",
     });
-    if (out === "pular") {
-      if (opts.forceSend) { await opts.fallback(); }
-      return false;
-    }
-    if (!out) { await opts.fallback(); return false; }
+    if (out === "pular") return opts.forceSend ? await fb() : true;
+    if (!out) return await fb();
     if (opts.variante) out.variante = opts.variante; // botões certos pro fluxo (ex.: óleo vencido → Já resolvi | Me ajuda)
     const ok = await waSendTemplate(await waS(), phone, out.variante, [out.texto]);
-    if (!ok) { await opts.fallback(); return false; } // template ainda não aprovado, etc.
+    if (!ok) return await fb(); // template ainda não aprovado, etc.
     await supabase.from("users").update({
       proactive_unanswered: (Number(u.proactive_unanswered) || 0) + 1,
       last_proactive_angle: out.angulo_usado,
@@ -95,8 +113,7 @@ async function sendProactiveIA(u: any, phone: string, insight: any, opts: {
     return true;
   } catch (e) {
     console.error("sendProactiveIA:", e);
-    try { await opts.fallback(); } catch { /* */ }
-    return false;
+    try { return await fb(); } catch { return false; }
   }
 }
 
@@ -158,11 +175,12 @@ async function maybeNotify(
   const label = LABELS[doc];
   const alvo = doc === "cnh" ? "sua " + label : `o ${label} de ${vehicleName || "seu veículo"}`;
 
+  const marco = days >= 0 ? marcoAtual(days, MARKS) : null;
   if (days < 0) {
     kind = `${doc}_overdue`;
     situacao = "está VENCIDO — regularize o quanto antes para evitar multas";
-  } else if (MARKS.includes(days)) {
-    kind = `${doc}_d${days}`;
+  } else if (marco != null) {
+    kind = `${doc}_d${marco}`;
     situacao = days === 0 ? "vence HOJE" : days === 1 ? "vence AMANHÃ" : `vence em ${days} dias`;
   } else {
     return false;
@@ -177,8 +195,9 @@ async function maybeNotify(
     console.error("erro notification_log:", error);
     return false;
   }
-  await sendTpl(phone, "vencimento_documento", [alvo, situacao, fmt(dueDate)]);
-  return true;
+  if (await sendTpl(phone, "vencimento_documento", [alvo, situacao, fmt(dueDate)])) return true;
+  await liberarAviso(userId, kind, dueDate);
+  return false;
 }
 
 // Marcos de alerta da parcela do financiamento (mais curtos que os vencimentos anuais)
@@ -204,8 +223,8 @@ async function maybeNotifyParcela(userId: string, phone: string, f: any, dueDate
   if (days < 0) {
     kind = `parcela:${f.id}:overdue`;
     situacao = "está ATRASADA — evite juros e pague o quanto antes";
-  } else if (PARCELA_MARKS.includes(days)) {
-    kind = `parcela:${f.id}:d${days}`;
+  } else if (marcoAtual(days, PARCELA_MARKS) != null) {
+    kind = `parcela:${f.id}:d${marcoAtual(days, PARCELA_MARKS)}`;
     situacao = days === 0 ? "vence HOJE" : days === 1 ? "vence AMANHÃ" : `vence em ${days} dias`;
   } else {
     return false;
@@ -226,8 +245,9 @@ async function maybeNotifyParcela(userId: string, phone: string, f: any, dueDate
     : f.boleto_linha
     ? `Linha digitável (copia e cola): ${f.boleto_linha} — se este boleto for de outra parcela, me mande o carnê em PDF que eu atualizo.`
     : `Me mande o carnê em PDF (ou a foto do boleto) que eu envio a linha digitável junto com o lembrete, todo mês.`;
-  await sendTpl(phone, "parcela_financiamento", [banco, `${parcelaNum}/${f.num_parcelas}`, valor, situacao, fmt(dueDate), boletoInfo]);
-  return true;
+  if (await sendTpl(phone, "parcela_financiamento", [banco, `${parcelaNum}/${f.num_parcelas}`, valor, situacao, fmt(dueDate), boletoInfo])) return true;
+  await liberarAviso(userId, kind, dueDate);
+  return false;
 }
 
 // ---- Resumo semanal do Motorista PRO (TotexCar Co-pilot PRO) ----
@@ -289,13 +309,14 @@ async function maybeWeeklyPro(u: any, phone: string, carro: string) {
     const kmLinha = cur.km && cur.km > 0
       ? `🛣️ ${cur.km.toLocaleString("pt-BR")} km rodados, lucro de ${fmtBRL(cur.lucro / cur.km)} por km.`
       : `Bora pra mais uma semana!`;
-    await sendTpl(phone, "resumo_pro_semanal", [
+    return await sendTpl(phone, "resumo_pro_semanal", [
       `${fmt(de)} a ${fmt(ate)}`, fmtBRL(cur.receita), fmtBRL(cur.despesa),
       `${cur.lucro >= 0 ? "sobrou" : "ficou negativo"} ${fmtBRL(cur.lucro)}`, kmLinha,
     ]);
   };
-  await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "resumo_pro", forceSend: true, fallback });
-  return true;
+  if (await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "resumo_pro", forceSend: true, fallback })) return true;
+  await liberarAviso(u.id, `pro_weekly:${weekKey}`, weekKey);
+  return false;
 }
 
 // ---- Relatório fiscal mensal do PRO (dia 1º–3) + alertas de limite MEI ----
@@ -358,8 +379,9 @@ const MULTA_MARKS = [5, 3, 1, 0];
 
 async function maybeNotifyMulta(u: any, phone: string, m: any, appUrl: string, carro: string) {
   const days = daysUntil(m.prazo_recurso);
-  if (!MULTA_MARKS.includes(days)) return false; // prazo vencido não notifica (recurso perdeu o objeto)
-  const kind = `multa:${m.id}:d${days}`;
+  const marco = days >= 0 ? marcoAtual(days, MULTA_MARKS) : null;
+  if (marco == null) return false; // prazo vencido não notifica (recurso perdeu o objeto)
+  const kind = `multa:${m.id}:d${marco}`;
   const desc = m.descricao || "sua multa";
   const valor = m.valor != null ? ` (R$ ${Number(m.valor).toFixed(2).replace(".", ",")})` : "";
   const quando = days === 0 ? "termina HOJE" : days === 1 ? "termina AMANHÃ" : `termina em ${days} dias`;
@@ -380,12 +402,74 @@ async function maybeNotifyMulta(u: any, phone: string, m: any, appUrl: string, c
     valor: m.valor != null ? Number(m.valor) : null, chance: m.chance || null,
     recurso_pronto: !!m.recurso_texto, link_recurso: m.recurso_texto ? `${appUrl}/multas` : null,
   };
-  const fallback = async () => {
-    await sendTpl(phone, "prazo_recurso_multa", [`${desc}${valor}`, quando, fmt(m.prazo_recurso), instrucao]);
-  };
+  const fallback = () => sendTpl(phone, "prazo_recurso_multa", [`${desc}${valor}`, quando, fmt(m.prazo_recurso), instrucao]);
   // prazo LEGAL: forceSend — se a IA pular/falhar, o template fixo garante o aviso
-  await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "multa_prazo", forceSend: true, fallback });
-  return true;
+  if (await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "multa_prazo", forceSend: true, fallback })) return true;
+  await liberarAviso(u.id, kind, m.prazo_recurso);
+  return false;
+}
+
+// ---- PEDÁGIO FREE FLOW (sem cancela) ----
+// Cobrança que o cliente informou (pedagios): lembra 7/3/1/0 dias antes e 1x depois de vencer, até ele
+// dizer que pagou. Sem vencimento: 1 lembrete pra conferir no app CNH do Brasil (5 dias depois de registrar).
+const PEDAGIO_MARKS = [7, 3, 1, 0];
+const ONDE_PAGAR = "Pague no site ou app da concessionária. Pra conferir: app CNH do Brasil → Veículos → seu carro → Pedágio Eletrônico.";
+async function maybeNotifyPedagio(u: any, phone: string, p: any, carro: string): Promise<boolean> {
+  const oque = [p.rodovia, p.concessionaria].filter(Boolean).join(" · ") || "pedágio sem cancela (Free Flow)";
+  const valor = p.valor != null ? ` de R$ ${Number(p.valor).toFixed(2).replace(".", ",")}` : "";
+  let kind = "", texto = "", insight: any;
+  if (!p.vencimento) {
+    const desde = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000);
+    if (desde < 5 || desde > 20) return false;
+    kind = `pedagio:${p.id}:sem_venc`;
+    texto = `Lembrete do pedágio sem cancela (${oque}): a passagem já apareceu no app CNH do Brasil (Veículos → seu carro → Pedágio Eletrônico)? O prazo pra pagar é de 30 dias depois que fica "pendente de pagamento". Me manda o vencimento que eu te aviso antes. Se já pagou, é só me dizer "paguei o pedágio".`;
+    insight = { tipo: "pedagio_conferir", trecho: oque, prazo_normal_dias: 30, como_consultar: "app CNH do Brasil → Veículos → carro → Pedágio Eletrônico", observacao: "o Co-pilot NÃO vê as passagens: pedir pra ele conferir e mandar o vencimento; se já pagou, responder 'paguei o pedágio'" };
+  } else {
+    const days = daysUntil(p.vencimento);
+    if (days < 0) {
+      if (days < -3) return false;
+      kind = `pedagio:${p.id}:venceu`;
+      texto = `⚠️ O pedágio sem cancela${valor} (${oque}) venceu em ${fmt(p.vencimento)}. Pague o quanto antes: a falta de pagamento pode virar multa e pontos na CNH. ${ONDE_PAGAR} Já pagou? Me diga "paguei o pedágio".`;
+    } else {
+      const marco = marcoAtual(days, PEDAGIO_MARKS);
+      if (marco == null) return false;
+      kind = `pedagio:${p.id}:d${marco}`;
+      const quando = days === 0 ? "vence HOJE" : days === 1 ? "vence AMANHÃ" : `vence em ${days} dias (${fmt(p.vencimento)})`;
+      texto = `🚧 O pedágio sem cancela${valor} (${oque}) ${quando}. ${ONDE_PAGAR} Já pagou? Me diga "paguei o pedágio" que eu paro de lembrar.`;
+    }
+    insight = { tipo: "pedagio_vencimento", trecho: oque, valor: p.valor != null ? Number(p.valor) : null, vencimento: p.vencimento, dias: daysUntil(p.vencimento), onde_pagar: ONDE_PAGAR, observacao: "não pagar pode virar multa e pontos; se já pagou, responder 'paguei o pedágio'. Nunca diga que confirmamos pagamento." };
+  }
+  const due = p.vencimento || String(p.created_at).split("T")[0];
+  const { error } = await supabase.from("notification_log").insert({ user_id: u.id, kind, due_date: due, channel: "whatsapp" });
+  if (error) { if ((error as any).code !== "23505") console.error("log pedagio:", error); return false; }
+  const ok = await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "pedagio", forceSend: true, fallback: () => sendTpl(phone, "copilot_msg", [texto]) });
+  if (!ok) await liberarAviso(u.id, kind, due);
+  return ok;
+}
+
+// Depois da VIAGEM planejada no Co-pilot cuja rota tem Free Flow: 1 lembrete pra conferir as passagens.
+// (o plano não tem a data da viagem: considera pedido + dias de viagem + 2 dias; só planos dos últimos 25 dias)
+async function maybeFreeFlowViagem(u: any, phone: string, carro: string): Promise<boolean> {
+  const desde = new Date(Date.now() - 25 * 86400000).toISOString();
+  const { data: planos, error: ep } = await supabase.from("viagem_planos").select("id, destino, dias, plano, created_at")
+    .eq("user_id", u.id).gte("created_at", desde).order("created_at", { ascending: false }).limit(5);
+  if (ep) return false;
+  for (const vp of planos || []) {
+    const ff = vp.plano?.free_flow;
+    if (!ff) continue;
+    const dias = Math.min(Math.max(parseInt(String(vp.dias || "2"), 10) || 2, 1), 15);
+    if (Date.now() < new Date(vp.created_at).getTime() + (dias + 2) * 86400000) continue;
+    const kind = `ff_viagem:${vp.id}`, due = String(vp.created_at).split("T")[0];
+    const { error } = await supabase.from("notification_log").insert({ user_id: u.id, kind, due_date: due, channel: "whatsapp" });
+    if (error) continue; // já lembrado
+    const trechos = (ff.trechos || []).join("; ");
+    const texto = `Se você já fez a viagem${vp.destino ? ` pra ${vp.destino}` : ""}: o caminho tem pedágio sem cancela (Free Flow)${trechos ? ` — ${trechos}` : ""}. Sem tag, confira no app CNH do Brasil (Veículos → seu carro → Pedágio Eletrônico) e pague em até 30 dias no canal da concessionária, pra não virar multa. Me manda a cobrança que eu te lembro antes de vencer.`;
+    const insight = { tipo: "free_flow_pos_viagem", destino: vp.destino || null, trechos: ff.trechos || [], prazo_normal_dias: 30, como_consultar: "app CNH do Brasil → Veículos → carro → Pedágio Eletrônico", observacao: "não sabemos se ele já viajou: comece com 'se você já fez a viagem'. Ofereça registrar a cobrança. Com tag válida o pagamento é automático." };
+    const ok = await sendProactiveIA(u, phone, insight, { carro, assuntoDefault: "free_flow", forceSend: true, fallback: () => sendTpl(phone, "copilot_msg", [texto]) });
+    if (!ok) await liberarAviso(u.id, kind, due);
+    return ok; // no máximo 1 por rodada
+  }
+  return false;
 }
 
 // ---- RADAR da Garagem Totex ----
@@ -468,8 +552,10 @@ async function maybeNotifyRadar(userId: string, phone: string, r: any, refCode?:
     const oferta = abaixoFipe(v) ? " 🔥 abaixo da tabela" : "";
     const preco = v.price != null ? `R$ ${Number(v.price).toLocaleString("pt-BR")}` : "consulte";
     const url = `${MARKETPLACE}/veiculo/${v.id}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-    await sendTpl(phone, "radar_match", [desejo, `${title}${km}${oferta}`, preco, url]);
+    if (!(await sendTpl(phone, "radar_match", [desejo, `${title}${km}${oferta}`, preco, url]))) await liberarAviso(userId, `radar:${r.id}:${v.id}`, anchor);
   }
+  // os que não couberam nesta rodada (máx. 3) voltam pra fila
+  for (const v of novos.slice(3)) await liberarAviso(userId, `radar:${r.id}:${v.id}`, anchor);
   return true;
 }
 
@@ -498,19 +584,23 @@ async function maybeNotifyRenovacao(u: any, phone: string, appUrl: string, spons
       .insert({ user_id: u.id, kind: `sub_expired:${u.id}`, due_date: dueDate, channel: "whatsapp" });
     if (error) { if ((error as any).code === "23505") return false; console.error("log sub_expired:", error); return false; }
     await supabase.from("users").update({ plan: "free", subscription_status: "overdue" }).eq("id", u.id);
-    if (isCortesia) await sendTpl(phone, "cortesia_vencida", [loja, planLink]);
-    else await sendTpl(phone, "assinatura_vencida", [`${appUrl}/plans`]);
-    return true;
+    const ok = isCortesia ? await sendTpl(phone, "cortesia_vencida", [loja, planLink]) : await sendTpl(phone, "assinatura_vencida", [`${appUrl}/plans`]);
+    if (!ok) await liberarAviso(u.id, `sub_expired:${u.id}`, dueDate);
+    return ok;
   }
 
-  if (!RENEW_MARKS.includes(days)) return false;
+  const marcoR = marcoAtual(days, RENEW_MARKS);
+  if (marcoR == null) return false;
+  const kindR = `sub_renew:${u.id}:d${marcoR}`;
   const { error } = await supabase.from("notification_log")
-    .insert({ user_id: u.id, kind: `sub_renew:${u.id}:d${days}`, due_date: dueDate, channel: "whatsapp" });
+    .insert({ user_id: u.id, kind: kindR, due_date: dueDate, channel: "whatsapp" });
   if (error) { if ((error as any).code === "23505") return false; console.error("log sub_renew:", error); return false; }
   const quando = days === 1 ? "amanhã" : `em ${days} dias`;
-  if (isCortesia) await sendTpl(phone, "cortesia_vencendo", [loja, quando, fmt(dueDate), planLink]);
-  else await sendTpl(phone, "assinatura_vencendo", [quando, fmt(dueDate), `${appUrl}/plans`]);
-  return true;
+  const ok = isCortesia
+    ? await sendTpl(phone, "cortesia_vencendo", [loja, quando, fmt(dueDate), planLink])
+    : await sendTpl(phone, "assinatura_vencendo", [quando, fmt(dueDate), `${appUrl}/plans`]);
+  if (!ok) await liberarAviso(u.id, kindR, dueDate);
+  return ok;
 }
 
 // ---- Pós-venda / Sucesso do Cliente (Fase 1): NPS no D+atraso e aniversário da compra no D+365 ----
@@ -978,6 +1068,14 @@ Deno.serve(async (req) => {
           if (await maybeNotifyMulta(u, phone, m, appUrl, v?.name || "")) sent++;
         }
       } catch (e) { console.error("erro multas alerts:", e); }
+
+      // Pedágio Free Flow: cobranças informadas (lembra até pagar) + conferência depois da viagem planejada
+      try {
+        const { data: peds, error: pe } = await supabase.from("pedagios")
+          .select("id, rodovia, concessionaria, valor, vencimento, created_at").eq("user_id", u.id).eq("status", "pendente");
+        if (!pe) for (const p of peds || []) { if (await maybeNotifyPedagio(u, phone, p, v?.name || "")) sent++; }
+        if (await maybeFreeFlowViagem(u, phone, v?.name || "")) sent++;
+      } catch (e) { console.error("erro pedagio/free flow:", e); }
 
       // Renovação da assinatura (avulsa): lembra antes e re-bloqueia no vencimento
       try { if (await maybeNotifyRenovacao(u, phone, appUrl, sponsoredByUser[u.id] || null)) sent++; } catch (e) { console.error("erro renovacao:", e); }

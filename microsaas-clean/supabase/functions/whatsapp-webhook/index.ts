@@ -1416,6 +1416,32 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: {} },
   },
   {
+    name: "registrar_pedagio",
+    description: "Registra uma passagem/cobrança de pedágio FREE FLOW (sem cancela) que o usuário informou ou mandou foto/print, pra eu lembrar antes de vencer até ele pagar. NÃO invente vencimento: use o que estiver na cobrança/no app CNH do Brasil; se não souber, omita (eu lembro de conferir).",
+    parameters: {
+      type: "object",
+      properties: {
+        concessionaria: { type: "string", description: "ex.: RioSP, Motiva, EPR" },
+        rodovia: { type: "string", description: "ex.: Via Dutra (BR-116), Rio-Santos (BR-101)" },
+        local: { type: "string", description: "pórtico/cidade" },
+        data_passagem: { type: "string", description: "yyyy-mm-dd" },
+        valor: { type: "number" },
+        vencimento: { type: "string", description: "yyyy-mm-dd — prazo pra pagar, SÓ se informado" },
+        placa: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "meus_pedagios",
+    description: "Lista as cobranças de pedágio Free Flow do usuário (pendentes e pagas) com vencimento.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "pedagio_pago",
+    description: "Marca como PAGA uma cobrança de pedágio Free Flow quando o usuário disser que pagou. Sem id, marca a pendente mais próxima de vencer (ou todas, se ele disser que pagou todas).",
+    parameters: { type: "object", properties: { id: { type: "string" }, todas: { type: "boolean" } } },
+  },
+  {
     name: "arquivar_documento",
     description: "GUARDA no ArquivoZap o documento que o usuário acabou de enviar (foto/PDF). Chame SEMPRE que a mídia for um documento que vale guardar: multa/auto de infração, IPVA, boleto, CRLV/CRV (documento do carro), CNH, nota fiscal, apólice de seguro, manual, comprovante. Chame ALÉM de qualquer outra ação (ex.: junto com registrar_multa). NÃO chame para hodômetro/painel, print de ganhos de app, foto de carro à venda, selfie ou paisagem.",
     parameters: {
@@ -2100,7 +2126,7 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
             dados_do_carro: rv.dados, pesquisa_web: rv.pesquisa_web,
             roteiro_dia_a_dia: roteiroResumo.length ? roteiroResumo : null,
             link_cards: linkCards,
-            instrucao: `Transforme o PLANO em uma mensagem de WhatsApp gostosa de ler: título com origem→destino, a conta do combustível MOSTRADA (cite a fonte do consumo que está em dados_do_carro.fonte_consumo — se for estimativa, DIGA que é estimativa), pedágios (total ida+volta), balsa se houver (preço + dica), 2-3 hospedagens por faixa (cite a nota ★ e a faixa de preço $ quando vierem no item), comidas imperdíveis (idem) e o alerta de manutenção pré-viagem se existir.${roteiroResumo.length ? " DEPOIS, a seção *O que fazer lá, dia a dia*: um bloco curto por dia (📍 Dia N) com as paradas na ordem, horário e a nota ★, e no fim do dia os km de carro e o combustível do dia (são lugares REAIS e bem avaliados, com foto e horário no app)." : ""} Use *negrito* e emojis com moderação.${linkCards ? " FECHE SEMPRE com: '✨ Seu plano ficou salvo no app com cards" + (roteiroResumo.length ? ", fotos dos lugares" : "") + " e valores: " + linkCards + "'" : ""} NUNCA invente valor que não está no plano.`,
+            instrucao: `Transforme o PLANO em uma mensagem de WhatsApp gostosa de ler: título com origem→destino, a conta do combustível MOSTRADA (cite a fonte do consumo que está em dados_do_carro.fonte_consumo — se for estimativa, DIGA que é estimativa), pedágios (total ida+volta), balsa se houver (preço + dica), 2-3 hospedagens por faixa (cite a nota ★ e a faixa de preço $ quando vierem no item), comidas imperdíveis (idem) e o alerta de manutenção pré-viagem se existir.${rv.plano?.free_flow ? " OBRIGATÓRIO: um bloco *🚧 Pedágio sem cancela (Free Flow)* com os trechos de plano.free_flow.trechos e a orientação de plano.free_flow.orientacao (pagar depois, em até 30 dias, conferindo no app CNH do Brasil; sem tag pode virar multa), e ofereça: 'depois da viagem eu te lembro de conferir'." : ""}${roteiroResumo.length ? " DEPOIS, a seção *O que fazer lá, dia a dia*: um bloco curto por dia (📍 Dia N) com as paradas na ordem, horário e a nota ★, e no fim do dia os km de carro e o combustível do dia (são lugares REAIS e bem avaliados, com foto e horário no app)." : ""} Use *negrito* e emojis com moderação.${linkCards ? " FECHE SEMPRE com: '✨ Seu plano ficou salvo no app com cards" + (roteiroResumo.length ? ", fotos dos lugares" : "") + " e valores: " + linkCards + "'" : ""} NUNCA invente valor que não está no plano.`,
           };
         }
       } catch (e) { console.error("edge viagem falhou, caindo no caminho inline:", e); }
@@ -2237,6 +2263,44 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
           .eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
         return { multas: data || [] };
       } catch (e) { return { error: String((e as any)?.message || e) }; }
+    }
+
+    // PEDÁGIO FREE FLOW: o cliente informa, a Nina lembra antes de vencer até ele dizer que pagou
+    if (name === "registrar_pedagio") {
+      const a = args || {};
+      const iso = (v: any) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : null);
+      const row = {
+        user_id: user.id, account_id: vehicle?.id || null, placa: a.placa || vehicle?.placa || null,
+        concessionaria: a.concessionaria || null, rodovia: a.rodovia || null, local: a.local || null,
+        data_passagem: iso(a.data_passagem), valor: Number(a.valor) > 0 ? Number(a.valor) : null, vencimento: iso(a.vencimento),
+      };
+      const { data, error } = await supabase.from("pedagios").insert(row).select("id").single();
+      if (error) return { ok: false, error: error.message, message: "Não consegui salvar agora. Diga que vai anotar e peça pra ele tentar de novo mais tarde." };
+      if (!ctx.archive) ctx.archive = { tipo: "pedagio", nome: `Pedágio ${row.rodovia || row.concessionaria || "Free Flow"}`.trim(), resumo: row.vencimento ? `Vence ${row.vencimento.split("-").reverse().join("/")}` : "" };
+      return {
+        ok: true, id: data.id,
+        message: row.vencimento
+          ? `Registrado. Confirme em 1–2 linhas: vou lembrar 7, 3 e 1 dia antes e no dia do vencimento (${row.vencimento.split("-").reverse().join("/")}), até ele me dizer que pagou. Pagamento é no site/app da concessionária. NÃO diga que confirmamos o pagamento automaticamente.`
+          : `Registrado SEM vencimento. Explique em 1–2 linhas: o prazo normal é de 30 dias depois que a passagem aparece como "pendente de pagamento" no app CNH do Brasil (Veículos → carro → Pedágio Eletrônico); peça pra ele me mandar a data quando aparecer, e que eu lembro de conferir em alguns dias.`,
+      };
+    }
+
+    if (name === "meus_pedagios") {
+      const { data, error } = await supabase.from("pedagios").select("id, concessionaria, rodovia, local, data_passagem, valor, vencimento, status, pago_em")
+        .eq("user_id", user.id).neq("status", "cancelado").order("created_at", { ascending: false }).limit(15);
+      if (error) return { ok: false, error: error.message };
+      return { ok: true, pedagios: data || [], obs: "status 'pago' = o próprio cliente informou que pagou (não há confirmação automática da concessionária)." };
+    }
+
+    if (name === "pedagio_pago") {
+      let q = supabase.from("pedagios").select("id, rodovia, concessionaria, vencimento").eq("user_id", user.id).eq("status", "pendente");
+      if (args?.id) q = q.eq("id", String(args.id));
+      const { data: pend } = await q.order("vencimento", { ascending: true, nullsFirst: false }).limit(args?.todas ? 50 : 1);
+      if (!pend?.length) return { ok: false, message: "Não há cobrança de pedágio pendente registrada." };
+      const ids = pend.map((p: any) => p.id);
+      const { error } = await supabase.from("pedagios").update({ status: "pago", pago_em: new Date().toISOString(), pago_informado_por: "cliente" }).in("id", ids);
+      if (error) return { ok: false, error: error.message };
+      return { ok: true, marcados: pend.length, itens: pend, message: "Marcado como pago (informado por ele). Confirme em 1 linha que paro de lembrar." };
     }
 
     if (name === "pontos_cnh") {
@@ -4593,6 +4657,7 @@ MULTAS: se a foto for um auto de infração/notificação:
    f. Também: competência do órgão para a via (municipal/estadual/federal), erro de enquadramento e dupla penalização pela mesma infração.
 3) Se faltar informação-chave pro checklist (data de recebimento da notificação, se recebeu as duas, radar fixo/móvel, sinalização), FAÇA 2–3 perguntas curtas ao usuário ANTES de fechar a análise — as respostas fortalecem o recurso. Se ele não souber, siga com o que tem.
 4) Estime a chance (baixa/media/alta) com HONESTIDADE — NUNCA prometa que a multa "vai cair". Gere a MINUTA de recurso (defesa prévia) citando os artigos/resoluções do checklist que se aplicarem e chame registrar_multa (com recurso_texto, prazo_recurso e chance). Envie um resumo + o texto do recurso, deixando claro que é um MODELO e a decisão é do órgão. Avise o prazo.
+PEDÁGIO FREE FLOW (sem cancela): quando ele contar que passou por pedágio sem cancela/pórtico, ou mandar cobrança/print de Free Flow → registrar_pedagio (vencimento SÓ se estiver na cobrança; não invente). "Paguei o pedágio" → pedagio_pago. "Quais pedágios tenho?" → meus_pedagios. Regras (ANTT): a passagem é registrada pela placa; sem tag ele paga depois no canal da concessionária, em até 30 dias depois que aparecer como "pendente de pagamento"; consulta no app CNH do Brasil → Veículos → carro → Pedágio Eletrônico; não pagar pode virar multa e pontos. NUNCA diga que o Co-pilot descobre as passagens sozinho ou confirma o pagamento: é ele que informa.
 PONTOS DA CNH: para "quantos pontos eu tenho?", "vou perder a CNH?", "tô perto de suspender?" → use pontos_cnh (soma dos últimos 12 meses das multas + limite de suspensão do CTB). Depois de registrar uma multa nova COM pontos, vale mencionar o total atualizado e, se estiver perto do limite, alertar com cuidado (sem alarmismo). Deixe claro que conta só as multas registradas aqui.
 
 Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.join(", ")}. Use is_new_category=true só se nenhuma existente servir.

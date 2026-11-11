@@ -128,6 +128,7 @@ const Admin = () => {
           <DealersTab />
         </TabsContent>
         <TabsContent value="config" className="mt-6 space-y-6">
+          <AvisoFreeFlowCard />
           <FlowAvaliacaoCard />
           <ConfigTab />
         </TabsContent>
@@ -1293,6 +1294,60 @@ export default Admin;
 
 // "Avaliar meu carro" no WhatsApp (Flow): publica a versão 2, com o campo "Ou digite o modelo" na tela de
 // modelo. O webhook passa a mandar a v2 sozinho (acha a versão publicada mais nova pelo nome).
+// AVISO FREE FLOW (ANTT): mensagem única pra base de motoristas sobre o prazo de 16/11/2026.
+// Prévia → teste no seu WhatsApp → enviar (em lotes, até acabar). Cada motorista recebe 1 vez.
+const TEXTO_FREE_FLOW = "🚧 Aviso importante sobre pedágio sem cancela (Free Flow): a ANTT informou que passagens em aberto podem ser pagas SEM multa até segunda-feira, 16/11. Depois disso, a falta de pagamento pode virar multa e pontos na CNH. Confira se você tem alguma pendência no app CNH do Brasil (Veículos → seu carro → Pedágio Eletrônico) e pague no site ou app da concessionária. Hoje há Free Flow na Via Dutra (Guarulhos/SP) e na Rio-Santos (Itaguaí, Mangaratiba e Paraty). Tem cobrança? Me manda aqui que eu te lembro antes de vencer. Fonte: gov.br/antt";
+function AvisoFreeFlowCard() {
+  const [texto, setTexto] = useState(TEXTO_FREE_FLOW);
+  const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState<string>("");
+  const chamar = async (body: any) => {
+    const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "aviso_free_flow", ...body } });
+    let r: any = data;
+    if (error) { try { r = await (error as any).context.json(); } catch { r = { error: String(error.message || error) }; } }
+    return r;
+  };
+  const { data: pv, refetch } = useQuery({ queryKey: ["aviso-free-flow"], queryFn: () => chamar({ modo: "previa" }) });
+  const prazoPassou = new Date() > new Date("2026-11-16T23:59:59-03:00");
+  const teste = async () => {
+    setBusy(true);
+    const r = await chamar({ modo: "teste", texto });
+    setBusy(false);
+    toast(r?.ok ? { title: "Teste enviado ✅", description: "Confira no seu WhatsApp como ficou." } : { title: "Teste não foi", description: String(r?.error || "falha no WhatsApp"), variant: "destructive" });
+  };
+  const enviar = async () => {
+    if (!confirm(`Enviar este aviso pelo WhatsApp para ${pv?.faltam ?? "?"} motoristas? Cada um recebe uma vez só.`)) return;
+    setBusy(true);
+    let total = 0, falhas = 0;
+    try {
+      for (let i = 0; i < 40; i++) {
+        const r = await chamar({ modo: "enviar", texto });
+        if (!r?.ok) { toast({ title: "Parou", description: String(r?.error || "erro"), variant: "destructive" }); break; }
+        total += r.enviados; falhas += r.falhas;
+        setProg(`Enviados ${total}${falhas ? ` · ${falhas} falharam (tentam de novo no próximo clique)` : ""} · faltam ${r.restantes}`);
+        if (!r.restantes || !r.enviados) break;
+      }
+    } finally { setBusy(false); refetch(); }
+  };
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><MessageCircle className="w-4 h-4" /> Aviso Free Flow (prazo ANTT 16/11)</CardTitle></CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <p className="text-muted-foreground">Mensagem única para os motoristas com WhatsApp (lojas e admins ficam de fora). Confira o texto, mande um teste para você e depois envie.</p>
+        <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={7} maxLength={900} />
+        <p className="text-xs text-muted-foreground">{texto.length}/900 · sai como "Olá! (texto) — TotexCar Co-pilot 🚗"</p>
+        <p>{pv?.ok ? <>Recebem: <b>{pv.total}</b> · já enviados: <b>{pv.ja_enviados}</b> · faltam: <b>{pv.faltam}</b></> : "Carregando…"}</p>
+        {prazoPassou && <p className="text-destructive">O prazo de 16/11 já passou: revise o texto antes de enviar.</p>}
+        {prog && <p className="text-xs">{prog}</p>}
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" disabled={busy} onClick={teste}>Enviar teste para mim</Button>
+          <Button size="sm" disabled={busy || !pv?.faltam} onClick={enviar}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Enviar para a base"}</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function FlowAvaliacaoCard() {
   const [busy, setBusy] = useState(false);
   const { data: st, refetch } = useQuery({

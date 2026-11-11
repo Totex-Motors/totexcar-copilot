@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { SERVICE_TYPES } from "../_shared/radar-search.ts";
 import { publicarFlow, flowPublicado, RECOMPRA_V2_PREFIXO, FLOW_ENDPOINT } from "../_shared/flows.ts";
 import recompraV2 from "../_shared/recompra-flow-v2.json" with { type: "json" };
+import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -64,6 +65,49 @@ Deno.serve(async (req) => {
         const name = `${RECOMPRA_V2_PREFIXO}_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
         const r = await publicarFlow(tk, waba, name, recompraV2, FLOW_ENDPOINT);
         return json(r, r.ok ? 200 : 502);
+      }
+
+      // AVISO FREE FLOW (ANTT, prazo 16/11/2026): mensagem única pra base de motoristas, disparada pelo admin.
+      // modo "previa" (quantos recebem + texto), "teste" (só pro telefone do admin), "enviar" (lotes de ~90 s;
+      // o painel repete até acabar). Dedup no notification_log; envio que falhar volta pra fila.
+      case "aviso_free_flow": {
+        const KIND = "aviso:antt_free_flow_2026_11", DUE = "2026-11-16";
+        const texto = String(payload.texto || "").replace(/\s+/g, " ").trim();
+        const modo = String(payload.modo || "previa");
+        const { data: us, error: eu } = await admin.from("users").select("id, phone, role").not("phone", "is", null);
+        if (eu) throw eu;
+        const alvo = (us || []).filter((u: any) => String(u.phone || "").replace(/\D/g, "").length >= 10 && u.role !== "dealer" && u.role !== "admin");
+        const { data: ja } = await admin.from("notification_log").select("user_id").eq("kind", KIND);
+        const feitos = new Set((ja || []).map((r: any) => r.user_id));
+        const faltam = alvo.filter((u: any) => !feitos.has(u.id));
+        if (modo === "previa") return json({ ok: true, total: alvo.length, ja_enviados: alvo.length - faltam.length, faltam: faltam.length });
+        if (texto.length < 40 || texto.length > 900) return json({ error: "texto_invalido" }, 400);
+        const wa = await loadWaSettings(admin);
+        if (modo === "teste") {
+          const { data: eu2 } = await admin.from("users").select("phone").eq("id", caller.id).single();
+          if (!eu2?.phone) return json({ error: "admin_sem_telefone" }, 400);
+          return json({ ok: await waSendTemplate(wa, String(eu2.phone), "copilot_msg", [texto]) });
+        }
+        if (modo !== "enviar") return json({ error: "modo_invalido" }, 400);
+        const ini = Date.now();
+        let enviados = 0, falhas = 0;
+        for (const u of faltam) {
+          if (Date.now() - ini > 90_000) break;
+          const { error: dup } = await admin.from("notification_log").insert({ user_id: u.id, kind: KIND, due_date: DUE, channel: "whatsapp" });
+          if (dup) continue; // outro clique já pegou esse
+          const ok = await waSendTemplate(wa, String(u.phone), "copilot_msg", [texto]).catch(() => false);
+          if (ok) {
+            enviados++;
+            await admin.from("whatsapp_events").insert({ from_phone: String(u.phone).replace(/\D/g, ""), user_id: u.id, kind: "proativo", status: "sent",
+              raw: { proativo: true, aviso: "antt_free_flow" }, parsed: { assunto: "free_flow_antt", texto, variante: "copilot_msg" } });
+          } else {
+            falhas++;
+            await admin.from("notification_log").delete().eq("user_id", u.id).eq("kind", KIND).eq("due_date", DUE);
+          }
+        }
+        const restantes = faltam.length - enviados - falhas;
+        console.log("aviso_free_flow", JSON.stringify({ enviados, falhas, restantes }));
+        return json({ ok: true, enviados, falhas, restantes });
       }
 
       // FUNIL DO STAND (todas as lojas) — escaneios → presente → conversa → ativação, por loja+promotor

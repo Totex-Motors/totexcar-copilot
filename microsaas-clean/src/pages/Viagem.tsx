@@ -57,6 +57,7 @@ interface Plano {
   combustivel?: { conta?: string; total_ida_volta?: number | null };
   pedagios?: { itens?: { praca: string; valor: number | null }[]; total_ida_volta?: number | null; obs?: string | null };
   balsa?: { descricao?: string; preco_carro?: number | null; dica?: string } | null;
+  free_flow?: { trechos?: string[]; orientacao?: string; fonte?: string } | null;
   roteiro?: { titulo: string; descricao?: string }[];
   hospedagem?: { faixa?: string; nome: string; regiao?: string; motivo?: string; diaria?: number | null; foto?: string | null; nota?: number | null; avaliacoes?: number | null; preco_nivel?: number | null; maps_url?: string | null }[];
   comida?: { nome: string; especialidade?: string; regiao?: string | null; foto?: string | null; nota?: number | null; avaliacoes?: number | null; preco_nivel?: number | null; maps_url?: string | null }[];
@@ -287,6 +288,17 @@ export default function Viagem() {
                       </div>
                     )}
                     {plano.pedagios?.obs && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>{plano.pedagios.obs}</p>}
+                  </Section>
+                )}
+
+                {plano.free_flow && (
+                  <Section icon={Coins} title="Pedágio sem cancela (Free Flow)">
+                    <div style={{ border: "1px solid #F5B54A", background: "#FFF7E8", borderRadius: 10, padding: 10, fontSize: 13.5, lineHeight: 1.45 }}>
+                      {(plano.free_flow.trechos || []).map((t, i) => <div key={i} style={{ fontWeight: 700 }}>🚧 {t}</div>)}
+                      <p style={{ marginTop: 6 }}>{plano.free_flow.orientacao}</p>
+                      <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>Depois da viagem eu te lembro pelo WhatsApp de conferir. Recebeu a cobrança? Manda pra mim que eu aviso antes de vencer.
+                        {plano.free_flow.fonte && <> Fonte: <a href={plano.free_flow.fonte} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>ANTT</a>.</>}</p>
+                    </div>
                   </Section>
                 )}
 
