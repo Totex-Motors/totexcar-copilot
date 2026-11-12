@@ -51,6 +51,8 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
   const [grupo, setGrupo] = useState({ id: "", nome: "" });
   const [grupos, setGrupos] = useState<{ id: string; nome: string }[] | null>(null);
   const [sla, setSla] = useState("15");
+  // NINA DA EQUIPE: grupos (além do de atendimento) onde ela responde consultas do time
+  const [ninaGrupos, setNinaGrupos] = useState<{ id: string; nome: string }[]>([]);
   const [horario, setHorario] = useState<Record<string, [string, string]>>(HORARIO_PADRAO);
 
   const cfg = data?.config;
@@ -58,8 +60,9 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
     if (!cfg) return;
     setGrupo({ id: cfg.grupo_id || "", nome: cfg.grupo_nome || "" });
     setSla(String(cfg.sla_min || 15));
+    setNinaGrupos(Array.isArray((cfg as any).nina_grupos) ? (cfg as any).nina_grupos : []);
     setHorario(cfg.horario && Object.keys(cfg.horario).length ? cfg.horario : HORARIO_PADRAO);
-  }, [cfg?.grupo_id, cfg?.sla_min, JSON.stringify(cfg?.horario || null)]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cfg?.grupo_id, cfg?.sla_min, JSON.stringify(cfg?.horario || null), JSON.stringify((cfg as any)?.nina_grupos || null)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const equipe = data?.equipe || [];
   const casos = casosData?.casos || [];
@@ -232,6 +235,51 @@ export function AtendimentoTab({ dealership }: { dealership?: string }) {
             <Button size="sm" disabled={acao.isPending} onClick={() => rodar("posvenda_config_save", { grupo_id: grupo.id, grupo_nome: grupo.nome, sla_min: Number(sla) || 15, horario }, "Configuração salva")}>
               {acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Salvar"}
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* NINA DA EQUIPE NO GRUPO */}
+        <Card className="border-0 shadow-premium-md">
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><MessageCircle className="w-4 h-4 text-primary" /> Nina no grupo da equipe</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">A Nina responde <b>dentro do grupo</b> quando alguém chama pelo nome: <i>"Nina, qual a placa do carro do Eduardo?"</i>. Ela só consulta os clientes e carros vendidos por esta loja (placa, compra, garantia, transferência, km, atendimentos). Não altera nada e não responde conversa particular.</p>
+            <p className="text-[11px] text-muted-foreground">Quem responde é o <b>número do Canal</b> (o mesmo dos avisos): ele precisa estar dentro do grupo. O número oficial do Co-pilot não entra em grupos, por regra do WhatsApp.</p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2"><Switch checked disabled /> <span>{cfg?.grupo_nome || "Grupo de atendimento"} <span className="text-xs text-muted-foreground">(sempre ligado)</span></span></div>
+              {(grupos || []).filter((g) => g.id !== cfg?.grupo_id).map((g) => {
+                const on = ninaGrupos.some((x) => x.id === g.id);
+                return (
+                  <div key={g.id} className="flex items-center gap-2">
+                    <Switch checked={on} onCheckedChange={(v) => setNinaGrupos((l) => (v ? [...l.filter((x) => x.id !== g.id), g] : l.filter((x) => x.id !== g.id)))} />
+                    <span className="truncate">{g.nome}</span>
+                  </div>
+                );
+              })}
+              {ninaGrupos.filter((x) => !(grupos || []).some((g) => g.id === x.id)).map((g) => (
+                <div key={g.id} className="flex items-center gap-2">
+                  <Switch checked onCheckedChange={() => setNinaGrupos((l) => l.filter((x) => x.id !== g.id))} />
+                  <span className="truncate">{g.nome || g.id}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={acao.isPending}
+                onClick={() => acao.mutate({ action: "posvenda_grupos", ...base }, { onSuccess: (r: any) => { setGrupos(r?.grupos || []); if (!r?.grupos?.length) toast({ title: "Nenhum grupo encontrado", description: "Coloque o número do Canal no grupo e tente de novo." }); } })}>
+                <Search className="w-4 h-4" /> Buscar grupos
+              </Button>
+              <Button size="sm" disabled={acao.isPending}
+                onClick={() => acao.mutate({ action: "posvenda_config_save", nina_grupos: ninaGrupos, ...base }, {
+                  onSuccess: (r: any) => {
+                    if (r?.ok === false || r?.error) { toast({ title: "Não deu certo", description: r?.error === "rode_o_sql_da_nina_no_grupo" ? "Falta rodar o SQL da Nina no grupo (peça ao suporte). O grupo de atendimento já funciona sem ele." : r?.error || "", variant: "destructive" }); return; }
+                    const w = r?.nina_webhook;
+                    toast(w?.ok ? { title: "Nina ligada nos grupos ✅", description: "Chame no grupo: \"Nina, ...\"" } : { title: "Grupos salvos, mas a ligação com o WhatsApp falhou", description: w?.estado === "sem_canal" ? "O número do Canal não está configurado." : w?.detalhe || w?.estado || "", variant: "destructive" });
+                    refresh();
+                  },
+                  onError: (e: any) => toast({ title: "Erro", description: String(e?.message || e), variant: "destructive" }),
+                })}>
+                {acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Salvar e ligar"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
