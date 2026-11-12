@@ -12,6 +12,7 @@ import { controleKm } from "../_shared/km.ts";
 import { listarChecklists, ITENS_ENTREGA } from "../_shared/entrega.ts";
 import { SERVICOS, novoToken, linkDaOficina, salvarFoto, comFotos, validarServico, prepararDaOS, ligarNaVenda, vendaDoCarro, avisarNovaOS, avisarChegada, avisarConclusao, avisarExtra, avisarDecisaoExtra } from "../_shared/oficina.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
+import { garantirWebhook } from "../_shared/grupo-nina.ts";
 import { placasDoErp } from "../_shared/erp.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1712,6 +1713,13 @@ Deno.serve(async (req) => {
         if (p.grupo_id !== undefined) { row.grupo_id = grupo || null; row.grupo_nome = String(p.grupo_nome || "").trim() || null; }
         if (p.sla_min !== undefined) row.sla_min = Math.min(120, Math.max(5, Number(p.sla_min) || 15));
         if (p.ativo !== undefined) row.ativo = !!p.ativo;
+        // NINA DA EQUIPE: grupos (além do de atendimento) onde ela responde consultas da equipe
+        let ninaWebhook: any = null;
+        if (Array.isArray(p.nina_grupos)) {
+          row.nina_grupos = p.nina_grupos.filter((g: any) => /^[\w.-]+@g\.us$/.test(String(g?.id || ""))).slice(0, 10)
+            .map((g: any) => ({ id: String(g.id), nome: String(g.nome || "").slice(0, 80) }));
+          ninaWebhook = await garantirWebhook(admin);
+        }
         if (p.horario && typeof p.horario === "object") {
           const h: Record<string, [string, string]> = {};
           for (const [d, faixa] of Object.entries(p.horario as Record<string, any>)) {
@@ -1720,8 +1728,13 @@ Deno.serve(async (req) => {
           row.horario = h;
         }
         const { error } = await admin.from("posvenda_config").upsert(row, { onConflict: "dealership" });
-        if (error) return json({ error: error.message }, 400);
-        return json({ ok: true });
+        if (error) return json({ error: /nina_grupos/.test(error.message) ? "rode_o_sql_da_nina_no_grupo" : error.message }, 400);
+        return json({ ok: true, nina_webhook: ninaWebhook });
+      }
+      // liga o repasse das mensagens do grupo pra Nina (o grupo de atendimento já vale, sem SQL)
+      case "nina_grupo_ligar": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        return json({ ok: true, nina_webhook: await garantirWebhook(admin) });
       }
 
       case "posvenda_membro_save": {
