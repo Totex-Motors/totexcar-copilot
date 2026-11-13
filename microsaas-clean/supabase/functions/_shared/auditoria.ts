@@ -10,9 +10,14 @@ export const FERRAMENTAS_QUE_GRAVAM = new Set([
 export const RE_PROMESSA = /\b(anotei|anotado|anotada|registrei|registrado|registrada|atualizei|atualizado|atualizada|salvei|guardei|corrigi|corrigido|ajustei|ajustado|ja (mudei|alterei|arrumei)|pode deixar|deixa comigo|nao (vou|te) (mais )?(avis|lembr|cobr)\w*|paro de (te )?(avisar|lembrar|cobrar)|fic(a|ou) (anotado|registrado|salvo|guardado))\b/i;
 const semAcento = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
+// só interessa quando a conversa é sobre DADO DO CARRO ou AVISO (preferência pessoal a memória guarda sozinha,
+// em segundo plano — "anotei que você prefere ser chamado de Edu" é legítimo sem ferramenta)
+export const RE_TEMA = /\b(km|quilometr\w*|hodometro|oleo|revis\w+|troca\w*|manutenc\w+|multa\w*|pedagio\w*|parcela\w*|boleto\w*|financiament\w*|ipva|licenciament\w*|seguro|vencim\w+|venc[ea]\w*|avis\w+|lembr\w+|cobr\w+|cnh|placa|gasto\w*|abastec\w+|gasolina|etanol|pneu\w*|bateria|garantia|transferenc\w*|document\w*)\b/;
+export const ehTemaAuditado = (input: unknown, reply: unknown) => RE_TEMA.test(semAcento(`${input ?? ""} ${reply ?? ""}`));
+
 export type Acao = { n: string; ok: boolean };
-export function auditarResposta(reply: string, acoes: Acao[] | null | undefined): { conferir: boolean; motivo: string | null } {
-  const promete = RE_PROMESSA.test(semAcento(reply));
+export function auditarResposta(reply: string, acoes: Acao[] | null | undefined, input?: string | null): { conferir: boolean; motivo: string | null } {
+  const promete = RE_PROMESSA.test(semAcento(reply)) && ehTemaAuditado(input, reply);
   const lista = acoes || [];
   const gravou = lista.some((a) => a.ok && FERRAMENTAS_QUE_GRAVAM.has(a.n));
   const falhou = lista.filter((a) => !a.ok && FERRAMENTAS_QUE_GRAVAM.has(a.n)).map((a) => a.n);
@@ -20,4 +25,4 @@ export function auditarResposta(reply: string, acoes: Acao[] | null | undefined)
   return { conferir: false, motivo: null };
 }
 // histórico antigo (sem o registro das ações): só dá pra saber que a fala prometeu
-export const falaPromete = (reply: unknown) => RE_PROMESSA.test(semAcento(reply));
+export const falaPromete = (reply: unknown, input?: unknown) => RE_PROMESSA.test(semAcento(reply)) && ehTemaAuditado(input, reply);

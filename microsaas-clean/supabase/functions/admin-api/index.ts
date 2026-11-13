@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
             if (av) ultimoAvisoUsado = av.t;
             const p = m.parsed || {};
             const temRegistro = Array.isArray(p.acoes);
-            const situacao = p.conferido ? "conferida" : p.conferir ? "conferir" : !temRegistro && falaPromete(p.reply) ? "possivel" : "ok";
+            const situacao = p.conferido ? "conferida" : p.conferir ? "conferir" : !temRegistro && falaPromete(p.reply, p.input) ? "possivel" : "ok";
             if (situacao === "ok" && !primeira) continue; // conversa comum, sem aviso e sem suspeita: fora
             itens.push({
               id: m.id, quando: m.created_at, user_id: m.user_id, telefone: String(m.from_phone || ""), situacao, motivo: p.conferir_motivo || null,
