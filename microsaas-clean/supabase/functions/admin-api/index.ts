@@ -2,7 +2,8 @@
 // Ações protegidas por papel admin. Usa service role para criar/excluir contas.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { SERVICE_TYPES } from "../_shared/radar-search.ts";
-import { publicarFlow, flowPublicado, RECOMPRA_V2_PREFIXO, FLOW_ENDPOINT } from "../_shared/flows.ts";
+import { publicarFlow, flowPublicado, RECOMPRA_V2_PREFIXO, FIPE_PREFIXO, FLOW_ENDPOINT } from "../_shared/flows.ts";
+import fipeFlow from "../_shared/fipe-flow.json" with { type: "json" };
 import recompraV2 from "../_shared/recompra-flow-v2.json" with { type: "json" };
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 import { falaPromete } from "../_shared/auditoria.ts";
@@ -57,6 +58,17 @@ Deno.serve(async (req) => {
     switch (action) {
       // FORMULÁRIO "AVALIAR MEU CARRO" (WhatsApp Flow) v2 — com o campo "Ou digite o modelo".
       // Publica na Meta (flow novo apontando pro wa-flow-endpoint); o webhook passa a usar sozinho.
+      // FORMULÁRIO "CONSULTA FIPE" (qualquer carro): mesmo endpoint, token "fipe"
+      case "flow_fipe_status":
+      case "publicar_flow_fipe": {
+        const { data: st } = await admin.from("app_settings").select("meta_wa_token, meta_waba_id").eq("id", 1).single();
+        const tk = String(st?.meta_wa_token || "").trim(), waba = String(st?.meta_waba_id || "").trim();
+        if (!tk || !waba) return json({ error: "meta_wa_token/meta_waba_id não configurados" }, 400);
+        if (action === "flow_fipe_status") return json({ ok: true, flow_id: await flowPublicado(tk, waba, FIPE_PREFIXO) });
+        const name = `${FIPE_PREFIXO}_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
+        const r = await publicarFlow(tk, waba, name, fipeFlow, FLOW_ENDPOINT);
+        return json(r, r.ok ? 200 : 502);
+      }
       case "flow_recompra_status":
       case "publicar_flow_recompra": {
         const { data: st } = await admin.from("app_settings").select("meta_wa_token, meta_waba_id").eq("id", 1).single();

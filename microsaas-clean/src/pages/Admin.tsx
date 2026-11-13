@@ -132,6 +132,7 @@ const Admin = () => {
         <TabsContent value="config" className="mt-6 space-y-6">
           <AvisoFreeFlowCard />
           <FlowAvaliacaoCard />
+          <FlowFipeCard />
           <ConfigTab />
         </TabsContent>
         <TabsContent value="growth" className="mt-6">
@@ -1377,6 +1378,36 @@ function FlowAvaliacaoCard() {
         <p className="text-muted-foreground">Versão 2: na tela do modelo, a pessoa pode <b>digitar o nome</b> (ex.: Toro) e escolher a versão; marcas grandes aparecem por família.</p>
         <p>{st?.flow_id ? <>✅ Versão 2 no ar (id {st.flow_id}).</> : <>Ainda na versão 1.</>}</p>
         <Button size="sm" disabled={busy} onClick={publicar}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : st?.flow_id ? "Publicar de novo" : "Publicar versão 2"}</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Formulário "Consulta FIPE" (qualquer carro) no WhatsApp: publica na Meta; a Nina passa a abrir sozinha.
+function FlowFipeCard() {
+  const [busy, setBusy] = useState(false);
+  const { data: st, refetch } = useQuery({
+    queryKey: ["flow-fipe-status"],
+    queryFn: async () => (await supabase.functions.invoke("admin-api", { body: { action: "flow_fipe_status" } })).data as { ok?: boolean; flow_id?: string | null } | null,
+  });
+  const publicar = async () => {
+    if (!confirm("Publicar o formulário \"Consulta FIPE\" no WhatsApp?")) return;
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-api", { body: { action: "publicar_flow_fipe" } });
+      let r: any = data;
+      if (error) { try { r = await (error as any).context.json(); } catch { r = { error: String(error.message || error) }; } }
+      if (r?.ok) { toast({ title: "Formulário publicado ✅", description: "Em até 30 min a Nina passa a abrir a Consulta FIPE quando pedirem." }); refetch(); }
+      else toast({ title: "Não publicou", description: r?.validation_errors ? JSON.stringify(r.validation_errors).slice(0, 300) : `${r?.etapa || ""} ${JSON.stringify(r?.body || r?.error || r).slice(0, 300)}`, variant: "destructive" });
+    } finally { setBusy(false); }
+  };
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><MessageCircle className="w-4 h-4" /> Formulário "Consulta FIPE" (WhatsApp)</CardTitle></CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <p className="text-muted-foreground">Consulta da tabela FIPE de <b>qualquer carro</b>: marca → modelo → versão → ano → valor e tendência. Por texto a Nina já responde sem isso; o formulário serve pra quem prefere escolher na lista ou quando há muitas versões.</p>
+        <p>{st?.flow_id ? <>✅ No ar (id {st.flow_id}).</> : <>Ainda não publicado: a Nina responde só por texto.</>}</p>
+        <Button size="sm" disabled={busy} onClick={publicar}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : st?.flow_id ? "Publicar de novo" : "Publicar formulário"}</Button>
       </CardContent>
     </Card>
   );

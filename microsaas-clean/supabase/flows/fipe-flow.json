@@ -1,0 +1,391 @@
+{
+ "version": "7.0",
+ "data_api_version": "3.0",
+ "routing_model": {
+  "MARCA": [
+   "MODELO"
+  ],
+  "MODELO": [
+   "VERSAO",
+   "ANO"
+  ],
+  "VERSAO": [
+   "ANO"
+  ],
+  "ANO": [
+   "RESULTADO"
+  ],
+  "RESULTADO": []
+ },
+ "screens": [
+  {
+   "id": "MARCA",
+   "title": "Consulta FIPE",
+   "data": {
+    "marcas": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       }
+      }
+     },
+     "__example__": [
+      {
+       "id": "59",
+       "title": "VW - VolksWagen"
+      }
+     ]
+    }
+   },
+   "layout": {
+    "type": "SingleColumnLayout",
+    "children": [
+     {
+      "type": "Form",
+      "name": "form",
+      "children": [
+       {
+        "type": "TextSubheading",
+        "text": "Veja o valor de qualquer carro na tabela FIPE, em segundos."
+       },
+       {
+        "type": "Dropdown",
+        "name": "marca",
+        "label": "Marca do carro",
+        "required": true,
+        "data-source": "${data.marcas}"
+       },
+       {
+        "type": "Footer",
+        "label": "Continuar",
+        "on-click-action": {
+         "name": "data_exchange",
+         "payload": {
+          "marca": "${form.marca}"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "MODELO",
+   "title": "Consulta FIPE",
+   "data": {
+    "modelos": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       }
+      }
+     },
+     "__example__": [
+      {
+       "id": "f:toro",
+       "title": "Toro (26 versões)"
+      }
+     ]
+    },
+    "marca": {
+     "type": "string",
+     "__example__": "21"
+    },
+    "marca_nome": {
+     "type": "string",
+     "__example__": "Fiat"
+    }
+   },
+   "layout": {
+    "type": "SingleColumnLayout",
+    "children": [
+     {
+      "type": "Form",
+      "name": "form",
+      "children": [
+       {
+        "type": "TextSubheading",
+        "text": "Agora o modelo: escolha na lista ou digite o nome."
+       },
+       {
+        "type": "Dropdown",
+        "name": "modelo",
+        "label": "Modelo",
+        "required": false,
+        "data-source": "${data.modelos}"
+       },
+       {
+        "type": "TextInput",
+        "name": "busca",
+        "label": "Ou digite o modelo (ex.: Toro)",
+        "input-type": "text",
+        "required": false,
+        "helper-text": "Digitou? A gente traz as versões pra você escolher."
+       },
+       {
+        "type": "Footer",
+        "label": "Continuar",
+        "on-click-action": {
+         "name": "data_exchange",
+         "payload": {
+          "marca": "${data.marca}",
+          "marca_nome": "${data.marca_nome}",
+          "modelo": "${form.modelo}",
+          "busca": "${form.busca}"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "VERSAO",
+   "title": "Consulta FIPE",
+   "data": {
+    "modelos": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       }
+      }
+     },
+     "__example__": [
+      {
+       "id": "8236",
+       "title": "Toro Endurance 1.8 16V Flex Au"
+      }
+     ]
+    },
+    "aviso": {
+     "type": "string",
+     "__example__": "26 versões de Toro. Escolha a sua:"
+    },
+    "marca": {
+     "type": "string",
+     "__example__": "21"
+    },
+    "marca_nome": {
+     "type": "string",
+     "__example__": "Fiat"
+    }
+   },
+   "layout": {
+    "type": "SingleColumnLayout",
+    "children": [
+     {
+      "type": "Form",
+      "name": "form",
+      "children": [
+       {
+        "type": "TextSubheading",
+        "text": "${data.aviso}"
+       },
+       {
+        "type": "Dropdown",
+        "name": "modelo",
+        "label": "Versão",
+        "required": true,
+        "data-source": "${data.modelos}"
+       },
+       {
+        "type": "Footer",
+        "label": "Continuar",
+        "on-click-action": {
+         "name": "data_exchange",
+         "payload": {
+          "marca": "${data.marca}",
+          "marca_nome": "${data.marca_nome}",
+          "modelo": "${form.modelo}"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ANO",
+   "title": "Consulta FIPE",
+   "data": {
+    "anos": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       }
+      }
+     },
+     "__example__": [
+      {
+       "id": "2022-1",
+       "title": "2022 Gasolina"
+      }
+     ]
+    },
+    "marca": {
+     "type": "string",
+     "__example__": "59"
+    },
+    "marca_nome": {
+     "type": "string",
+     "__example__": "VW - VolksWagen"
+    },
+    "modelo": {
+     "type": "string",
+     "__example__": "5940"
+    }
+   },
+   "layout": {
+    "type": "SingleColumnLayout",
+    "children": [
+     {
+      "type": "Form",
+      "name": "form",
+      "children": [
+       {
+        "type": "TextSubheading",
+        "text": "Qual o ano do carro?"
+       },
+       {
+        "type": "Dropdown",
+        "name": "ano",
+        "label": "Ano / combustível",
+        "required": true,
+        "data-source": "${data.anos}"
+       },
+       {
+        "type": "Footer",
+        "label": "Ver valor FIPE",
+        "on-click-action": {
+         "name": "data_exchange",
+         "payload": {
+          "marca": "${data.marca}",
+          "marca_nome": "${data.marca_nome}",
+          "modelo": "${data.modelo}",
+          "ano": "${form.ano}"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "RESULTADO",
+   "title": "Valor na tabela FIPE",
+   "terminal": true,
+   "data": {
+    "titulo": {
+     "type": "string",
+     "__example__": "Toyota Corolla XEi 2.0 2020"
+    },
+    "valor": {
+     "type": "string",
+     "__example__": "R$ 135.000"
+    },
+    "referencia": {
+     "type": "string",
+     "__example__": "Tabela FIPE de 11/2026 · código 002111-1"
+    },
+    "tendencia": {
+     "type": "string",
+     "__example__": "No último mês caiu R$ 1.500 (−1,1%)."
+    },
+    "marca_nome": {
+     "type": "string",
+     "__example__": "Toyota"
+    },
+    "modelo_nome": {
+     "type": "string",
+     "__example__": "Corolla XEi 2.0"
+    },
+    "ano_nome": {
+     "type": "string",
+     "__example__": "2020"
+    },
+    "combustivel": {
+     "type": "string",
+     "__example__": "Gasolina"
+    },
+    "fipe_code": {
+     "type": "string",
+     "__example__": "002111-1"
+    },
+    "fipe_value": {
+     "type": "string",
+     "__example__": "135000"
+    }
+   },
+   "layout": {
+    "type": "SingleColumnLayout",
+    "children": [
+     {
+      "type": "TextSubheading",
+      "text": "${data.titulo}"
+     },
+     {
+      "type": "TextHeading",
+      "text": "${data.valor}"
+     },
+     {
+      "type": "TextBody",
+      "text": "${data.tendencia}"
+     },
+     {
+      "type": "TextCaption",
+      "text": "${data.referencia}"
+     },
+     {
+      "type": "TextCaption",
+      "text": "A FIPE é uma referência de mercado: o preço real varia com km, estado e região."
+     },
+     {
+      "type": "Footer",
+      "label": "Concluir",
+      "on-click-action": {
+       "name": "complete",
+       "payload": {
+        "tipo": "fipe",
+        "titulo": "${data.titulo}",
+        "marca_nome": "${data.marca_nome}",
+        "modelo_nome": "${data.modelo_nome}",
+        "ano_nome": "${data.ano_nome}",
+        "combustivel": "${data.combustivel}",
+        "fipe_code": "${data.fipe_code}",
+        "fipe_value": "${data.fipe_value}"
+       }
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

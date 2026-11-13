@@ -33,10 +33,11 @@ import { aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparac
 import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_TROCA_OLEO, ajustarPlanoOleo, ehEletrico } from "../_shared/oleo.ts";
 import { auditarResposta } from "../_shared/auditoria.ts";
 import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
-import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, cancelarOportunidade, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
+import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, cancelarOportunidade, variantesTel, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 import { normalizarCnh, fichaCnh, aplicarCnhNoCadastro } from "../_shared/cnh.ts";
 import { subirDoc, linkDoc, protegerMeta } from "../_shared/cofre.ts";
-import { flowPublicado, RECOMPRA_V2_PREFIXO } from "../_shared/flows.ts";
+import { flowPublicado, RECOMPRA_V2_PREFIXO, FIPE_PREFIXO } from "../_shared/flows.ts";
+import { consultarFipe, textoTendencia } from "../_shared/fipe-consulta.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -1011,6 +1012,28 @@ async function handleRecompraFlowReply(phone: string, flow: Record<string, any>)
   return true;
 }
 
+// FORMULÁRIO "CONSULTA FIPE" (qualquer carro): abre só se já foi publicado no Admin; senão a Nina segue por texto.
+async function abrirConsultaFipeFlow(phone: string): Promise<boolean> {
+  const s = await getSettings();
+  const flowId = await flowPublicado(String(s?.meta_wa_token || "").trim(), String(s?.meta_waba_id || "").trim(), FIPE_PREFIXO);
+  if (!flowId) return false;
+  return await waSendFlow(s, phone, {
+    header: "Consulta FIPE 🔎",
+    body: "Escolha a marca, o modelo, a versão e o ano: eu mostro o valor da tabela FIPE e se ele subiu ou caiu.",
+    cta: "Consultar FIPE", flowId, token: "fipe",
+    fallbackText: "Me diga a marca, o modelo, a versão e o ano que eu consulto a FIPE. 🔎",
+  });
+}
+// Resposta do formulário de CONSULTA FIPE: payload {tipo:"fipe", titulo, fipe_value, ...} do nfm_reply.
+async function handleFipeFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
+  if (flow?.tipo !== "fipe") return false;
+  const valor = Number(flow.fipe_value) || 0;
+  const s = await getSettings();
+  await sendText(phone, `🔎 *${flow.titulo || "Consulta FIPE"}*\nTabela FIPE: *${valor > 0 ? fmtReais(valor) : "não encontrado"}*${flow.fipe_code ? ` (código ${flow.fipe_code})` : ""}\n\nA FIPE é referência de mercado: o preço real varia com km, estado e região.`);
+  await waSendMenu(s, phone, "Quer fazer algo com essa consulta?", ["Avisar se aparecer", "Avaliar meu carro", "Consultar outro"]);
+  return true;
+}
+
 // Resposta do FORMULÁRIO nativo de NPS (WhatsApp Flow): payload {nota, comentario} do nfm_reply.
 async function handleNpsFlowReply(phone: string, flow: Record<string, any>): Promise<boolean> {
   const score = Number(flow?.nota);
@@ -1624,6 +1647,23 @@ const TOOL_SPECS = [
     name: "custo_por_km",
     description: "Custo REAL do carro: quanto custa por KM rodado e por MÊS, e pra onde vai o dinheiro (combustível, manutenção, impostos/seguro, financiamento). Use para 'quanto meu carro me custa?', 'custo por km', 'quanto gasto por mês com o carro?'. Sem datas = tudo que foi registrado.",
     parameters: { type: "object", properties: { de: { type: "string", description: "AAAA-MM-DD (opcional)" }, ate: { type: "string", description: "AAAA-MM-DD (opcional)" } } },
+  },
+  {
+    name: "consultar_fipe",
+    description: "Tabela FIPE de QUALQUER carro (não o do dono — pra esse use valor_do_carro): 'quanto está um Corolla XEi 2020?', 'fipe da Toro Freedom diesel 2022', 'quanto vale um HB20 1.0 2019'. Passe em `carro` tudo o que ele disse (marca, modelo, versão, motor, câmbio) e o `ano` se houver. NUNCA chute a versão: se voltar status 'versoes' ou 'anos', mostre as opções e pergunte qual.",
+    parameters: {
+      type: "object",
+      properties: {
+        carro: { type: "string", description: "Marca, modelo e versão como ele escreveu (ex.: 'Corolla XEi 2.0', 'fiat toro freedom diesel')" },
+        ano: { type: "string", description: "Ano-modelo (ex.: '2020') ou '0km'. Omita se ele não disse." },
+      },
+      required: ["carro"],
+    },
+  },
+  {
+    name: "abrir_consulta_fipe",
+    description: "Abre o FORMULÁRIO de consulta FIPE (listas de marca → modelo → versão → ano). Use quando ele pedir a FIPE sem dizer o carro ('quero ver a fipe', 'consulta fipe'), quando houver muitas versões e ele não souber qual, ou quando ele preferir escolher na lista.",
+    parameters: { type: "object", properties: {} },
   },
   {
     name: "valor_do_carro",
@@ -2563,6 +2603,39 @@ async function dispatchToolImpl(name: string, args: any, ctx: ToolCtx): Promise<
         pdf_enviado, csv_url: r.csv_url,
         orientacao: "Resuma em 2 linhas: lucro do período + R$/km. O PDF já foi enviado na conversa (se pdf_enviado=true). Diga que serve de base pro contador/carnê-leão, mas NUNCA dê conselho fiscal definitivo ('sou seu copiloto, não seu contador'). Se mei_pct >= 70, avise com cuidado que está se aproximando do limite MEI — é proteção, não bronca. Ofereça o CSV (link) só se ele pedir 'pra planilha/contador'.",
       };
+    }
+
+    if (name === "consultar_fipe") {
+      // trava de uso em massa: até 30 consultas por dia por número
+      const desde = new Date(Date.now() - 24 * 3600_000).toISOString();
+      const { count: usadas } = await supabase.from("whatsapp_events").select("id", { count: "exact", head: true })
+        .in("from_phone", variantesTel(String(user.phone || ""))).gte("created_at", desde).contains("parsed", { acoes: [{ n: "consultar_fipe" }] });
+      if ((usadas || 0) >= 30) return { ok: false, error: "limite_diario", message: "Ele já fez muitas consultas FIPE hoje. Diga com simpatia que o limite diário foi atingido e que amanhã libera de novo." };
+      let r;
+      try { r = await consultarFipe(supabase, { texto: String(args?.carro || ""), ano: args?.ano || null }); }
+      catch (e) { return { ok: false, error: "fipe_indisponivel", message: "Não consegui consultar a tabela agora. Peça desculpas em 1 linha e ofereça tentar de novo em instantes." }; }
+      if (r.status === "exato" && r.item) {
+        const t = r.item.tendencia;
+        return { ok: true, status: "exato", carro: `${r.item.marca} ${r.item.modelo} ${r.item.ano}`, combustivel: r.item.combustivel, valor_fipe: r.item.valor, codigo_fipe: r.item.codigo_fipe,
+          mes_referencia: r.referencia, tendencia: t && t.nivel !== "sem_dados" ? { nivel: t.nivel, resumo: textoTendencia(t), meses: t.meses.slice(-4) } : null,
+          instrucao: "Responda em 2–4 linhas: o carro EXATO (com a versão), o valor FIPE em *negrito*, o mês de referência e, se houver, a tendência em 1 frase. Lembre em poucas palavras que FIPE é referência (km/estado/região mudam o preço). FECHE com UM próximo passo conforme o contexto: se ele quer COMPRAR um desses → ofereça avisar quando aparecer no estoque (criar_radar) ou mostrar os disponíveis (buscar_carros); se é o carro DELE ou ele quer vender/trocar → ofereça a avaliação na troca. Não invente nenhum número." };
+      }
+      if (r.status === "versoes" || r.status === "anos") {
+        return { ok: true, status: r.status, mes_referencia: r.referencia, total: r.total, opcoes: r.opcoes,
+          instrucao: r.status === "versoes"
+            ? `Há ${r.total} versões e NÃO dá pra saber qual é a dele: liste as opções numeradas (versão${r.opcoes?.[0]?.valor ? " e valor" : " e anos"}), 1 por linha, e pergunte qual é. ${(r.total || 0) > 12 ? "São muitas: ofereça também abrir a lista completa (abrir_consulta_fipe). " : ""}Não escolha por ele.`
+            : "É uma versão só, com vários anos: mostre ano e valor, 1 por linha, e pergunte qual ano ele quer (ou destaque o que ele pediu)." };
+      }
+      if (r.status === "falta_modelo") return { ok: true, status: "falta_modelo", instrucao: "Pergunte qual carro (marca, modelo, versão e ano) ou ofereça abrir a lista (abrir_consulta_fipe)." };
+      return { ok: true, status: "nao_achei", entendi: r.entendi, anos_disponiveis: r.anos_disponiveis || null,
+        instrucao: r.anos_disponiveis ? `Esse modelo não tem o ano pedido na FIPE; os anos disponíveis são ${r.anos_disponiveis}. Diga isso e pergunte se quer ver outro ano.` : "Não achei esse carro na tabela. Diga o que você entendeu, peça pra conferir o nome/versão e ofereça abrir a lista (abrir_consulta_fipe). Não chute valor." };
+    }
+
+    if (name === "abrir_consulta_fipe") {
+      const abriu = await abrirConsultaFipeFlow(String(user.phone || "")).catch(() => false);
+      return abriu
+        ? { ok: true, message: "O formulário de consulta FIPE JÁ foi enviado no chat. Diga em 1 linha pra ele tocar em 'Consultar FIPE' e escolher o carro. Não repita o formulário." }
+        : { ok: false, error: "formulario_indisponivel", message: "O formulário ainda não está disponível. Peça que ele escreva marca, modelo, versão e ano que você consulta com consultar_fipe." };
     }
 
     if (name === "valor_do_carro") {
@@ -4362,6 +4435,10 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
         return new Response(JSON.stringify({ ok: true, viagem_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       // Recompra FIPE ao vivo (endpoint dinâmico)
+      if (await handleFipeFlowReply(msg.phone, msg.flowReply)) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "fipe_flow", input: `[consulta FIPE pelo formulário] ${msg.flowReply.titulo || ""}`, reply: `Tabela FIPE de ${msg.flowReply.titulo || "?"}: R$ ${msg.flowReply.fipe_value || "?"}. Ofereci os botões: Avisar se aparecer, Avaliar meu carro, Consultar outro.` } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
       if (await handleRecompraFlowReply(msg.phone, msg.flowReply)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "recompra_flow", carro: `${msg.flowReply.marca_nome || ""} ${msg.flowReply.modelo_nome || ""}` } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, recompra_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
@@ -4683,6 +4760,7 @@ TROCA DE ÓLEO (motor do Co-pilot — os números SEMPRE vêm das ferramentas): 
 
 CONSUMO (regra importante): para medir o consumo eu preciso do km a cada abastecimento. SEMPRE que registrar um COMBUSTÍVEL sem o km (a ferramenta retorna pedir_hodometro=true), PEÇA uma FOTO DO HODÔMETRO (ou o km digitado) e explique que é assim que eu meço o consumo. Faça o mesmo em manutenções/revisões (ex.: troca de óleo).
 APRESENTAÇÃO DO CONSUMO (sempre simples, litros vs km): "Você rodou X km e usou Y litros → Z km/L". Se houver média e custo: acrescente "Média: W km/L · combustível custa R$ V por km rodado". Nada de jargão.
+FIPE DE QUALQUER CARRO: "quanto está um Corolla 2020?", "fipe da Toro", "quanto vale um HB20 2019" (carro que NÃO é o cadastrado dele) → consultar_fipe com tudo o que ele escreveu. NUNCA escolha a versão por ele nem estime valor: mais de uma versão → liste e pergunte; "quero ver a fipe" sem dizer o carro, ou muitas versões → abrir_consulta_fipe. Botões depois de uma consulta pelo formulário: "Avisar se aparecer" → criar_radar com o carro que ele acabou de consultar (está na conversa); "Consultar outro" → abrir_consulta_fipe.
 VALOR DO CARRO (FIPE mês a mês): para "quanto vale meu carro?", "desvalorizou?", "tá caindo?", "vale trocar agora?" → use valor_do_carro e siga a instrucao dela (1 queda = atenção; 2+ quedas seguidas = alerta pra avaliar a troca).
 CUSTO DO CARRO: para "quanto meu carro custa?", "custo por km", "quanto gasto por mês" → use custo_por_km (retorna custo/km, custo/mês e pra onde vai o dinheiro). Pro MOTORISTA DE APP, deixe claro que esse é o custo que come o ganho — cruze com lucro_periodo quando fizer sentido. É custo real gasto; ainda não inclui depreciação.
 CONSUMO OFICIAL (INMETRO/PBE): ${consumoOficialStr ? `dados oficiais do carro do dono: ${consumoOficialStr}. Quando fizer sentido, COMPARE o consumo REAL dele (consumo_medio) com o oficial: se o real estiver bem abaixo do oficial, sugira causas (calibragem dos pneus, filtro de ar, trânsito, ar-condicionado, pé pesado); se estiver em linha ou acima, elogie. Se o carro for FLEX e ele abastecer com etanol, lembre que é normal render menos km/L que a referência de gasolina. Cite que é dado oficial (INMETRO), com naturalidade.` : "ainda não disponível para este carro (buscando)."}
