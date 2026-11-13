@@ -16,6 +16,7 @@ import {
   partnerToRaw, partnersFirst,
 } from "../_shared/radar-search.ts";
 
+import { fipePorCodigo, textoTendencia } from "../_shared/fipe-consulta.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PRIVATE_KEY_B64 = Deno.env.get("WA_FLOW_PRIVATE_KEY_B64") || "";
@@ -513,7 +514,8 @@ async function telaAno(d: any) {
   const anos = await fipeGet(`/marcas/${encodeURIComponent(d.marca)}/modelos/${encodeURIComponent(d.modelo)}/anos`);
   return { screen: "ANO", data: { anos: cap200(anos), marca: String(d.marca), marca_nome: String(d.marca_nome || ""), modelo: String(d.modelo) } };
 }
-async function handleRecompra(req: any): Promise<any> {
+// modo "fipe" = formulário CONSULTA FIPE (qualquer carro): mesmas telas, resultado só com valor + tendência
+async function handleRecompra(req: any, modo: "recompra" | "fipe" = "recompra"): Promise<any> {
   const d = req.data || {};
 
   if (req.action === "INIT") {
@@ -568,7 +570,23 @@ async function handleRecompra(req: any): Promise<any> {
     if (req.screen === "ANO") {
       const p = await fipeGet(`/marcas/${encodeURIComponent(d.marca)}/modelos/${encodeURIComponent(d.modelo)}/anos/${encodeURIComponent(d.ano)}`);
       const fipeValue = parseBRL(p?.Valor);
-      const titulo = `${p?.Marca || ""} ${p?.Modelo || ""} ${p?.AnoModelo || ""}`.trim();
+      const zeroKm = Number(p?.AnoModelo) >= 32000;
+      const titulo = `${p?.Marca || ""} ${p?.Modelo || ""} ${zeroKm ? "0 km" : p?.AnoModelo || ""}`.trim();
+      if (modo === "fipe") {
+        // valor e tendência da tabela LOCAL (mesmo mês de referência do resto do Co-pilot); sem ela, o valor ao vivo
+        const local = await fipePorCodigo(admin, String(p?.CodigoFipe || ""), zeroKm ? null : Number(p?.AnoModelo) || null, zeroKm).catch(() => null);
+        const valorNum = local?.item.valor_num || fipeValue;
+        return {
+          screen: "RESULTADO",
+          data: {
+            titulo, valor: local?.item.valor || brl(fipeValue),
+            referencia: `Tabela FIPE de ${local?.referencia || String(p?.MesReferencia || "").trim() || "referência atual"} · código ${p?.CodigoFipe || "-"}`,
+            tendencia: textoTendencia(local?.item.tendencia) || "Ainda sem histórico suficiente pra comparar com o mês anterior.",
+            marca_nome: String(p?.Marca || d.marca_nome || ""), modelo_nome: String(p?.Modelo || ""), ano_nome: zeroKm ? "0 km" : String(p?.AnoModelo || ""),
+            combustivel: String(p?.Combustivel || ""), fipe_code: String(p?.CodigoFipe || ""), fipe_value: String(valorNum),
+          },
+        };
+      }
       // RESULTADO mostra só a REFERÊNCIA de tabela (âncora). A proposta por modalidade/prazo é
       // montada no chat depois do "complete" (whatsapp-webhook → handleRecompraFlowReply).
       return {
@@ -624,7 +642,7 @@ Deno.serve(async (req) => {
         const userId = token.includes(":") ? token.split(":")[1] : undefined;
         resp = await handleRadar(flowReq, userId);
       } else {
-        resp = await handleRecompra(flowReq);
+        resp = await handleRecompra(flowReq, token.startsWith("fipe") ? "fipe" : "recompra");
       }
     }
   } catch (e) {

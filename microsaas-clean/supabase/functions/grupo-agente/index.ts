@@ -4,7 +4,7 @@
 // Nunca responde conversa particular, nunca altera dados. Deploy com --no-verify-jwt.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { secretOk, unauthorized } from "../_shared/secret.ts";
-import { lerMensagem, chamouNina, lojaDoGrupo, buscarFichas, respostaSimples, promptNina, responderGrupo, canalCfg } from "../_shared/grupo-nina.ts";
+import { lerMensagem, chamouNina, lojaDoGrupo, buscarFichas, respostaSimples, promptNina, responderGrupo, canalCfg, fipeDoGrupo } from "../_shared/grupo-nina.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const ok = (b: unknown = { ok: true }) => new Response(JSON.stringify(b), { headers: { "content-type": "application/json" } });
@@ -61,15 +61,20 @@ async function tratar(body: any) {
   const pergunta = m.texto.replace(/@\d+/g, " ").trim();
   let resposta = "", nFichas = 0, viaIA = false;
   try {
-    const d = await buscarFichas(admin, loja, pergunta);
+    const fipe = await fipeDoGrupo(admin, pergunta);
+    // pergunta só de FIPE não precisa das fichas de clientes (e evita casar "Corolla" com quem comprou um)
+    const soFipe = !!fipe && ["exato", "versoes", "anos"].includes(fipe.status); // achou o modelo na tabela
+    const d = soFipe ? { fichas: [], total_vendas: 0, casos_abertos: [] } : await buscarFichas(admin, loja, pergunta);
     nFichas = d.fichas.length;
     const hoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-    const dados = JSON.stringify({ clientes_encontrados: d.fichas, total_de_vendas_registradas: d.total_vendas, atendimentos_em_aberto_na_loja: d.casos_abertos });
+    const dados = JSON.stringify(soFipe ? { consulta_fipe: fipe }
+      : { clientes_encontrados: d.fichas, total_de_vendas_registradas: d.total_vendas, atendimentos_em_aberto_na_loja: d.casos_abertos, ...(fipe && !d.fichas.length ? { consulta_fipe: fipe } : {}) });
     try {
       resposta = await aiTexto(promptNina(loja, hoje), `DADOS:\n${dados}\n\nPergunta de ${m.autorNome || "alguém da equipe"} no grupo: "${pergunta}"`);
       viaIA = !!resposta;
     } catch (e) { console.error("grupo-agente IA:", String((e as any)?.message || e)); }
-    if (!resposta) resposta = respostaSimples(d.fichas);
+    if (!resposta) resposta = fipe?.status === "exato" ? `*${fipe.carro}*\nTabela FIPE (${fipe.mes_referencia || "atual"}): *${fipe.valor_fipe}*${fipe.tendencia ? `\n${fipe.tendencia}` : ""}`
+      : soFipe ? "Achei mais de uma versão desse modelo. Me diga a versão e o ano." : respostaSimples(d.fichas);
   } catch (e) {
     console.error("grupo-agente:", e);
     resposta = "Não consegui consultar agora. Tenta de novo em instantes.";

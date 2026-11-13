@@ -6,6 +6,7 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 
 // avaliação FIPE com o campo "Ou digite o modelo" (v2). Nome = prefixo + data.
 export const RECOMPRA_V2_PREFIXO = "avaliar_carro_v2";
+export const FIPE_PREFIXO = "consulta_fipe_v1"; // formulário "Consulta FIPE" (qualquer carro)
 export const FLOW_ENDPOINT = `${(Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "")}/functions/v1/wa-flow-endpoint`;
 
 export async function publicarFlow(token: string, waba: string, name: string, flowJson: unknown, endpointUri?: string) {

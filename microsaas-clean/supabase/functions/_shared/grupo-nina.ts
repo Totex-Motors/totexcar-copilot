@@ -3,6 +3,7 @@
 // km, troca de óleo e atendimentos. Nunca altera nada, nunca responde fora dos grupos autorizados pela loja
 // (posvenda_config.grupo_id + nina_grupos) e nunca mostra CPF.
 import { estadoOleo, resumoOleo } from "./oleo.ts";
+import { consultarFipe, textoTendencia } from "./fipe-consulta.ts";
 
 const norm = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const dig = (s: unknown) => String(s ?? "").replace(/\D/g, "");
@@ -144,6 +145,16 @@ export async function buscarFichas(sb: any, loja: string, pergunta: string): Pro
   };
 }
 
+// "Nina, FIPE do Onix LT 2022?" no grupo: consulta a tabela local (a mesma do WhatsApp). null = não é pergunta de FIPE.
+export async function fipeDoGrupo(sb: any, pergunta: string): Promise<any | null> {
+  if (!/\bfipe\b|\btabela\b|quanto (vale|custa|ta|esta|sai)\b/.test(norm(pergunta))) return null;
+  try {
+    const r = await consultarFipe(sb, { texto: pergunta });
+    if (r.status === "exato" && r.item) return { status: "exato", carro: `${r.item.marca} ${r.item.modelo} ${r.item.ano}`, valor_fipe: r.item.valor, codigo_fipe: r.item.codigo_fipe, mes_referencia: r.referencia, tendencia: textoTendencia(r.item.tendencia) || null };
+    return { status: r.status, mes_referencia: r.referencia, total: r.total || 0, opcoes: r.opcoes || [], entendi: r.entendi || null, anos_disponiveis: r.anos_disponiveis || null };
+  } catch { return { status: "indisponivel" }; }
+}
+
 // resposta sem IA (IA fora do ar ou sem chave): o essencial das fichas
 export function respostaSimples(fichas: any[]): string {
   if (!fichas.length) return "Não achei esse cliente nas vendas da loja. Me diga o nome completo, o telefone ou a placa.";
@@ -161,7 +172,8 @@ Você só CONSULTA: responda usando APENAS os DADOS abaixo (vendas e pós-venda 
 - Transferência: mostre o status e os passos como ✅ feito / ⬜ pendente só quando perguntarem disso.
 - "troca_de_oleo" e km são estimativas do Co-pilot quando o cliente usa o app; diga "pelo registro do Co-pilot".
 - Não mostre CPF nem dados que não estejam nos DADOS. Você não altera cadastro: se pedirem pra mudar algo, diga que é pelo painel da loja.
-- Pergunta fora do assunto da loja/clientes: responda em 1 linha que você ajuda com dados de clientes e carros vendidos.`;
+- TABELA FIPE (campo "consulta_fipe" nos DADOS, quando perguntarem valor/FIPE de um modelo): status "exato" → diga o carro com a versão, o valor em *negrito*, o mês de referência e a tendência se houver. Status "versoes"/"anos" → liste as opções (1 por linha, com valor ou anos) e peça pra dizerem a versão e o ano; NUNCA escolha a versão nem estime valor. "nao_achei"/"falta_modelo" → peça marca, modelo, versão e ano.
+- Pergunta fora do assunto da loja/clientes/FIPE: responda em 1 linha que você ajuda com dados de clientes, carros vendidos e consulta FIPE.`;
 }
 
 // ---------- webhook do número do Canal → função grupo-agente ----------
