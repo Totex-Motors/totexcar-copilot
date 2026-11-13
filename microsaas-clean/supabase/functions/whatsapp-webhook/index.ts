@@ -169,6 +169,7 @@ function isRadarQuery(t: string): boolean {
 // pedido de AVALIAR/VENDER o próprio carro → abre o flow da Recompra FIPE (não "vá no app")
 // "quero saber a tabela fipe de um outro carro", "consulta fipe", "ver a fipe": fala de FIPE e NÃO diz o carro.
 // (com modelo/ano na frase não casa — aí a IA consulta direto. "fipe do meu carro" também não: é valor_do_carro.)
+// Quem TEM carro cadastrado e pede "a fipe" sem dizer "outro/qualquer" quer a do carro dele: o atalho não entra.
 const FIPE_GENERICO = new Set(("quero queria gostaria preciso posso pode poderia consegue saber ver olhar consultar consulta pesquisar checar conferir me mostra mostrar manda passa passar diz dizer qual quais como " +
   "a o as os um uma uns de do da dos das na no em pra para por favor e ai oi ola bom dia boa tarde noite nina tabela fipe valor valores preco precos carro carros veiculo veiculos outro outra outros qualquer algum alguns modelo modelos").split(" "));
 function pedidoFipeSemCarro(t: string): boolean {
@@ -2615,6 +2616,10 @@ async function dispatchToolImpl(name: string, args: any, ctx: ToolCtx): Promise<
     }
 
     if (name === "consultar_fipe") {
+      // "quanto vale MEU carro/meu Onix" é o carro cadastrado: valor_do_carro conhece a versão e o ano exatos
+      if (vehicle && /\b(meu|minha)\b/i.test(String(ctx.inputText || "")) && !/\boutr[oa]s?\b/i.test(String(ctx.inputText || ""))) {
+        return { ok: false, error: "use_valor_do_carro", message: "Ele perguntou do carro DELE (cadastrado): chame valor_do_carro agora, em vez desta ferramenta." };
+      }
       // trava de uso em massa: até 30 consultas por dia por número
       const desde = new Date(Date.now() - 24 * 3600_000).toISOString();
       const { count: usadas } = await supabase.from("whatsapp_events").select("id", { count: "exact", head: true })
@@ -4769,7 +4774,7 @@ TROCA DE ÓLEO (motor do Co-pilot — os números SEMPRE vêm das ferramentas): 
 
 CONSUMO (regra importante): para medir o consumo eu preciso do km a cada abastecimento. SEMPRE que registrar um COMBUSTÍVEL sem o km (a ferramenta retorna pedir_hodometro=true), PEÇA uma FOTO DO HODÔMETRO (ou o km digitado) e explique que é assim que eu meço o consumo. Faça o mesmo em manutenções/revisões (ex.: troca de óleo).
 APRESENTAÇÃO DO CONSUMO (sempre simples, litros vs km): "Você rodou X km e usou Y litros → Z km/L". Se houver média e custo: acrescente "Média: W km/L · combustível custa R$ V por km rodado". Nada de jargão.
-FIPE DE QUALQUER CARRO: "quanto está um Corolla 2020?", "fipe da Toro", "quanto vale um HB20 2019" (carro que NÃO é o cadastrado dele) → consultar_fipe com tudo o que ele escreveu. NUNCA escolha a versão por ele nem estime valor: mais de uma versão → liste e pergunte; "quero ver a fipe" sem dizer o carro, ou muitas versões → abrir_consulta_fipe. Botões depois de uma consulta pelo formulário: "Avisar se aparecer" → criar_radar com o carro que ele acabou de consultar (está na conversa); "Consultar outro" → abrir_consulta_fipe.
+FIPE DE QUALQUER CARRO: "quanto está um Corolla 2020?", "fipe da Toro", "quanto vale um HB20 2019" (carro que NÃO é o cadastrado dele) → consultar_fipe com tudo o que ele escreveu. Se ele tem carro cadastrado e pergunta "a fipe"/"quanto vale" SEM citar outro modelo, é o carro DELE → valor_do_carro (nada muda no atendimento do carro cadastrado). NUNCA escolha a versão por ele nem estime valor: mais de uma versão → liste e pergunte; "quero ver a fipe" sem dizer o carro, ou muitas versões → abrir_consulta_fipe. Botões depois de uma consulta pelo formulário: "Avisar se aparecer" → criar_radar com o carro que ele acabou de consultar (está na conversa); "Consultar outro" → abrir_consulta_fipe.
 VALOR DO CARRO (FIPE mês a mês): para "quanto vale meu carro?", "desvalorizou?", "tá caindo?", "vale trocar agora?" → use valor_do_carro e siga a instrucao dela (1 queda = atenção; 2+ quedas seguidas = alerta pra avaliar a troca).
 CUSTO DO CARRO: para "quanto meu carro custa?", "custo por km", "quanto gasto por mês" → use custo_por_km (retorna custo/km, custo/mês e pra onde vai o dinheiro). Pro MOTORISTA DE APP, deixe claro que esse é o custo que come o ganho — cruze com lucro_periodo quando fizer sentido. É custo real gasto; ainda não inclui depreciação.
 CONSUMO OFICIAL (INMETRO/PBE): ${consumoOficialStr ? `dados oficiais do carro do dono: ${consumoOficialStr}. Quando fizer sentido, COMPARE o consumo REAL dele (consumo_medio) com o oficial: se o real estiver bem abaixo do oficial, sugira causas (calibragem dos pneus, filtro de ar, trânsito, ar-condicionado, pé pesado); se estiver em linha ou acima, elogie. Se o carro for FLEX e ele abastecer com etanol, lembre que é normal render menos km/L que a referência de gasolina. Cite que é dado oficial (INMETRO), com naturalidade.` : "ainda não disponível para este carro (buscando)."}
@@ -4786,7 +4791,7 @@ MULTAS: se a foto for um auto de infração/notificação:
 3) Se faltar informação-chave pro checklist (data de recebimento da notificação, se recebeu as duas, radar fixo/móvel, sinalização), FAÇA 2–3 perguntas curtas ao usuário ANTES de fechar a análise — as respostas fortalecem o recurso. Se ele não souber, siga com o que tem.
 4) Estime a chance (baixa/media/alta) com HONESTIDADE — NUNCA prometa que a multa "vai cair". Gere a MINUTA de recurso (defesa prévia) citando os artigos/resoluções do checklist que se aplicarem e chame registrar_multa (com recurso_texto, prazo_recurso e chance). Envie um resumo + o texto do recurso, deixando claro que é um MODELO e a decisão é do órgão. Avise o prazo.
 PEDÁGIO FREE FLOW (sem cancela): quando ele contar que passou por pedágio sem cancela/pórtico, ou mandar cobrança/print de Free Flow → registrar_pedagio (vencimento SÓ se estiver na cobrança; não invente). "Paguei o pedágio" → pedagio_pago. "Quais pedágios tenho?" → meus_pedagios. Regras (ANTT): a passagem é registrada pela placa; sem tag ele paga depois no canal da concessionária, em até 30 dias depois que aparecer como "pendente de pagamento"; consulta no app CNH do Brasil → Veículos → carro → Pedágio Eletrônico; não pagar pode virar multa e pontos. NUNCA diga que o Co-pilot descobre as passagens sozinho ou confirma o pagamento: é ele que informa.
-REGRA DE OURO (auditada): só diga "anotei", "registrei", "atualizei", "corrigi" ou "não aviso mais" se uma FERRAMENTA gravou isso NESTE turno (ok:true). Se ele informar ou corrigir algo e NÃO houver ferramenta pra gravar, NÃO finja: diga com franqueza que vai passar pra equipe ajustar e chame abrir_chamado com o que ele disse.
+REGRA DE OURO (auditada) — vale pra DADOS DO CARRO E AVISOS (km, troca de óleo/revisão e seus prazos, gastos, multas, pedágio, parcelas, documentos e vencimentos, cadastro do carro, parar/mudar um aviso): só diga "anotei", "registrei", "atualizei", "corrigi" ou "não aviso mais" se uma FERRAMENTA gravou isso NESTE turno (ok:true). Se ele informar ou corrigir um dado desses e NÃO houver ferramenta pra gravar, NÃO finja: diga com franqueza que vai passar pra equipe ajustar e chame abrir_chamado com o que ele disse. Preferências e contexto pessoal (como quer ser chamado, rotina, planos) a sua memória guarda sozinha: aí pode responder naturalmente, sem chamado.
 PONTOS DA CNH: para "quantos pontos eu tenho?", "vou perder a CNH?", "tô perto de suspender?" → use pontos_cnh (soma dos últimos 12 meses das multas + limite de suspensão do CTB). Depois de registrar uma multa nova COM pontos, vale mencionar o total atualizado e, se estiver perto do limite, alertar com cuidado (sem alarmismo). Deixe claro que conta só as multas registradas aqui.
 
 Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.join(", ")}. Use is_new_category=true só se nenhuma existente servir.
@@ -5051,7 +5056,7 @@ ${JSON.stringify(snapshot)}`;
 
     // Atalho: pediu a TABELA FIPE sem dizer qual carro ("quero saber a fipe de outro carro") → formulário de
     // consulta (ou pergunta o carro). Com o carro na frase ("fipe do Corolla 2020") segue pra IA (consultar_fipe).
-    if (msg.kind !== "image" && !carMode && pedidoFipeSemCarro(inputText)) {
+    if (msg.kind !== "image" && !carMode && pedidoFipeSemCarro(inputText) && (!vehicle || /\boutr[oa]s?\b|\bqualquer\b|\balgu(m|ns)\b/i.test(inputText))) {
       const abriu = await abrirConsultaFipeFlow(msg.phone).catch(() => false);
       const resp = abriu ? "[formulário de consulta FIPE enviado]" : "Claro! 🔎 Me diga qual carro: marca, modelo, versão e ano (ex.: Corolla XEi 2020) que eu consulto a tabela FIPE pra você.";
       if (!abriu) await sendText(msg.phone, resp);
@@ -5239,7 +5244,7 @@ ${JSON.stringify(snapshot)}`;
     if (ctx.mapas?.length) await sendText(msg.phone, ctx.mapas.join("\n"));
     if (ctx.fila?.length) await modoCarroGuardar(msg.phone, ctx.fila);
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
-    const aud = auditarResposta(replyText, ctx.acoes);
+    const aud = auditarResposta(replyText, ctx.acoes, inputText);
     if (aud.conferir) console.warn("AUDITORIA conferir:", aud.motivo, "| ações:", JSON.stringify(ctx.acoes || []));
     if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText, acoes: ctx.acoes || [], ...(aud.conferir ? { conferir: true, conferir_motivo: aud.motivo } : {}) }, user_id: user.id }).eq("id", eventId);
 
