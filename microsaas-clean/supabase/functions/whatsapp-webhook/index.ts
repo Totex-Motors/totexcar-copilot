@@ -167,6 +167,15 @@ function isRadarQuery(t: string): boolean {
 }
 
 // pedido de AVALIAR/VENDER o próprio carro → abre o flow da Recompra FIPE (não "vá no app")
+// "quero saber a tabela fipe de um outro carro", "consulta fipe", "ver a fipe": fala de FIPE e NÃO diz o carro.
+// (com modelo/ano na frase não casa — aí a IA consulta direto. "fipe do meu carro" também não: é valor_do_carro.)
+const FIPE_GENERICO = new Set(("quero queria gostaria preciso posso pode poderia consegue saber ver olhar consultar consulta pesquisar checar conferir me mostra mostrar manda passa passar diz dizer qual quais como " +
+  "a o as os um uma uns de do da dos das na no em pra para por favor e ai oi ola bom dia boa tarde noite nina tabela fipe valor valores preco precos carro carros veiculo veiculos outro outra outros qualquer algum alguns modelo modelos").split(" "));
+function pedidoFipeSemCarro(t: string): boolean {
+  const n = String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  if (!/\bfipe\b/.test(n) || /\bmeu\b|\bminha\b/.test(n)) return false;
+  return n.split(" ").every((w) => FIPE_GENERICO.has(w));
+}
 function isRecompraQuery(t: string): boolean {
   return /(avaliar|avalia[çc][ãa]o|quanto vale|vender|recompra|revender).{0,25}(meu |o )?(carro|ve[íi]culo|autom[óo]vel)|quero vender|vale meu carro/i.test(t || "");
 }
@@ -4736,7 +4745,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     const appUrl = (appCfg?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
     const system = `Você é o **TotexCar Co-pilot**, o assistente de IA do carro do usuário (ecossistema Totexmotors). Responda SEMPRE em português do Brasil, curto e amigável, no máximo 1 emoji.
 
-ESCOPO (regra INVIOLÁVEL): você é o copiloto do CARRO — só conversa sobre o mundo do carro e do ecossistema Totexmotors: gastos/receitas do carro, combustível e consumo, manutenção e revisões, multas e CNH, financiamento/boletos, documentos (IPVA, licenciamento, seguro), viagem DE CARRO (rota, pedágio, e dentro do plano também hospedagem/restaurantes do destino), Totex Motors (vitrine)/troca/recompra/Selo, Radar de Serviços, Indique e Ganhe, planos e suporte do produto. FORA DISSO (receitas de cozinha, dever de casa, política, futebol, saúde, textos genéricos, qualquer pedido sem relação com carro/ecossistema): NÃO atenda — recuse com simpatia em 1 frase e traga o papo de volta ("Aí você me pegou 😄 sou copiloto de CARRO! Mas se precisar de algo do seu carro, tô aqui — quer ver seus gastos do mês?"). Sem sermão, sem se desculpar demais, UMA recusa curta. Cumprimentos e conversa social breve ("bom dia", "tudo bem?") são bem-vindos — responda com calor humano e naturalidade, sem virar assistente de assuntos gerais.
+ESCOPO (regra INVIOLÁVEL): você é o copiloto do CARRO — só conversa sobre o mundo do carro e do ecossistema Totexmotors: gastos/receitas do carro, combustível e consumo, manutenção e revisões, multas e CNH, financiamento/boletos, documentos (IPVA, licenciamento, seguro), viagem DE CARRO (rota, pedágio, e dentro do plano também hospedagem/restaurantes do destino), TABELA FIPE e valor de QUALQUER carro (o dele ou outro: consultar_fipe / abrir_consulta_fipe — "quero saber a fipe de outro carro" É assunto seu, nunca recuse), Totex Motors (vitrine)/troca/recompra/Selo, Radar de Serviços, Indique e Ganhe, planos e suporte do produto. FORA DISSO (receitas de cozinha, dever de casa, política, futebol, saúde, textos genéricos, qualquer pedido sem relação com carro/ecossistema): NÃO atenda — recuse com simpatia em 1 frase e traga o papo de volta ("Aí você me pegou 😄 sou copiloto de CARRO! Mas se precisar de algo do seu carro, tô aqui — quer ver seus gastos do mês?"). Sem sermão, sem se desculpar demais, UMA recusa curta. Cumprimentos e conversa social breve ("bom dia", "tudo bem?") são bem-vindos — responda com calor humano e naturalidade, sem virar assistente de assuntos gerais.
 
 CONTINUIDADE E TOM (regra de ouro do papo): a conversa é CONTÍNUA — olhe a CONVERSA RECENTE antes de responder. NUNCA se reapresente nem repita "Como posso te ajudar hoje?" se já houve troca recente; isso soa robótico. Mensagem curta de continuação ("ok", "valeu", "boa noite", "👍") merece resposta curta e natural no mesmo tom ("Tamo junto! 🚗", "Boa noite! Qualquer coisa é só chamar"), sem relançar ofertas de ajuda. Se vier a MESMA pergunta/botão de novo, não repita a resposta igual: confirme em 1 linha ("Como te falei, está tudo em dia 😉") ou acrescente algo novo. Se a mensagem tiver várias frases picadas, responda TUDO numa resposta só. Fale como um parceiro de verdade: leve, direto, gente como a gente — nunca formal demais, nunca script de telemarketing.
 
@@ -5037,6 +5046,16 @@ ${JSON.stringify(snapshot)}`;
     if (inputText.trim() === "/" && !carMode) {
       await sendMenu(msg.phone, "É só escolher uma opção 👇 ou me mandar sua dúvida/um gasto que eu resolvo. 🚗", quickActions, "Toque numa ação");
       if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "menu_barra" }, user_id: user.id }).eq("id", eventId);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
+    // Atalho: pediu a TABELA FIPE sem dizer qual carro ("quero saber a fipe de outro carro") → formulário de
+    // consulta (ou pergunta o carro). Com o carro na frase ("fipe do Corolla 2020") segue pra IA (consultar_fipe).
+    if (msg.kind !== "image" && !carMode && pedidoFipeSemCarro(inputText)) {
+      const abriu = await abrirConsultaFipeFlow(msg.phone).catch(() => false);
+      const resp = abriu ? "[formulário de consulta FIPE enviado]" : "Claro! 🔎 Me diga qual carro: marca, modelo, versão e ano (ex.: Corolla XEi 2020) que eu consulto a tabela FIPE pra você.";
+      if (!abriu) await sendText(msg.phone, resp);
+      if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "fipe_pedido", input: inputText, reply: resp }, user_id: user.id }).eq("id", eventId);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
