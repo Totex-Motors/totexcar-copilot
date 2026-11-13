@@ -130,6 +130,12 @@ async function ultimaLeitura(sb: any, accountId: string | null | undefined, pts:
   return { km: ultPt?.km || 0, em: ultPt?.t ?? null };
 }
 
+// carro 100% ELÉTRICO não tem troca de óleo (híbrido tem). Aceita "Elétrico", "ELETRICO/FONTE EXTERNA"…
+export function ehEletrico(vehicle: any): boolean {
+  const c = String(vehicle?.combustivel || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return /eletric/.test(c) && !/gasolin|alcool|etanol|flex|diesel|hibrid|gnv/.test(c);
+}
+
 // lembrete de óleo do carro: o desta conta; senão um sem conta (cadastro antigo); maior km primeiro
 export function lembreteOleo(rems: any[] | null | undefined, accountId?: string | null): any | null {
   const oleo = (rems || []).filter((r: any) => RE_OLEO.test(String(r.title || "")));
@@ -150,6 +156,8 @@ export type EstadoOleo = {
   proximaData: string | null; faltamDias: number | null; vencePor: "km" | "tempo" | null;
   status: "sem_ancora" | "em_dia" | "proxima" | "vencida" | "atrasada";
   leituraVelha: boolean; precisaConfirmarKm: boolean;
+  planoDoCliente?: boolean;               // intervalo/próxima troca informados pelo próprio cliente (manual do carro)
+  pausadoAte?: string | null;             // cliente pediu pra não avisar até esta data
 };
 
 export async function estadoOleo(sb: any, user: any, vehicle: any): Promise<EstadoOleo> {
@@ -179,7 +187,10 @@ export async function estadoOleo(sb: any, user: any, vehicle: any): Promise<Esta
 
   let intervaloKm = Number(rem.interval_km) || 10000;
   let intervaloMeses = Number(rem.interval_meses) || 12;
-  if (severo) { intervaloKm = Math.max(3000, Math.round((intervaloKm * 0.5) / 500) * 500); intervaloMeses = Math.min(intervaloMeses, 6); }
+  // plano informado pelo CLIENTE (manual/concessionária) vale como está; o corte de uso severo é só pro padrão
+  const planoDoCliente = rem.plano_fonte === "cliente";
+  if (severo && !planoDoCliente) { intervaloKm = Math.max(3000, Math.round((intervaloKm * 0.5) / 500) * 500); intervaloMeses = Math.min(intervaloMeses, 6); }
+  const pausadoAte = rem.pausado_ate && String(rem.pausado_ate).slice(0, 10) >= hojeIso() ? String(rem.pausado_ate).slice(0, 10) : null;
   const ultKm = Number(rem.last_km) || 0;
   const ultData = String(rem.last_date || rem.created_at || hojeIso()).slice(0, 10);
   kmHoje = Math.max(kmHoje, ultKm);
@@ -198,7 +209,7 @@ export async function estadoOleo(sb: any, user: any, vehicle: any): Promise<Esta
     : (faltamKm <= 1000 || faltamDias <= 15) ? "proxima" : "em_dia";
   return {
     ...base, intervaloKm, intervaloMeses, ultimaTroca: { km: ultKm, data: ultData }, kmHoje,
-    proximaKm, faltamKm, proximaData, faltamDias, vencePor, status,
+    proximaKm, faltamKm, proximaData, faltamDias, vencePor, status, planoDoCliente, pausadoAte,
     // vai vencer pelo KM e a leitura é velha → confirma o km com foto do painel antes de cobrar
     // (margem de 2.000 km: quanto mais velha a leitura, maior o erro da estimativa)
     precisaConfirmarKm: base.leituraVelha && vencePor === "km" && (status !== "em_dia" || faltamKm <= 2000),
@@ -228,13 +239,77 @@ export async function registrarTrocaOleo(sb: any, o: { userId: string; accountId
   return { ok: true, proximaKm: km + intervaloKm, proximaData: addMeses(data, intervaloMeses) };
 }
 
+// O CLIENTE CORRIGE O PLANO (sem ter trocado o óleo): "é de 12 em 12 mil", "a próxima é aos 24 mil ou em maio",
+// "não precisa me avisar". Grava o intervalo e reposiciona a âncora (última = próxima − intervalo), marcando
+// plano_fonte='cliente' (não sofre o corte de uso severo). Mudar a âncora abre um ciclo novo de avisos.
+export async function ajustarPlanoOleo(sb: any, o: {
+  userId: string; accountId?: string | null; kmAtual?: number | null;
+  intervaloKm?: number | null; intervaloMeses?: number | null; proximaKm?: number | null; proximaData?: string | null; pausarDias?: number | null;
+}): Promise<{ ok: boolean; error?: string; message?: string }> {
+  if (!o.userId) return { ok: false, error: "sem_usuario" };
+  const { data: rems } = await sb.from("maintenance_reminders").select("*").eq("user_id", o.userId).eq("active", true);
+  const rem = lembreteOleo(rems, o.accountId);
+  const entre = (v: unknown, min: number, max: number) => { const n = Math.round(Number(v) || 0); return n >= min && n <= max ? n : null; };
+  const iKmDado = entre(o.intervaloKm, 1000, 50000), iMDado = entre(o.intervaloMeses, 1, 36);
+  const proxKm = entre(o.proximaKm, 500, 2_000_000);
+  const proxData = /^\d{4}-\d{2}(-\d{2})?$/.test(String(o.proximaData || "")) ? `${String(o.proximaData).slice(0, 7)}-${String(o.proximaData).slice(8, 10) || "01"}` : null;
+  const pausa = entre(o.pausarDias, 1, 365);
+  if (!iKmDado && !iMDado && !proxKm && !proxData && !pausa) return { ok: false, error: "nada_informado", message: "Pergunte em 1 linha o que mudar: o intervalo (km/meses) ou quando é a próxima troca." };
+
+  let iKm = iKmDado || Number(rem?.interval_km) || 10000;
+  let iM = iMDado || Number(rem?.interval_meses) || 12;
+  let lastKm = Number(rem?.last_km) || 0;
+  let lastDate = String(rem?.last_date || "").slice(0, 10) || null;
+  const kmAtual = Math.round(Number(o.kmAtual) || 0);
+
+  if (proxKm) {
+    const cand = proxKm - iKm;
+    if (!iKmDado && lastKm > 0 && proxKm - lastKm >= 2000 && proxKm - lastKm <= 30000) iKm = proxKm - lastKm; // só a próxima: o intervalo é a diferença
+    else if (cand > 0 && (kmAtual <= 0 || cand <= kmAtual + 300)) lastKm = cand;
+    else if (lastKm > 0 && proxKm - lastKm >= 2000 && proxKm - lastKm <= 50000) iKm = proxKm - lastKm;
+    else return { ok: false, error: "proxima_incoerente", message: `NÃO gravado: a próxima aos ${proxKm} km não fecha com o intervalo de ${iKm} km e o km atual (${kmAtual || "?"}). Confirme em 1 linha o km de hoje e o intervalo do manual.` };
+  }
+  if (proxData) {
+    const cand = addMeses(proxData, -iM);
+    if (cand <= hojeIso()) lastDate = cand;
+    else if (!iMDado) { // próxima mais longe que o intervalo: ajusta o intervalo em meses a partir da última data conhecida
+      const base = new Date(`${lastDate || hojeIso()}T12:00:00Z`), alvo = new Date(`${proxData}T12:00:00Z`);
+      const meses = (alvo.getUTCFullYear() - base.getUTCFullYear()) * 12 + (alvo.getUTCMonth() - base.getUTCMonth());
+      if (meses >= 1 && meses <= 36) iM = meses; else return { ok: false, error: "data_incoerente", message: "NÃO gravado: a data da próxima troca não fecha. Confirme o mês/ano em 1 linha." };
+      lastDate = lastDate || hojeIso();
+    } else lastDate = hojeIso();
+  }
+  if (!rem && !(lastKm > 0)) {
+    if (!pausa) return { ok: false, error: "sem_ancora", message: "Ainda não sei quando foi a última troca nem quando é a próxima. Pergunte: 'com quantos km é a próxima revisão/troca?' e chame de novo com proxima_km." };
+  }
+  const row: Record<string, unknown> = { interval_km: iKm, interval_meses: iM, updated_at: new Date().toISOString(), plano_fonte: "cliente" };
+  if (lastKm > 0) row.last_km = lastKm;
+  if (lastDate) row.last_date = lastDate;
+  if (pausa) row.pausado_ate = addDias(pausa);
+  else if (proxKm || proxData || iKmDado || iMDado) row.pausado_ate = null;
+  const gravar = async (r: Record<string, unknown>) => rem
+    ? await sb.from("maintenance_reminders").update(r).eq("id", rem.id)
+    : await sb.from("maintenance_reminders").insert({ user_id: o.userId, account_id: o.accountId || null, title: TITULO_OLEO, active: true, ...r });
+  if (!rem && !(lastKm > 0)) return { ok: false, error: "sem_ancora", message: "Pra pausar os avisos preciso antes saber da última troca; pergunte o km da última (ou da próxima)." };
+  let r = await gravar(row);
+  if (r?.error) { // banco ainda sem as colunas novas (plano_fonte/pausado_ate): grava o essencial
+    if (pausa && !proxKm && !proxData && !iKmDado && !iMDado) return { ok: false, error: "rode_o_sql_do_plano_de_oleo", message: "Não consegui pausar agora (ajuste pendente no sistema). Peça desculpas em 1 linha e diga que vai avisar a equipe." };
+    delete row.plano_fonte; delete row.pausado_ate;
+    r = await gravar(row);
+    if (r?.error) return { ok: false, error: "falha" };
+  }
+  return { ok: true };
+}
+
 // resumo legível (ferramenta do assistente / painel)
 export function resumoOleo(e: EstadoOleo): string {
   if (!e.ativo || !e.ultimaTroca) return "Sem registro da última troca de óleo.";
   const est = e.leitura.diasAtras && e.leitura.diasAtras > 1 ? `≈${kmBR(e.kmHoje)} hoje (estimado; última leitura ${kmBR(e.leitura.km)} há ${e.leitura.diasAtras} dias)` : `${kmBR(e.kmHoje)} hoje`;
-  const prazo = e.vencePor === "tempo" ? `até ${dataBR(e.proximaData!)} (12 meses${e.severo ? "/uso severo" : ""})` : `aos ${kmBR(e.proximaKm!)} (≈${dataBR(e.proximaData!)})`;
+  const prazo = e.vencePor === "tempo" ? `até ${dataBR(e.proximaData!)} (${e.intervaloMeses} meses${e.severo && !e.planoDoCliente ? "/uso severo" : ""})` : `aos ${kmBR(e.proximaKm!)} (≈${dataBR(e.proximaData!)})`;
   const sit = e.status === "em_dia" ? `faltam ${kmBR(e.faltamKm!)}` : e.status === "proxima" ? `faltam ${kmBR(Math.max(0, e.faltamKm!))}` : e.status === "vencida" ? "venceu" : "atrasada";
-  return `Última troca: ${kmBR(e.ultimaTroca.km)} em ${dataBR(e.ultimaTroca.data)}. Km: ${est}. Próxima troca ${prazo} — ${sit}.`;
+  const plano = `Plano: a cada ${kmBR(e.intervaloKm)} ou ${e.intervaloMeses} meses${e.planoDoCliente ? " (informado pelo cliente)" : " (padrão)"}.`;
+  const pausa = e.pausadoAte ? ` Avisos pausados até ${dataBR(e.pausadoAte)} a pedido do cliente.` : "";
+  return `Última troca: ${kmBR(e.ultimaTroca.km)} em ${dataBR(e.ultimaTroca.data)}. Km: ${est}. Próxima troca ${prazo} — ${sit}. ${plano}${pausa}`;
 }
 
 // ---------------- decisão diária (cron) ----------------
@@ -243,7 +318,9 @@ export type AcaoOleo = { acao: "ancora" | "confirmar_km" | "aviso" | "vencida" |
 // Decide se hoje tem mensagem de óleo pra este cliente e já grava o dedup (notification_log).
 export async function oleoTick(sb: any, u: any, v: any): Promise<AcaoOleo | null> {
   if (!u?.id || !v?.id) return null;
+  if (ehEletrico(v)) return null; // carro elétrico não troca óleo
   const e = await estadoOleo(sb, u, v);
+  if (e.pausadoAte) return null;  // o cliente pediu pra não avisar por enquanto
   const dedup = async (kind: string, due: string) => {
     const { error } = await sb.from("notification_log").insert({ user_id: u.id, kind, due_date: due, channel: "whatsapp" });
     return !error;

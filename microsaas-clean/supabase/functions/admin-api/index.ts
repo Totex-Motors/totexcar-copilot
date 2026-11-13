@@ -5,6 +5,7 @@ import { SERVICE_TYPES } from "../_shared/radar-search.ts";
 import { publicarFlow, flowPublicado, RECOMPRA_V2_PREFIXO, FLOW_ENDPOINT } from "../_shared/flows.ts";
 import recompraV2 from "../_shared/recompra-flow-v2.json" with { type: "json" };
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
+import { falaPromete } from "../_shared/auditoria.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -65,6 +66,69 @@ Deno.serve(async (req) => {
         const name = `${RECOMPRA_V2_PREFIXO}_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
         const r = await publicarFlow(tk, waba, name, recompraV2, FLOW_ENDPOINT);
         return json(r, r.ok ? 200 : 502);
+      }
+
+      // TRATATIVAS PRA CONFERIR: o que o cliente respondeu aos avisos do Co-pilot, o que a Nina disse e o que
+      // ela GRAVOU (parsed.acoes). "conferir" = disse que anotou/registrou e nada foi gravado. No histórico
+      // anterior à auditoria só há os textos: marca como "possível" quando a fala promete.
+      case "tratativas": {
+        const dias = Math.min(60, Math.max(1, Number(payload.dias) || 30));
+        const desde = new Date(Date.now() - dias * 86400000).toISOString();
+        const [{ data: pro }, { data: inb }] = await Promise.all([
+          admin.from("whatsapp_events").select("from_phone, created_at, parsed").eq("kind", "proativo").gte("created_at", desde).order("created_at", { ascending: false }).limit(2000),
+          admin.from("whatsapp_events").select("id, from_phone, user_id, created_at, parsed").eq("status", "processed").gte("created_at", desde)
+            .not("parsed->>input", "is", null).not("parsed->>reply", "is", null).order("created_at", { ascending: false }).limit(4000),
+        ]);
+        const k8 = (p: unknown) => String(p ?? "").replace(/\D/g, "").slice(-8);
+        const avisos = new Map<string, { t: number; assunto: string; texto: string }[]>();
+        for (const a of pro || []) {
+          const k = k8(a.from_phone); if (!k) continue;
+          (avisos.get(k) || avisos.set(k, []).get(k)!).push({ t: new Date(a.created_at).getTime(), assunto: String(a.parsed?.assunto || ""), texto: String(a.parsed?.texto || "") });
+        }
+        const porFone = new Map<string, any[]>();
+        for (const m of inb || []) { const k = k8(m.from_phone); if (k) (porFone.get(k) || porFone.set(k, []).get(k)!).push(m); }
+        const itens: any[] = [];
+        for (const [k, msgs] of porFone) {
+          msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          let ultimoAvisoUsado = 0;
+          for (const m of msgs) {
+            const t = new Date(m.created_at).getTime();
+            const av = (avisos.get(k) || []).filter((a) => a.t < t && t - a.t < 72 * 3600_000).sort((a, b) => b.t - a.t)[0];
+            const primeira = !!av && av.t !== ultimoAvisoUsado; // 1ª resposta depois daquele aviso
+            if (av) ultimoAvisoUsado = av.t;
+            const p = m.parsed || {};
+            const temRegistro = Array.isArray(p.acoes);
+            const situacao = p.conferido ? "conferida" : p.conferir ? "conferir" : !temRegistro && falaPromete(p.reply) ? "possivel" : "ok";
+            if (situacao === "ok" && !primeira) continue; // conversa comum, sem aviso e sem suspeita: fora
+            itens.push({
+              id: m.id, quando: m.created_at, user_id: m.user_id, telefone: String(m.from_phone || ""), situacao, motivo: p.conferir_motivo || null,
+              aviso: primeira ? { assunto: av!.assunto, texto: av!.texto.slice(0, 500), quando: new Date(av!.t).toISOString() } : null,
+              cliente: String(p.input || "").slice(0, 700), nina: String(p.reply || "").slice(0, 900),
+              acoes: temRegistro ? p.acoes : null,
+            });
+          }
+        }
+        const ids = [...new Set(itens.map((i) => i.user_id).filter(Boolean))];
+        const nomes: Record<string, string> = {};
+        for (let i = 0; i < ids.length; i += 200) {
+          const { data: us } = await admin.from("users").select("id, name").in("id", ids.slice(i, i + 200));
+          for (const u of us || []) nomes[u.id] = u.name || "";
+        }
+        const peso: Record<string, number> = { conferir: 0, possivel: 1, ok: 2, conferida: 3 };
+        itens.sort((a, b) => peso[a.situacao] - peso[b.situacao] || new Date(b.quando).getTime() - new Date(a.quando).getTime());
+        const conta = (s: string) => itens.filter((i) => i.situacao === s).length;
+        const filtro = String(payload.filtro || "pendentes");
+        const lista = itens.filter((i) => filtro === "todas" ? true : filtro === "avisos" ? !!i.aviso : i.situacao === "conferir" || i.situacao === "possivel");
+        return json({ ok: true, dias, totais: { conferir: conta("conferir"), possivel: conta("possivel"), respostas_a_avisos: itens.filter((i) => i.aviso).length, conferidas: conta("conferida") },
+          itens: lista.slice(0, 250).map((i) => ({ ...i, nome: i.user_id ? nomes[i.user_id] || null : null })) });
+      }
+      case "tratativa_conferida": {
+        const id = String(payload.id || "");
+        const { data: ev } = await admin.from("whatsapp_events").select("id, parsed").eq("id", id).maybeSingle();
+        if (!ev) return json({ error: "nao_encontrada" }, 404);
+        const { error } = await admin.from("whatsapp_events").update({ parsed: { ...(ev.parsed || {}), conferido: true, conferido_em: new Date().toISOString() } }).eq("id", id);
+        if (error) throw error;
+        return json({ ok: true });
       }
 
       // AVISO FREE FLOW (ANTT, prazo 16/11/2026): mensagem única pra base de motoristas, disparada pelo admin.
