@@ -1021,7 +1021,7 @@ Deno.serve(async (req) => {
       if (!phone) continue;
 
       const { data: vehicles } = await supabase
-        .from("accounts").select("id, name, hodometro, licenciamento_vencimento, ipva_vencimento, seguro_vencimento, created_at")
+        .from("accounts").select("id, name, hodometro, combustivel, licenciamento_vencimento, ipva_vencimento, seguro_vencimento, created_at")
         .eq("user_id", u.id).eq("is_active", true).limit(1);
       const v = vehicles && vehicles.length ? vehicles[0] : null;
 
@@ -1146,7 +1146,7 @@ Deno.serve(async (req) => {
           });
           sent++;
           // pedido de foto do painel do óleo também entra no controle de km (reforço em 48h se ignorar)
-          if (a.acao === "confirmar_km") await abrirPedidoKm(supabase, u.id, v.id);
+          if (a.acao === "confirmar_km" && v) await abrirPedidoKm(supabase, u.id, v.id);
           if (a.acao === "vencida" || a.acao === "atrasada") {
             const e = a.estado;
             await registrarOportunidade(supabase, {

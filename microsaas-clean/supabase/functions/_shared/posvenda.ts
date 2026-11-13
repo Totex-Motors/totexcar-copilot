@@ -552,6 +552,20 @@ export const TIPO_OPORTUNIDADE: Record<string, { titulo: string; dica: string }>
 
 // Registra a oportunidade (1 por tipo+cliente a cada 60 dias) e avisa o grupo, endereçada ao vendedor
 // da venda. Só pra loja com o atendimento ligado. Devolve o número (O#) ou null.
+// Oportunidade que deixou de valer (ex.: "troca de óleo vencida" e o cliente mostrou que o plano do carro é outro):
+// fecha como perdida com o motivo e avisa o grupo, pra equipe não ligar pro cliente à toa.
+export async function cancelarOportunidade(sb: any, phone: string, tipo: string, motivo: string): Promise<number> {
+  const vs = variantesTel(phone);
+  if (!vs.length) return 0;
+  const { data: abertas } = await sb.from("posvenda_oportunidades").select("id, numero, dealership, customer_name")
+    .in("customer_phone", vs).eq("tipo", tipo).in("status", ["nova", "em_contato"]);
+  for (const op of abertas || []) {
+    await sb.from("posvenda_oportunidades").update({ status: "perdida", obs: `Cancelada pelo Co-pilot: ${motivo}`.slice(0, 500), updated_at: new Date().toISOString() }).eq("id", op.id);
+    await avisarGrupo(sb, op.dealership, `ℹ️ *Oportunidade O${op.numero} cancelada*${op.customer_name ? ` (${op.customer_name})` : ""}: ${motivo} Não precisa chamar o cliente por isso.`).catch(() => false);
+  }
+  return (abertas || []).length;
+}
+
 export async function registrarOportunidade(sb: any, o: {
   phone: string; tipo: keyof typeof TIPO_OPORTUNIDADE; detalhe: string; nome?: string | null; carro?: string | null; loja?: string | null;
 }): Promise<number | null> {

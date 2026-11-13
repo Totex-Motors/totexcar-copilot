@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, KeyRound, Plus, Trash2, ShieldCheck, Save, UserPlus, MessageCircle, CreditCard, Ticket, Plug, Power, BarChart3, TrendingUp, Store, ExternalLink, Car, Gift, QrCode, Banknote, Wrench, Loader2, Eye, ScanLine, Send, Copy, Radar } from "lucide-react";
 import { StandLeadsPanel } from "@/components/StandLeadsPanel";
+import { TratativasTab } from "@/components/admin/TratativasTab";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -119,6 +120,7 @@ const Admin = () => {
           <TabsTrigger value="partners" className="gap-2"><Wrench className="w-4 h-4" /> Parceiros</TabsTrigger>
           <TabsTrigger value="prospects" className="gap-2"><Radar className="w-4 h-4" /> Prospecção</TabsTrigger>
           <TabsTrigger value="gpt" className="gap-2"><ScanLine className="w-4 h-4" /> GPT Motors</TabsTrigger>
+          <TabsTrigger value="tratativas" className="gap-2"><MessageCircle className="w-4 h-4" /> Tratativas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="owners" className="mt-6">
@@ -152,6 +154,9 @@ const Admin = () => {
         </TabsContent>
         <TabsContent value="gpt" className="mt-6">
           <GptMotorsTab />
+        </TabsContent>
+        <TabsContent value="tratativas" className="mt-6">
+          <TratativasTab />
         </TabsContent>
       </Tabs>
     </MgPanelShell>

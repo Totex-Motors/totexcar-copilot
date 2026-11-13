@@ -30,9 +30,10 @@ import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 import { salvarFotoCarro } from "../_shared/car-photo.ts";
 import { aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
-import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_TROCA_OLEO } from "../_shared/oleo.ts";
+import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_TROCA_OLEO, ajustarPlanoOleo, ehEletrico } from "../_shared/oleo.ts";
+import { auditarResposta } from "../_shared/auditoria.ts";
 import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
-import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
+import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, cancelarOportunidade, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 import { normalizarCnh, fichaCnh, aplicarCnhNoCadastro } from "../_shared/cnh.ts";
 import { subirDoc, linkDoc, protegerMeta } from "../_shared/cofre.ts";
 import { flowPublicado, RECOMPRA_V2_PREFIXO } from "../_shared/flows.ts";
@@ -1388,6 +1389,20 @@ const TOOL_SPECS = [
     },
   },
   {
+    name: "plano_troca_oleo",
+    description: "Grava o PLANO de troca de óleo/revisão quando o cliente CORRIGE ou INFORMA algo SEM ter trocado o óleo: o intervalo do manual/concessionária ('é de 12 em 12 mil', 'a cada 6 meses'), quando é a PRÓXIMA ('a próxima revisão é aos 24 mil ou em maio do ano que vem'), ou pede pra PARAR/ADIAR os avisos ('não precisa me avisar disso', 'me lembra só daqui 2 meses'). Use SEMPRE que ele contestar um aviso de óleo ('ainda não é hora', 'tá errado', 'acabei de fazer a revisão na concessionária e a próxima é X'). Troca FEITA com km é registrar_troca_oleo.",
+    parameters: {
+      type: "object",
+      properties: {
+        intervalo_km: { type: "number", description: "Intervalo em km do plano do carro, se ele disse (ex.: 'de 12 em 12 mil' → 12000)" },
+        intervalo_meses: { type: "number", description: "Intervalo em meses, se ele disse (ex.: 'uma vez por ano' → 12)" },
+        proxima_km: { type: "number", description: "Km da PRÓXIMA troca/revisão, se ele disse (ex.: 'aos 24 mil' → 24000)" },
+        proxima_data: { type: "string", description: "Data limite da PRÓXIMA troca/revisão, yyyy-mm ou yyyy-mm-dd (ex.: 'maio do ano que vem')" },
+        pausar_dias: { type: "number", description: "Só se ele pediu pra não ser avisado: por quantos dias (ex.: 'não precisa avisar' → 180; 'só mês que vem' → 30)" },
+      },
+    },
+  },
+  {
     name: "registrar_multa",
     description: "Salva uma multa analisada e a minuta de recurso gerada. Use SEMPRE que analisar a foto de um auto de infração/multa.",
     parameters: {
@@ -1692,7 +1707,7 @@ const TOOL_SPECS = [
   },
 ];
 
-type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[]; mapas?: string[]; nav?: NavApp; entrega?: { id: string; luz: boolean; checklist: any }; temImagem?: boolean };
+type ToolCtx = { user: any; vehicle: any; today: string; inputText: string; shownCars?: boolean; archive?: { tipo: string; nome: string; resumo?: string; meta?: any }; carMode?: boolean; fila?: string[]; mapas?: string[]; nav?: NavApp; entrega?: { id: string; luz: boolean; checklist: any }; temImagem?: boolean; acoes?: { n: string; ok: boolean }[] };
 
 // ArquivoZap: sobe os bytes do documento pro Storage e grava a ficha (o arquivamento é automático —
 // dispara em background depois do turno, com a classificação que a IA já fez na foto/PDF).
@@ -1713,7 +1728,13 @@ async function archiveDoc(phone: string, userId: string | null, media: { data: s
   } catch (e) { console.error("archiveDoc:", e); }
 }
 
+// toda ferramenta chamada no turno fica registrada (auditoria: o que a Nina FEZ, não só o que disse)
 async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any> {
+  const r = await dispatchToolImpl(name, args, ctx);
+  (ctx.acoes ||= []).push({ n: name, ok: !(r?.ok === false || r?.error) });
+  return r;
+}
+async function dispatchToolImpl(name: string, args: any, ctx: ToolCtx): Promise<any> {
   const { user, vehicle, today } = ctx;
   try {
     if (name === "registrar_gasto") {
@@ -1885,7 +1906,27 @@ async function dispatchTool(name: string, args: any, ctx: ToolCtx): Promise<any>
         message: "Confirme em 1–2 frases: troca registrada, a próxima é aos X km ou até a data limite (o que vier primeiro) e que você avisa antes. Sem pedir mais nada." };
     }
 
+    if (name === "plano_troca_oleo") {
+      if (!vehicle) return { ok: false, error: "sem_veiculo" };
+      if (ehEletrico(vehicle)) return { ok: true, eletrico: true, message: "O carro dele é 100% elétrico: não tem troca de óleo. Peça desculpas pelo aviso em 1 linha e diga que não vai mais avisar disso." };
+      const antes = await estadoOleo(supabase, user, vehicle);
+      const r = await ajustarPlanoOleo(supabase, {
+        userId: user.id, accountId: vehicle.id, kmAtual: antes.kmHoje || Number(vehicle.hodometro || 0),
+        intervaloKm: args?.intervalo_km, intervaloMeses: args?.intervalo_meses, proximaKm: args?.proxima_km, proximaData: args?.proxima_data, pausarDias: args?.pausar_dias,
+      });
+      if (!r.ok) return r;
+      const e = await estadoOleo(supabase, user, vehicle);
+      // a loja tinha sido avisada de "troca de óleo vencida"? com o plano certo, deixa de valer
+      if (e.pausadoAte || e.status === "em_dia" || e.status === "proxima") {
+        await cancelarOportunidade(supabase, String(user.phone || ""), "troca_oleo",
+          `o cliente informou o plano do carro: ${e.proximaKm ? `próxima troca aos ${e.proximaKm.toLocaleString("pt-BR")} km` : "plano ajustado"}${e.proximaData ? ` ou até ${e.proximaData.split("-").reverse().join("/")}` : ""}.`).catch(() => null);
+      }
+      return { ok: true, plano: `${e.intervaloKm} km ou ${e.intervaloMeses} meses`, proxima_troca_km: e.proximaKm, data_limite: e.proximaData, pausado_ate: e.pausadoAte || null, status: e.status, resumo: resumoOleo(e),
+        message: "Confirme em 1–2 frases O QUE FICOU GRAVADO (o plano e quando é a próxima: aos X km ou até a data) e, se o aviso anterior estava fora de hora, peça desculpas em poucas palavras. Não peça mais nada." };
+    }
+
     if (name === "status_manutencao") {
+      if (ehEletrico(vehicle)) return { oleo: { resumo: "Carro 100% elétrico: não tem troca de óleo." }, itens: [], instrucao: "Diga que carro elétrico não troca óleo; se ele quiser, você lembra das revisões que ele informar." };
       const { data: rem } = await supabase.from("maintenance_reminders").select("*").eq("user_id", user.id).eq("active", true);
       const e = await estadoOleo(supabase, user, vehicle);
       // km de HOJE estimado pelo ritmo real do dono (a última leitura pode ter semanas)
@@ -4638,7 +4679,7 @@ REGRA DE OURO DO REGISTRO: se a mensagem JÁ TEM o valor em R$ (ex.: "500 de die
 
 ROTINA DE KM (a cada 10 dias você pede a atualização do km — faz parte do controle de manutenção do carro): se o cliente responder com o NÚMERO do km digitado ("57340", "57.340 km", "tá com 57 mil e 340") ou com a FOTO DO PAINEL → atualizar_hodometro com o km completo. Se ele mandar um número curto/ambíguo ("57 mil"), confirme o número exato antes. Depois de registrar: agradeça em 1 linha e, se a ferramenta trouxer troca_oleo, diga quanto falta. Nunca dê bronca; o registro é rotina, não cobrança.
 
-TROCA DE ÓLEO (motor do Co-pilot — os números SEMPRE vêm das ferramentas): o km de hoje é ESTIMADO pela última leitura + o ritmo real do dono; a troca vence por KM ou por TEMPO (10.000 km / 12 meses; uso severo de aplicativo: metade), o que vier primeiro. (1) "Troquei o óleo", nota/adesivo da oficina com km, ou o km pedido depois de "Já resolvi" → registrar_troca_oleo (sem o km, pergunte ou peça foto do painel antes). Gasto de troca de óleo vai em registrar_gasto (ele já fecha o ciclo se tiver km; se voltar troca_oleo.registrada=false, peça o km). (2) Resposta a aviso de óleo: "Sim, quero" / "Me ajuda" → ajude ele a fazer a troca: pergunte se tem oficina de confiança (se tiver, é lá; você só lembra e registra depois). Se NÃO tiver e o carro veio de loja parceira → abrir_atendimento_loja (motivo revisao, resumo "pedido de indicação de oficina parceira pra troca de óleo" + km estimado); sem loja (sem_loja) → buscar_servico (troca de óleo). A loja NÃO tem oficina própria: nunca diga pra levar o carro na loja nem que a loja faz a troca. "Já resolvi" → pergunte o km da troca (ou foto do painel/adesivo) e registre. "Agora não" → confirme em 1 linha e lembre que óleo vencido desgasta o motor, sem insistir. (3) "Quando troco o óleo?" → status_manutencao. Km estimado = diga "pela minha conta"; nunca invente km ou data.
+TROCA DE ÓLEO (motor do Co-pilot — os números SEMPRE vêm das ferramentas): o km de hoje é ESTIMADO pela última leitura + o ritmo real do dono; a troca vence por KM ou por TEMPO (10.000 km / 12 meses; uso severo de aplicativo: metade), o que vier primeiro. (1) "Troquei o óleo", nota/adesivo da oficina com km, ou o km pedido depois de "Já resolvi" → registrar_troca_oleo (sem o km, pergunte ou peça foto do painel antes). Gasto de troca de óleo vai em registrar_gasto (ele já fecha o ciclo se tiver km; se voltar troca_oleo.registrada=false, peça o km). (2) Resposta a aviso de óleo: "Sim, quero" / "Me ajuda" → ajude ele a fazer a troca: pergunte se tem oficina de confiança (se tiver, é lá; você só lembra e registra depois). Se NÃO tiver e o carro veio de loja parceira → abrir_atendimento_loja (motivo revisao, resumo "pedido de indicação de oficina parceira pra troca de óleo" + km estimado); sem loja (sem_loja) → buscar_servico (troca de óleo). A loja NÃO tem oficina própria: nunca diga pra levar o carro na loja nem que a loja faz a troca. "Já resolvi" → pergunte o km da troca (ou foto do painel/adesivo) e registre. "Agora não" → confirme em 1 linha e lembre que óleo vencido desgasta o motor, sem insistir. (3) "Quando troco o óleo?" → status_manutencao. (4) Ele CONTESTA ou CORRIGE o aviso SEM ter trocado ("ainda não é hora", "a próxima é aos 24 mil / em maio", "o manual diz de 12 em 12 mil", "fiz a revisão na concessionária e a próxima é X", "não precisa me avisar disso") → plano_troca_oleo ANTES de responder: o plano que ELE informa (manual/concessionária) vale mais que o padrão de 10.000 km. Carro 100% elétrico não tem troca de óleo. Km estimado = diga "pela minha conta"; nunca invente km ou data.
 
 CONSUMO (regra importante): para medir o consumo eu preciso do km a cada abastecimento. SEMPRE que registrar um COMBUSTÍVEL sem o km (a ferramenta retorna pedir_hodometro=true), PEÇA uma FOTO DO HODÔMETRO (ou o km digitado) e explique que é assim que eu meço o consumo. Faça o mesmo em manutenções/revisões (ex.: troca de óleo).
 APRESENTAÇÃO DO CONSUMO (sempre simples, litros vs km): "Você rodou X km e usou Y litros → Z km/L". Se houver média e custo: acrescente "Média: W km/L · combustível custa R$ V por km rodado". Nada de jargão.
@@ -4658,6 +4699,7 @@ MULTAS: se a foto for um auto de infração/notificação:
 3) Se faltar informação-chave pro checklist (data de recebimento da notificação, se recebeu as duas, radar fixo/móvel, sinalização), FAÇA 2–3 perguntas curtas ao usuário ANTES de fechar a análise — as respostas fortalecem o recurso. Se ele não souber, siga com o que tem.
 4) Estime a chance (baixa/media/alta) com HONESTIDADE — NUNCA prometa que a multa "vai cair". Gere a MINUTA de recurso (defesa prévia) citando os artigos/resoluções do checklist que se aplicarem e chame registrar_multa (com recurso_texto, prazo_recurso e chance). Envie um resumo + o texto do recurso, deixando claro que é um MODELO e a decisão é do órgão. Avise o prazo.
 PEDÁGIO FREE FLOW (sem cancela): quando ele contar que passou por pedágio sem cancela/pórtico, ou mandar cobrança/print de Free Flow → registrar_pedagio (vencimento SÓ se estiver na cobrança; não invente). "Paguei o pedágio" → pedagio_pago. "Quais pedágios tenho?" → meus_pedagios. Regras (ANTT): a passagem é registrada pela placa; sem tag ele paga depois no canal da concessionária, em até 30 dias depois que aparecer como "pendente de pagamento"; consulta no app CNH do Brasil → Veículos → carro → Pedágio Eletrônico; não pagar pode virar multa e pontos. NUNCA diga que o Co-pilot descobre as passagens sozinho ou confirma o pagamento: é ele que informa.
+REGRA DE OURO (auditada): só diga "anotei", "registrei", "atualizei", "corrigi" ou "não aviso mais" se uma FERRAMENTA gravou isso NESTE turno (ok:true). Se ele informar ou corrigir algo e NÃO houver ferramenta pra gravar, NÃO finja: diga com franqueza que vai passar pra equipe ajustar e chame abrir_chamado com o que ele disse.
 PONTOS DA CNH: para "quantos pontos eu tenho?", "vou perder a CNH?", "tô perto de suspender?" → use pontos_cnh (soma dos últimos 12 meses das multas + limite de suspensão do CTB). Depois de registrar uma multa nova COM pontos, vale mencionar o total atualizado e, se estiver perto do limite, alertar com cuidado (sem alarmismo). Deixe claro que conta só as multas registradas aqui.
 
 Categorias de gasto: ${despesas.join(", ")}. Categorias de receita: ${receitas.join(", ")}. Use is_new_category=true só se nenhuma existente servir.
@@ -5100,7 +5142,9 @@ ${JSON.stringify(snapshot)}`;
     if (ctx.mapas?.length) await sendText(msg.phone, ctx.mapas.join("\n"));
     if (ctx.fila?.length) await modoCarroGuardar(msg.phone, ctx.fila);
     // guarda também o input (inclui transcrição de áudio) — a memória da conversa depende disso
-    if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText }, user_id: user.id }).eq("id", eventId);
+    const aud = auditarResposta(replyText, ctx.acoes);
+    if (aud.conferir) console.warn("AUDITORIA conferir:", aud.motivo, "| ações:", JSON.stringify(ctx.acoes || []));
+    if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { reply: replyText, input: inputText, acoes: ctx.acoes || [], ...(aud.conferir ? { conferir: true, conferir_motivo: aud.motivo } : {}) }, user_id: user.id }).eq("id", eventId);
 
     // CHECKLIST DE ENTREGA: guarda a foto do painel (prova) e manda os itens com os botões
     if (ctx.entrega) {
