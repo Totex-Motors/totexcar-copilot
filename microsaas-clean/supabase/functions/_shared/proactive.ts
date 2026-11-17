@@ -112,6 +112,15 @@ REGRAS DURAS (violar = mensagem reprovada):
 8. Se houver OPEN LOOP relacionado, prefira cobrar o loop a falar do tema no abstrato ("conseguiu trocar o óleo?" > "o óleo vence em 300 km").
 9. Tom de cuidado, não de cobrança. Mesmo vencimento de plano: avise como parceiro, não como fatura.
 10. ENGAJAMENTO: se unanswered >= 3, a mensagem precisa valer MUITO a pena (segurança, dinheiro ou prazo). Caso contrário retorne {"pular": true}.
+11. BOTÕES TÊM QUE FAZER SENTIDO: os botões são fixos e aparecem logo abaixo do texto. A ÚLTIMA frase tem que ser a pergunta que o botão responde, dizendo O QUE ACONTECE se ele tocar "Sim, quero" e NOMEANDO o recurso. Ofertas que existem (use só estas):
+   - *Radar de Serviços*: "Quer que eu busque no *Radar de Serviços* as oficinas (ou borracharias, autoelétricas, lava-rápidos, funilarias) mais bem avaliadas perto de você?" — é a busca de empresas da região com nota e contato.
+   - Detalhar gastos: "Quer que eu te mostre, por categoria, onde foram os gastos da semana?"
+   - Recurso de multa: "Quer revisar a minuta do recurso comigo?"
+   - Valor do carro: "Quer ver quanto ele vale hoje na tabela FIPE?"
+   - Lembrete: "Quer que eu te lembre de novo em X dias?"
+   PROIBIDO fechar com pergunta vaga que o botão não responde ("Como estão os planos pro carro?", "Tudo certo por aí?", "Vale a pena dar uma olhada!"). Sem oferta concreta → use "copilot_msg" (sem botões) e feche com frase humana.
+12. UM ASSUNTO SÓ: não junte temas diferentes na mesma mensagem (ex.: gastos da semana + troca de óleo). O outro tema fica pra outra mensagem.
+13. RECEITA só pra quem TRABALHA com o carro: fale de receita, faturamento ou lucro APENAS se "modo PRO=sim" E o insight trouxer receita maior que zero. Pra quem usa o carro no dia a dia (modo PRO=não), NUNCA mencione receita, faturamento, lucro ou "semana sem receita" — o carro dele é uso pessoal, só gastos e cuidado.
 
 VARIANTE (os botões do WhatsApp são FIXOS por variante — escolha a que combina com o seu fechamento):
 - "copilot_msg": sem botões (aviso sem ação)
@@ -127,7 +136,7 @@ EXEMPLOS:
 # Resumo PRO (ângulo conquista):
 INSIGHT: {"tipo":"resumo_pro_semanal","periodo":"13 a 19/07","receita":1240,"despesa":380,"lucro":860,"lucro_km":2.11,"lucro_km_semana_anterior":1.85,"km":408}
 DOSSIÊ: abastece etanol no Shell · roda de noite | ENGAJAMENTO: 0
-SAÍDA: {"pular":false,"texto":"Marcos, semana boa! Faturou R$ 1.240, gastou R$ 380 → *sobraram R$ 860*. Seu lucro por km subiu pra R$ 2,11 (era R$ 1,85) 💪 Quer ver onde dá pra melhorar ainda mais?","variante":"copilot_msg_sim","angulo_usado":"conquista","assunto":"resumo_pro"}
+SAÍDA: {"pular":false,"texto":"Marcos, semana boa! Faturou R$ 1.240, gastou R$ 380 → *sobraram R$ 860*. Seu lucro por km subiu pra R$ 2,11 (era R$ 1,85) 💪 Quer que eu te mostre, por categoria, onde foram os R$ 380 de gastos?","variante":"copilot_msg_sim","angulo_usado":"conquista","assunto":"resumo_pro"}
 
 # Follow-up de open loop (ângulo cuidado):
 INSIGHT: {"tipo":"open_loop_vencendo","summary":"disse que ia trocar o óleo no fim de semana","km_restante":320}
@@ -142,6 +151,15 @@ SAÍDA: {"pular":false,"texto":"Faltam *3 dias* pro prazo do recurso da multa de
 # Insight fraco + engajamento baixo:
 INSIGHT: {"tipo":"dica_generica","tema":"calibragem"} | ENGAJAMENTO: 3
 SAÍDA: {"pular":true}`;
+
+// a última frase é uma pergunta que oferece algo concreto? (o "Sim, quero" precisa ter o que responder)
+const FECHO_VAGO = /(como est[aã]o os planos|tudo certo por a[ií]|tudo bem por a[ií]|como (vai|anda|est[aá]) (o|seu|a|sua) (carro|m[aá]quina)|o que (voc[eê] )?acha|vale (a pena )?dar uma olhada)[^?]*\?/i;
+export function fechaComOferta(texto: string): boolean {
+  const limpo = String(texto || "").replace(/[\s\p{Extended_Pictographic}\uFE0F*_~]+$/u, "");
+  if (!limpo.endsWith("?")) return false;
+  const ultima = limpo.split(/(?<=[.!?…])\s+/).pop() || "";
+  return !FECHO_VAGO.test(ultima) && /\b(quer|posso|te (mostro|mando|lembro|ajudo)|busco|procuro|bora|vamos)\b/i.test(ultima);
+}
 
 export type ComposeInput = {
   insight: any;
@@ -185,7 +203,11 @@ Responda com o JSON.`;
   const texto = String(out.texto || "").trim().replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g, "$2");
   if (!texto || texto.length > 550) return null;
   if (soundsLikeMarketing(texto)) { console.error("compositor reprovado (tom comercial):", texto.slice(0, 120)); return null; }
-  const variante = (PROACTIVE_VARIANTS as readonly string[]).includes(out.variante) ? out.variante : "copilot_msg";
+  let variante = (PROACTIVE_VARIANTS as readonly string[]).includes(out.variante) ? out.variante : "copilot_msg";
+  // quem não trabalha com o carro não recebe papo de receita/lucro (cai no texto fixo do aviso)
+  if (!inp.pro && /\b(receita|faturamento|faturou|lucro)\b/i.test(texto)) { console.error("compositor reprovado (receita pra quem não é PRO):", texto.slice(0, 120)); return null; }
+  // botões [Sim, quero | Agora não] só com uma oferta clara no fim: sem pergunta final (ou pergunta vaga) → sem botões
+  if (variante === "copilot_msg_sim" && !fechaComOferta(texto)) variante = "copilot_msg";
   return {
     texto,
     variante,

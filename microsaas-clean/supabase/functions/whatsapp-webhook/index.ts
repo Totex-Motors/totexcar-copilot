@@ -1611,7 +1611,7 @@ const TOOL_SPECS = [
   },
   {
     name: "registrar_receita",
-    description: "Registra uma RECEITA/ganho do motorista de aplicativo: print da tela de ganhos (Uber/99/outros), áudio ou texto ('fiz 380 hoje na uber'). No print, leia o app, o período e o VALOR TOTAL. Ativa o Modo PRO automaticamente.",
+    description: "Registra uma RECEITA/ganho de quem TRABALHA com o carro: print da tela de ganhos (Uber/99/outros), áudio ou texto ('fiz 380 hoje na uber'). No print, leia o app, o período e o VALOR TOTAL. Ganho de aplicativo/entrega/frete liga o Modo PRO sozinho; outras entradas ficam registradas e você pergunta se ele trabalha com o carro.",
     parameters: {
       type: "object",
       properties: {
@@ -1622,6 +1622,11 @@ const TOOL_SPECS = [
       },
       required: ["fonte", "valor", "descricao", "date"],
     },
+  },
+  {
+    name: "modo_trabalho",
+    description: "Liga ou desliga o MODO TRABALHO (PRO), que é SÓ pra quem TRABALHA com o carro (aplicativo, entregas, frete, táxi): com ele ligado o Co-pilot acompanha receita, lucro e manda o resumo semanal de ganhos. Ligue apenas quando ele confirmar que trabalha com o carro. DESLIGUE quando ele disser que não trabalha com o carro, que parou, ou reclamar de mensagem sobre receita ('não tenho receita', 'uso só no dia a dia', 'para de falar de faturamento').",
+    parameters: { type: "object", properties: { ativo: { type: "boolean", description: "true = trabalha com o carro; false = uso pessoal" } }, required: ["ativo"] },
   },
   {
     name: "lucro_periodo",
@@ -2528,13 +2533,29 @@ async function dispatchToolImpl(name: string, args: any, ctx: ToolCtx): Promise<
         description: String(args?.descricao || `Ganhos ${fonte}`), amount: valor, type: "income",
         transaction_date: date, source: "whatsapp", raw_input: ctx.inputText,
       });
-      let proAtivado = false;
+      // MODO TRABALHO (PRO) só pra quem TRABALHA com o carro. Ganho de aplicativo/entrega/frete liga sozinho;
+      // qualquer outra entrada (reembolso, venda de peça, ajuda de custo) fica registrada e a Nina PERGUNTA.
+      let proAtivado = false, perguntar = false;
       if (!user.driver_mode) {
-        await supabase.from("users").update({ driver_mode: true }).eq("id", user.id);
-        user.driver_mode = true;
-        proAtivado = true;
+        if (/uber|\b99\b|99 ?pop|indrive|in ?drive|ifood|rappi|loggi|lalamove|shopee|mercado ?livre|aplicativo|\bapp\b|corrida|entrega|frete|motorista|lotação|lotacao|transporte escolar|t[aá]xi/i.test(`${fonte} ${args?.descricao || ""} ${ctx.inputText || ""}`)) {
+          await supabase.from("users").update({ driver_mode: true }).eq("id", user.id);
+          user.driver_mode = true;
+          proAtivado = true;
+        } else perguntar = true;
       }
-      return { ok: true, registrado: { fonte, valor, data: date }, modo_pro_ativado_agora: proAtivado };
+      return { ok: true, registrado: { fonte, valor, data: date }, modo_pro_ativado_agora: proAtivado,
+        ...(perguntar ? { instrucao: "Entrada registrada. Ele NÃO está no modo de trabalho: pergunte em 1 linha se ele TRABALHA com o carro (aplicativo, entregas, frete). Se disser que sim → modo_trabalho(ativo=true). Se não, só confirme o registro e não fale de receita semanal." } : {}) };
+    }
+
+    if (name === "modo_trabalho") {
+      const ativo = args?.ativo === true;
+      const { error } = await supabase.from("users").update({ driver_mode: ativo }).eq("id", user.id);
+      if (error) return { ok: false, error: error.message };
+      user.driver_mode = ativo;
+      return { ok: true, modo_trabalho: ativo,
+        message: ativo
+          ? "Modo de trabalho LIGADO. Confirme em 1–2 linhas: a partir de agora você acompanha ganhos e gastos e manda o resumo da semana (às segundas, quando houver ganho registrado)."
+          : "Modo de trabalho DESLIGADO. Confirme em 1 linha: o carro fica como uso pessoal e você não fala mais de receita/faturamento; os avisos de manutenção e documentos continuam." };
     }
 
     if (name === "lucro_periodo") {
@@ -4791,6 +4812,7 @@ MULTAS: se a foto for um auto de infração/notificação:
 3) Se faltar informação-chave pro checklist (data de recebimento da notificação, se recebeu as duas, radar fixo/móvel, sinalização), FAÇA 2–3 perguntas curtas ao usuário ANTES de fechar a análise — as respostas fortalecem o recurso. Se ele não souber, siga com o que tem.
 4) Estime a chance (baixa/media/alta) com HONESTIDADE — NUNCA prometa que a multa "vai cair". Gere a MINUTA de recurso (defesa prévia) citando os artigos/resoluções do checklist que se aplicarem e chame registrar_multa (com recurso_texto, prazo_recurso e chance). Envie um resumo + o texto do recurso, deixando claro que é um MODELO e a decisão é do órgão. Avise o prazo.
 PEDÁGIO FREE FLOW (sem cancela): quando ele contar que passou por pedágio sem cancela/pórtico, ou mandar cobrança/print de Free Flow → registrar_pedagio (vencimento SÓ se estiver na cobrança; não invente). "Paguei o pedágio" → pedagio_pago. "Quais pedágios tenho?" → meus_pedagios. Regras (ANTT): a passagem é registrada pela placa; sem tag ele paga depois no canal da concessionária, em até 30 dias depois que aparecer como "pendente de pagamento"; consulta no app CNH do Brasil → Veículos → carro → Pedágio Eletrônico; não pagar pode virar multa e pontos. NUNCA diga que o Co-pilot descobre as passagens sozinho ou confirma o pagamento: é ele que informa.
+BOTÃO "Sim, quero" (resposta a uma mensagem sua que ele não pediu): é o SIM pra ÚLTIMA oferta que você fez — ela está no contexto da conversa. Faça EXATAMENTE o que foi oferecido, sem perguntar de novo o que ele quer: ofereceu buscar oficinas/empresas no Radar de Serviços → buscar_servico (peça só a cidade/bairro se faltar); ofereceu mostrar os gastos por categoria → resumo_financeiro; ofereceu ver o valor na FIPE → valor_do_carro; ofereceu revisar o recurso → mostre a minuta. Se a mensagem anterior não tinha oferta clara, pergunte em 1 linha com o que ele quer ajuda, citando 2 opções concretas. "Agora não" → só confirme em 1 linha, sem insistir.
 REGRA DE OURO (auditada) — vale pra DADOS DO CARRO E AVISOS (km, troca de óleo/revisão e seus prazos, gastos, multas, pedágio, parcelas, documentos e vencimentos, cadastro do carro, parar/mudar um aviso): só diga "anotei", "registrei", "atualizei", "corrigi" ou "não aviso mais" se uma FERRAMENTA gravou isso NESTE turno (ok:true). Se ele informar ou corrigir um dado desses e NÃO houver ferramenta pra gravar, NÃO finja: diga com franqueza que vai passar pra equipe ajustar e chame abrir_chamado com o que ele disse. Preferências e contexto pessoal (como quer ser chamado, rotina, planos) a sua memória guarda sozinha: aí pode responder naturalmente, sem chamado.
 PONTOS DA CNH: para "quantos pontos eu tenho?", "vou perder a CNH?", "tô perto de suspender?" → use pontos_cnh (soma dos últimos 12 meses das multas + limite de suspensão do CTB). Depois de registrar uma multa nova COM pontos, vale mencionar o total atualizado e, se estiver perto do limite, alertar com cuidado (sem alarmismo). Deixe claro que conta só as multas registradas aqui.
 
@@ -4803,7 +4825,7 @@ MODO INDICADOR (motorista PRO como indicador da loja): se o motorista pedir carr
 
 RELATÓRIO FISCAL (PRO): para "relatório", "IR", "imposto de renda", "MEI", "carnê-leão", "extrato pra contador" → use relatorio_fiscal (default: mês anterior fechado; "do ano"/"declaração" → anual). O PDF é enviado automaticamente na conversa; você só resume (lucro + R$/km) e diz que serve de base pro contador. NUNCA dê conselho fiscal definitivo — "sou seu copiloto, não seu contador; ele confirma os enquadramentos".
 
-MOTORISTA PRO (TotexCar Co-pilot PRO): MODO PRO do usuário: ${user.driver_mode ? "ATIVO" : "inativo"}. Se ativo, trate o carro como NEGÓCIO: registre ganhos (registrar_receita) além dos gastos, e responda "quanto sobrou?" com lucro_periodo (receita − despesa, lucro por km). Na PRIMEIRA receita registrada, dê boas-vindas ao Modo PRO e explique o resumo semanal. Se alguém sem Modo PRO mandar print de ganhos, registre normalmente (o modo ativa sozinho).
+MOTORISTA PRO (TotexCar Co-pilot PRO): MODO PRO do usuário: ${user.driver_mode ? "ATIVO" : "inativo"}. O Modo PRO é SÓ pra quem TRABALHA com o carro (aplicativo, entregas, frete, táxi). Se ATIVO, trate o carro como NEGÓCIO: registre ganhos (registrar_receita) além dos gastos, e responda "quanto sobrou?" com lucro_periodo (receita − despesa, lucro por km). Se INATIVO, o carro é de USO PESSOAL: NUNCA fale de receita, faturamento, lucro ou "semana sem receita" e não ofereça registrar ganhos. Print/relato de ganhos de aplicativo de quem está inativo → registrar_receita (liga sozinho) e dê boas-vindas explicando o resumo semanal. Outra entrada de dinheiro de quem está inativo → registre e pergunte se ele trabalha com o carro. "Não trabalho com o carro" / "não tenho receita" / reclamação de mensagem sobre faturamento → modo_trabalho(ativo=false) na hora. "Trabalho com aplicativo/entrega" → modo_trabalho(ativo=true).
 
 SEU CARRO — CONCIERGE TÉCNICO DO DONO: você é o concierge automotivo PESSOAL deste dono e conhece o carro DELE a fundo. ${fichaStr ? `FICHA TÉCNICA do carro (use como FONTE DA VERDADE): ${fichaStr}` : "A ficha técnica deste carro ainda está sendo montada — se perguntarem especificação, dê uma faixa honesta e diga que vai confirmar."} Cruze a ficha com os DADOS REAIS do dono (hodômetro, consumo calculado, gastos, próximas manutenções por km) pra dar dicas ESPECÍFICAS: qual óleo/pneu/vela e quando trocar, intervalo de revisão, o que fazer neste km, economia de combustível, e compare o consumo REAL com o esperado da ficha (ex.: "seu consumo tá abaixo do normal desse motor — pode ser calibragem/filtro"). Para elétrico/híbrido: cuidados de bateria (carga 20–80%), regeneração, autonomia. ⚠️ REGRA DE OURO: NUNCA invente número exato de óleo/pneu/torque/intervalo — use a ficha; se o dado não estiver nela, dê uma FAIXA e mande confirmar no manual do proprietário ou concessionária. Segurança e o bolso do dono em 1º lugar; seja proativo e didático.
 

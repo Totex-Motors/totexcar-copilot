@@ -4,7 +4,7 @@
 export const FERRAMENTAS_QUE_GRAVAM = new Set([
   "registrar_gasto", "atualizar_hodometro", "corrigir_ultimo_gasto", "registrar_painel_entrega", "registrar_troca_oleo", "plano_troca_oleo",
   "registrar_multa", "registrar_pedagio", "pedagio_pago", "arquivar_documento", "criar_radar", "registrar_receita", "salvar_boleto", "salvar_carne",
-  "abrir_chamado", "abrir_atendimento_loja", "pedir_orcamento",
+  "abrir_chamado", "abrir_atendimento_loja", "pedir_orcamento", "modo_trabalho",
 ]);
 // fala que AFIRMA ter gravado/mudado algo (não inclui "te aviso antes", que é rotina)
 export const RE_PROMESSA = /\b(anotei|anotado|anotada|registrei|registrado|registrada|atualizei|atualizado|atualizada|salvei|guardei|corrigi|corrigido|ajustei|ajustado|ja (mudei|alterei|arrumei)|pode deixar|deixa comigo|nao (vou|te) (mais )?(avis|lembr|cobr)\w*|paro de (te )?(avisar|lembrar|cobrar)|fic(a|ou) (anotado|registrado|salvo|guardado))\b/i;

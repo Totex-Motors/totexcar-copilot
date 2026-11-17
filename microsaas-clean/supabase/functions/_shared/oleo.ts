@@ -355,7 +355,7 @@ export async function oleoTick(sb: any, u: any, v: any): Promise<AcaoOleo | null
   if (e.status === "em_dia") return null; // a leitura de rotina é da km.ts (a cada 10 dias)
   if (e.status === "proxima") {
     if (!(await dedup(`oleo:aviso:${c}`, due))) return null;
-    return { acao: "aviso", variante: "copilot_msg_sim", estado: e, fallback: `A troca de óleo do ${carro} está chegando: ${e.vencePor === "tempo" ? `vence em ${dataBR(e.proximaData!)}` : `faltam ~${kmBR(Math.max(0, e.faltamKm!))} (aos ${kmBR(e.proximaKm!)})`}. Quer ajuda pra resolver?` };
+    return { acao: "aviso", variante: "copilot_msg_sim", estado: e, fallback: `A troca de óleo do ${carro} está chegando: ${e.vencePor === "tempo" ? `vence em ${dataBR(e.proximaData!)}` : `faltam ~${kmBR(Math.max(0, e.faltamKm!))} (aos ${kmBR(e.proximaKm!)})`}. Quer que eu busque no Radar de Serviços as oficinas mais bem avaliadas perto de você?` };
   }
   if (e.status === "vencida") {
     if (!(await dedup(`oleo:vencida:${c}`, due))) return null;
@@ -374,7 +374,7 @@ export function insightOleo(a: AcaoOleo, loja?: string | null): Record<string, u
   const instrucao: Record<string, string> = {
     ancora: "Pergunte, numa mensagem curta, com quantos km (ou em que mês) foi a última troca de óleo. Ofereça mandar foto do adesivo da oficina ou da nota. Diga que com isso você avisa a próxima na hora certa.",
     confirmar_km: "A troca de óleo está chegando pela ESTIMATIVA. Peça uma FOTO DO PAINEL com o km pra confirmar antes de marcar. Deixe claro que o número é estimado.",
-    aviso: `Avise que a troca de óleo está chegando (${e.vencePor === "tempo" ? "pelo tempo" : "pelo km"}) e ofereça ajuda pra fazer na oficina de confiança dele${loja ? ` (se ele não tiver, a ${loja} indica oficinas parceiras)` : ""}. Nunca diga que a loja faz a troca. Use a variante copilot_msg_sim.`,
+    aviso: `Avise que a troca de óleo está chegando (${e.vencePor === "tempo" ? "pelo tempo" : "pelo km"}) e FECHE com uma oferta específica, dizendo o que acontece no "Sim, quero": ${loja ? `"Quer que eu peça pra ${loja} indicar uma oficina parceira?"` : `"Quer que eu busque no *Radar de Serviços* as oficinas mais bem avaliadas perto de você?"`} Nunca diga que a loja faz a troca. Use a variante copilot_msg_sim.`,
     vencida: `Diga que chegou a hora da troca de óleo e pergunte se já trocou; se não, ofereça ajuda pra fazer na oficina de confiança dele${loja ? ` (sem oficina, a ${loja} indica uma parceira)` : ""}. Nunca diga que a loja faz a troca. Use a variante copilot_msg_feito.`,
     atrasada: `A troca está atrasada. Seja direto e cuidadoso (óleo vencido desgasta o motor), pergunte se já trocou e ofereça ajuda${loja ? ` (a ${loja} indica oficinas parceiras, se ele precisar)` : ""}. Nunca diga que a loja faz a troca. Use a variante copilot_msg_feito.`,
   };
