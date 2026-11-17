@@ -284,7 +284,9 @@ async function maybeWeeklyPro(u: any, phone: string, carro: string) {
   if (new Date().getDay() !== 1) return false; // só segunda
   const { de, ate, weekKey } = lastWeekRange();
   const cur = await weekTotals(u.id, de, ate);
-  if (cur.receita === 0 && cur.despesa === 0) return false; // semana sem movimento: não incomoda
+  // resumo de GANHOS é só pra quem trabalhou com o carro na semana: sem receita, não manda
+  // (antes saía "você não teve receita essa semana" pra quem só usa o carro no dia a dia)
+  if (!(cur.receita > 0)) return false;
 
   // dedup por semana
   const { error } = await supabase.from("notification_log")
