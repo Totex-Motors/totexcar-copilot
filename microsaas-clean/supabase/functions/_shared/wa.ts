@@ -72,6 +72,21 @@ export async function waSendMenu(s: WaSettings, phone: string, text: string, cho
   return ok || uazapiPost(s, "/send/text", { number: to, text });
 }
 
+// BOTÕES de resposta (até 3, 1 toque) — mais direto que a lista "Selecione". Se a Meta recusar, cai na lista.
+export async function waSendButtons(s: WaSettings, phone: string, text: string, choices: string[]): Promise<boolean> {
+  const to = onlyDigits(phone);
+  if (!to) return false;
+  if (waProvider(s) === "meta" && choices.length >= 1 && choices.length <= 3) {
+    const ok = await metaPost(s, {
+      messaging_product: "whatsapp", to, type: "interactive",
+      interactive: { type: "button", body: { text: String(text).slice(0, 1024) },
+        action: { buttons: choices.map((c, i) => ({ type: "reply", reply: { id: `bt_${i}`, title: String(c).slice(0, 20) } })) } },
+    });
+    if (ok) return true;
+  }
+  return waSendMenu(s, phone, text, choices);
+}
+
 // ---------------- envio: TEMPLATE (mensagem iniciada pelo negócio) ----------------
 // No meta envia o template aprovado; no uazapi renderiza o texto equivalente (registry abaixo).
 export async function waSendTemplate(
