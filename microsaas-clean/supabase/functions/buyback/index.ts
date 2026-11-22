@@ -236,6 +236,61 @@ Deno.serve(async (req) => {
         const up = await gravarFicha(admin, b.id, { pedida_em: new Date().toISOString() } as any);
         return json({ ok, request: up, error: ok ? undefined : "whatsapp_falhou" });
       }
+      // CONVERSA DA FICHA: o que o cliente mandou, o que a ficha fez e o que o Co-pilot respondeu (auditoria)
+      case "historico_ficha": {
+        if (!isDealerOrAdmin) return json({ error: "forbidden" }, 403);
+        let q = admin.from("buyback_requests").select("*").eq("id", String(p.id || ""));
+        if (me.role !== "admin") q = q.eq("dealership", me.dealership);
+        const { data: b } = await q.maybeSingle();
+        if (!b) return json({ error: "nao_encontrado" }, 404);
+        const fim8 = onlyDigits(b.owner_phone).slice(-8);
+        if (fim8.length < 8) return json({ ok: true, itens: [], fotos: [] });
+        const { data: fichas } = await admin.from("whatsapp_events").select("created_at").eq("kind", FICHA_KIND).eq("parsed->>buyback_id", b.id).order("created_at", { ascending: true }).limit(1);
+        const desde = new Date(new Date(fichas?.[0]?.created_at || b.created_at).getTime() - 3 * 60_000).toISOString();
+        const { data: evs } = await admin.from("whatsapp_events").select("kind, status, created_at, parsed, raw, error")
+          .like("from_phone", `%${fim8}`).gte("created_at", desde).order("created_at", { ascending: true }).limit(400);
+        const ROTULO: Record<string, string> = {
+          ficha_placa_km: "anotou a placa e o km e perguntou se o carro é quitado", ficha_placa: "anotou a placa e pediu o km", ficha_km: "anotou o km e pediu a placa",
+          ficha_quitado: "anotou e perguntou sobre batida/reparo", ficha_sinistro: "anotou e pediu as fotos", ficha_foto: "foto guardada (sem resposta, pra não encher o chat)",
+          ficha_foto_extra: "foto extra guardada depois de concluir", ficha_foto_erro: "avisou que a foto não abriu e pediu de novo", ficha_foto_limite: "avisou que já tinha fotos suficientes",
+          ficha_faltam_fotos: "avisou quantas fotos chegaram e quantas faltavam", ficha_completa: "ficha concluída e enviada pra loja", ficha_retomar: "repetiu o passo em que ele parou", ficha_adiada: "combinou de continuar depois",
+        };
+        const itens: any[] = [];
+        for (const e of evs || []) {
+          const pr = e.parsed || {};
+          if (e.kind === "msg_rastreada" || e.kind === "status_evt" || e.kind === "sell_pending" || e.kind === "agenda_pending") continue;
+          if (e.kind === FICHA_KIND) { if (pr.buyback_id === b.id) itens.push({ quando: e.created_at, quem: "sistema", texto: e.raw?.origem === "painel" ? "Ficha pedida pelo painel da loja" : "Ficha iniciada depois da proposta" }); continue; }
+          if (e.kind === "status_fail") { itens.push({ quando: e.created_at, quem: "sistema", texto: `Uma mensagem não foi entregue: ${String(e.error || "").slice(0, 160)}`, alerta: true }); continue; }
+          if (e.kind === "proativo") { if (pr.texto) itens.push({ quando: e.created_at, quem: "copilot", texto: String(pr.texto).slice(0, 900) }); continue; }
+          if (e.status === "sent") continue; // outros envios nossos
+          const acao = String(pr.action || "");
+          const daFicha = acao.startsWith("ficha_");
+          const entrada = String(pr.input || (e.kind === "image" ? "[foto]" : e.kind === "audio" ? "[áudio]" : "")).slice(0, 600);
+          if (!entrada && !pr.reply && !daFicha) continue;
+          itens.push({
+            quando: e.created_at, quem: "cliente", texto: entrada || `[${e.kind}]`,
+            tratado: daFicha ? (ROTULO[acao] || acao) : null,
+            resposta: pr.reply ? String(pr.reply).slice(0, 1200) : null,
+            // respondido pela conversa geral com a ficha aberta: vale conferir se saiu do contexto
+            fora_da_ficha: !daFicha && !!pr.reply,
+          });
+        }
+        return json({ ok: true, itens, fotos: await fotosDaFicha(admin, b.id) });
+      }
+      // FINALIZAR PELA LOJA: o cliente mandou as fotos mas não concluiu (ou travou) → fecha a ficha com o que chegou
+      case "finalizar_ficha": {
+        if (!isDealerOrAdmin) return json({ error: "forbidden" }, 403);
+        let q = admin.from("buyback_requests").select("id").eq("id", String(p.id || ""));
+        if (me.role !== "admin") q = q.eq("dealership", me.dealership);
+        const { data: b } = await q.maybeSingle();
+        if (!b) return json({ error: "nao_encontrado" }, 404);
+        const fotos = await fotosDaFicha(admin, b.id);
+        if (!fotos.length) return json({ error: "sem_fotos" }, 400);
+        const up = await gravarFicha(admin, b.id, { completa: true, completa_em: new Date().toISOString(), fotos_n: fotos.length, finalizada_pela_loja: true } as any, fotos);
+        const { data: abertas } = await admin.from("whatsapp_events").select("id, parsed").eq("kind", FICHA_KIND).eq("parsed->>buyback_id", b.id);
+        for (const ev of abertas || []) if (ev.parsed?.step !== "done") await admin.from("whatsapp_events").update({ parsed: { ...ev.parsed, step: "done", concluida_em: new Date().toISOString() } }).eq("id", ev.id);
+        return json({ ok: true, request: up });
+      }
       // fotos já recebidas de um pedido ainda incompleto (o cliente parou no meio)
       case "fotos_ficha": {
         if (!isDealerOrAdmin) return json({ error: "forbidden" }, 403);

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { AlertTriangle, Camera, Check, CheckCheck, Copy, Loader2, Send } from "lucide-react";
+import { AlertTriangle, Camera, Check, CheckCheck, Copy, Loader2, MessagesSquare, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
-import { usePedirFicha, type BuybackRequest } from "@/hooks/useBuyback";
+import { usePedirFicha, useHistoricoFicha, useFinalizarFicha, type BuybackRequest } from "@/hooks/useBuyback";
 
 // FICHA DO CARRO À VENDA dentro do pedido de recompra: o Co-pilot coleta no WhatsApp placa, km, situação e
 // fotos. Completa → dá pra copiar o anúncio pronto pro grupo de repasse. Faltando → 1 toque cobra o cliente.
@@ -44,8 +44,50 @@ function StatusMensagem({ m }: { m: NonNullable<BuybackRequest["ficha_msg"]> }) 
   return <p className="text-xs text-muted-foreground flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Pedido de ficha <b>enviado</b> · {hora(m.enviada_em)}{m.sem_retorno ? " · sem confirmação de entrega neste canal" : " · aguardando entrega"}</p>;
 }
 
+// CONVERSA DA FICHA: cada mensagem do cliente, o que a ficha fez com ela e o que o Co-pilot respondeu
+function ConversaFicha({ r, completa }: { r: BuybackRequest; completa: boolean }) {
+  const { data, isLoading } = useHistoricoFicha(r.id, true);
+  const finalizar = useFinalizarFicha();
+  if (isLoading) return <div className="py-3 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>;
+  const itens = data?.itens || [];
+  const guardadas = data?.fotos || [];
+  const naFicha = r.qualificacao?.fotos || [];
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-xs">
+      {!completa && guardadas.length > 0 && (
+        <div className="space-y-1.5">
+          <p><b>{guardadas.length} foto{guardadas.length === 1 ? "" : "s"}</b> já {guardadas.length === 1 ? "chegou" : "chegaram"}, mas o cliente ainda não concluiu a ficha.</p>
+          {guardadas.length > naFicha.length && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1">{guardadas.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="flex-none"><img src={u} alt={`Foto ${i + 1}`} loading="lazy" className="h-14 w-20 object-cover rounded border" /></a>)}</div>
+          )}
+          <Button size="sm" variant="outline" disabled={finalizar.isPending}
+            onClick={() => finalizar.mutate({ id: r.id }, {
+              onSuccess: () => toast({ title: "Ficha finalizada ✅", description: "O pedido ficou completo com as fotos recebidas." }),
+              onError: (e: any) => toast({ title: "Não deu certo", description: String(e?.message || e), variant: "destructive" }),
+            })}>
+            {finalizar.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : `Finalizar ficha com ${guardadas.length === 1 ? "essa foto" : `essas ${guardadas.length} fotos`}`}
+          </Button>
+        </div>
+      )}
+      {!itens.length ? <p className="text-muted-foreground">Ainda não há mensagens dessa ficha.</p> : itens.map((it, i) => (
+        <div key={i} className={it.quem === "cliente" ? "" : "pl-4"}>
+          <div className="text-[10px] text-muted-foreground">{hora(it.quando)} · {it.quem === "cliente" ? "Cliente" : it.quem === "copilot" ? "Co-pilot" : "Sistema"}</div>
+          <div className={`whitespace-pre-wrap ${it.alerta ? "text-destructive" : ""}`}>{it.texto}</div>
+          {it.tratado && <div className="text-muted-foreground">↳ Ficha: {it.tratado}</div>}
+          {it.resposta && (
+            <div className={`mt-0.5 pl-3 border-l-2 whitespace-pre-wrap ${it.fora_da_ficha ? "border-amber-400 text-amber-800" : "border-primary/40"}`}>
+              {it.fora_da_ficha && <b>Respondido fora da ficha (conversa geral): </b>}{it.resposta}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function FichaDoPedido({ r }: { r: BuybackRequest }) {
   const pedir = usePedirFicha();
+  const [conversa, setConversa] = useState(false);
   const [zoom, setZoom] = useState<string | null>(null);
   const f = r.qualificacao?.ficha;
   const fotos = r.qualificacao?.fotos || [];
@@ -88,6 +130,9 @@ export function FichaDoPedido({ r }: { r: BuybackRequest }) {
       {!fechado && (
         <div className="flex gap-2 flex-wrap">
           {completa && <Button size="sm" variant="outline" className="gap-1.5" onClick={copiar}><Copy className="w-4 h-4" /> Copiar anúncio pro repasse</Button>}
+          {(f?.iniciada_em || f?.pedida_em || completa) && (
+            <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground" onClick={() => setConversa((v) => !v)}><MessagesSquare className="w-4 h-4" /> {conversa ? "Fechar conversa" : "Ver conversa da ficha"}</Button>
+          )}
           {!completa && r.owner_phone && (
             <Button size="sm" variant="outline" className="gap-1.5" onClick={cobrar} disabled={pedir.isPending}>
               {pedir.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {f?.pedida_em || f?.iniciada_em ? "Cobrar ficha de novo" : "Pedir ficha e fotos"}
@@ -95,6 +140,7 @@ export function FichaDoPedido({ r }: { r: BuybackRequest }) {
           )}
         </div>
       )}
+      {conversa && <ConversaFicha r={r} completa={completa} />}
     </div>
   );
 }

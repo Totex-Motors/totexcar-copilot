@@ -3292,11 +3292,18 @@ async function findFichaPending(phone: string, comRecemConcluida = false): Promi
   const recente = p.concluida_em && Date.now() - new Date(p.concluida_em).getTime() < 20 * 60_000;
   return comRecemConcluida && recente ? { id: ev.id, parsed: p, concluida: true } : null;
 }
-async function enviarPassoFicha(phone: string, passo: PassoFicha, ctx: { carro?: string | null; modalidade?: string | null; total?: number }) {
+type Diz = (texto: string, botoes?: string[]) => Promise<void>;
+// envia e (opcional) anota o que foi dito — vira o histórico da ficha no painel e a memória da conversa
+function dizPara(phone: string, dito?: string[]): Diz {
+  return async (texto, botoes) => {
+    dito?.push(botoes?.length ? `${texto}\n[botões: ${botoes.join(" | ")}]` : texto);
+    if (botoes?.length) await waSendButtons(await getSettings(), phone, texto, botoes);
+    else await sendText(phone, texto);
+  };
+}
+async function enviarPassoFicha(phone: string, passo: PassoFicha, ctx: { carro?: string | null; modalidade?: string | null; total?: number }, diz: Diz = dizPara(phone)) {
   const { texto, botoes } = textoPasso(passo, ctx);
-  if (!texto) return;
-  if (botoes?.length) await waSendButtons(await getSettings(), phone, texto, botoes);
-  else await sendText(phone, texto);
+  if (texto) await diz(texto, botoes);
 }
 async function iniciarFicha(phone: string, buybackId: string | null, ctx: { carro?: string | null; modalidade?: string | null; dealership?: string | null; nome?: string | null }): Promise<boolean> {
   if (!buybackId) return false;
@@ -3333,11 +3340,11 @@ async function reivindicarConclusao(pend: FichaPend): Promise<boolean> {
     .eq("id", pend.id).eq("parsed->>step", "fotos").select("id");
   return !!data?.length;
 }
-async function concluirFicha(phone: string, pend: { id: string; parsed: any }, fotos: string[]) {
+async function concluirFicha(phone: string, pend: { id: string; parsed: any }, fotos: string[], diz: Diz = dizPara(phone)) {
   const p = pend.parsed || {};
   const b = await gravarFicha(supabase, p.buyback_id, { completa: true, completa_em: new Date().toISOString(), fotos_n: fotos.length }, fotos);
   const carro = p.carro || "seu carro";
-  await sendText(phone, p.modalidade === "express"
+  await diz(p.modalidade === "express"
     ? `✅ *Ficha completa!* Seu ${carro} já está com a nossa equipe de repasse, com os dados e as ${fotos.length} fotos. Você tem retorno em *até 48h*.`
     : `✅ *Ficha completa!* A loja já recebeu os dados e as ${fotos.length} fotos do seu ${carro} pra preparar o anúncio.`);
   // loja: aviso de 1 linha + CRM (TotexGest) com a ficha e os links das fotos, pra automação do repasse
@@ -3385,8 +3392,13 @@ async function contextoFichaPrompt(phone: string): Promise<string> {
     return `\n\nVENDA DO CARRO EM ANDAMENTO (prioridade desta conversa): o cliente está enviando a FICHA do ${p.carro || "carro"} que ele quer vender (${p.modalidade === "express" ? "Venda Express, repasse em até 48h" : "Venda Vitrine"}). Já temos: ${[f.placa && `placa ${f.placa}`, f.km && `${f.km} km`, f.quitado, f.sinistro].filter(Boolean).join(", ") || "nada ainda"}. FALTA: ${falta}. Regras: NÃO cumprimente do zero nem pergunte "como posso te ajudar" — você está no MEIO de um atendimento. Responda o que ele disse em 1–2 linhas, com naturalidade, e conduza de volta ao que falta, dizendo exatamente o que ele precisa mandar. Se ele tiver dúvida sobre a venda (valor, prazo, vistoria, como funciona o repasse), explique e retome. Se ele disser que não quer continuar agora, diga que é só mandar "ficha" quando puder.`;
   } catch { return ""; }
 }
-// devolve o rótulo do que tratou (ou null: a mensagem não era da ficha)
-async function handleFichaVenda(msg: any, eventId?: string | null): Promise<string | null> {
+// devolve o que tratou + o que respondeu (ou null: a mensagem não era da ficha)
+async function handleFichaVenda(msg: any, eventId?: string | null): Promise<{ acao: string; dito: string[] } | null> {
+  const dito: string[] = [];
+  const acao = await tratarFichaVenda(msg, eventId, dizPara(msg.phone, dito));
+  return acao ? { acao, dito } : null;
+}
+async function tratarFichaVenda(msg: any, eventId: string | null | undefined, diz: Diz): Promise<string | null> {
   const pend = await findFichaPending(msg.phone, true);
   if (!pend) return null;
   const p = pend.parsed || {};
@@ -3395,7 +3407,7 @@ async function handleFichaVenda(msg: any, eventId?: string | null): Promise<stri
   const salvar = async (patch: Record<string, unknown>) => { Object.assign(p, patch); await supabase.from("whatsapp_events").update({ parsed: p }).eq("id", pend.id); };
   const finalizar = async (): Promise<boolean> => {
     if (!(await reivindicarConclusao(pend))) return false; // outra execução já concluiu
-    await concluirFicha(msg.phone, pend, await fotosDaFicha(supabase, p.buyback_id));
+    await concluirFicha(msg.phone, pend, await fotosDaFicha(supabase, p.buyback_id), diz);
     return true;
   };
 
@@ -3415,9 +3427,9 @@ async function handleFichaVenda(msg: any, eventId?: string | null): Promise<stri
     // daqui pra frente a foto É da ficha: nunca devolve null (não pode cair na conversa geral)
     try {
       const img = await baixarImagemMsg(msg).catch(() => null);
-      if (!img?.data) { await sendText(msg.phone, "Uma das fotos não abriu aqui 😕 Pode mandar ela de novo?"); return "ficha_foto_erro"; }
+      if (!img?.data) { await diz("Uma das fotos não abriu aqui 😕 Pode mandar ela de novo?"); return "ficha_foto_erro"; }
       const r = await salvarFotoFicha(supabase, p.buyback_id, img.data, img.media_type);
-      if (!r.ok && r.total < MIN_FOTOS) { await sendText(msg.phone, "Não consegui guardar uma das fotos 😕 Pode mandar ela de novo?"); return "ficha_foto_erro"; }
+      if (!r.ok && r.total < MIN_FOTOS) { await diz("Não consegui guardar uma das fotos 😕 Pode mandar ela de novo?"); return "ficha_foto_erro"; }
       // estado FRESCO: o "Pronto" pode ter chegado enquanto esta foto subia
       const atual = await findFichaPending(msg.phone);
       if (!atual) return "ficha_foto"; // já concluíram enquanto isso; a foto ficou guardada
@@ -3427,7 +3439,7 @@ async function handleFichaVenda(msg: any, eventId?: string | null): Promise<stri
         return "ficha_completa";
       }
       if (r.total === MIN_FOTOS && !atual.parsed?.pronto) {
-        await waSendButtons(await getSettings(), msg.phone, `Chegaram ${r.total} fotos ✅ Se quiser mandar mais (painel, bancos, porta-malas, detalhes), pode mandar. Quando terminar, toque em *Pronto*.`, ["Pronto, enviei"]);
+        await diz(`Chegaram ${r.total} fotos ✅ Se quiser mandar mais (painel, bancos, porta-malas, detalhes), pode mandar. Quando terminar, toque em *Pronto*.`, ["Pronto, enviei"]);
       }
       return "ficha_foto";
     } catch (e) { console.error("ficha foto:", e); return "ficha_foto_erro"; }
@@ -3435,8 +3447,8 @@ async function handleFichaVenda(msg: any, eventId?: string | null): Promise<stri
   if (pend.concluida) return null;
   const t = String(msg.text || msg.transcription || "").trim();
   if (!t) return null;
-  if (ehRetomar(t)) { await enviarPassoFicha(msg.phone, passo, { ...ctx, total: passo === "fotos" ? (await fotosDaFicha(supabase, p.buyback_id)).length : 0 }); return "ficha_retomar"; }
-  if (ehAdiar(t)) { await sendText(msg.phone, "Sem problema! Quando puder, é só mandar *ficha* que a gente continua de onde parou. 👍"); return "ficha_adiada"; }
+  if (ehRetomar(t)) { await enviarPassoFicha(msg.phone, passo, { ...ctx, total: passo === "fotos" ? (await fotosDaFicha(supabase, p.buyback_id)).length : 0 }, diz); return "ficha_retomar"; }
+  if (ehAdiar(t)) { await diz("Sem problema! Quando puder, é só mandar *ficha* que a gente continua de onde parou. 👍"); return "ficha_adiada"; }
 
   if (passo === "placa_km") {
     const { placa, km } = parsePlacaKm(t);
@@ -3446,10 +3458,10 @@ async function handleFichaVenda(msg: any, eventId?: string | null): Promise<stri
     const placaF = placa || p.placa || null, kmF = km || p.km || null;
     await salvar({ placa: placaF, km: kmF });
     await gravarFicha(supabase, p.buyback_id, { placa: placaF, km: kmF });
-    if (!placaF) { await sendText(msg.phone, `Anotei: ${Number(kmF).toLocaleString("pt-BR")} km 👍 Agora só a *placa* (ex.: ABC1D23).`); return "ficha_km"; }
-    if (!kmF) { await sendText(msg.phone, `Anotei a placa ${placaF} 👍 E o *km* atual? (ex.: 85.000)`); return "ficha_placa"; }
+    if (!placaF) { await diz(`Anotei: ${Number(kmF).toLocaleString("pt-BR")} km 👍 Agora só a *placa* (ex.: ABC1D23).`); return "ficha_km"; }
+    if (!kmF) { await diz(`Anotei a placa ${placaF} 👍 E o *km* atual? (ex.: 85.000)`); return "ficha_placa"; }
     await salvar({ step: "quitado" });
-    await enviarPassoFicha(msg.phone, "quitado", ctx);
+    await enviarPassoFicha(msg.phone, "quitado", ctx, diz);
     return "ficha_placa_km";
   }
   if (passo === "quitado") {
@@ -3457,7 +3469,7 @@ async function handleFichaVenda(msg: any, eventId?: string | null): Promise<stri
     if (!v) return null;
     await gravarFicha(supabase, p.buyback_id, { quitado: v });
     await salvar({ step: "sinistro" });
-    await enviarPassoFicha(msg.phone, "sinistro", ctx);
+    await enviarPassoFicha(msg.phone, "sinistro", ctx, diz);
     return "ficha_quitado";
   }
   if (passo === "sinistro") {
@@ -3465,7 +3477,7 @@ async function handleFichaVenda(msg: any, eventId?: string | null): Promise<stri
     if (!v) return null;
     await gravarFicha(supabase, p.buyback_id, { sinistro: v });
     await salvar({ step: "fotos" });
-    await enviarPassoFicha(msg.phone, "fotos", ctx);
+    await enviarPassoFicha(msg.phone, "fotos", ctx, diz);
     return "ficha_sinistro";
   }
   if (passo === "fotos" && ehPronto(t)) {
@@ -3480,7 +3492,7 @@ async function handleFichaVenda(msg: any, eventId?: string | null): Promise<stri
     if (n >= MIN_FOTOS) { await finalizar(); return "ficha_completa"; }
     await gravarFicha(supabase, p.buyback_id, { fotos_n: n });
     const falta = MIN_FOTOS - n;
-    await sendText(msg.phone, n === 0
+    await diz(n === 0
       ? `Ainda não chegou nenhuma foto por aqui (às vezes o WhatsApp demora pra enviar). Manda pelo menos ${MIN_FOTOS}: frente, traseira, uma lateral e o interior. Assim que chegarem eu finalizo sozinho. 📸`
       : `Chegaram ${n} foto${n === 1 ? "" : "s"} por aqui, ${falta === 1 ? "falta só mais 1" : `faltam mais ${falta}`} pra fechar o mínimo de ${MIN_FOTOS}. Manda ${falta === 1 ? "a que faltou" : "as que faltaram"} (interior, painel ou outro ângulo) que eu já finalizo sozinho, não precisa tocar em Pronto de novo. 📸`);
     return "ficha_faltam_fotos";
@@ -4713,10 +4725,11 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
 
     // FICHA DO CARRO À VENDA em andamento (placa/km, situação, fotos) — vale pra lead e pra cliente
     if (!msg.flowReply) {
-      const fichaAcao = await handleFichaVenda(msg, eventId).catch((e) => { console.error("ficha venda:", e); return null; });
-      if (fichaAcao) {
-        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: fichaAcao, input: msg.kind === "image" ? "[foto do carro à venda]" : (msg.text || msg.transcription || "") } }).eq("id", eventId);
-        return new Response(JSON.stringify({ ok: true, ficha: fichaAcao }), { headers: { ...cors, "Content-Type": "application/json" } });
+      const ficha = await handleFichaVenda(msg, eventId).catch((e) => { console.error("ficha venda:", e); return null; });
+      if (ficha) {
+        // guarda o que ele mandou e o que foi respondido: histórico da ficha no painel + memória da conversa
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: ficha.acao, input: msg.kind === "image" ? "[foto do carro à venda]" : (msg.text || msg.transcription || ""), ...(ficha.dito.length ? { reply: ficha.dito.join("\n\n") } : {}) } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, ficha: ficha.acao }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
     }
 

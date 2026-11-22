@@ -104,6 +104,23 @@ export const useBuybackRequests = (enabled: boolean, dealership?: string) =>
     enabled,
   });
 
+// conversa da ficha de um pedido: o que o cliente mandou, o que a ficha fez e o que foi respondido
+export type ItemHistoricoFicha = { quando: string; quem: "cliente" | "copilot" | "sistema"; texto: string; tratado?: string | null; resposta?: string | null; fora_da_ficha?: boolean; alerta?: boolean };
+export const useHistoricoFicha = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["ficha-historico", id],
+    queryFn: async () => (await callBuyback("historico_ficha", { id })) as { itens: ItemHistoricoFicha[]; fotos: string[] },
+    enabled,
+  });
+// a loja fecha a ficha com as fotos que já chegaram (cliente não concluiu)
+export const useFinalizarFicha = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: { id: string }) => callBuyback("finalizar_ficha", p),
+    onSuccess: (_d, p) => { qc.invalidateQueries({ queryKey: ["buyback-requests"] }); qc.invalidateQueries({ queryKey: ["ficha-historico", p.id] }); },
+  });
+};
+
 // pede a ficha (placa, km, situação e fotos) pro cliente de um pedido que chegou sem ela
 export const usePedirFicha = () => {
   const qc = useQueryClient();
