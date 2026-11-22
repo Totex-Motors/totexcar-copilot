@@ -25,6 +25,9 @@ export interface BuybackRequest {
     prazo_dias?: number | null;
     margem?: number | null;
     fipe_value?: number | null;
+    // ficha do carro coletada pelo Co-pilot no WhatsApp (placa, km, situação) + links das fotos
+    ficha?: { placa?: string | null; km?: number | null; quitado?: string | null; sinistro?: string | null; completa?: boolean; completa_em?: string | null; iniciada_em?: string | null; pedida_em?: string | null; fotos_n?: number } | null;
+    fotos?: string[] | null;
   } | null;
   status: "new" | "contacted" | "closed" | "declined" | string;
   created_at: string;
@@ -94,6 +97,15 @@ export const useBuybackRequests = (enabled: boolean, dealership?: string) =>
     queryFn: async () => ((await callBuyback("list_requests", dealership ? { dealership } : {})).requests || []) as BuybackRequest[],
     enabled,
   });
+
+// pede a ficha (placa, km, situação e fotos) pro cliente de um pedido que chegou sem ela
+export const usePedirFicha = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: { id: string }) => callBuyback("pedir_ficha", p),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["buyback-requests"] }),
+  });
+};
 
 export const useUpdateBuyback = () => {
   const qc = useQueryClient();

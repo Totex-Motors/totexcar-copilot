@@ -43,6 +43,7 @@ import {
   type ConversaClient, type ConversaItem,
 } from "@/hooks/useDealer";
 import { useBuybackRequests, useUpdateBuyback, type BuybackRequest } from "@/hooks/useBuyback";
+import { FichaDoPedido } from "@/components/dealer/FichaDoPedido";
 
 const brl = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -701,7 +702,9 @@ function BuybackTab({ dealership }: { dealership?: string }) {
   return (
     <Card className="border-0 shadow-premium-md">
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2"><Banknote className="w-5 h-5" /> Pedidos de recompra ({reqs?.length || 0})</CardTitle>
+        <CardTitle className="text-lg flex items-center gap-2"><Banknote className="w-5 h-5" /> Pedidos de recompra ({reqs?.length || 0})
+          {!!reqs?.length && <span className="text-xs font-normal text-muted-foreground">· {reqs.filter((x: BuybackRequest) => x.qualificacao?.ficha?.completa && x.status !== "closed" && x.status !== "declined").length} com ficha completa, prontos pra publicar</span>}
+        </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         {isLoading ? (
@@ -735,6 +738,7 @@ function BuybackTab({ dealership }: { dealership?: string }) {
                         FIPE {brl(Number(r.fipe_value))} · oferta ({r.offer_pct}%) <b className="text-foreground">{brl(Number(r.offer_value))}</b> · {new Date(r.created_at).toLocaleDateString("pt-BR")}
                       </p>
                     )}
+                    <FichaDoPedido r={r} />
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {wa && (

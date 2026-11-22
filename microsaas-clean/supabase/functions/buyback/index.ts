@@ -4,6 +4,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
 import { loadSeloConfig, seloElegivel } from "../_shared/care-score.ts";
+import { FICHA_KIND, VALIDADE_DIAS, gravarFicha, fotosDaFicha } from "../_shared/ficha-venda.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -193,6 +194,44 @@ Deno.serve(async (req) => {
         const { data, error } = await q.select().single();
         if (error) throw error;
         return json({ ok: true, request: data });
+      }
+
+      // PEDIR A FICHA (placa, km, situação e fotos) de um pedido que chegou sem ela: o Co-pilot chama o
+      // cliente no WhatsApp e conduz; quando ele terminar, o pedido aparece completo no painel.
+      case "pedir_ficha": {
+        if (!isDealerOrAdmin) return json({ error: "forbidden" }, 403);
+        let q = admin.from("buyback_requests").select("*").eq("id", String(p.id || ""));
+        if (me.role !== "admin") q = q.eq("dealership", me.dealership);
+        const { data: b } = await q.maybeSingle();
+        if (!b) return json({ error: "nao_encontrado" }, 404);
+        const phone = String(b.owner_phone || "").trim();
+        if (onlyDigits(phone).length < 10) return json({ error: "sem_telefone" }, 400);
+        if (b.qualificacao?.ficha?.completa) return json({ error: "ficha_ja_completa" }, 400);
+        const carro = [b.brand, b.model, b.year].filter(Boolean).join(" ") || "seu carro";
+        // se já existe uma ficha em andamento pra esse cliente, só cobra de novo (não reinicia o passo)
+        const desde = new Date(Date.now() - VALIDADE_DIAS * 86400_000).toISOString();
+        const { data: evs } = await admin.from("whatsapp_events").select("id, parsed").eq("from_phone", phone).eq("kind", FICHA_KIND).gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+        const emAndamento = evs?.[0] && evs[0].parsed?.buyback_id === b.id && evs[0].parsed?.step !== "done";
+        if (!emAndamento) {
+          await admin.from("whatsapp_events").insert({ from_phone: phone, kind: FICHA_KIND, status: "processed", raw: { origem: "painel" },
+            parsed: { step: "placa_km", buyback_id: b.id, carro, modalidade: b.modalidade || null, dealership: b.dealership || null, nome: b.owner_name || null } });
+          await gravarFicha(admin, b.id, { iniciada_em: new Date().toISOString(), completa: false });
+        }
+        const wa = await loadWaSettings(admin);
+        const texto = `Pra acelerar a venda do seu ${carro}, só falta a ficha do carro: leva 2 minutos e ele já vai pra nossa equipe de compra. Me responda aqui com a placa e o km atual (ex.: ABC1D23 85.000) que eu te guio no resto, inclusive as fotos.`;
+        const ok = await waSendTemplate(wa, phone, "copilot_msg", [texto]);
+        if (ok) await admin.from("whatsapp_events").insert({ from_phone: onlyDigits(phone), kind: "proativo", status: "sent", raw: { proativo: true, ficha: true }, parsed: { assunto: "ficha_venda", texto, variante: "copilot_msg" } });
+        const up = await gravarFicha(admin, b.id, { pedida_em: new Date().toISOString() } as any);
+        return json({ ok, request: up, error: ok ? undefined : "whatsapp_falhou" });
+      }
+      // fotos já recebidas de um pedido ainda incompleto (o cliente parou no meio)
+      case "fotos_ficha": {
+        if (!isDealerOrAdmin) return json({ error: "forbidden" }, 403);
+        let q = admin.from("buyback_requests").select("id").eq("id", String(p.id || ""));
+        if (me.role !== "admin") q = q.eq("dealership", me.dealership);
+        const { data: b } = await q.maybeSingle();
+        if (!b) return json({ error: "nao_encontrado" }, 404);
+        return json({ ok: true, fotos: await fotosDaFicha(admin, b.id) });
       }
 
       default:
