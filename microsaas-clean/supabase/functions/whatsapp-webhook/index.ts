@@ -5,7 +5,7 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waSendContact, waSendLocation, waUploadMedia, metaDownloadMedia, parseMetaInbound, registrarStatusMsg, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waSendContact, waSendLocation, waUploadMedia, metaDownloadMedia, parseMetaInbound, registrarStatusMsg, waSendButtons, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { createGptCheckout, GPT_NOME } from "../_shared/gptorder.ts";
 import type { GptProduto } from "../_shared/gptmotors.ts";
@@ -3274,17 +3274,28 @@ async function finalizeSellLead(phone: string, pending: { id: string; parsed: an
 // ===================== FICHA DO CARRO À VENDA (placa, km, situação e FOTOS) =====================
 // Começa logo depois da proposta: o pedido chega no painel da loja pronto pra agir/publicar no repasse.
 // Só consome a mensagem que responde ao passo da vez; qualquer outra coisa segue o fluxo normal.
-async function findFichaPending(phone: string): Promise<{ id: string; parsed: any } | null> {
+type FichaPend = { id: string; parsed: any; concluida: boolean };
+// ficha em andamento (ou concluída há poucos minutos: fotos que ainda chegam entram nela, sem cair na IA)
+async function findFichaPending(phone: string, comRecemConcluida = false): Promise<FichaPend | null> {
   const desde = new Date(Date.now() - VALIDADE_DIAS * 86400_000).toISOString();
-  const { data } = await supabase.from("whatsapp_events").select("id, parsed").eq("from_phone", phone).eq("kind", FICHA_KIND)
-    .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
-  const ev = data?.[0];
-  return ev && (ev.parsed as any)?.step && (ev.parsed as any).step !== "done" ? { id: ev.id, parsed: ev.parsed } : null;
+  let ev: any = null;
+  for (let t = 0; t < 2; t++) { // 1 nova tentativa: falha passageira do banco não pode jogar a foto na conversa geral
+    const { data, error } = await supabase.from("whatsapp_events").select("id, parsed").eq("from_phone", phone).eq("kind", FICHA_KIND)
+      .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+    if (!error) { ev = data?.[0] || null; break; }
+    console.error("findFichaPending:", error.message);
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  const p = ev?.parsed as any;
+  if (!p?.step) return null;
+  if (p.step !== "done") return { id: ev.id, parsed: p, concluida: false };
+  const recente = p.concluida_em && Date.now() - new Date(p.concluida_em).getTime() < 20 * 60_000;
+  return comRecemConcluida && recente ? { id: ev.id, parsed: p, concluida: true } : null;
 }
 async function enviarPassoFicha(phone: string, passo: PassoFicha, ctx: { carro?: string | null; modalidade?: string | null; total?: number }) {
   const { texto, botoes } = textoPasso(passo, ctx);
   if (!texto) return;
-  if (botoes?.length) await waSendMenu(await getSettings(), phone, texto, botoes);
+  if (botoes?.length) await waSendButtons(await getSettings(), phone, texto, botoes);
   else await sendText(phone, texto);
 }
 async function iniciarFicha(phone: string, buybackId: string | null, ctx: { carro?: string | null; modalidade?: string | null; dealership?: string | null; nome?: string | null }): Promise<boolean> {
@@ -3303,9 +3314,27 @@ async function baixarImagemMsg(msg: any): Promise<{ data: string; media_type: st
   const creds = await uazapiCreds();
   return (await downloadUazapiMedia(msg.baseUrl || creds.url, msg.token || creds.token, msg.content, msg.messageid)) || (msg.mediaUrl ? await fetchImageBase64(msg.mediaUrl) : null);
 }
+// fotos do mesmo número que chegaram e ainda estão sendo baixadas/guardadas (o WhatsApp entrega o álbum
+// foto a foto; o "Pronto" costuma chegar antes de a última terminar)
+async function fotosEmCurso(phone: string, excetoEventId?: string | null): Promise<number> {
+  const desde = new Date(Date.now() - 120_000).toISOString();
+  let q = supabase.from("whatsapp_events").select("id", { count: "exact", head: true }).eq("from_phone", phone).eq("kind", "image").eq("status", "received").gte("created_at", desde);
+  if (excetoEventId) q = q.neq("id", excetoEventId);
+  const { count } = await q;
+  return count || 0;
+}
+async function esperarFotos(phone: string, excetoEventId?: string | null, maxMs = 10_000) {
+  const fim = Date.now() + maxMs;
+  do { await new Promise((r) => setTimeout(r, 1500)); } while (Date.now() < fim && (await fotosEmCurso(phone, excetoEventId)) > 0);
+}
+// só UMA execução conclui a ficha (o "Pronto" e a última foto podem chegar juntos)
+async function reivindicarConclusao(pend: FichaPend): Promise<boolean> {
+  const { data } = await supabase.from("whatsapp_events").update({ parsed: { ...pend.parsed, step: "done", concluida_em: new Date().toISOString() } })
+    .eq("id", pend.id).eq("parsed->>step", "fotos").select("id");
+  return !!data?.length;
+}
 async function concluirFicha(phone: string, pend: { id: string; parsed: any }, fotos: string[]) {
   const p = pend.parsed || {};
-  await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "done" } }).eq("id", pend.id);
   const b = await gravarFicha(supabase, p.buyback_id, { completa: true, completa_em: new Date().toISOString(), fotos_n: fotos.length }, fotos);
   const carro = p.carro || "seu carro";
   await sendText(phone, p.modalidade === "express"
@@ -3340,26 +3369,70 @@ async function concluirFicha(phone: string, pend: { id: string; parsed: any }, f
   } catch (e) { console.error("concluirFicha aviso:", e); }
   await offerAgendamento(phone, { carro, dealership: p.dealership || null, nome: p.nome || null, source: "sell" });
 }
+// CONTEXTO pra IA: se algo cair na conversa geral com a ficha aberta, ela CONTINUA a venda (nada de "como posso ajudar?")
+async function contextoFichaPrompt(phone: string): Promise<string> {
+  try {
+    const pend = await findFichaPending(phone);
+    if (!pend) return "";
+    const p = pend.parsed || {};
+    const { data: b } = await supabase.from("buyback_requests").select("qualificacao").eq("id", p.buyback_id).maybeSingle();
+    const f = b?.qualificacao?.ficha || {};
+    const nFotos = p.step === "fotos" ? (await fotosDaFicha(supabase, p.buyback_id)).length : 0;
+    const falta = p.step === "placa_km" ? `a placa e o km atual (ex.: ABC1D23 85.000)${f.placa ? " — a placa já veio, falta o km" : f.km ? " — o km já veio, falta a placa" : ""}`
+      : p.step === "quitado" ? "dizer se o carro está quitado ou financiado"
+      : p.step === "sinistro" ? "dizer se já teve batida/reparo (nunca bateu, já teve reparo, leilão ou sinistro)"
+      : `as fotos do carro (mínimo ${MIN_FOTOS}: frente, traseira, lateral, interior e painel) — chegaram ${nFotos} até agora${p.pronto ? "; ele já avisou que terminou, então assim que chegar a que falta você finaliza" : "; ao terminar ele toca em Pronto"}`;
+    return `\n\nVENDA DO CARRO EM ANDAMENTO (prioridade desta conversa): o cliente está enviando a FICHA do ${p.carro || "carro"} que ele quer vender (${p.modalidade === "express" ? "Venda Express, repasse em até 48h" : "Venda Vitrine"}). Já temos: ${[f.placa && `placa ${f.placa}`, f.km && `${f.km} km`, f.quitado, f.sinistro].filter(Boolean).join(", ") || "nada ainda"}. FALTA: ${falta}. Regras: NÃO cumprimente do zero nem pergunte "como posso te ajudar" — você está no MEIO de um atendimento. Responda o que ele disse em 1–2 linhas, com naturalidade, e conduza de volta ao que falta, dizendo exatamente o que ele precisa mandar. Se ele tiver dúvida sobre a venda (valor, prazo, vistoria, como funciona o repasse), explique e retome. Se ele disser que não quer continuar agora, diga que é só mandar "ficha" quando puder.`;
+  } catch { return ""; }
+}
 // devolve o rótulo do que tratou (ou null: a mensagem não era da ficha)
-async function handleFichaVenda(msg: any): Promise<string | null> {
-  const pend = await findFichaPending(msg.phone);
+async function handleFichaVenda(msg: any, eventId?: string | null): Promise<string | null> {
+  const pend = await findFichaPending(msg.phone, true);
   if (!pend) return null;
   const p = pend.parsed || {};
   const passo = p.step as PassoFicha;
   const ctx = { carro: p.carro, modalidade: p.modalidade };
   const salvar = async (patch: Record<string, unknown>) => { Object.assign(p, patch); await supabase.from("whatsapp_events").update({ parsed: p }).eq("id", pend.id); };
+  const finalizar = async (): Promise<boolean> => {
+    if (!(await reivindicarConclusao(pend))) return false; // outra execução já concluiu
+    await concluirFicha(msg.phone, pend, await fotosDaFicha(supabase, p.buyback_id));
+    return true;
+  };
 
-  // FOTO: só no passo das fotos (fora dele, foto é cupom, painel, documento… do fluxo normal)
   if (msg.kind === "image") {
-    if (passo !== "fotos") return null;
-    const img = await baixarImagemMsg(msg).catch(() => null);
-    if (!img?.data) { await sendText(msg.phone, "Não consegui abrir essa foto 😕 Pode mandar de novo?"); return "ficha_foto_erro"; }
-    const r = await salvarFotoFicha(supabase, p.buyback_id, img.data, img.media_type);
-    if (!r.ok) { await sendText(msg.phone, `Já tenho ${r.total} fotos, é o bastante 👍 Toque em *Pronto* pra eu enviar pra loja.`); return "ficha_foto_limite"; }
-    // 1 resposta só, quando bate o mínimo (as fotos chegam em sequência: responder a cada uma vira spam)
-    if (r.total === MIN_FOTOS) await waSendMenu(await getSettings(), msg.phone, `Recebi ${r.total} fotos ✅ Pode mandar mais, ou toque em *Pronto* pra finalizar.`, ["Pronto, enviei"]);
-    return "ficha_foto";
+    // ficha recém-concluída: foto que ainda chegou entra no pedido, em silêncio
+    if (pend.concluida) {
+      try {
+        const img = await baixarImagemMsg(msg);
+        if (img?.data && (await salvarFotoFicha(supabase, p.buyback_id, img.data, img.media_type)).ok) {
+          const fotos = await fotosDaFicha(supabase, p.buyback_id);
+          await gravarFicha(supabase, p.buyback_id, { fotos_n: fotos.length }, fotos);
+        }
+      } catch (e) { console.error("ficha foto extra:", e); }
+      return "ficha_foto_extra";
+    }
+    if (passo !== "fotos") return null; // antes do passo das fotos, foto é cupom/painel/documento do fluxo normal
+    // daqui pra frente a foto É da ficha: nunca devolve null (não pode cair na conversa geral)
+    try {
+      const img = await baixarImagemMsg(msg).catch(() => null);
+      if (!img?.data) { await sendText(msg.phone, "Uma das fotos não abriu aqui 😕 Pode mandar ela de novo?"); return "ficha_foto_erro"; }
+      const r = await salvarFotoFicha(supabase, p.buyback_id, img.data, img.media_type);
+      if (!r.ok && r.total < MIN_FOTOS) { await sendText(msg.phone, "Não consegui guardar uma das fotos 😕 Pode mandar ela de novo?"); return "ficha_foto_erro"; }
+      // estado FRESCO: o "Pronto" pode ter chegado enquanto esta foto subia
+      const atual = await findFichaPending(msg.phone);
+      if (!atual) return "ficha_foto"; // já concluíram enquanto isso; a foto ficou guardada
+      if (atual.parsed?.pronto && r.total >= MIN_FOTOS) {
+        await esperarFotos(msg.phone, eventId, 6000); // deixa as outras do álbum terminarem
+        await finalizar();
+        return "ficha_completa";
+      }
+      if (r.total === MIN_FOTOS && !atual.parsed?.pronto) {
+        await waSendButtons(await getSettings(), msg.phone, `Chegaram ${r.total} fotos ✅ Se quiser mandar mais (painel, bancos, porta-malas, detalhes), pode mandar. Quando terminar, toque em *Pronto*.`, ["Pronto, enviei"]);
+      }
+      return "ficha_foto";
+    } catch (e) { console.error("ficha foto:", e); return "ficha_foto_erro"; }
   }
+  if (pend.concluida) return null;
   const t = String(msg.text || msg.transcription || "").trim();
   if (!t) return null;
   if (ehRetomar(t)) { await enviarPassoFicha(msg.phone, passo, { ...ctx, total: passo === "fotos" ? (await fotosDaFicha(supabase, p.buyback_id)).length : 0 }); return "ficha_retomar"; }
@@ -3373,8 +3446,8 @@ async function handleFichaVenda(msg: any): Promise<string | null> {
     const placaF = placa || p.placa || null, kmF = km || p.km || null;
     await salvar({ placa: placaF, km: kmF });
     await gravarFicha(supabase, p.buyback_id, { placa: placaF, km: kmF });
-    if (!placaF) { await sendText(msg.phone, "Anotei o km 👍 Agora me mande a *placa* (ex.: ABC1D23)."); return "ficha_km"; }
-    if (!kmF) { await sendText(msg.phone, "Anotei a placa 👍 Agora me mande o *km* atual (ex.: 85.000)."); return "ficha_placa"; }
+    if (!placaF) { await sendText(msg.phone, `Anotei: ${Number(kmF).toLocaleString("pt-BR")} km 👍 Agora só a *placa* (ex.: ABC1D23).`); return "ficha_km"; }
+    if (!kmF) { await sendText(msg.phone, `Anotei a placa ${placaF} 👍 E o *km* atual? (ex.: 85.000)`); return "ficha_placa"; }
     await salvar({ step: "quitado" });
     await enviarPassoFicha(msg.phone, "quitado", ctx);
     return "ficha_placa_km";
@@ -3396,14 +3469,21 @@ async function handleFichaVenda(msg: any): Promise<string | null> {
     return "ficha_sinistro";
   }
   if (passo === "fotos" && ehPronto(t)) {
-    const fotos = await fotosDaFicha(supabase, p.buyback_id);
-    if (fotos.length < MIN_FOTOS) {
-      await gravarFicha(supabase, p.buyback_id, { fotos_n: fotos.length }, fotos);
-      await sendText(msg.phone, `Recebi ${fotos.length} foto${fotos.length === 1 ? "" : "s"} até agora. Preciso de pelo menos ${MIN_FOTOS}: frente, traseira, uma lateral e o interior. Mande as que faltam e toque em *Pronto*. 📸`);
-      return "ficha_faltam_fotos";
+    // o "Pronto" costuma chegar antes da última foto do álbum: espera as que estão subindo
+    await esperarFotos(msg.phone, eventId);
+    let n = (await fotosDaFicha(supabase, p.buyback_id)).length;
+    if (n < MIN_FOTOS) {
+      await salvar({ pronto: true }); // a foto que completar o mínimo finaliza sozinha
+      await new Promise((r) => setTimeout(r, 2500));
+      n = (await fotosDaFicha(supabase, p.buyback_id)).length;
     }
-    await concluirFicha(msg.phone, pend, fotos);
-    return "ficha_completa";
+    if (n >= MIN_FOTOS) { await finalizar(); return "ficha_completa"; }
+    await gravarFicha(supabase, p.buyback_id, { fotos_n: n });
+    const falta = MIN_FOTOS - n;
+    await sendText(msg.phone, n === 0
+      ? `Ainda não chegou nenhuma foto por aqui (às vezes o WhatsApp demora pra enviar). Manda pelo menos ${MIN_FOTOS}: frente, traseira, uma lateral e o interior. Assim que chegarem eu finalizo sozinho. 📸`
+      : `Chegaram ${n} foto${n === 1 ? "" : "s"} por aqui, ${falta === 1 ? "falta só mais 1" : `faltam mais ${falta}`} pra fechar o mínimo de ${MIN_FOTOS}. Manda ${falta === 1 ? "a que faltou" : "as que faltaram"} (interior, painel ou outro ângulo) que eu já finalizo sozinho, não precisa tocar em Pronto de novo. 📸`);
+    return "ficha_faltam_fotos";
   }
   return null;
 }
@@ -4633,7 +4713,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
 
     // FICHA DO CARRO À VENDA em andamento (placa/km, situação, fotos) — vale pra lead e pra cliente
     if (!msg.flowReply) {
-      const fichaAcao = await handleFichaVenda(msg).catch((e) => { console.error("ficha venda:", e); return null; });
+      const fichaAcao = await handleFichaVenda(msg, eventId).catch((e) => { console.error("ficha venda:", e); return null; });
       if (fichaAcao) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: fichaAcao, input: msg.kind === "image" ? "[foto do carro à venda]" : (msg.text || msg.transcription || "") } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, ficha: fichaAcao }), { headers: { ...cors, "Content-Type": "application/json" } });
@@ -5100,7 +5180,7 @@ ${JSON.stringify(snapshot)}`;
         if (eventId) await supabase.from("whatsapp_events").update({ status: "need_info", error: "download_falhou" }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
-      if (!inputText) inputText = "Analise esta foto: pode ser um cupom/nota de gasto, uma multa (auto de infração), o hodômetro do painel, um print da tela de ganhos de aplicativo (Uber/99) ou um DOCUMENTO pra guardar (CRLV/documento do carro, CNH, boleto, IPVA, nota fiscal, apólice de seguro, manual). Aja conforme o tipo — e se for um documento que vale guardar, chame arquivar_documento.";
+      if (!inputText) inputText = "Analise esta foto: pode ser um cupom/nota de gasto, uma multa (auto de infração), o hodômetro do painel, um print da tela de ganhos de aplicativo (Uber/99) ou um DOCUMENTO pra guardar (CRLV/documento do carro, CNH, boleto, IPVA, nota fiscal, apólice de seguro, manual). Aja conforme o tipo — e se for um documento que vale guardar, chame arquivar_documento. Se for a FOTO DE UM CARRO (por fora ou por dentro, sem documento), NUNCA responda com saudação genérica nem 'como posso ajudar': diga em 1 linha o que você viu (ex.: 'Recebi a foto do seu BYD branco 📸') e, olhando o CONTEXTO da conversa, siga o que estava em andamento (venda do carro, foto do carro no app, registro de um dano); sem contexto, pergunte em 1 linha o que ele quer fazer com a foto, dando 2 opções concretas (colocar como foto do carro no app, ou avaliar o carro pra vender).";
     }
     if (msg.kind === "audio" && !inputText) {
       let audio: { data: string; media_type: string } | null = null;
@@ -5409,7 +5489,9 @@ ${JSON.stringify(snapshot)}`;
     try {
       // respostas oficiais da loja onde o cliente comprou (pós-venda): resolve sem chamar a equipe
       const faqLoja = await respostasDaLojaPrompt(supabase, String(user.phone || msg.phone || ""));
-      replyText = await runAgent(aiConfig, (carMode ? system + MODO_CARRO_PROMPT : system) + faqLoja, parts, ctx);
+      // ficha de venda aberta: a IA continua o atendimento da venda em vez de recomeçar do zero
+      const fichaCtx = await contextoFichaPrompt(msg.phone);
+      replyText = await runAgent(aiConfig, (carMode ? system + MODO_CARRO_PROMPT : system) + faqLoja + fichaCtx, parts, ctx);
     } catch (e) {
       console.error("runAgent erro:", e);
     }
