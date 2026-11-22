@@ -26,6 +26,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const UAZAPI_URL = (Deno.env.get("UAZAPI_URL") || "").replace(/\/+$/, "");
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
+import { iaTexto } from "../_shared/ia-texto.ts";
 import { secretOk, unauthorized } from "../_shared/secret.ts";
 import { tendenciaDaConta } from "../_shared/fipe-tendencia.ts";
 import { salvarFotoCarro } from "../_shared/car-photo.ts";
@@ -3374,7 +3375,7 @@ async function concluirFicha(phone: string, pend: { id: string; parsed: any }, f
       },
     });
   } catch (e) { console.error("concluirFicha aviso:", e); }
-  await offerAgendamento(phone, { carro, dealership: p.dealership || null, nome: p.nome || null, source: "sell" });
+  await offerAgendamento(phone, { carro, dealership: p.dealership || null, nome: p.nome || null, source: "sell" }, diz);
 }
 // CONTEXTO pra IA: se algo cair na conversa geral com a ficha aberta, ela CONTINUA a venda (nada de "como posso ajudar?")
 async function contextoFichaPrompt(phone: string): Promise<string> {
@@ -3391,6 +3392,33 @@ async function contextoFichaPrompt(phone: string): Promise<string> {
       : `as fotos do carro (mínimo ${MIN_FOTOS}: frente, traseira, lateral, interior e painel) — chegaram ${nFotos} até agora${p.pronto ? "; ele já avisou que terminou, então assim que chegar a que falta você finaliza" : "; ao terminar ele toca em Pronto"}`;
     return `\n\nVENDA DO CARRO EM ANDAMENTO (prioridade desta conversa): o cliente está enviando a FICHA do ${p.carro || "carro"} que ele quer vender (${p.modalidade === "express" ? "Venda Express, repasse em até 48h" : "Venda Vitrine"}). Já temos: ${[f.placa && `placa ${f.placa}`, f.km && `${f.km} km`, f.quitado, f.sinistro].filter(Boolean).join(", ") || "nada ainda"}. FALTA: ${falta}. Regras: NÃO cumprimente do zero nem pergunte "como posso te ajudar" — você está no MEIO de um atendimento. Responda o que ele disse em 1–2 linhas, com naturalidade, e conduza de volta ao que falta, dizendo exatamente o que ele precisa mandar. Se ele tiver dúvida sobre a venda (valor, prazo, vistoria, como funciona o repasse), explique e retome. Se ele disser que não quer continuar agora, diga que é só mandar "ficha" quando puder.`;
   } catch { return ""; }
+}
+// LEAD SEM CADASTRO no meio da ficha: o que ele escreveu não era um dado da ficha (dúvida, comentário…).
+// A IA responde no contexto da venda e conduz de volta ao que falta. Limite de 12 respostas/dia por número.
+async function conversaFichaLead(phone: string, texto: string): Promise<string | null> {
+  const t = String(texto || "").trim();
+  if (!t) return null;
+  const ctxFicha = await contextoFichaPrompt(phone);
+  if (!ctxFicha) return null;
+  const desde = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const { count } = await supabase.from("whatsapp_events").select("id", { count: "exact", head: true })
+    .eq("from_phone", phone).eq("parsed->>action", "ficha_conversa").gte("created_at", desde);
+  if ((count || 0) >= 12) return null;
+  const { data: evs } = await supabase.from("whatsapp_events").select("kind, parsed, created_at").eq("from_phone", phone)
+    .gte("created_at", new Date(Date.now() - 6 * 3600_000).toISOString()).order("created_at", { ascending: false }).limit(14);
+  const conversa = (evs || []).reverse().flatMap((e: any) => {
+    const pr = e.parsed || {};
+    if (e.kind === "proativo" && pr.texto) return [`Co-pilot: ${String(pr.texto).slice(0, 400)}`];
+    const out: string[] = [];
+    if (pr.input) out.push(`Cliente: ${String(pr.input).slice(0, 300)}`);
+    if (pr.reply) out.push(`Co-pilot: ${String(pr.reply).slice(0, 400)}`);
+    return out;
+  }).join("\n");
+  const sys = `Você é o TotexCar Co-pilot, assistente da loja no WhatsApp, falando com uma pessoa que está VENDENDO o próprio carro pra loja. Escreva em português do Brasil, tom humano e direto, como um bom atendente: no máximo 4 linhas, sem listas, no máximo 1 emoji.${ctxFicha}\nLimites: não invente valores, prazos ou condições que não estejam aqui; o que você não souber, diga que a equipe da loja confirma com ele. Não ofereça outros produtos nem peça cadastro. Responda só com a mensagem pro cliente.`;
+  try {
+    const r = await iaTexto(supabase, sys, `${conversa ? `Conversa até aqui:\n${conversa}\n\n` : ""}Mensagem do cliente agora: "${t.slice(0, 800)}"`, 400);
+    return r ? r.slice(0, 1200) : null;
+  } catch (e) { console.error("conversaFichaLead:", String((e as any)?.message || e)); return null; }
 }
 // devolve o que tratou + o que respondeu (ou null: a mensagem não era da ficha)
 async function handleFichaVenda(msg: any, eventId?: string | null): Promise<{ acao: string; dito: string[] } | null> {
@@ -3411,7 +3439,9 @@ async function tratarFichaVenda(msg: any, eventId: string | null | undefined, di
     return true;
   };
 
-  if (msg.kind === "image") {
+  // foto enviada "como documento" (📎 → Documento) é foto do mesmo jeito
+  const ehFoto = msg.kind === "image" || (msg.kind === "other" && /^image\//i.test(msg.mimetype || "") && !!msg.mediaId);
+  if (ehFoto) {
     // ficha recém-concluída: foto que ainda chegou entra no pedido, em silêncio
     if (pend.concluida) {
       try {
@@ -3445,6 +3475,28 @@ async function tratarFichaVenda(msg: any, eventId: string | null | undefined, di
     } catch (e) { console.error("ficha foto:", e); return "ficha_foto_erro"; }
   }
   if (pend.concluida) return null;
+  // ARQUIVO QUE NÃO É FOTO no passo das fotos (PDF, vídeo, formato que o WhatsApp não entrega): explica o que
+  // precisa, no contexto da venda — antes isso caía na conversa de vitrine ("posso te mostrar carros…")
+  if (msg.kind === "pdf" || msg.kind === "other") {
+    if (passo !== "fotos") return null;
+    await new Promise((r) => setTimeout(r, 4000)); // o álbum costuma vir junto: deixa as fotos chegarem
+    const total = (await fotosDaFicha(supabase, p.buyback_id)).length;
+    if (msg.kind === "other" && !msg.mediaId) {
+      // item "não suportado" no meio de um álbum que está chegando: as fotos falam por si
+      const { count } = await supabase.from("whatsapp_events").select("id", { count: "exact", head: true })
+        .eq("from_phone", msg.phone).eq("kind", "image").gte("created_at", new Date(Date.now() - 25_000).toISOString());
+      if (count) return "ficha_arquivo_ignorado";
+    }
+    const tenho = total ? ` Até agora tenho ${total} foto${total === 1 ? "" : "s"}.` : "";
+    const como = "toque no 📎 → *Galeria* (ou *Câmera*) e mande direto, sem ser como documento";
+    await diz(msg.kind === "pdf"
+      ? `Recebi seu arquivo em PDF 👍 Só que pro anúncio eu preciso das fotos como *imagem*: ${como}.${tenho}\n\nSe o PDF for documento do carro (laudo, CRLV), pode levar no dia da avaliação.`
+      : /^video\//i.test(msg.mimetype || "")
+        ? `Vídeo eu ainda não consigo usar no anúncio 😕 Preciso das *fotos*: ${como}.${tenho}`
+        : `Um arquivo chegou num formato que o WhatsApp não me deixa abrir (acontece com foto em HD ou de visualização única). Pode mandar de novo como foto normal? É só ${como.replace("toque", "tocar")}.${tenho}`,
+      total >= MIN_FOTOS ? ["Pronto, enviei"] : undefined);
+    return "ficha_arquivo";
+  }
   const t = String(msg.text || msg.transcription || "").trim();
   if (!t) return null;
   if (ehRetomar(t)) { await enviarPassoFicha(msg.phone, passo, { ...ctx, total: passo === "fotos" ? (await fotosDaFicha(supabase, p.buyback_id)).length : 0 }, diz); return "ficha_retomar"; }
@@ -3662,21 +3714,56 @@ function agendaDays(count = 6): { label: string; iso: string }[] {
   }
   return out;
 }
+// Imagem pública do site: só vale mandar se o arquivo EXISTE. Se não existir, o site devolve a página (HTML)
+// e o WhatsApp acusa "Media upload error" — a imagem não chega e fica um erro na conversa.
+const _imgNoAr = new Map<string, boolean>();
+async function imagemNoAr(url: string): Promise<boolean> {
+  if (_imgNoAr.has(url)) return _imgNoAr.get(url)!;
+  let ok = false;
+  try {
+    const r = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(6000) });
+    ok = r.ok && /^image\//i.test(r.headers.get("content-type") || "");
+  } catch { ok = false; }
+  _imgNoAr.set(url, ok);
+  return ok;
+}
+// avaliação presencial já marcada (hoje em diante) pra este telefone
+async function agendamentoFuturo(phone: string): Promise<any | null> {
+  const hojeBrt = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const { data } = await supabase.from("agendamentos").select("id, data, horario, unidade, unidade_nome")
+    .eq("phone", onlyDigits(phone)).eq("status", "agendado").gte("data", hojeBrt).order("created_at", { ascending: false }).limit(1);
+  return data?.[0] || null;
+}
+function agendaDiaLabel(iso: string): string {
+  const WD = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`);
+  return `${WD[d.getUTCDay()]} ${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
 function agendaAppUrl(row?: { app_url?: string | null } | null): string {
   return (row?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "");
 }
 
 // OFERTA de agendamento — mostra o estúdio (gera desejo real: foto boa vende mais rápido) e o CTA.
-async function offerAgendamento(phone: string, ctx: { carro?: string | null; dealership?: string | null; nome?: string | null; source?: string }): Promise<void> {
+async function offerAgendamento(phone: string, ctx: { carro?: string | null; dealership?: string | null; nome?: string | null; source?: string }, diz?: Diz): Promise<void> {
   try {
     const s = await getSettings();
+    // já tem avaliação marcada: lembra o horário em vez de oferecer outro (evita agendamento em dobro)
+    if (ctx.source !== "hashtag") {
+      const ja = await agendamentoFuturo(phone);
+      if (ja) {
+        const unit = AGENDA_UNITS[ja.unidade];
+        const txt = `📅 Sua avaliação presencial continua marcada: *${agendaDiaLabel(ja.data)} às ${String(ja.horario).slice(0, 5)}*, na *${ja.unidade_nome || unit?.nome || "loja"}*${unit ? `\n${unit.endereco}` : ""}\n\nÉ só levar o carro: a avaliação é rápida e as fotos de estúdio a gente faz lá. Precisa trocar o dia ou o horário? Me mande *AGENDAR*.`;
+        if (diz) await diz(txt); else await sendText(phone, txt);
+        return;
+      }
+    }
     const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
     const appUrl = agendaAppUrl(cfg);
     await supabase.from("whatsapp_events").insert({
       from_phone: onlyDigits(phone), kind: "agenda_pending", status: "processed",
       raw: {}, parsed: { step: "offer", carro: ctx.carro || null, dealership: ctx.dealership || null, nome: ctx.nome || null, source: ctx.source || "sell" },
     });
-    await waSendImage(s, phone, `${appUrl}/estudio-totex.jpg`, "Nosso *estúdio profissional* de fotos 📸");
+    if (await imagemNoAr(`${appUrl}/estudio-totex.jpg`)) await waSendImage(s, phone, `${appUrl}/estudio-totex.jpg`, "Nosso *estúdio profissional* de fotos 📸");
     const txt = `Pra fechar o valor com segurança, o próximo passo é uma *avaliação presencial rápida* — e de quebra seu carro ganha uma *sessão de fotos no nosso estúdio profissional*. Foto boa vende mais rápido e por mais. 🚗✨\n\nQuer já deixar agendado? Eu marco o melhor dia e horário com você.`;
     const ok = await waSendMenu(s, phone, txt, ["📸 Quero agendar", "A loja me chama"]);
     if (!ok) await sendText(phone, `${txt}\n\nResponda *AGENDAR* que eu marco com você.`);
@@ -3754,6 +3841,9 @@ async function handleAgenda(phone: string, text: string): Promise<boolean> {
     const appUrl = agendaAppUrl(cfg);
     const { data: bb } = await supabase.from("buyback_requests").select("id")
       .eq("owner_phone", onlyDigits(phone)).order("created_at", { ascending: false }).limit(1);
+    // remarcação: o horário novo SUBSTITUI o que estava marcado (não fica em dobro na agenda da loja)
+    const hojeBrt = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+    await supabase.from("agendamentos").update({ status: "remarcado" }).eq("phone", onlyDigits(phone)).eq("status", "agendado").gte("data", hojeBrt);
     await supabase.from("agendamentos").insert({
       phone: onlyDigits(phone), nome: p.nome || null, dealership: p.dealership || null,
       unidade: unit.key, unidade_nome: unit.nome, carro: p.carro || null,
@@ -3762,7 +3852,7 @@ async function handleAgenda(phone: string, text: string): Promise<boolean> {
     });
     await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "done", horario: slot.h } }).eq("id", pend.id);
 
-    await waSendImage(s, phone, `${appUrl}/${unit.foto}`, `📍 ${unit.nome}`);
+    if (await imagemNoAr(`${appUrl}/${unit.foto}`)) await waSendImage(s, phone, `${appUrl}/${unit.foto}`, `📍 ${unit.nome}`);
     const carroTxt = p.carro ? ` do seu ${p.carro}` : "";
     await sendText(phone, `✅ *Agendamento confirmado!*\n\n📅 ${p.data_label} às *${slot.h}*\n📍 *${unit.nome}*\n${unit.endereco}\n🗺️ ${unit.maps}\n\nÉ rapidinho: fazemos a avaliação presencial${carroTxt} e já aproveitamos pra tirar as fotos no estúdio. Se puder, chega uns 10 min antes. 🚗✨\n\nPrecisa remarcar? Só me mandar *AGENDAR*.`);
 
@@ -4728,7 +4818,7 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       const ficha = await handleFichaVenda(msg, eventId).catch((e) => { console.error("ficha venda:", e); return null; });
       if (ficha) {
         // guarda o que ele mandou e o que foi respondido: histórico da ficha no painel + memória da conversa
-        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: ficha.acao, input: msg.kind === "image" ? "[foto do carro à venda]" : (msg.text || msg.transcription || ""), ...(ficha.dito.length ? { reply: ficha.dito.join("\n\n") } : {}) } }).eq("id", eventId);
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: ficha.acao, input: msg.kind === "image" ? "[foto do carro à venda]" : msg.kind === "pdf" ? "[arquivo em PDF]" : msg.kind === "other" ? (/^image\//i.test(msg.mimetype || "") ? "[foto do carro à venda, enviada como documento]" : /^video\//i.test(msg.mimetype || "") ? "[vídeo]" : "[arquivo em formato não suportado pelo WhatsApp]") : (msg.text || msg.transcription || ""), ...(ficha.dito.length ? { reply: ficha.dito.join("\n\n") } : {}) } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, ficha: ficha.acao }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
     }
@@ -4832,6 +4922,16 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
     if (!user) {
       // Visitante do STAND (shopping) sem cadastro: mantém a conversa viva com busca leve
       // por categoria/preço em vez do "cadastre-se" seco (o lead #stand tem até 7 dias).
+      // no meio da FICHA de venda: responde a dúvida e retoma (nada de vitrine nem "cadastre-se")
+      if (msg.kind === "text" || msg.kind === "audio") {
+        const txtLead = msg.text || msg.transcription || "";
+        const respLead = await conversaFichaLead(msg.phone, txtLead);
+        if (respLead) {
+          await sendText(msg.phone, respLead);
+          if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "ficha_conversa", input: txtLead, reply: respLead } }).eq("id", eventId);
+          return new Response(JSON.stringify({ ok: true, ficha_conversa: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+        }
+      }
       if (msg.kind !== "image" && await handleStandFollowup(msg.phone, msg.text || msg.transcription || "")) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "stand_followup", input: msg.text } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, stand_followup: true }), { headers: { ...cors, "Content-Type": "application/json" } });
