@@ -5,7 +5,7 @@
 // (foto do auto de infração → vícios + minuta de recurso).
 // Provider de envio/recebimento escolhido em app_settings.wa_provider (uazapi | meta).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waSendContact, waSendLocation, waUploadMedia, metaDownloadMedia, parseMetaInbound, metaVerifyChallenge } from "../_shared/wa.ts";
+import { waSendText, waSendMenu, waSendTemplate, waSendFlow, waSendImage, waSendDocument, waSendCarousel, waSendContact, waSendLocation, waUploadMedia, metaDownloadMedia, parseMetaInbound, registrarStatusMsg, metaVerifyChallenge } from "../_shared/wa.ts";
 import { kitUrlFor, KIT_FILENAME } from "../_shared/kit.ts";
 import { createGptCheckout, GPT_NOME } from "../_shared/gptorder.ts";
 import type { GptProduto } from "../_shared/gptmotors.ts";
@@ -4500,6 +4500,8 @@ Deno.serve(async (req) => {
     // eventos de status (sent/delivered/read/FAILED) da API oficial — loga falha de entrega com o motivo
     try {
       const st = body?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0];
+      // mensagens ACOMPANHADAS (ex.: pedido de ficha pelo painel): guarda enviada/entregue/lida/falhou
+      for (const s1 of body?.entry?.[0]?.changes?.[0]?.value?.statuses || []) await registrarStatusMsg(supabase, s1).catch((e) => console.error("status msg:", e));
       if (st && (st.status === "failed" || st.errors)) {
         console.error("META DELIVERY FAIL:", JSON.stringify({ to: st.recipient_id, status: st.status, errors: st.errors }));
         await supabase.from("whatsapp_events").insert({

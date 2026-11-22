@@ -2,7 +2,7 @@
 // O dono avalia o carro pela tabela FIPE (API pública parallelum) e pede a recompra à loja
 // (até X% da FIPE). O pedido aparece no painel do lojista e dispara um aviso no WhatsApp da loja.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
-import { loadWaSettings, waSendTemplate } from "../_shared/wa.ts";
+import { loadWaSettings, waSendTemplate, waSendTemplateId } from "../_shared/wa.ts";
 import { loadSeloConfig, seloElegivel } from "../_shared/care-score.ts";
 import { FICHA_KIND, VALIDADE_DIAS, gravarFicha, fotosDaFicha } from "../_shared/ficha-venda.ts";
 
@@ -182,7 +182,14 @@ Deno.serve(async (req) => {
         const scope = me.role === "admin" ? (p.dealership || null) : me.dealership;
         if (scope) q = q.eq("dealership", scope);
         const { data } = await q.limit(500);
-        return json({ ok: true, requests: data || [] });
+        // status da ÚLTIMA mensagem de pedido de ficha de cada pedido (enviada / entregue / lida / falhou)
+        const msgDe: Record<string, any> = {};
+        try {
+          const { data: ms } = await admin.from("whatsapp_events").select("parsed, created_at").eq("kind", "msg_rastreada")
+            .eq("parsed->>tipo", "ficha_venda").order("created_at", { ascending: false }).limit(1000);
+          for (const m of ms || []) { const k = m.parsed?.buyback_id; if (k && !msgDe[k]) msgDe[k] = m.parsed; }
+        } catch { /* sem acompanhamento */ }
+        return json({ ok: true, requests: (data || []).map((r: any) => (msgDe[r.id] ? { ...r, ficha_msg: msgDe[r.id] } : r)) });
       }
 
       case "update_request": {
@@ -219,8 +226,13 @@ Deno.serve(async (req) => {
         }
         const wa = await loadWaSettings(admin);
         const texto = `Pra acelerar a venda do seu ${carro}, só falta a ficha do carro: leva 2 minutos e ele já vai pra nossa equipe de compra. Me responda aqui com a placa e o km atual (ex.: ABC1D23 85.000) que eu te guio no resto, inclusive as fotos.`;
-        const ok = await waSendTemplate(wa, phone, "copilot_msg", [texto]);
-        if (ok) await admin.from("whatsapp_events").insert({ from_phone: onlyDigits(phone), kind: "proativo", status: "sent", raw: { proativo: true, ficha: true }, parsed: { assunto: "ficha_venda", texto, variante: "copilot_msg" } });
+        const { ok, id: msgId } = await waSendTemplateId(wa, phone, "copilot_msg", [texto]);
+        if (ok) {
+          await admin.from("whatsapp_events").insert({ from_phone: onlyDigits(phone), kind: "proativo", status: "sent", raw: { proativo: true, ficha: true }, parsed: { assunto: "ficha_venda", texto, variante: "copilot_msg" } });
+          // acompanhamento: o webhook atualiza este registro com entregue / lida / falhou
+          await admin.from("whatsapp_events").insert({ from_phone: onlyDigits(phone), kind: "msg_rastreada", status: "sent", raw: {}, ...(msgId ? { wa_message_id: msgId } : {}),
+            parsed: { tipo: "ficha_venda", buyback_id: b.id, status: "enviada", enviada_em: new Date().toISOString(), sem_retorno: !msgId } });
+        }
         const up = await gravarFicha(admin, b.id, { pedida_em: new Date().toISOString() } as any);
         return json({ ok, request: up, error: ok ? undefined : "whatsapp_falhou" });
       }

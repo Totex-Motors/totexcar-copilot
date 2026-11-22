@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Camera, Copy, Loader2, Send } from "lucide-react";
+import { AlertTriangle, Camera, Check, CheckCheck, Copy, Loader2, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -27,6 +27,23 @@ export function anuncioRepasse(r: BuybackRequest): string {
   ].filter(Boolean).join("\n");
 }
 
+// Retorno do WhatsApp pra mensagem de "pedir ficha": enviada ✓ · entregue ✓✓ · lida ✓✓ (azul) · falhou ⚠
+const hora = (s?: string) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
+function motivoFalha(e?: { code?: number | null; titulo?: string; detalhe?: string } | null): string {
+  const c = Number(e?.code);
+  if (c === 131026) return "o número não tem WhatsApp ou não pode receber mensagens";
+  if (c === 131049 || c === 130472) return "o WhatsApp segurou a entrega pra esse número (limite de mensagens que ele recebe de empresas). Tente outro dia ou chame pelo botão WhatsApp";
+  if (c === 131047) return "passou de 24h da última conversa e a mensagem não pôde ser entregue";
+  if (c === 131056) return "muitas mensagens pro mesmo número em pouco tempo. Aguarde alguns minutos";
+  return e?.detalhe || e?.titulo || "o WhatsApp não informou o motivo";
+}
+function StatusMensagem({ m }: { m: NonNullable<BuybackRequest["ficha_msg"]> }) {
+  if (m.status === "falhou") return <p className="text-xs text-destructive flex items-start gap-1"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-none" /> <span>Pedido de ficha <b>não entregue</b>{m.falhou_em ? ` (${hora(m.falhou_em)})` : ""}: {motivoFalha(m.erro)}.</span></p>;
+  if (m.status === "lida") return <p className="text-xs text-sky-600 flex items-center gap-1"><CheckCheck className="w-3.5 h-3.5" /> Pedido de ficha <b>lido</b> pelo cliente · {hora(m.lida_em)}</p>;
+  if (m.status === "entregue") return <p className="text-xs text-muted-foreground flex items-center gap-1"><CheckCheck className="w-3.5 h-3.5" /> Pedido de ficha <b>entregue</b> · {hora(m.entregue_em)} · ainda não leu</p>;
+  return <p className="text-xs text-muted-foreground flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Pedido de ficha <b>enviado</b> · {hora(m.enviada_em)}{m.sem_retorno ? " · sem confirmação de entrega neste canal" : " · aguardando entrega"}</p>;
+}
+
 export function FichaDoPedido({ r }: { r: BuybackRequest }) {
   const pedir = usePedirFicha();
   const [zoom, setZoom] = useState<string | null>(null);
@@ -39,7 +56,7 @@ export function FichaDoPedido({ r }: { r: BuybackRequest }) {
     .then(() => toast({ title: "Anúncio copiado ✅", description: "Cole no grupo de repasse e complete o valor." }))
     .catch(() => toast({ title: "Não consegui copiar", variant: "destructive" }));
   const cobrar = () => pedir.mutate({ id: r.id }, {
-    onSuccess: () => toast({ title: "Ficha pedida ✅", description: "O Co-pilot chamou o cliente no WhatsApp pedindo placa, km e fotos." }),
+    onSuccess: () => toast({ title: "Ficha pedida ✅", description: "Mensagem enviada. O status (entregue, lida ou falhou) aparece aqui no pedido: atualize a página em alguns segundos." }),
     onError: (e: any) => toast({ title: "Não consegui pedir", description: e?.message === "whatsapp_falhou" ? "O WhatsApp não aceitou o envio. Tente de novo mais tarde." : String(e?.message || e), variant: "destructive" }),
   });
 
@@ -57,6 +74,7 @@ export function FichaDoPedido({ r }: { r: BuybackRequest }) {
         {f?.sinistro && <span className={f.sinistro === "nunca_bateu" ? "" : "text-amber-700"}>{SINISTRO[f.sinistro] || f.sinistro}</span>}
         {fotos.length > 0 && <span className="flex items-center gap-1 text-muted-foreground"><Camera className="w-3.5 h-3.5" /> {fotos.length}</span>}
       </div>
+      {r.ficha_msg && !completa && <StatusMensagem m={r.ficha_msg} />}
       {fotos.length > 0 && (
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {fotos.map((u, i) => (

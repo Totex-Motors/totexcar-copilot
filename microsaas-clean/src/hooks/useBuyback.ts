@@ -31,6 +31,12 @@ export interface BuybackRequest {
   } | null;
   status: "new" | "contacted" | "closed" | "declined" | string;
   created_at: string;
+  // status da última mensagem de "pedir ficha" enviada pelo painel (retorno do WhatsApp)
+  ficha_msg?: {
+    status: "enviada" | "entregue" | "lida" | "falhou" | string;
+    enviada_em?: string; entregue_em?: string; lida_em?: string; falhou_em?: string; sem_retorno?: boolean;
+    erro?: { code?: number | null; titulo?: string; detalhe?: string } | null;
+  } | null;
 }
 
 async function callBuyback(action: string, payload: Record<string, unknown> = {}) {
