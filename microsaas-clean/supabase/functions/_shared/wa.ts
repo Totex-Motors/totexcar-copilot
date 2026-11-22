@@ -267,18 +267,55 @@ export async function waSendFlow(s: WaSettings, phone: string, opts: {
 
 // ---------------- transporte bruto ----------------
 async function metaPost(s: WaSettings, body: unknown): Promise<boolean> {
+  return (await metaPostId(s, body)).ok;
+}
+// igual ao metaPost, devolvendo também o id da mensagem na Meta (wamid) — é a chave dos retornos
+// de status (enviada/entregue/lida/falhou) que chegam depois pelo webhook
+async function metaPostId(s: WaSettings, body: unknown): Promise<{ ok: boolean; id: string | null }> {
   const token = s.meta_wa_token || "";
   const phoneId = s.meta_wa_phone_id || "";
-  if (!token || !phoneId) { console.error("Meta WA não configurado (token/phone_id)"); return false; }
+  if (!token || !phoneId) { console.error("Meta WA não configurado (token/phone_id)"); return { ok: false, id: null }; }
   try {
     const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     });
-    if (!res.ok) { console.error("Meta send falhou:", res.status, await res.text()); return false; }
-    return true;
-  } catch (e) { console.error("Erro Meta send:", e); return false; }
+    if (!res.ok) { console.error("Meta send falhou:", res.status, await res.text()); return { ok: false, id: null }; }
+    const j = await res.json().catch(() => null);
+    return { ok: true, id: j?.messages?.[0]?.id ? String(j.messages[0].id) : null };
+  } catch (e) { console.error("Erro Meta send:", e); return { ok: false, id: null }; }
+}
+
+// TEMPLATE com acompanhamento: devolve o id da mensagem pra gravar e cruzar com os retornos de status.
+// (só texto no corpo; no uazapi não há id → ok sem acompanhamento)
+export async function waSendTemplateId(s: WaSettings, phone: string, name: string, params: any[]): Promise<{ ok: boolean; id: string | null }> {
+  const to = onlyDigits(phone);
+  if (!to) return { ok: false, id: null };
+  if (waProvider(s) !== "meta") return { ok: await waSendTemplate(s, phone, name, params), id: null };
+  if (!WA_TEMPLATES[name]) { console.error(`template desconhecido: ${name}`); return { ok: false, id: null }; }
+  const clean = params.map(cleanParam);
+  return metaPostId(s, {
+    messaging_product: "whatsapp", to, type: "template",
+    template: { name, language: { code: "pt_BR" }, components: clean.length ? [{ type: "body", parameters: clean.map((t) => ({ type: "text", text: t })) }] : [] },
+  });
+}
+
+// STATUS de uma mensagem acompanhada (evento whatsapp_events kind=msg_rastreada, chave wa_message_id).
+// Nunca volta atrás: lida > entregue > enviada; "falhou" só vale se ainda não tinha sido entregue.
+export const STATUS_MSG: Record<string, string> = { sent: "enviada", delivered: "entregue", read: "lida", failed: "falhou" };
+const ORDEM_STATUS: Record<string, number> = { enviada: 1, falhou: 2, entregue: 3, lida: 4 };
+export async function registrarStatusMsg(sb: any, st: any): Promise<void> {
+  const novo = STATUS_MSG[String(st?.status || "")];
+  if (!novo || !st?.id) return;
+  const { data: ev } = await sb.from("whatsapp_events").select("id, parsed").eq("wa_message_id", String(st.id)).eq("kind", "msg_rastreada").maybeSingle();
+  if (!ev) return; // mensagem comum, não acompanhada
+  const p = ev.parsed || {};
+  const quando = st.timestamp ? new Date(Number(st.timestamp) * 1000).toISOString() : new Date().toISOString();
+  const patch: Record<string, unknown> = { ...p, [`${novo}_em`]: p[`${novo}_em`] || quando };
+  if ((ORDEM_STATUS[novo] || 0) > (ORDEM_STATUS[String(p.status)] || 0)) patch.status = novo;
+  if (novo === "falhou") { const e = st.errors?.[0] || {}; patch.erro = { code: e.code ?? null, titulo: String(e.title || e.message || "").slice(0, 160), detalhe: String(e.error_data?.details || "").slice(0, 240) }; }
+  await sb.from("whatsapp_events").update({ parsed: patch }).eq("id", ev.id);
 }
 
 async function uazapiPost(s: WaSettings, path: string, body: unknown): Promise<boolean> {
