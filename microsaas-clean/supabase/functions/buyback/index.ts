@@ -254,6 +254,8 @@ Deno.serve(async (req) => {
           ficha_quitado: "anotou e perguntou sobre batida/reparo", ficha_sinistro: "anotou e pediu as fotos", ficha_foto: "foto guardada (sem resposta, pra não encher o chat)",
           ficha_foto_extra: "foto extra guardada depois de concluir", ficha_foto_erro: "avisou que a foto não abriu e pediu de novo", ficha_foto_limite: "avisou que já tinha fotos suficientes",
           ficha_faltam_fotos: "avisou quantas fotos chegaram e quantas faltavam", ficha_completa: "ficha concluída e enviada pra loja", ficha_retomar: "repetiu o passo em que ele parou", ficha_adiada: "combinou de continuar depois",
+          ficha_arquivo: "explicou que precisa das fotos como imagem (não PDF, vídeo ou documento)", ficha_arquivo_ignorado: "arquivo que o WhatsApp não entregou, junto das fotos (sem resposta)",
+          ficha_conversa: "respondeu a dúvida e retomou a ficha",
         };
         const itens: any[] = [];
         for (const e of evs || []) {
