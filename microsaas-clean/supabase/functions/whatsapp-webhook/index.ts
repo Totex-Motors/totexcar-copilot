@@ -38,6 +38,7 @@ import { normalizarCnh, fichaCnh, aplicarCnhNoCadastro } from "../_shared/cnh.ts
 import { subirDoc, linkDoc, protegerMeta } from "../_shared/cofre.ts";
 import { flowPublicado, RECOMPRA_V2_PREFIXO, FIPE_PREFIXO } from "../_shared/flows.ts";
 import { consultarFipe, textoTendencia } from "../_shared/fipe-consulta.ts";
+import { FICHA_KIND, MIN_FOTOS, VALIDADE_DIAS, parsePlacaKm, lerQuitado, lerSinistro, ehPronto, ehRetomar, ehAdiar, fotosDaFicha, salvarFotoFicha, gravarFicha, textoPasso, resumoFicha, type PassoFicha } from "../_shared/ficha-venda.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
@@ -3205,7 +3206,7 @@ async function pushToTotexgest(lead: {
 }
 
 // grava o lead final em buyback_requests, avisa a loja e dá os 30 dias. Marca o pending como done.
-async function finalizeSellLead(phone: string, pending: { id: string; parsed: any }, res: { modalidade: "express" | "vitrine"; valor: number; margem: number; prazo_dias?: number }) {
+async function finalizeSellLead(phone: string, pending: { id: string; parsed: any }, res: { modalidade: "express" | "vitrine"; valor: number; margem: number; prazo_dias?: number }): Promise<string | null> {
   const p = pending.parsed || {};
   await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "done" } }).eq("id", pending.id);
 
@@ -3214,7 +3215,7 @@ async function finalizeSellLead(phone: string, pending: { id: string; parsed: an
   const dealership = p.dealership || null;
   const nome = p.nome || null;
 
-  await supabase.from("buyback_requests").insert({
+  const { data: pedido } = await supabase.from("buyback_requests").insert({
     owner_id: p.ownerId || null,
     dealership, owner_name: nome, owner_phone: phone,
     brand: p.marca_nome || null, model: p.modelo_nome || carro, year: p.ano_nome || null,
@@ -3225,7 +3226,7 @@ async function finalizeSellLead(phone: string, pending: { id: string; parsed: an
       prazo_dias: res.prazo_dias ?? null, margem: res.margem, fipe_value: fipe,
     },
     status: "new",
-  });
+  }).select("id").single();
 
   // manda o lead pro CRM (TotexGest). Awaited de propósito: o usuário já recebeu a proposta
   // antes daqui, e fire-and-forget via waitUntil era cortado quando o isolate é reciclado.
@@ -3267,6 +3268,144 @@ async function finalizeSellLead(phone: string, pending: { id: string; parsed: an
   // 30 dias grátis (quem vende, quer comprar depois)
   const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
   await sendStandGift(phone, (cfg?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, ""));
+  return pedido?.id || null;
+}
+
+// ===================== FICHA DO CARRO À VENDA (placa, km, situação e FOTOS) =====================
+// Começa logo depois da proposta: o pedido chega no painel da loja pronto pra agir/publicar no repasse.
+// Só consome a mensagem que responde ao passo da vez; qualquer outra coisa segue o fluxo normal.
+async function findFichaPending(phone: string): Promise<{ id: string; parsed: any } | null> {
+  const desde = new Date(Date.now() - VALIDADE_DIAS * 86400_000).toISOString();
+  const { data } = await supabase.from("whatsapp_events").select("id, parsed").eq("from_phone", phone).eq("kind", FICHA_KIND)
+    .gte("created_at", desde).order("created_at", { ascending: false }).limit(1);
+  const ev = data?.[0];
+  return ev && (ev.parsed as any)?.step && (ev.parsed as any).step !== "done" ? { id: ev.id, parsed: ev.parsed } : null;
+}
+async function enviarPassoFicha(phone: string, passo: PassoFicha, ctx: { carro?: string | null; modalidade?: string | null; total?: number }) {
+  const { texto, botoes } = textoPasso(passo, ctx);
+  if (!texto) return;
+  if (botoes?.length) await waSendMenu(await getSettings(), phone, texto, botoes);
+  else await sendText(phone, texto);
+}
+async function iniciarFicha(phone: string, buybackId: string | null, ctx: { carro?: string | null; modalidade?: string | null; dealership?: string | null; nome?: string | null }): Promise<boolean> {
+  if (!buybackId) return false;
+  await supabase.from("whatsapp_events").insert({
+    from_phone: phone, kind: FICHA_KIND, status: "processed", raw: {},
+    parsed: { step: "placa_km", buyback_id: buybackId, carro: ctx.carro || null, modalidade: ctx.modalidade || null, dealership: ctx.dealership || null, nome: ctx.nome || null },
+  });
+  await gravarFicha(supabase, buybackId, { iniciada_em: new Date().toISOString(), completa: false });
+  await enviarPassoFicha(phone, "placa_km", ctx);
+  return true;
+}
+async function baixarImagemMsg(msg: any): Promise<{ data: string; media_type: string } | null> {
+  if (msg.provider === "meta") return await metaDownloadMedia(await getSettings(), msg.mediaId);
+  if (msg.base64) return { data: msg.base64, media_type: msg.mimetype || "image/jpeg" };
+  const creds = await uazapiCreds();
+  return (await downloadUazapiMedia(msg.baseUrl || creds.url, msg.token || creds.token, msg.content, msg.messageid)) || (msg.mediaUrl ? await fetchImageBase64(msg.mediaUrl) : null);
+}
+async function concluirFicha(phone: string, pend: { id: string; parsed: any }, fotos: string[]) {
+  const p = pend.parsed || {};
+  await supabase.from("whatsapp_events").update({ parsed: { ...p, step: "done" } }).eq("id", pend.id);
+  const b = await gravarFicha(supabase, p.buyback_id, { completa: true, completa_em: new Date().toISOString(), fotos_n: fotos.length }, fotos);
+  const carro = p.carro || "seu carro";
+  await sendText(phone, p.modalidade === "express"
+    ? `✅ *Ficha completa!* Seu ${carro} já está com a nossa equipe de repasse, com os dados e as ${fotos.length} fotos. Você tem retorno em *até 48h*.`
+    : `✅ *Ficha completa!* A loja já recebeu os dados e as ${fotos.length} fotos do seu ${carro} pra preparar o anúncio.`);
+  // loja: aviso de 1 linha + CRM (TotexGest) com a ficha e os links das fotos, pra automação do repasse
+  try {
+    const s = await getSettings();
+    const { data: cfg } = await supabase.from("app_settings").select("app_url").eq("id", 1).single();
+    const painel = `${String(cfg?.app_url || "https://copilot.totexmotors.com").replace(/\/+$/, "")}/lojista`;
+    const dealership = b?.dealership || p.dealership || null;
+    const { data: dealers } = dealership
+      ? await supabase.from("users").select("phone").eq("role", "dealer").eq("dealership", dealership).not("phone", "is", null).limit(3)
+      : { data: [] as any[] };
+    const alvos = (dealers || []).map((d: any) => onlyDigits(d.phone || "")).filter(Boolean);
+    if (!alvos.length && s.support_owner_phone) alvos.push(onlyDigits(s.support_owner_phone));
+    const linha = `Ficha COMPLETA pra venda${b?.modalidade === "express" ? " (Express, repasse)" : ""}: ${b?.owner_name || phone} · ${resumoFicha(b)}. Pronta pra publicar: ${painel}`;
+    for (const dp of alvos) await waSendTemplate(s, dp, "copilot_msg", [linha]);
+    const f = b?.qualificacao?.ficha || {};
+    await pushToTotexgest({
+      name: b?.owner_name || p.nome || null, phone,
+      utm_campaign: b?.modalidade === "express" ? "venda-express" : "venda-vitrine",
+      subject: `Ficha completa — ${carro}`,
+      notes: `Ficha do carro à venda: ${resumoFicha(b)}.\nVendedor recebe até ${fmtReais(Number(b?.offer_value) || 0)} · FIPE ${fmtReais(Number(b?.fipe_value) || 0)}.\nFotos:\n${fotos.join("\n")}`,
+      custom: {
+        pedido_id: p.buyback_id, etapa: "ficha_completa", carro, modalidade: b?.modalidade || null, loja: dealership,
+        marca: b?.brand || null, modelo: b?.model || null, ano: b?.year || null, combustivel: b?.fuel || null,
+        placa: f.placa || null, km: f.km || null, quitado: f.quitado || null, sinistro: f.sinistro || null,
+        valor_vendedor: Number(b?.offer_value) || null, fipe: Number(b?.fipe_value) || null, margem: b?.qualificacao?.margem ?? null, fotos,
+      },
+    });
+  } catch (e) { console.error("concluirFicha aviso:", e); }
+  await offerAgendamento(phone, { carro, dealership: p.dealership || null, nome: p.nome || null, source: "sell" });
+}
+// devolve o rótulo do que tratou (ou null: a mensagem não era da ficha)
+async function handleFichaVenda(msg: any): Promise<string | null> {
+  const pend = await findFichaPending(msg.phone);
+  if (!pend) return null;
+  const p = pend.parsed || {};
+  const passo = p.step as PassoFicha;
+  const ctx = { carro: p.carro, modalidade: p.modalidade };
+  const salvar = async (patch: Record<string, unknown>) => { Object.assign(p, patch); await supabase.from("whatsapp_events").update({ parsed: p }).eq("id", pend.id); };
+
+  // FOTO: só no passo das fotos (fora dele, foto é cupom, painel, documento… do fluxo normal)
+  if (msg.kind === "image") {
+    if (passo !== "fotos") return null;
+    const img = await baixarImagemMsg(msg).catch(() => null);
+    if (!img?.data) { await sendText(msg.phone, "Não consegui abrir essa foto 😕 Pode mandar de novo?"); return "ficha_foto_erro"; }
+    const r = await salvarFotoFicha(supabase, p.buyback_id, img.data, img.media_type);
+    if (!r.ok) { await sendText(msg.phone, `Já tenho ${r.total} fotos, é o bastante 👍 Toque em *Pronto* pra eu enviar pra loja.`); return "ficha_foto_limite"; }
+    // 1 resposta só, quando bate o mínimo (as fotos chegam em sequência: responder a cada uma vira spam)
+    if (r.total === MIN_FOTOS) await waSendMenu(await getSettings(), msg.phone, `Recebi ${r.total} fotos ✅ Pode mandar mais, ou toque em *Pronto* pra finalizar.`, ["Pronto, enviei"]);
+    return "ficha_foto";
+  }
+  const t = String(msg.text || msg.transcription || "").trim();
+  if (!t) return null;
+  if (ehRetomar(t)) { await enviarPassoFicha(msg.phone, passo, { ...ctx, total: passo === "fotos" ? (await fotosDaFicha(supabase, p.buyback_id)).length : 0 }); return "ficha_retomar"; }
+  if (ehAdiar(t)) { await sendText(msg.phone, "Sem problema! Quando puder, é só mandar *ficha* que a gente continua de onde parou. 👍"); return "ficha_adiada"; }
+
+  if (passo === "placa_km") {
+    const { placa, km } = parsePlacaKm(t);
+    // sem placa na frase, só aceita o km se a placa já veio ou se a mensagem é curta ("85.000 km"):
+    // "abasteci 200 com 85.000 km" é um gasto, não a ficha
+    if (!placa && !(km && (p.placa || t.length <= 16))) return null;
+    const placaF = placa || p.placa || null, kmF = km || p.km || null;
+    await salvar({ placa: placaF, km: kmF });
+    await gravarFicha(supabase, p.buyback_id, { placa: placaF, km: kmF });
+    if (!placaF) { await sendText(msg.phone, "Anotei o km 👍 Agora me mande a *placa* (ex.: ABC1D23)."); return "ficha_km"; }
+    if (!kmF) { await sendText(msg.phone, "Anotei a placa 👍 Agora me mande o *km* atual (ex.: 85.000)."); return "ficha_placa"; }
+    await salvar({ step: "quitado" });
+    await enviarPassoFicha(msg.phone, "quitado", ctx);
+    return "ficha_placa_km";
+  }
+  if (passo === "quitado") {
+    const v = t.length <= 40 ? lerQuitado(t) : null; // resposta curta de botão/1 frase; texto longo é outro assunto
+    if (!v) return null;
+    await gravarFicha(supabase, p.buyback_id, { quitado: v });
+    await salvar({ step: "sinistro" });
+    await enviarPassoFicha(msg.phone, "sinistro", ctx);
+    return "ficha_quitado";
+  }
+  if (passo === "sinistro") {
+    const v = t.length <= 40 ? lerSinistro(t) : null;
+    if (!v) return null;
+    await gravarFicha(supabase, p.buyback_id, { sinistro: v });
+    await salvar({ step: "fotos" });
+    await enviarPassoFicha(msg.phone, "fotos", ctx);
+    return "ficha_sinistro";
+  }
+  if (passo === "fotos" && ehPronto(t)) {
+    const fotos = await fotosDaFicha(supabase, p.buyback_id);
+    if (fotos.length < MIN_FOTOS) {
+      await gravarFicha(supabase, p.buyback_id, { fotos_n: fotos.length }, fotos);
+      await sendText(msg.phone, `Recebi ${fotos.length} foto${fotos.length === 1 ? "" : "s"} até agora. Preciso de pelo menos ${MIN_FOTOS}: frente, traseira, uma lateral e o interior. Mande as que faltam e toque em *Pronto*. 📸`);
+      return "ficha_faltam_fotos";
+    }
+    await concluirFicha(msg.phone, pend, fotos);
+    return "ficha_completa";
+  }
+  return null;
 }
 
 async function handleStandSell(phone: string, text: string, contactName?: string): Promise<boolean> {
@@ -3311,8 +3450,11 @@ async function handleSellModalidade(phone: string, text: string): Promise<boolea
   if (isExpress) {
     const { margem, valor } = calcOffer(fipe, cfg.express.pct, cfg.express.piso);
     await sendText(phone, `⚡ *Venda Express* — pra carro de boa demanda, nosso grupo de repasse fecha *à vista, em até 48h*.\n\nSua proposta pro ${carro} é de até *${fmtReais(valor)}* (valor final na vistoria). Aceita até carro com dívida ou IPVA atrasado.\n\n${quemContata} já vai entrar em contato pra fechar. 🚗`);
-    await finalizeSellLead(phone, pend, { modalidade: "express", valor, margem });
-    await offerAgendamento(phone, { carro, dealership: pend.parsed?.dealership || null, nome: pend.parsed?.nome || null, source: "sell" });
+    const pedidoId = await finalizeSellLead(phone, pend, { modalidade: "express", valor, margem });
+    // FICHA (placa, km, situação e fotos) na hora; o agendamento é oferecido quando a ficha fecha
+    if (!(await iniciarFicha(phone, pedidoId, { carro, modalidade: "express", dealership: pend.parsed?.dealership || null, nome: pend.parsed?.nome || null }))) {
+      await offerAgendamento(phone, { carro, dealership: pend.parsed?.dealership || null, nome: pend.parsed?.nome || null, source: "sell" });
+    }
     return true;
   }
 
@@ -3353,8 +3495,10 @@ async function handleSellPrazo(phone: string, text: string): Promise<boolean> {
   const carro = pend.parsed?.carro || "seu carro";
   const quemContata = pend.parsed?.dealership ? `A ${pend.parsed.dealership}` : "Nossa equipe";
   await sendText(phone, `✅ Fechado! Você escolheu a *${tier.nome}* (${tier.prazo}) pro seu ${carro}: recebe até *${fmtReais(escolhido.valor)}* — valor final na vistoria.\n\nEnquanto isso, o carro continua com você. 🚗`);
-  await finalizeSellLead(phone, pend, { modalidade: "vitrine", valor: escolhido.valor, margem: escolhido.margem, prazo_dias: escolhido.dias });
-  await offerAgendamento(phone, { carro, dealership: pend.parsed?.dealership || null, nome: pend.parsed?.nome || null, source: "sell" });
+  const pedidoId = await finalizeSellLead(phone, pend, { modalidade: "vitrine", valor: escolhido.valor, margem: escolhido.margem, prazo_dias: escolhido.dias });
+  if (!(await iniciarFicha(phone, pedidoId, { carro, modalidade: "vitrine", dealership: pend.parsed?.dealership || null, nome: pend.parsed?.nome || null }))) {
+    await offerAgendamento(phone, { carro, dealership: pend.parsed?.dealership || null, nome: pend.parsed?.nome || null, source: "sell" });
+  }
   return true;
 }
 
@@ -4482,6 +4626,15 @@ async function processInbound(msg: any, eventId: any, eventAt: string) {
       if (await handleNpsFlowReply(msg.phone, msg.flowReply)) {
         if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: "nps_flow", nota: msg.flowReply.nota } }).eq("id", eventId);
         return new Response(JSON.stringify({ ok: true, nps_flow: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+    }
+
+    // FICHA DO CARRO À VENDA em andamento (placa/km, situação, fotos) — vale pra lead e pra cliente
+    if (!msg.flowReply) {
+      const fichaAcao = await handleFichaVenda(msg).catch((e) => { console.error("ficha venda:", e); return null; });
+      if (fichaAcao) {
+        if (eventId) await supabase.from("whatsapp_events").update({ status: "processed", parsed: { action: fichaAcao, input: msg.kind === "image" ? "[foto do carro à venda]" : (msg.text || msg.transcription || "") } }).eq("id", eventId);
+        return new Response(JSON.stringify({ ok: true, ficha: fichaAcao }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
     }
 
