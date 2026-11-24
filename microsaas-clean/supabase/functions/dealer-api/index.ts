@@ -13,6 +13,8 @@ import { listarChecklists, ITENS_ENTREGA } from "../_shared/entrega.ts";
 import { SERVICOS, novoToken, linkDaOficina, salvarFoto, comFotos, validarServico, prepararDaOS, ligarNaVenda, vendaDoCarro, avisarNovaOS, avisarChegada, avisarConclusao, avisarExtra, avisarDecisaoExtra } from "../_shared/oficina.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 import { garantirWebhook } from "../_shared/grupo-nina.ts";
+import { registrarLaudo } from "../_shared/scanner-pdf.ts";
+import { novoUpload, ultimoLaudo, comScanner, listarLaudos, laudoParaTela, compararLaudos, textoComparacao, textoFalhas } from "../_shared/scanner.ts";
 import { placasDoErp } from "../_shared/erp.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -539,6 +541,22 @@ async function vendaRapida(p: any): Promise<Response> {
   return json({ error: "acao_invalida" }, 400);
 }
 
+// Linha do scanner pros avisos do grupo: antes (entrada) x depois (conferência). "" quando a OS não tem scanner.
+async function textoScannerDaOS(os: any, conf?: any | null): Promise<string> {
+  try {
+    const ids = [os.scanner_entrada_id, conf ? null : os.scanner_saida_id].filter(Boolean);
+    const { data } = ids.length ? await admin.from("scanner_laudos").select("*").in("id", ids) : { data: [] as any[] };
+    const antes = (data || []).find((l: any) => l.id === os.scanner_entrada_id) || null;
+    const depois = conf || (data || []).find((l: any) => l.id === os.scanner_saida_id) || null;
+    if (!antes && !depois) return "";
+    if (depois) {
+      const c = compararLaudos(antes, depois);
+      return `\n🔍 Scanner depois do reparo: ${textoFalhas(depois)}${c && (antes?.n_falhas || 0) > 0 ? `\n   ${textoComparacao(c)}` : ""}`;
+    }
+    return (antes?.n_falhas || 0) > 0 ? `\n🔍 Scanner de entrada tinha ${textoFalhas(antes)}. *Falta o scanner de conferência* depois do reparo.` : "";
+  } catch { return ""; }
+}
+
 // LINK DA OFICINA PARCEIRA (/parceiro/<token>): sem login, a oficina vê só as ordens de serviço DELA,
 // confirma a chegada do carro, registra o serviço (campos obrigatórios) e pede aprovação de extraordinário.
 async function oficinaParceira(p: any): Promise<Response> {
@@ -549,7 +567,12 @@ async function oficinaParceira(p: any): Promise<Response> {
   if (p.action === "parceiro_info") {
     const { data: rows } = await admin.from("ordens_servico").select("*").eq("oficina_id", of.id).neq("status", "cancelada")
       .order("enviada_em", { ascending: false }).limit(60);
-    return json({ ok: true, oficina: { nome: of.nome, responsavel: of.responsavel, loja: of.dealership }, servicos: SERVICOS, ordens: await comFotos(admin, rows || []) });
+    return json({ ok: true, oficina: { nome: of.nome, responsavel: of.responsavel, loja: of.dealership }, servicos: SERVICOS, ordens: await comScanner(admin, await comFotos(admin, rows || [])) });
+  }
+  // a oficina manda o PDF do scanner depois do reparo: upload direto pro Storage (URL assinada)
+  if (p.action === "parceiro_scanner_upload") {
+    const up = await novoUpload(admin, of.dealership);
+    return up ? json({ ok: true, ...up }) : json({ error: "falha_no_upload" }, 400);
   }
   const { data: os } = await admin.from("ordens_servico").select("*").eq("id", String(p.id || "")).eq("oficina_id", of.id).maybeSingle();
   if (!os) return json({ error: "os_nao_encontrada" }, 404);
@@ -578,8 +601,16 @@ async function oficinaParceira(p: any): Promise<Response> {
     const etiqueta = oleo ? await salvarFoto(admin, os.id, "etiqueta", p.foto_etiqueta) : null;
     if (oleo && !etiqueta) return json({ error: "foto_da_etiqueta_obrigatoria" }, 400);
     const nota = p.foto_nota ? await salvarFoto(admin, os.id, "nota", p.foto_nota) : null;
+    // scanner de CONFERÊNCIA (depois do reparo): opcional aqui; sem ele, a loja passa o scanner na volta
+    let conf: any = null;
+    if (p.scanner_path) {
+      const r = await registrarLaudo(admin, { loja: of.dealership, path: String(p.scanner_path), momento: "conferencia", osId: os.id, vehicleId: os.vehicle_id, carDesc: os.car_desc, placa: os.placa, enviadoPor: of.nome });
+      if ("erro" in r) return json({ error: r.erro }, 400);
+      conf = r.laudo;
+    }
     const { data: upd, error } = await admin.from("ordens_servico").update({
       ...v.campos, status: "concluida", concluida_em: agora, foto_painel: painel, foto_etiqueta: etiqueta, foto_nota: nota, updated_at: agora,
+      ...(conf ? { scanner_saida_id: conf.id } : {}),
     }).eq("id", os.id).eq("status", "recebida").select("*").single();
     if (error || !upd) return json({ error: "os_ja_concluida" }, 400);
     // troca de óleo → preparação do carro (ponto zero do Co-pilot do cliente na venda)
@@ -587,7 +618,7 @@ async function oficinaParceira(p: any): Promise<Response> {
     if (prep) await admin.from("ordens_servico").update({ preparacao_id: prep }).eq("id", os.id);
     // exceção: o carro já foi vendido (mandou depois da venda) → a troca vai pro Co-pilot do cliente
     const venda = prep ? await ligarNaVenda(admin, upd, prep).catch(() => null) : null;
-    await avisarConclusao(admin, upd, of, venda);
+    await avisarConclusao(admin, upd, of, venda, await textoScannerDaOS(upd, conf));
     return json({ ok: true, preparacao: !!prep, vendido: !!venda });
   }
 
@@ -612,12 +643,12 @@ async function oficinaParceira(p: any): Promise<Response> {
 // O que cada função alcança pelo link pessoal (o vendedor usa só venda_*, tratado em vendaRapida)
 const ACOES_DO_LINK: Record<string, string[]> = {
   gerente_manutencao: ["link_me", "estoque_lista", "preparacao_lista", "preparacao_save", "preparacao_del", "oficina_trocas", "oficina_troca_registrar",
-    "oficinas_lista", "os_lista", "os_criar", "os_devolver", "os_extra_decidir", "os_cancelar"],
+    "oficinas_lista", "os_lista", "os_criar", "os_devolver", "os_extra_decidir", "os_cancelar", "scanner_upload", "scanner_registrar", "scanner_lista"],
   // apoio de manutenção (leva os carros pras oficinas): o mesmo link do gerente de manutenção; fica fora da
   // escada de atendimento do pós-venda (escalarPara só olha gerente_manutencao / gerente_geral)
   apoio_manutencao: [],
   gerente_geral: ["link_me", "gerencia_vendas", "entregas_lista", "posvenda_casos", "posvenda_caso", "posvenda_stats", "posvenda_oportunidades", "oficina_trocas", "estoque_lista", "preparacao_lista",
-    "oficinas_lista", "os_lista"],
+    "oficinas_lista", "os_lista", "scanner_lista"],
 };
 
 ACOES_DO_LINK.apoio_manutencao = ACOES_DO_LINK.gerente_manutencao;
@@ -1425,11 +1456,15 @@ Deno.serve(async (req) => {
         const ids = [...new Set(rows.map((r: any) => r.vendedor_id).filter(Boolean))];
         const { data: eq } = ids.length ? await admin.from("posvenda_equipe").select("id, nome").in("id", ids) : { data: [] };
         const nome: Record<string, string> = Object.fromEntries((eq || []).map((e: any) => [e.id, e.nome]));
+        const scanIds = [...new Set(rows.map((r: any) => r.scanner_laudo_id).filter(Boolean))];
+        const { data: scans } = scanIds.length ? await admin.from("scanner_laudos").select("*").in("id", scanIds) : { data: [] as any[] };
+        const scanDe: Record<string, any> = Object.fromEntries((scans || []).map((l: any) => [l.id, l]));
         const entregas = [];
         for (const r of rows) {
           let foto_url: string | null = null;
           if (r.foto_path) foto_url = (await admin.storage.from("arquivozap").createSignedUrl(r.foto_path, 3600)).data?.signedUrl || null;
-          entregas.push({ ...r, vendedor_nome: r.vendedor_id ? nome[r.vendedor_id] || null : null, foto_url });
+          const sl = r.scanner_laudo_id ? scanDe[r.scanner_laudo_id] : null;
+          entregas.push({ ...r, vendedor_nome: r.vendedor_id ? nome[r.vendedor_id] || null : null, foto_url, scanner: sl ? await laudoParaTela(admin, sl) : null });
         }
         const resumo = { total: rows.length, ok: rows.filter((r: any) => r.status === "ok").length, problema: rows.filter((r: any) => r.status === "problema").length, pendente: rows.filter((r: any) => r.status === "aguardando_foto" || r.status === "aguardando_confirmacao").length };
         return json({ ok: true, entregas, resumo, itens: ITENS_ENTREGA });
@@ -1502,8 +1537,39 @@ Deno.serve(async (req) => {
         const nomeOf: Record<string, string> = Object.fromEntries((ofs || []).map((o: any) => [o.id, o.nome]));
         const vendidos = new Set<string>();
         for (const r of rows || []) if (r.status !== "cancelada" && await vendaDoCarro(admin, r).catch(() => null)) vendidos.add(r.id);
-        const ordens = (await comFotos(admin, rows || [])).map((r: any) => ({ ...r, oficina_nome: nomeOf[r.oficina_id] || "Oficina", vendido: vendidos.has(r.id) }));
+        const ordens = (await comScanner(admin, await comFotos(admin, rows || []))).map((r: any) => ({ ...r, oficina_nome: nomeOf[r.oficina_id] || "Oficina", vendido: vendidos.has(r.id) }));
         return json({ ok: true, ordens, servicos: SERVICOS });
+      }
+
+      // ===== SCANNER (Doutor-IE): laudo de entrada do carro =====
+      case "scanner_upload": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const up = await novoUpload(admin, writeStore);
+        return up ? json({ ok: true, ...up }) : json({ error: "falha_no_upload" }, 400);
+      }
+      case "scanner_registrar": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const r = await registrarLaudo(admin, {
+          loja: writeStore, path: String(p.path || ""), momento: p.momento === "conferencia" ? "conferencia" : "entrada",
+          vehicleId: p.vehicle_id ? String(p.vehicle_id) : null, carDesc: p.car_desc ? String(p.car_desc) : null, placa: p.placa ? String(p.placa) : null, enviadoPor: me.name || null,
+        });
+        if ("erro" in r) return json({ error: r.erro }, 400);
+        const l = r.laudo;
+        // carro com OS aberta: o laudo novo entra nela (entrada se ainda não tem; senão conferência)
+        const { data: abertas } = await admin.from("ordens_servico").select("id, numero, scanner_entrada_id, status").eq("dealership", writeStore).eq("placa", l.placa)
+          .in("status", ["enviada", "recebida", "concluida"]).order("enviada_em", { ascending: false }).limit(1);
+        const os = abertas?.[0];
+        if (os && !os.scanner_entrada_id && l.momento === "entrada") { await admin.from("ordens_servico").update({ scanner_entrada_id: l.id }).eq("id", os.id); await admin.from("scanner_laudos").update({ os_id: os.id }).eq("id", l.id); l.os_id = os.id; }
+        else if (os && l.momento === "conferencia") { await admin.from("ordens_servico").update({ scanner_saida_id: l.id }).eq("id", os.id); await admin.from("scanner_laudos").update({ os_id: os.id }).eq("id", l.id); }
+        if ((l.n_falhas || 0) > 0 && l.momento === "entrada") {
+          await avisarGrupo(admin, writeStore, `🔍 *Scanner de entrada*: ${l.car_desc || "carro"} (${l.placa}) com ${textoFalhas(l)}.${os ? ` Já está na OS #${os.numero}.` : " Gerente de manutenção: mandar pra oficina."}`).catch(() => false);
+        }
+        return json({ ok: true, laudo: await laudoParaTela(admin, l), os_numero: os?.numero || null });
+      }
+      case "scanner_lista": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        try { return json({ ok: true, laudos: await listarLaudos(admin, writeStore) }); }
+        catch (e) { return json({ error: String((e as any)?.message || e) }, 400); }
       }
 
       // o gerente manda o carro do estoque pra oficina (km + foto do painel na saída)
@@ -1530,16 +1596,19 @@ Deno.serve(async (req) => {
         const id = crypto.randomUUID();
         const foto = await salvarFoto(admin, id, "saida", p.foto_saida);
         if (!foto) return json({ error: "foto_do_painel_obrigatoria" }, 400);
+        // scanner de entrada deste carro (últimos 60 dias): vai junto, com a lista de falhas pra oficina corrigir
+        const scan = await ultimoLaudo(admin, writeStore, placa, 60);
         const { data: os, error } = await admin.from("ordens_servico").insert({
           id, dealership: writeStore, oficina_id: of.id, vehicle_id: p.vehicle_id ? String(p.vehicle_id) : null, car_desc: desc || null,
-          placa, servicos,
+          placa, servicos, ...(scan ? { scanner_entrada_id: scan.id } : {}),
           pedido_obs: String(p.pedido_obs || "").trim().slice(0, 500) || null, enviada_por: me.name || null, km_saida: kmS, foto_saida: foto,
         }).select("*").single();
         if (error || !os) return json({ error: /relation|does not exist/i.test(String(error?.message)) ? "rode_o_sql_das_oficinas" : String(error?.message || "erro") }, 400);
+        if (scan) await admin.from("scanner_laudos").update({ os_id: os.id }).eq("id", scan.id);
         let tk = of.link_token as string | null;
         if (!tk) { tk = novoToken(); await admin.from("oficinas_parceiras").update({ link_token: tk }).eq("id", of.id); }
-        await avisarNovaOS(admin, os, of, await linkDaOficina(admin, tk));
-        return json({ ok: true, numero: os.numero });
+        await avisarNovaOS(admin, os, of, await linkDaOficina(admin, tk), scan ? textoFalhas(scan) : null);
+        return json({ ok: true, numero: os.numero, scanner: !!scan });
       }
 
       // carro voltou da oficina (km na volta)
@@ -1551,10 +1620,18 @@ Deno.serve(async (req) => {
         const kmV = Math.round(Number(p.km_volta) || 0);
         if (!(kmV > 0) || (os.km_servico != null && kmV < os.km_servico)) return json({ error: "km_invalido" }, 400);
         const agora = new Date().toISOString();
-        await admin.from("ordens_servico").update({ status: "devolvida", devolvida_em: agora, km_volta: kmV, devolvida_por: me.name || null, updated_at: agora }).eq("id", os.id);
+        // scanner de conferência passado pela loja na volta (quando a oficina não mandou o dela)
+        let conf: any = null;
+        if (p.scanner_path) {
+          const r = await registrarLaudo(admin, { loja: writeStore, path: String(p.scanner_path), momento: "conferencia", osId: os.id, vehicleId: os.vehicle_id, carDesc: os.car_desc, placa: os.placa, enviadoPor: me.name || null });
+          if ("erro" in r) return json({ error: r.erro }, 400);
+          conf = r.laudo;
+        }
+        await admin.from("ordens_servico").update({ status: "devolvida", devolvida_em: agora, km_volta: kmV, devolvida_por: me.name || null, updated_at: agora, ...(conf ? { scanner_saida_id: conf.id } : {}) }).eq("id", os.id);
         const { data: of } = await admin.from("oficinas_parceiras").select("nome").eq("id", os.oficina_id).maybeSingle();
         const volta = os.km_servico != null ? kmV - os.km_servico : null;
-        await avisarGrupo(admin, writeStore, `🏁 *OS #${os.numero}*: ${os.car_desc || "carro"} voltou da *${of?.nome || "oficina"}* com ${kmV.toLocaleString("pt-BR")} km${volta != null ? ` (+${volta} km na volta)` : ""}${me.name ? ` · recebido por ${me.name}` : ""}.`).catch(() => false);
+        const scanTxt = await textoScannerDaOS(os, conf);
+        await avisarGrupo(admin, writeStore, `🏁 *OS #${os.numero}*: ${os.car_desc || "carro"} voltou da *${of?.nome || "oficina"}* com ${kmV.toLocaleString("pt-BR")} km${volta != null ? ` (+${volta} km na volta)` : ""}${me.name ? ` · recebido por ${me.name}` : ""}.${scanTxt}`).catch(() => false);
         return json({ ok: true });
       }
 
@@ -1578,6 +1655,8 @@ Deno.serve(async (req) => {
         const { data: upd } = await admin.from("ordens_servico").update({ status: "cancelada", cancelada_em: agora, updated_at: agora })
           .eq("id", String(p.id || "")).eq("dealership", writeStore).in("status", ["enviada", "recebida"]).select("numero").maybeSingle();
         if (!upd) return json({ error: "nao_da_para_cancelar" }, 400);
+        // o laudo de entrada volta a ficar livre (o carro pode ir pra outra oficina com ele)
+        await admin.from("scanner_laudos").update({ os_id: null }).eq("os_id", String(p.id)).eq("momento", "entrada");
         return json({ ok: true });
       }
 

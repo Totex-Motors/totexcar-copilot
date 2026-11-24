@@ -11,8 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import type { OrdemServico } from "@/hooks/useDealer";
-import { STATUS_OS, msgErro, kmBR, quando, carroOS, servicosOS, oleoOS, filtrosOS, FotoInput, FotosOS, LinhaDoTempo } from "@/components/oficina/comum";
+import { subirPdfAssinado, type OrdemServico } from "@/hooks/useDealer";
+import { STATUS_OS, msgErro, kmBR, quando, carroOS, servicosOS, oleoOS, filtrosOS, FotoInput, FotosOS, LinhaDoTempo, ScannerResumo, ComparacaoScanner, PdfScannerInput } from "@/components/oficina/comum";
 
 // LINK DA OFICINA PARCEIRA: /parceiro/{token}. Sem login, no celular do mecânico: os carros que a loja
 // mandou, "recebi o carro" (km + foto do painel), o registro do serviço (campos obrigatórios) e o pedido de
@@ -34,7 +34,7 @@ export default function ParceiroLink() {
   const { data, isLoading, error } = useQuery({ queryKey: ["parceiro", token], queryFn: async () => (await chamar(token, "parceiro_info")) as Info, retry: false, refetchInterval: 60_000 });
   const acao = useMutation({ mutationFn: ({ action, ...p }: { action: string } & Record<string, unknown>) => chamar(token, action, p) });
   const [receber, setReceber] = useState<{ o: OrdemServico; km: string; foto: string | null } | null>(null);
-  const [servico, setServico] = useState<{ o: OrdemServico; f: Servico } | null>(null);
+  const [servico, setServico] = useState<{ o: OrdemServico; f: Servico; scanner?: string | null } | null>(null);
   const [extra, setExtra] = useState<{ o: OrdemServico; desc: string; valor: string; foto: string | null } | null>(null);
   const [ver, setVer] = useState<OrdemServico | null>(null);
 
@@ -65,7 +65,7 @@ export default function ParceiroLink() {
     if (!f.foto_painel) return toast({ title: "Tire a foto do painel", variant: "destructive" });
     if (oleo(o) && !f.foto_etiqueta) return toast({ title: "Tire a foto da etiqueta de troca de óleo", variant: "destructive" });
     if (outros(o) && f.servico_obs.trim().length < 5) return toast({ title: "Descreva o que foi feito", variant: "destructive" });
-    rodar({ action: "parceiro_concluir", id: o.id, ...f, km_servico: Number(f.km_servico) }, "Serviço registrado ✅ A loja foi avisada.", () => setServico(null));
+    rodar({ action: "parceiro_concluir", id: o.id, ...f, km_servico: Number(f.km_servico), ...(servico.scanner ? { scanner_path: servico.scanner } : {}) }, "Serviço registrado ✅ A loja foi avisada.", () => setServico(null));
   };
   const setF = (k: keyof Servico, v: any) => setServico((s) => (s ? { ...s, f: { ...s.f, [k]: v } } : s));
 
@@ -84,6 +84,7 @@ export default function ParceiroLink() {
             </div>
             <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_OS[o.status].cls}`}>{STATUS_OS[o.status].label}</span>
           </div>
+          {o.scanner_entrada && o.status !== "devolvida" && <ScannerResumo l={o.scanner_entrada} titulo={o.scanner_entrada.n_falhas ? "Scanner da loja: falhas pra corrigir" : "Scanner da loja"} compacto />}
           {o.extra_status && (
             <div className={`rounded p-2 text-sm ${o.extra_status === "pendente" ? "bg-amber-50 text-amber-900" : o.extra_status === "aprovado" ? "bg-green-50 text-green-900" : "bg-red-50 text-red-900"}`}>
               {o.extra_status === "pendente" ? "⏳ Extra aguardando aprovação da loja: " : o.extra_status === "aprovado" ? "✅ Extra APROVADO: " : "❌ Extra RECUSADO (não fazer): "}{o.extra_descricao}
@@ -181,6 +182,9 @@ export default function ParceiroLink() {
               {oleo(servico.o) && <FotoInput label="Foto da etiqueta de troca de óleo (no para-brisa)" obrigatoria valor={servico.f.foto_etiqueta} onChange={(v) => setF("foto_etiqueta", v)} />}
               <div className="space-y-1"><Label className="text-xs">Valor (opcional)</Label><Input inputMode="decimal" value={servico.f.valor} onChange={(e) => setF("valor", e.target.value)} placeholder="R$" /></div>
               <FotoInput label="Foto da nota (opcional)" valor={servico.f.foto_nota} onChange={(v) => setF("foto_nota", v)} />
+              {!!servico.o.scanner_entrada?.n_falhas && <p className="text-xs text-red-700">A loja mandou esse carro com {servico.o.scanner_entrada.n_falhas} falha(s) no scanner. Se você tem scanner, passe depois do reparo e envie o PDF: é a prova de que ficou resolvido. Sem ele, a loja confere na volta.</p>}
+              <PdfScannerInput label="Scanner depois do reparo (PDF, opcional)" valor={servico.scanner || null} destaque={!!servico.o.scanner_entrada?.n_falhas}
+                onChange={(v) => setServico((s) => (s ? { ...s, scanner: v } : s))} subir={(f) => subirPdfAssinado(f, () => chamar(token, "parceiro_scanner_upload"))} />
               <Button className="w-full" disabled={acao.isPending} onClick={registrar}>{acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Registrar serviço"}</Button>
             </div>
           )}
@@ -215,6 +219,9 @@ export default function ParceiroLink() {
               {oleoOS(ver) && <div>🛢️ {oleoOS(ver)}</div>}
               {filtrosOS(ver) && <div>🧰 Filtros: {filtrosOS(ver)}</div>}
               {ver.servico_obs && <div>📝 {ver.servico_obs}</div>}
+              {ver.scanner_entrada && <ScannerResumo l={ver.scanner_entrada} titulo="Scanner de entrada" />}
+              {ver.scanner_saida && <ScannerResumo l={ver.scanner_saida} titulo="Scanner depois do reparo" />}
+              {ver.scanner_comparacao && <ComparacaoScanner c={ver.scanner_comparacao} />}
               <FotosOS o={ver} />
             </div>
           )}

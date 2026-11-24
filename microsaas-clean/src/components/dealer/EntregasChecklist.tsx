@@ -51,6 +51,7 @@ export function EntregasChecklist({ dealership }: { dealership?: string }) {
                     {e.confirmado_em ? `OK do cliente ${dh(e.confirmado_em)}` : `Iniciado ${dh(e.iniciado_em)}`}
                     {e.km ? ` · ${kmBR(e.km)}` : ""}{e.vendedor_nome ? ` · vendedor ${e.vendedor_nome}` : ""}
                   </div>
+                  {e.scanner && <div className={`text-xs ${e.scanner.n_falhas ? "text-red-700 font-medium" : "text-muted-foreground"}`}>🔍 Scanner mostrado ao cliente: {e.scanner.resumo}{e.scanner.url && <> · <a href={e.scanner.url} target="_blank" rel="noreferrer" className="underline text-primary">PDF</a></>}</div>}
                   {e.luz_alerta && <div className="text-xs font-medium text-red-700">Luz de alerta no painel{e.painel_obs ? `: ${e.painel_obs}` : ""}</div>}
                   {e.problema_texto && <div className="text-xs text-red-700">Problema: {e.problema_texto}</div>}
                 </div>

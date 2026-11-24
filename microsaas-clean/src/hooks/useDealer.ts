@@ -367,7 +367,7 @@ export type EntregaChecklist = {
   id: string; customer_name: string | null; customer_phone: string; car_desc: string | null; placa: string | null;
   status: "aguardando_foto" | "aguardando_confirmacao" | "ok" | "problema"; km: number | null; luz_alerta: boolean | null;
   painel_obs: string | null; problema_texto: string | null; foto_url: string | null; vendedor_nome: string | null;
-  iniciado_em: string; foto_em: string | null; confirmado_em: string | null;
+  iniciado_em: string; foto_em: string | null; confirmado_em: string | null; scanner?: ScannerLaudo | null;
 };
 export const useEntregas = (enabled: boolean, dealership?: string) =>
   useQuery({
@@ -394,6 +394,33 @@ export interface OficinaParceira {
   id: string; nome: string; razao_social: string | null; cnpj: string | null; endereco: string | null; cidade: string | null; telefone: string | null;
   responsavel: string | null; whatsapp: string | null; ativo: boolean; link: string | null;
 }
+// LAUDO DO SCANNER (Doutor-IE): relatório em PDF lido pelo sistema
+export interface ScannerLaudo {
+  id: string; momento: "entrada" | "conferencia" | "avulso"; placa: string | null; car_desc: string | null; gerado_em: string | null; km: number | null;
+  n_falhas: number | null; falhas: { codigo: string; descricao: string | null }[];
+  bateria: { status: "aprovada" | "reprovada" | null; inicial: number | null; minima: number | null; maxima: number | null; queda: number | null; temperatura: number | null } | null;
+  compressao: string | null; enviado_por: string | null; os_id: string | null; resumo: string; url: string | null;
+}
+export type ScannerComparacao = { resolvidas: string[]; continuam: string[]; novas: string[] };
+export const useScannerLaudos = (enabled: boolean, dealership?: string) =>
+  useQuery({
+    queryKey: ["scanner-laudos", dealership || null],
+    queryFn: async () => ((await callDealer("scanner_lista", dealership ? { dealership } : {})).laudos || []) as ScannerLaudo[],
+    enabled, retry: false,
+  });
+// O PDF sobe direto pro Storage por uma URL assinada (não passa pela função: o relatório tem fotos e pesa uns 6 MB)
+export async function subirPdfAssinado(file: File, pedir: () => Promise<{ path: string; token: string }>): Promise<string> {
+  if (file.type && file.type !== "application/pdf") throw new Error("envie_o_pdf_do_scanner");
+  if (file.size > 15_000_000) throw new Error("arquivo_grande_demais");
+  const { path, token } = await pedir();
+  const { error } = await supabase.storage.from("arquivozap").uploadToSignedUrl(path, token, file, { contentType: "application/pdf" });
+  if (error) throw new Error("falha_no_upload");
+  return path;
+}
+export const subirScannerDaLoja = (file: File, dealership?: string) => subirPdfAssinado(file, () => callDealer("scanner_upload", dealership ? { dealership } : {}));
+export const registrarScanner = async (p: { path: string; momento: "entrada" | "conferencia"; placa?: string; dealership?: string }) =>
+  (await callDealer("scanner_registrar", p)) as { laudo: ScannerLaudo; os_numero: number | null };
+
 export type StatusOS = "enviada" | "recebida" | "concluida" | "devolvida" | "cancelada";
 export interface OrdemServico {
   id: string; numero: number; dealership: string; oficina_id: string; oficina_nome?: string; vehicle_id: string | null; car_desc: string | null; placa: string | null;
@@ -406,6 +433,7 @@ export interface OrdemServico {
   devolvida_em: string | null; km_volta: number | null; devolvida_por: string | null; preparacao_id: string | null;
   fotos: Record<"foto_saida" | "foto_chegada" | "foto_painel" | "foto_etiqueta" | "foto_nota" | "extra_foto", string | null>;
   km_ida: number | null; horas_na_oficina: number; atrasada: boolean; vendido?: boolean;
+  scanner_entrada?: ScannerLaudo | null; scanner_saida?: ScannerLaudo | null; scanner_comparacao?: ScannerComparacao | null;
 }
 export const useOficinasParceiras = (enabled: boolean, dealership?: string) =>
   useQuery({

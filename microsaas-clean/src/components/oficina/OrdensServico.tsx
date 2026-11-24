@@ -8,8 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Send, Search, Wrench, Copy, MessageCircle, Pencil, Plus, FileText } from "lucide-react";
-import { useEstoqueLista, useOficinasParceiras, useOrdensServico, usePosvendaAcao, type EstoqueCarro, type OficinaParceira, type OrdemServico } from "@/hooks/useDealer";
-import { STATUS_OS, msgErro, kmBR, quando, carroOS, servicosOS, nomeServico, textoOsCarro, oleoOS, filtrosOS, FotoInput, FotosOS, LinhaDoTempo } from "./comum";
+import { useEstoqueLista, useOficinasParceiras, useOrdensServico, usePosvendaAcao, useScannerLaudos, subirScannerDaLoja, type EstoqueCarro, type OficinaParceira, type OrdemServico } from "@/hooks/useDealer";
+import { STATUS_OS, msgErro, kmBR, quando, carroOS, servicosOS, nomeServico, textoOsCarro, oleoOS, filtrosOS, FotoInput, FotosOS, LinhaDoTempo, ScannerResumo, ComparacaoScanner, PdfScannerInput } from "./comum";
 
 // ORDENS DE SERVIÇO nas OFICINAS PARCEIRAS — o gerente de manutenção manda um carro do estoque pra uma
 // oficina (km + foto do painel na saída); a oficina confirma a chegada e registra o serviço pelo link dela;
@@ -43,6 +43,8 @@ const limparPlaca = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").sli
 
 // Abre o "Mandar carro pra oficina" já com o carro escolhido (botão em cada carro da lista do estoque).
 export const abrirEnvioOficina = (carro?: EstoqueCarro) => window.dispatchEvent(new CustomEvent("os:enviar", { detail: carro || null }));
+// Mesmo formulário, pra um carro identificado pela placa (vem do laudo do scanner de entrada)
+export const abrirEnvioOficinaAvulso = (c: { car_desc: string; placa: string; km?: number | null }) => window.dispatchEvent(new CustomEvent("os:enviar", { detail: { avulso: c } }));
 
 export function OrdensServico({ dealership, modo }: { dealership?: string; modo: Modo }) {
   const qc = useQueryClient();
@@ -54,12 +56,19 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
   const [envio, setEnvio] = useState<Envio | null>(() => (modo !== "leitura" ? lerRascunho() : null));
   useEffect(() => { if (pode) guardarRascunho(envio); }, [envio, pode]);
   const [detalhe, setDetalhe] = useState<OrdemServico | null>(null);
-  const [volta, setVolta] = useState<{ o: OrdemServico; km: string } | null>(null);
+  const [volta, setVolta] = useState<{ o: OrdemServico; km: string; scanner: string | null } | null>(null);
+  const { data: laudos } = useScannerLaudos(pode, dealership);
   const [ofForm, setOfForm] = useState<Partial<OficinaParceira> | null>(null);
   useEffect(() => {
     if (!pode) return;
     const abrir = (e: Event) => {
-      const carro = (e as CustomEvent).detail as EstoqueCarro | null;
+      const d = (e as CustomEvent).detail as any;
+      if (d?.avulso) { // carro do laudo do scanner: já vem com a placa; o serviço é corrigir o que o scanner apontou
+        setEnvio({ ...envioVazio(), car_desc: d.avulso.car_desc || "", placa: limparPlaca(d.avulso.placa || ""), km_saida: d.avulso.km ? String(d.avulso.km) : "", servicos: ["outro"], pedido_obs: "Corrigir as falhas apontadas no scanner (laudo no link)" });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      const carro = d as EstoqueCarro | null;
       setEnvio({ ...envioVazio(), carro, placa: carro?.placa || "", km_saida: carro?.km ? String(carro.km) : "" });
     };
     window.addEventListener("os:enviar", abrir);
@@ -135,6 +144,8 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
                     {o.atrasada && <div className="text-xs font-medium text-red-700">⏰ Passou do prazo de 1 dia ({o.horas_na_oficina}h)</div>}
                     {o.km_ida != null && o.km_ida > 50 && <div className="text-xs font-medium text-red-700">⚠️ Rodou {kmBR(o.km_ida)} entre a loja e a oficina</div>}
                     {o.status === "concluida" && <div className="text-xs text-green-700">🛢️ {oleoOS(o) || o.servico_obs || "Serviço registrado"} · {kmBR(o.km_servico)}</div>}
+                    {o.scanner_entrada && !o.scanner_saida && <div className={`text-xs ${o.scanner_entrada.n_falhas ? "text-red-700 font-medium" : "text-muted-foreground"}`}>🔍 Scanner de entrada: {o.scanner_entrada.n_falhas === 0 ? "sem falhas" : o.scanner_entrada.n_falhas == null ? "ver o PDF" : `${o.scanner_entrada.n_falhas} falha(s) pra oficina corrigir`}{!!o.scanner_entrada.n_falhas && ["concluida", "devolvida"].includes(o.status) ? " · falta o scanner de conferência" : ""}</div>}
+                    {o.scanner_saida && <div className={`text-xs ${o.scanner_saida.n_falhas ? "text-red-700 font-medium" : "text-green-700"}`}>🔍 Scanner depois do reparo: {o.scanner_saida.n_falhas === 0 ? "sem falhas" : o.scanner_saida.n_falhas == null ? "ver o PDF" : `${o.scanner_saida.n_falhas} falha(s)`}</div>}
                   </div>
                   <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_OS[o.status].cls}`}>{STATUS_OS[o.status].label}</span>
                 </div>
@@ -150,7 +161,7 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
                 )}
                 {pode && (o.status === "concluida" || o.status === "enviada" || o.status === "recebida") && (
                   <div className="flex gap-2">
-                    {o.status === "concluida" && <Button size="sm" className="h-8" onClick={() => setVolta({ o, km: o.km_servico ? String(o.km_servico) : "" })}>Carro voltou pra loja</Button>}
+                    {o.status === "concluida" && <Button size="sm" className="h-8" onClick={() => setVolta({ o, km: o.km_servico ? String(o.km_servico) : "", scanner: null })}>Carro voltou pra loja</Button>}
                     {o.status !== "concluida" && <Button size="sm" variant="ghost" className="h-8 text-muted-foreground" onClick={() => { if (confirm(`Cancelar a OS #${o.numero}?`)) rodar({ action: "os_cancelar", id: o.id }, "OS cancelada"); }}>Cancelar</Button>}
                   </div>
                 )}
@@ -198,6 +209,11 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
               <div className="space-y-1"><Label className="text-xs">Observação pra oficina</Label><Input value={envio.pedido_obs} onChange={(e) => setEnvio({ ...envio, pedido_obs: e.target.value })} placeholder="Ex.: conferir barulho na suspensão" /></div>
               <div className="space-y-1"><Label className="text-xs">Km do painel na saída <span className="text-red-600">*</span></Label><Input type="number" inputMode="numeric" value={envio.km_saida} onChange={(e) => setEnvio({ ...envio, km_saida: e.target.value })} placeholder="48200" /></div>
               <FotoInput label="Foto do painel na saída (km aparecendo)" obrigatoria valor={envio.foto_saida} onChange={(v) => setEnvio({ ...envio, foto_saida: v })} />
+              {PLACA_OK.test(envio.placa) && (() => {
+                const l = (laudos || []).find((x) => x.placa === envio.placa);
+                return l ? <ScannerResumo l={l} titulo="Scanner deste carro vai junto" compacto />
+                  : <p className="text-xs text-muted-foreground">🔍 Sem relatório do scanner pra essa placa. Se passou o scanner, envie o PDF em “Scanner do carro” antes: ele vai junto pra oficina.</p>;
+              })()}
               <Button className="w-full" disabled={acao.isPending} onClick={enviar}>{acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Enviar e avisar a oficina"}</Button>
             </div>
           )}
@@ -212,9 +228,15 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
             <div className="space-y-3">
               <p className="text-sm">#{volta.o.numero} · {carroOS(volta.o)} · {volta.o.oficina_nome}</p>
               <div className="space-y-1"><Label className="text-xs">Km do painel na volta <span className="text-red-600">*</span></Label><Input type="number" inputMode="numeric" value={volta.km} onChange={(e) => setVolta({ ...volta, km: e.target.value })} /></div>
+              {!volta.o.scanner_saida && (
+                <>
+                  {!!volta.o.scanner_entrada?.n_falhas && <p className="text-xs text-red-700">O scanner de entrada tinha {volta.o.scanner_entrada.n_falhas} falha(s) e a oficina não mandou o scanner depois do reparo. Passe o scanner agora e envie o PDF: é a prova de que foi corrigido.</p>}
+                  <PdfScannerInput label="Scanner de conferência (PDF, opcional)" valor={volta.scanner} destaque={!!volta.o.scanner_entrada?.n_falhas} onChange={(v) => setVolta({ ...volta, scanner: v })} subir={(f) => subirScannerDaLoja(f, dealership)} />
+                </>
+              )}
               <Button className="w-full" disabled={acao.isPending} onClick={() => {
                 if (!(Number(volta.km) > 0)) return toast({ title: "Informe o km", variant: "destructive" });
-                rodar({ action: "os_devolver", id: volta.o.id, km_volta: Number(volta.km) }, "Volta registrada ✅", () => setVolta(null));
+                rodar({ action: "os_devolver", id: volta.o.id, km_volta: Number(volta.km), ...(volta.scanner ? { scanner_path: volta.scanner } : {}) }, "Volta registrada ✅", () => { setVolta(null); qc.invalidateQueries({ queryKey: ["scanner-laudos"] }); });
               }}>{acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirmar"}</Button>
             </div>
           )}
@@ -254,7 +276,7 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
 function EscolherCarro({ dealership, envio, setEnvio }: { dealership?: string; envio: Envio; setEnvio: (e: Envio) => void }) {
   const { data: estoque, isLoading } = useEstoqueLista(true, dealership);
   const [busca, setBusca] = useState("");
-  const [fora, setFora] = useState(false);
+  const [fora, setFora] = useState(!envio.carro && !!envio.car_desc);
   // antes da venda: os sem revisão primeiro; carro que já está numa oficina não aparece pra escolher
   const lista = useMemo(() => (estoque || [])
     .filter((c) => {
@@ -330,6 +352,9 @@ export function DetalheOS({ o, nomes }: { o: OrdemServico; nomes: Record<string,
         </div>
       )}
       {o.extra_status && <div><b>Extra ({o.extra_status}):</b> {o.extra_descricao}{o.extra_decidido_por ? ` · decidido por ${o.extra_decidido_por}` : ""}</div>}
+      {o.scanner_entrada && <ScannerResumo l={o.scanner_entrada} titulo="Scanner de entrada" />}
+      {o.scanner_saida && <ScannerResumo l={o.scanner_saida} titulo="Scanner depois do reparo" />}
+      {o.scanner_comparacao && <ComparacaoScanner c={o.scanner_comparacao} />}
       <FotosOS o={o} />
     </div>
   );

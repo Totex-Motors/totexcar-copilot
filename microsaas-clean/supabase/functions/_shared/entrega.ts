@@ -5,6 +5,7 @@
 // avaliação no Google (cliente acabou de confirmar que está tudo bem). Problema → grupo avisado na hora.
 
 import { avisarGrupo, variantesTel } from "./posvenda.ts";
+import { ultimoLaudo, linkLaudo, textoFalhas } from "./scanner.ts";
 
 export const ITENS_ENTREGA = [
   "Carro liga normalmente (bateria ok)",
@@ -54,8 +55,34 @@ export async function checklistAberto(sb: any, phone: string): Promise<any | nul
 export const textoPedidoFoto = (carro: string) =>
   `🔎 *Checklist de entrega* do seu ${carro}\n\nAntes de sair, vamos conferir juntos (1 minuto):\n\n📸 *Ligue o carro e me mande uma foto do painel* mostrando o km. Confira se não tem nenhuma luz de alerta acesa (injeção, óleo, bateria, freio, airbag).\n\nDepois eu te mando os outros itens pra confirmar com um toque.`;
 
-export const textoItens = (c: any) =>
-  `🔎 *Checklist de entrega* · ${c.car_desc || "seu carro"}${c.placa ? ` (${c.placa})` : ""}\n\nConfira com o vendedor:\n${ITENS_ENTREGA.map((i) => `▫️ ${i}`).join("\n")}\n\nTocando em *Tudo certo*, você confirma que conferiu esses itens e que o carro saiu em condições de uso${c.km ? `, com ${kmBR(c.km)}` : ""}.`;
+// SCANNER NA ENTREGA: o laudo mais recente do carro (pela placa, até 120 dias) vai pro cliente em PDF e entra
+// como item do checklist. Com falha apontada, o texto diz a verdade e a loja é avisada antes do carro sair.
+export async function scannerDaEntrega(sb: any, c: any): Promise<{ linha: string; legenda: string; url: string | null; arquivo: string; comFalha: boolean } | null> {
+  try {
+    const l = await ultimoLaudo(sb, c.dealership, c.placa, 120);
+    if (!l) return null;
+    if (c.id && c.scanner_laudo_id !== l.id) await sb.from("entrega_checklists").update({ scanner_laudo_id: l.id }).eq("id", c.id);
+    const data = new Date(l.gerado_em || l.created_at).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" });
+    const comFalha = (l.n_falhas || 0) > 0;
+    const bat = l.bateria?.status ? ` · bateria ${l.bateria.status}` : "";
+    const res = `${textoFalhas(l)}${bat}`;
+    if (comFalha && c.dealership) {
+      await avisarGrupo(sb, c.dealership, `⚠️ *Entrega com falha no scanner*\n${c.customer_name || "Cliente"} · ${c.car_desc || "carro"}${c.placa ? ` (${c.placa})` : ""}\nÚltimo scanner (${data}): ${res}.\nO cliente está vendo isso no checklist agora. Vendedor: explicar antes do carro sair.`).catch(() => false);
+    }
+    return {
+      comFalha, url: await linkLaudo(sb, l, 7 * 86_400), arquivo: `Laudo do scanner ${c.placa || ""}.pdf`.replace(/\s+\./, "."),
+      legenda: comFalha
+        ? `⚠️ Laudo do scanner eletrônico do seu carro (${data}): ${res}. Converse com o vendedor sobre esses pontos.`
+        : `🔍 Laudo do scanner eletrônico do seu carro, feito em ${data}${l.km ? ` com ${kmBR(l.km)}` : ""}: ${res}.`,
+      linha: comFalha
+        ? `\n⚠️ *Scanner eletrônico de ${data}: ${res}.* Veja o laudo e fale com o vendedor antes de confirmar.`
+        : `\n▫️ Scanner eletrônico feito em ${data}: ${res} (laudo acima)`,
+    };
+  } catch { return null; }
+}
+
+export const textoItens = (c: any, scanner = "") =>
+  `🔎 *Checklist de entrega* · ${c.car_desc || "seu carro"}${c.placa ? ` (${c.placa})` : ""}\n\nConfira com o vendedor:\n${ITENS_ENTREGA.map((i) => `▫️ ${i}`).join("\n")}${scanner}\n\nTocando em *Tudo certo*, você confirma que conferiu esses itens e que o carro saiu em condições de uso${c.km ? `, com ${kmBR(c.km)}` : ""}.`;
 
 // Foto (ou km) do painel lida pela IA.
 export async function registrarPainel(sb: any, c: any, o: { km: number | null; luzAlerta: boolean; obs?: string | null; comFoto: boolean }): Promise<any> {
@@ -83,13 +110,21 @@ export async function responderChecklist(sb: any, c: any, ok: boolean): Promise<
   const vend = await nomeVendedor(sb, c.vendedor_id);
   if (ok) {
     if (c.status === "aguardando_foto") return { texto: "Antes de confirmar, me manda a *foto do painel* com o carro ligado (km e nenhuma luz de alerta) 📸", confirmou: false };
-    await sb.from("entrega_checklists").update({ status: "ok", confirmado_em: agora, itens: ITENS_ENTREGA }).eq("id", c.id);
+    // scanner mostrado na entrega: fica registrado junto do OK do cliente
+    let scan = "";
+    if (c.scanner_laudo_id) {
+      try {
+        const { data: l } = await sb.from("scanner_laudos").select("n_falhas, falhas, gerado_em, created_at").eq("id", c.scanner_laudo_id).maybeSingle();
+        if (l) scan = `scanner de ${new Date(l.gerado_em || l.created_at).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" })}: ${textoFalhas(l)}`;
+      } catch { /* */ }
+    }
+    await sb.from("entrega_checklists").update({ status: "ok", confirmado_em: agora, itens: scan ? [...ITENS_ENTREGA, `Ciente do laudo do ${scan}`] : ITENS_ENTREGA }).eq("id", c.id);
     if (c.dealership) {
-      await avisarGrupo(sb, c.dealership, `✅ *Entrega conferida pelo cliente*\n${c.customer_name || "Cliente"} · ${carro}${c.km ? ` · ${kmBR(c.km)}` : ""}\n${dataHoraBR(agora)}${vend ? ` · vendedor ${vend}` : ""}${c.foto_em ? " · foto do painel registrada" : ""}`).catch(() => false);
+      await avisarGrupo(sb, c.dealership, `✅ *Entrega conferida pelo cliente*\n${c.customer_name || "Cliente"} · ${carro}${c.km ? ` · ${kmBR(c.km)}` : ""}\n${dataHoraBR(agora)}${vend ? ` · vendedor ${vend}` : ""}${c.foto_em ? " · foto do painel registrada" : ""}${scan ? `\n🔍 Ciente do ${scan}` : ""}`).catch(() => false);
     }
     return {
       confirmou: true,
-      texto: `✅ *Entrega registrada*\n${carro}\n📅 ${dataHoraBR(agora)}${c.km ? `\n🛣️ ${kmBR(c.km)}` : ""}\n\nVocê confirmou que o carro saiu em condições de uso. O registro e a foto do painel ficam guardados aqui no seu histórico. Boa viagem! 🚗`,
+      texto: `✅ *Entrega registrada*\n${carro}\n📅 ${dataHoraBR(agora)}${c.km ? `\n🛣️ ${kmBR(c.km)}` : ""}${scan ? `\n🔍 Ciente do ${scan}` : ""}\n\nVocê confirmou que o carro saiu em condições de uso. O registro e a foto do painel ficam guardados aqui no seu histórico. Boa viagem! 🚗`,
     };
   }
   await sb.from("entrega_checklists").update({ status: "problema" }).eq("id", c.id);
