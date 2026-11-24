@@ -33,7 +33,7 @@ import { salvarFotoCarro } from "../_shared/car-photo.ts";
 import { aplicarPreparacaoDaJornada, textoPreparacao } from "../_shared/preparacao.ts";
 import { registrarLeitura, registrarTrocaOleo, estadoOleo, resumoOleo, RE_GASTO_TROCA_OLEO, ajustarPlanoOleo, ehEletrico } from "../_shared/oleo.ts";
 import { auditarResposta } from "../_shared/auditoria.ts";
-import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
+import { iniciarChecklist, checklistAberto, registrarPainel, responderChecklist, textoPedidoFoto, textoItens, scannerDaEntrega, BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA } from "../_shared/entrega.ts";
 import { pontePosvenda, abrirCaso, atendimentoAtivo, respostasDaLojaPrompt, clienteFalouDepois, cancelarOportunidade, variantesTel, MOTIVO as MOTIVO_POSVENDA } from "../_shared/posvenda.ts";
 import { normalizarCnh, fichaCnh, aplicarCnhNoCadastro } from "../_shared/cnh.ts";
 import { subirDoc, linkDoc, protegerMeta } from "../_shared/cofre.ts";
@@ -5637,7 +5637,12 @@ ${JSON.stringify(snapshot)}`;
             });
           }
         }
-        if (!ctx.entrega.luz) await sendMenu(msg.phone, textoItens(ctx.entrega.checklist), [BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA]);
+        if (!ctx.entrega.luz) {
+          // laudo do scanner (Doutor-IE) do carro: o cliente recebe o PDF e o item entra no checklist
+          const sc = await scannerDaEntrega(supabase, ctx.entrega.checklist);
+          if (sc?.url) await waSendDocument(await getSettings(), msg.phone, sc.url, sc.arquivo, sc.legenda).catch(() => false);
+          await sendMenu(msg.phone, textoItens(ctx.entrega.checklist, sc?.linha || ""), [BTN_ENTREGA_OK, BTN_ENTREGA_PROBLEMA]);
+        }
       } catch (e) { console.error("checklist entrega:", e); }
     }
 

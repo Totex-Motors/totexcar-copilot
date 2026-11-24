@@ -10,6 +10,7 @@ import { LinkShell } from "@/components/link/LinkShell";
 import { EntregasChecklist } from "@/components/dealer/EntregasChecklist";
 import { TrocasClientes } from "@/components/dealer/PreparacaoTab";
 import { OrdensServico } from "@/components/oficina/OrdensServico";
+import { ScannerEntrada } from "@/components/oficina/Scanner";
 
 // LINK DO GERENTE GERAL: /gerencia/{token}. Sem login, o acompanhamento da loja no celular: placar do
 // processo por vendedor, vendas com o que cada uma cumpriu, checklists de entrega, atendimentos em
@@ -140,6 +141,8 @@ function Painel({ token }: { token: string }) {
           )}
         </CardContent>
       </Card>
+
+      <ScannerEntrada modo="leitura" />
 
       <OrdensServico modo="leitura" />
 

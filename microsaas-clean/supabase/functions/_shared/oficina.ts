@@ -128,8 +128,9 @@ export async function avisarOficina(sb: any, oficina: any, texto: string, templa
   } catch (e) { console.error("aviso oficina:", e); return false; }
 }
 
-export async function avisarNovaOS(sb: any, os: any, oficina: any, link: string): Promise<void> {
-  const serv = descServicos(os.servicos);
+export async function avisarNovaOS(sb: any, os: any, oficina: any, link: string, scanner?: string | null): Promise<void> {
+  // scanner de entrada do carro: a lista de falhas vai junto do pedido (o PDF completo está no link da oficina)
+  const serv = descServicos(os.servicos) + (scanner ? ` · scanner: ${scanner}` : "");
   // 1ª OS desta oficina: o aviso leva também o guia em PDF de como funciona
   const { data: antes } = await sb.from("ordens_servico").select("id").eq("oficina_id", oficina.id).neq("id", os.id).limit(1);
   const primeira = !antes?.length;
@@ -151,10 +152,10 @@ export async function avisarChegada(sb: any, os: any, oficina: any): Promise<voi
   await avisarGrupo(sb, os.dealership, `📥 *OS #${os.numero}*: a *${oficina.nome}* recebeu o ${nomeCarro(os)} com ${kmBR(os.km_chegada)}${ida != null ? ` (${ida >= 0 ? "+" : ""}${ida} km desde a saída)` : ""}.${alerta}`).catch(() => false);
 }
 
-export async function avisarConclusao(sb: any, os: any, oficina: any, venda?: { cliente: string | null; aplicado: boolean } | null): Promise<void> {
+export async function avisarConclusao(sb: any, os: any, oficina: any, venda?: { cliente: string | null; aplicado: boolean } | null, scanner = ""): Promise<void> {
   const oleo = (os.servicos || []).includes("troca_oleo") ? `\n🛢️ Óleo: ${descOleo(os)}${descFiltros(os) ? `\n🧰 Filtros: ${descFiltros(os)}` : ""}` : "";
   const vendido = venda ? `\n🚗 Carro já vendido${venda.cliente ? ` (${venda.cliente})` : ""}: ${venda.aplicado ? "a troca já está no Co-pilot do cliente." : "a troca entra no Co-pilot do cliente assim que ele ativar a etiqueta."}` : "";
-  await avisarGrupo(sb, os.dealership, `✅ *OS #${os.numero} pronta* na *${oficina.nome}*: ${nomeCarro(os)} · ${kmBR(os.km_servico)}${oleo}${os.servico_obs ? `\n📝 ${os.servico_obs}` : ""}${vendido}\nFotos do painel e da etiqueta no link da oficina. Gerente: buscar o carro e confirmar a volta.`).catch(() => false);
+  await avisarGrupo(sb, os.dealership, `✅ *OS #${os.numero} pronta* na *${oficina.nome}*: ${nomeCarro(os)} · ${kmBR(os.km_servico)}${oleo}${os.servico_obs ? `\n📝 ${os.servico_obs}` : ""}${scanner}${vendido}\nFotos do painel e da etiqueta no link da oficina. Gerente: buscar o carro e confirmar a volta.`).catch(() => false);
 }
 
 // A revisão é ANTES da venda; a exceção é vender e mandar depois. Venda deste carro: a jornada mais recente
