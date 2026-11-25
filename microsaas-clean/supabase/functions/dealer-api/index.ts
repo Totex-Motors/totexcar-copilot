@@ -10,7 +10,7 @@ import { preparacaoDoCarro, aplicarPreparacaoDaJornada, textoPreparacao } from "
 import { estadoOleo, registrarTrocaOleo } from "../_shared/oleo.ts";
 import { controleKm } from "../_shared/km.ts";
 import { listarChecklists, ITENS_ENTREGA } from "../_shared/entrega.ts";
-import { SERVICOS, novoToken, linkDaOficina, salvarFoto, comFotos, validarServico, prepararDaOS, ligarNaVenda, vendaDoCarro, avisarNovaOS, avisarChegada, avisarConclusao, avisarExtra, avisarDecisaoExtra } from "../_shared/oficina.ts";
+import { SERVICOS, avisarOficina, novoToken, linkDaOficina, salvarFoto, comFotos, validarServico, prepararDaOS, ligarNaVenda, vendaDoCarro, avisarNovaOS, avisarChegada, avisarConclusao, avisarExtra, avisarDecisaoExtra } from "../_shared/oficina.ts";
 import { avisarGrupo, listarGrupos, encerrarPeloPainel, variantesTel, PAPEL, MOTIVO, textoHorario, TIPO_OPORTUNIDADE } from "../_shared/posvenda.ts";
 import { garantirWebhook } from "../_shared/grupo-nina.ts";
 import { registrarLaudo } from "../_shared/scanner-pdf.ts";
@@ -643,7 +643,7 @@ async function oficinaParceira(p: any): Promise<Response> {
 // O que cada função alcança pelo link pessoal (o vendedor usa só venda_*, tratado em vendaRapida)
 const ACOES_DO_LINK: Record<string, string[]> = {
   gerente_manutencao: ["link_me", "estoque_lista", "preparacao_lista", "preparacao_save", "preparacao_del", "oficina_trocas", "oficina_troca_registrar",
-    "oficinas_lista", "os_lista", "os_criar", "os_devolver", "os_extra_decidir", "os_cancelar", "scanner_upload", "scanner_registrar", "scanner_lista"],
+    "oficinas_lista", "os_lista", "os_criar", "os_devolver", "os_concluir_loja", "os_extra_decidir", "os_cancelar", "scanner_upload", "scanner_registrar", "scanner_lista"],
   // apoio de manutenção (leva os carros pras oficinas): o mesmo link do gerente de manutenção; fica fora da
   // escada de atendimento do pós-venda (escalarPara só olha gerente_manutencao / gerente_geral)
   apoio_manutencao: [],
@@ -1633,6 +1633,49 @@ Deno.serve(async (req) => {
         const scanTxt = await textoScannerDaOS(os, conf);
         await avisarGrupo(admin, writeStore, `🏁 *OS #${os.numero}*: ${os.car_desc || "carro"} voltou da *${of?.nome || "oficina"}* com ${kmV.toLocaleString("pt-BR")} km${volta != null ? ` (+${volta} km na volta)` : ""}${me.name ? ` · recebido por ${me.name}` : ""}.${scanTxt}`).catch(() => false);
         return json({ ok: true });
+      }
+
+      // CONCLUIR PELA LOJA: a oficina fez o serviço mas não registrou no link dela. O gerente registra o serviço
+      // (mesmos campos obrigatórios da oficina) e a volta do carro de uma vez, dizendo por que a oficina não registrou.
+      case "os_concluir_loja": {
+        if (!writeStore) return json({ error: "sem_loja" }, 400);
+        const { data: os } = await admin.from("ordens_servico").select("*").eq("id", String(p.id || "")).eq("dealership", writeStore).maybeSingle();
+        if (!os) return json({ error: "os_nao_encontrada" }, 404);
+        if (!["enviada", "recebida"].includes(os.status)) return json({ error: "os_ja_concluida" }, 400);
+        const motivo = String(p.motivo || "").trim().slice(0, 300);
+        if (motivo.length < 5) return json({ error: "informe_o_motivo" }, 400);
+        const v = validarServico(os, p);
+        if ("erro" in v) return json({ error: v.erro }, 400);
+        if (os.km_saida != null && Number(v.campos.km_servico) < os.km_saida) return json({ error: "km_menor_que_na_saida" }, 400);
+        const painel = await salvarFoto(admin, os.id, "painel", p.foto_painel);
+        if (!painel) return json({ error: "foto_do_painel_obrigatoria" }, 400);
+        const oleo = (os.servicos || []).includes("troca_oleo");
+        const etiqueta = oleo ? await salvarFoto(admin, os.id, "etiqueta", p.foto_etiqueta) : null;
+        if (oleo && !etiqueta) return json({ error: "foto_da_etiqueta_obrigatoria" }, 400);
+        const nota = p.foto_nota ? await salvarFoto(admin, os.id, "nota", p.foto_nota) : null;
+        let conf: any = null;
+        if (p.scanner_path) {
+          const r = await registrarLaudo(admin, { loja: writeStore, path: String(p.scanner_path), momento: "conferencia", osId: os.id, vehicleId: os.vehicle_id, carDesc: os.car_desc, placa: os.placa, enviadoPor: me.name || null });
+          if ("erro" in r) return json({ error: r.erro }, 400);
+          conf = r.laudo;
+        }
+        const agora = new Date().toISOString();
+        const quem = String(me.name || "loja").slice(0, 80);
+        const { data: upd, error } = await admin.from("ordens_servico").update({
+          ...v.campos, status: "devolvida", concluida_em: agora, devolvida_em: agora, km_volta: v.campos.km_servico, devolvida_por: quem,
+          concluida_por: quem, concluida_motivo: motivo, foto_painel: painel, foto_etiqueta: etiqueta, foto_nota: nota, updated_at: agora,
+          ...(os.recebida_em ? {} : { recebida_em: agora }), ...(conf ? { scanner_saida_id: conf.id } : {}),
+        }).eq("id", os.id).in("status", ["enviada", "recebida"]).select("*").single();
+        if (error || !upd) return json({ error: /column|does not exist/i.test(String(error?.message)) ? "rode_o_sql_das_oficinas" : "os_ja_concluida" }, 400);
+        const { data: of } = await admin.from("oficinas_parceiras").select("*").eq("id", os.oficina_id).maybeSingle();
+        // mesmos efeitos do registro da oficina: troca de óleo vira a preparação do carro (e vai pro cliente, se já vendido)
+        const prep = await prepararDaOS(admin, upd, of?.nome || "oficina").catch(() => null);
+        if (prep) await admin.from("ordens_servico").update({ preparacao_id: prep }).eq("id", os.id);
+        const venda = prep ? await ligarNaVenda(admin, upd, prep).catch(() => null) : null;
+        const oleoTxt = oleo ? `\n🛢️ Óleo: ${[upd.oleo_viscosidade, upd.oleo_norma, upd.oleo_marca, upd.oleo_litros ? `${String(upd.oleo_litros).replace(".", ",")} L` : null].filter(Boolean).join(" · ")}` : "";
+        await avisarGrupo(admin, writeStore, `✅ *OS #${upd.numero} concluída PELA LOJA* (${quem}): ${upd.car_desc || "carro"}${upd.placa ? ` (${upd.placa})` : ""} · ${Number(upd.km_servico).toLocaleString("pt-BR")} km\nA *${of?.nome || "oficina"}* não registrou o serviço. Motivo: ${motivo}${oleoTxt}${upd.servico_obs ? `\n📝 ${upd.servico_obs}` : ""}${await textoScannerDaOS(upd, conf)}${venda ? `\n🚗 Carro já vendido${venda.cliente ? ` (${venda.cliente})` : ""}: ${venda.aplicado ? "a troca já está no Co-pilot do cliente." : "a troca entra no Co-pilot do cliente quando ele ativar a etiqueta."}` : ""}`).catch(() => false);
+        if (of) await avisarOficina(admin, of, `ℹ️ *OS #${upd.numero}* (${upd.car_desc || "carro"}${upd.placa ? ` · ${upd.placa}` : ""}): a loja registrou o serviço e a volta do carro por aqui, porque o registro não foi feito no link da oficina. Nas próximas, registre pelo link ao terminar, por favor.`).catch(() => false);
+        return json({ ok: true, preparacao: !!prep, vendido: !!venda });
       }
 
       // extraordinário: o gerente aprova ou recusa
