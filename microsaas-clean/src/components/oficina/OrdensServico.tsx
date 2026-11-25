@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Send, Search, Wrench, Copy, MessageCircle, Pencil, Plus, FileText } from "lucide-react";
 import { useEstoqueLista, useOficinasParceiras, useOrdensServico, usePosvendaAcao, useScannerLaudos, subirScannerDaLoja, type EstoqueCarro, type OficinaParceira, type OrdemServico } from "@/hooks/useDealer";
@@ -38,6 +39,9 @@ const guardarRascunho = (e: Envio | null) => {
     catch { localStorage.setItem(RASCUNHO, JSON.stringify({ em: Date.now(), envio: { ...e, foto_saida: null } })); }
   } catch { /* sem localStorage */ }
 };
+// "Concluir pela loja": a oficina fez o serviço e não registrou no link dela → o gerente registra (mesmos campos)
+type PelaLoja = { o: OrdemServico; motivo: string; km_servico: string; oleo_viscosidade: string; oleo_norma: string; oleo_marca: string; oleo_litros: string; filtro_oleo: boolean; filtro_ar: boolean; filtro_combustivel: boolean; filtro_cabine: boolean; servico_obs: string; valor: string; foto_painel: string | null; foto_etiqueta: string | null; scanner: string | null };
+const pelaLojaVazio = (o: OrdemServico): PelaLoja => ({ o, motivo: "", km_servico: String(o.km_chegada || o.km_saida || ""), oleo_viscosidade: "", oleo_norma: "", oleo_marca: "", oleo_litros: "", filtro_oleo: true, filtro_ar: false, filtro_combustivel: false, filtro_cabine: false, servico_obs: "", valor: "", foto_painel: null, foto_etiqueta: null, scanner: null });
 const PLACA_OK = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
 const limparPlaca = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
 
@@ -58,6 +62,19 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
   const [detalhe, setDetalhe] = useState<OrdemServico | null>(null);
   const [volta, setVolta] = useState<{ o: OrdemServico; km: string; scanner: string | null } | null>(null);
   const { data: laudos } = useScannerLaudos(pode, dealership);
+  const [pelaLoja, setPelaLoja] = useState<PelaLoja | null>(null);
+  const concluirPelaLoja = () => {
+    if (!pelaLoja) return;
+    const f = pelaLoja, temOleo = (f.o.servicos || []).includes("troca_oleo"), temOutro = (f.o.servicos || []).some((s) => s !== "troca_oleo");
+    if (f.motivo.trim().length < 5) return toast({ title: "Diga por que a oficina não registrou", variant: "destructive" });
+    if (!(Number(f.km_servico) > 0)) return toast({ title: "Informe o km do painel", variant: "destructive" });
+    if (temOleo && (!f.oleo_viscosidade || !f.oleo_norma || !f.oleo_marca || !(Number(String(f.oleo_litros).replace(",", ".")) > 0))) return toast({ title: "Preencha viscosidade, norma, marca e litros do óleo", description: "Estão na etiqueta de troca de óleo ou na nota da oficina.", variant: "destructive" });
+    if (temOutro && f.servico_obs.trim().length < 5) return toast({ title: "Descreva o que foi feito", variant: "destructive" });
+    if (!f.foto_painel) return toast({ title: "Tire a foto do painel", variant: "destructive" });
+    if (temOleo && !f.foto_etiqueta) return toast({ title: "Tire a foto da etiqueta de troca de óleo", variant: "destructive" });
+    const { o, scanner, ...campos } = f;
+    rodar({ action: "os_concluir_loja", id: o.id, ...campos, km_servico: Number(f.km_servico), ...(scanner ? { scanner_path: scanner } : {}) }, "Serviço e volta registrados ✅", () => { setPelaLoja(null); qc.invalidateQueries({ queryKey: ["scanner-laudos"] }); });
+  };
   const [ofForm, setOfForm] = useState<Partial<OficinaParceira> | null>(null);
   useEffect(() => {
     if (!pode) return;
@@ -162,6 +179,7 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
                 {pode && (o.status === "concluida" || o.status === "enviada" || o.status === "recebida") && (
                   <div className="flex gap-2">
                     {o.status === "concluida" && <Button size="sm" className="h-8" onClick={() => setVolta({ o, km: o.km_servico ? String(o.km_servico) : "", scanner: null })}>Carro voltou pra loja</Button>}
+                    {o.status !== "concluida" && <Button size="sm" variant="outline" className="h-8" onClick={() => setPelaLoja(pelaLojaVazio(o))}>Concluir pela loja</Button>}
                     {o.status !== "concluida" && <Button size="sm" variant="ghost" className="h-8 text-muted-foreground" onClick={() => { if (confirm(`Cancelar a OS #${o.numero}?`)) rodar({ action: "os_cancelar", id: o.id }, "OS cancelada"); }}>Cancelar</Button>}
                   </div>
                 )}
@@ -240,6 +258,46 @@ export function OrdensServico({ dealership, modo }: { dealership?: string; modo:
               }}>{acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirmar"}</Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* concluir pela loja (a oficina não registrou) */}
+      <Dialog open={!!pelaLoja} onOpenChange={(v) => { if (!v) setPelaLoja(null); }}>
+        <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader><DialogTitle>Concluir pela loja</DialogTitle></DialogHeader>
+          {pelaLoja && (() => {
+            const f = pelaLoja, set = (p: Partial<PelaLoja>) => setPelaLoja({ ...f, ...p });
+            const temOleo = (f.o.servicos || []).includes("troca_oleo"), temOutro = (f.o.servicos || []).some((s) => s !== "troca_oleo");
+            return (
+              <div className="space-y-3">
+                <p className="text-sm">#{f.o.numero} · {carroOS(f.o)} · {f.o.oficina_nome} · {servicosOS(f.o, nomes)}</p>
+                <p className="text-xs text-muted-foreground">Use quando a oficina <b>fez o serviço</b> mas não registrou no link dela e o carro já voltou. Você registra o serviço e a volta de uma vez, com os mesmos dados que a oficina informaria. Se o serviço <b>não foi feito</b>, use “Cancelar”.</p>
+                <div className="space-y-1"><Label className="text-xs">Por que a oficina não registrou? <span className="text-red-600">*</span></Label><Input value={f.motivo} onChange={(e) => set({ motivo: e.target.value })} placeholder="Ex.: oficina sem internet; entregou só a nota" /></div>
+                <div className="space-y-1"><Label className="text-xs">Km do painel agora <span className="text-red-600">*</span></Label><Input type="number" inputMode="numeric" value={f.km_servico} onChange={(e) => set({ km_servico: e.target.value })} /></div>
+                {temOleo && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1"><Label className="text-xs">Viscosidade <span className="text-red-600">*</span></Label><Input value={f.oleo_viscosidade} onChange={(e) => set({ oleo_viscosidade: e.target.value.toUpperCase() })} placeholder="5W30" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Litros <span className="text-red-600">*</span></Label><Input inputMode="decimal" value={f.oleo_litros} onChange={(e) => set({ oleo_litros: e.target.value })} placeholder="3,5" /></div>
+                    </div>
+                    <div className="space-y-1"><Label className="text-xs">Norma / especificação <span className="text-red-600">*</span></Label><Input value={f.oleo_norma} onChange={(e) => set({ oleo_norma: e.target.value })} placeholder="API SP, ACEA C3…" /></div>
+                    <div className="space-y-1"><Label className="text-xs">Marca do óleo <span className="text-red-600">*</span></Label><Input value={f.oleo_marca} onChange={(e) => set({ oleo_marca: e.target.value })} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Filtros trocados</Label>
+                      {([["filtro_oleo", "Filtro de óleo"], ["filtro_ar", "Filtro de ar"], ["filtro_combustivel", "Filtro de combustível"], ["filtro_cabine", "Filtro de cabine (ar-condicionado)"]] as const).map(([k, l]) => (
+                        <label key={k} className="flex items-center gap-2 text-sm"><Checkbox checked={!!f[k]} onCheckedChange={(v) => set({ [k]: v === true } as Partial<PelaLoja>)} /> {l}</label>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="space-y-1"><Label className="text-xs">O que foi feito {temOutro ? <span className="text-red-600">*</span> : "(opcional)"}</Label><Textarea rows={3} value={f.servico_obs} onChange={(e) => set({ servico_obs: e.target.value })} /></div>
+                <FotoInput label="Foto do painel (km aparecendo)" obrigatoria valor={f.foto_painel} onChange={(v) => set({ foto_painel: v })} />
+                {temOleo && <FotoInput label="Foto da etiqueta de troca de óleo (no para-brisa)" obrigatoria valor={f.foto_etiqueta} onChange={(v) => set({ foto_etiqueta: v })} />}
+                <div className="space-y-1"><Label className="text-xs">Valor cobrado pela oficina (opcional)</Label><Input inputMode="decimal" value={f.valor} onChange={(e) => set({ valor: e.target.value })} placeholder="R$" /></div>
+                {!f.o.scanner_saida && <PdfScannerInput label="Scanner de conferência (PDF, opcional)" valor={f.scanner} destaque={!!f.o.scanner_entrada?.n_falhas} onChange={(v) => set({ scanner: v })} subir={(file) => subirScannerDaLoja(file, dealership)} />}
+                <Button className="w-full" disabled={acao.isPending} onClick={concluirPelaLoja}>{acao.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Registrar serviço e volta"}</Button>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -342,6 +400,7 @@ export function DetalheOS({ o, nomes }: { o: OrdemServico; nomes: Record<string,
       </div>
       {o.pedido_obs && <div><b>Pedido:</b> {o.pedido_obs}</div>}
       <LinhaDoTempo o={o} />
+      {o.concluida_por && <div className="rounded-lg bg-amber-50 text-amber-900 p-2 text-xs">Serviço registrado <b>pela loja</b> ({o.concluida_por}): a oficina não registrou.{o.concluida_motivo ? ` Motivo: ${o.concluida_motivo}` : ""}</div>}
       {o.concluida_em && (
         <div className="rounded-lg bg-muted/50 p-2 space-y-0.5">
           {oleoOS(o) && <div>🛢️ <b>Óleo:</b> {oleoOS(o)}</div>}

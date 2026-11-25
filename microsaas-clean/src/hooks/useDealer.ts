@@ -431,6 +431,7 @@ export interface OrdemServico {
   filtro_oleo: boolean | null; filtro_ar: boolean | null; filtro_combustivel: boolean | null; filtro_cabine: boolean | null; servico_obs: string | null; valor: number | null;
   extra_descricao: string | null; extra_valor: number | null; extra_status: "pendente" | "aprovado" | "recusado" | null; extra_pedido_em: string | null; extra_decidido_por: string | null;
   devolvida_em: string | null; km_volta: number | null; devolvida_por: string | null; preparacao_id: string | null;
+  concluida_por?: string | null; concluida_motivo?: string | null; // serviço registrado pela loja (a oficina não registrou)
   fotos: Record<"foto_saida" | "foto_chegada" | "foto_painel" | "foto_etiqueta" | "foto_nota" | "extra_foto", string | null>;
   km_ida: number | null; horas_na_oficina: number; atrasada: boolean; vendido?: boolean;
   scanner_entrada?: ScannerLaudo | null; scanner_saida?: ScannerLaudo | null; scanner_comparacao?: ScannerComparacao | null;

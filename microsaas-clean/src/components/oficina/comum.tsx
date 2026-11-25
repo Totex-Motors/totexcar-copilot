@@ -40,6 +40,8 @@ const ERROS: Record<string, string> = {
   nao_da_para_cancelar: "Essa ordem não pode mais ser cancelada.",
   rode_o_sql_das_oficinas: "Falta rodar o SQL das oficinas parceiras no Supabase.",
   link_invalido: "Este link não vale mais.",
+  informe_o_motivo: "Diga por que a oficina não registrou o serviço.",
+  os_nao_encontrada: "Ordem de serviço não encontrada.",
   envie_o_pdf_do_scanner: "Envie o relatório em PDF exportado pelo app do scanner (Doutor-IE).",
   arquivo_grande_demais: "O PDF passou de 15 MB. Exporte de novo pelo app do scanner.",
   falha_no_upload: "Não consegui enviar o arquivo. Confira a internet e tente de novo.",
@@ -120,7 +122,7 @@ export function LinhaDoTempo({ o }: { o: OrdemServico }) {
   const passos = [
     { ok: true, t: `Saiu da loja ${quando(o.enviada_em)}${o.km_saida ? ` · ${kmBR(o.km_saida)}` : ""}${o.enviada_por ? ` · ${o.enviada_por}` : ""}` },
     { ok: !!o.recebida_em, t: o.recebida_em ? `Chegou na oficina ${quando(o.recebida_em)} · ${kmBR(o.km_chegada)}${o.km_ida != null ? ` (${o.km_ida >= 0 ? "+" : ""}${o.km_ida} km na ida)` : ""}` : "Chegada na oficina" },
-    { ok: !!o.concluida_em, t: o.concluida_em ? `Serviço registrado ${quando(o.concluida_em)} · ${kmBR(o.km_servico)}` : "Serviço registrado" },
+    { ok: !!o.concluida_em, t: o.concluida_em ? `Serviço registrado ${quando(o.concluida_em)} · ${kmBR(o.km_servico)}${o.concluida_por ? ` · pela loja (${o.concluida_por})` : ""}` : "Serviço registrado" },
     { ok: !!o.devolvida_em, t: o.devolvida_em ? `Voltou pra loja ${quando(o.devolvida_em)} · ${kmBR(o.km_volta)}${o.devolvida_por ? ` · ${o.devolvida_por}` : ""}` : "Volta pra loja" },
   ];
   return (
